@@ -64,6 +64,22 @@ export default function Home() {
           >
             3. 도매업자 발주 접수 관리 대시보드 →
           </a>
+
+          <a
+            href="/admin/wholesalers"
+            style={{
+              display: "inline-block",
+              backgroundColor: "#475569",
+              color: "#ffffff",
+              padding: "10px 16px",
+              borderRadius: "8px",
+              fontWeight: 600,
+              fontSize: "14px",
+              textAlign: "center",
+            }}
+          >
+            4. 플랫폼 최고 관리자 (업체 승인 / 구독 관리) →
+          </a>
         </div>
       </section>
     </main>
