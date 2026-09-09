@@ -6,7 +6,7 @@ export default function Home() {
           B2B 육류 도매 발주 시스템
         </h1>
         <p style={{ color: "#64748b", fontSize: "14px" }}>
-          폐쇄형 1:1 도매업자 - 식당 모바일 발주 솔루션
+          폐쇄형 1:1 도매업자 - 바이어(구매 회원) 모바일 발주 솔루션
         </p>
       </header>
 
@@ -46,7 +46,7 @@ export default function Home() {
               textAlign: "center",
             }}
           >
-            2. 식당 전용 폐쇄형 미니샵 (토큰 체험) →
+            2. 바이어(구매 회원) 전용 폐쇄형 미니샵 (토큰 체험) →
           </a>
 
           <a

@@ -65,7 +65,7 @@ export default async function WholesalerProductsPage() {
           )}
         </div>
         <p style={{ fontSize: "13px", color: "#64748b" }}>
-          단골 식당에 노출될 육류 품목, 기준 단가, 실시간 재고 및 시크릿 딜을 관리합니다.
+          바이어(구매 회원)에게 노출될 육류 품목, 기준 단가, 실시간 재고 및 시크릿 딜을 관리합니다.
         </p>
       </header>
 

@@ -30,7 +30,7 @@ export function ShopView({ wholesaler, products, isLoggedIn, restaurantName }: S
   } | null>(null);
 
   // 주문서 입력 폼 상태
-  const [formRestaurantName, setFormRestaurantName] = useState(restaurantName || "마장동 단골식당");
+  const [formRestaurantName, setFormRestaurantName] = useState(restaurantName || "을지로 미트하우스 (구매 회원)");
   const [formContactPhone, setFormContactPhone] = useState("010-9876-5432");
   const [formDeliveryAddress, setFormDeliveryAddress] = useState("서울 성동구 마장로 23길 10, 1층 주방");
   const [formDeliveryNotes, setFormDeliveryNotes] = useState("내일 오전 6시 전 주방 문 앞 보냉박스 보관 요망");
@@ -169,7 +169,7 @@ export function ShopView({ wholesaler, products, isLoggedIn, restaurantName }: S
                   borderRadius: "12px",
                 }}
               >
-                {restaurantName || "단골 식당"} 접속중
+                {restaurantName || "인증 바이어"} 접속중
               </span>
             ) : (
               <span
@@ -242,10 +242,10 @@ export function ShopView({ wholesaler, products, isLoggedIn, restaurantName }: S
           >
             <div style={{ fontSize: "32px", marginBottom: "12px" }}>🔒</div>
             <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#991b1b", marginBottom: "6px" }}>
-              단골 식당 전용 시크릿 딜 룸
+              바이어(구매 회원) 전용 시크릿 딜 룸
             </h3>
             <p style={{ fontSize: "13px", color: "#475569", lineHeight: "1.6", marginBottom: "20px" }}>
-              정규 시장 가격 붕괴를 방지하기 위해 <strong>인증된 단골 식당</strong>에게만 한정 수량 당일 마감 특가 고기가 공개됩니다.
+              정규 시장 가격 붕괴를 방지하기 위해 <strong>인증된 구매 회원(바이어)</strong>에게만 한정 수량 당일 마감 특가 고기가 공개됩니다.
             </p>
             <button
               onClick={() => alert("로그인 세션 연결 시 단골 전용 특가 구매가 활성화됩니다.")}
@@ -527,11 +527,11 @@ export function ShopView({ wholesaler, products, isLoggedIn, restaurantName }: S
               </div>
             </div>
 
-            {/* 식당 배송 정보 입력 폼 */}
+            {/* 바이어 배송 정보 입력 폼 */}
             <form onSubmit={handleOrderSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
-                  식당 상호명 *
+                  구매 사업장(상호)명 *
                 </label>
                 <input
                   type="text"
@@ -678,7 +678,7 @@ export function ShopView({ wholesaler, products, isLoggedIn, restaurantName }: S
       {/* 푸터 법적 고지 (PRD Section 5 준수) */}
       <footer style={{ padding: "24px 16px", textAlign: "center", borderTop: "1px solid #e2e8f0", backgroundColor: "#ffffff", marginTop: "40px" }}>
         <p style={{ fontSize: "11px", color: "#94a3b8", lineHeight: "1.5" }}>
-          본 상점은 <strong>{wholesaler.business_name}</strong>과 계약된 단골 식당을 위한 비공개 1:1 발주 공간입니다.
+          본 상점은 <strong>{wholesaler.business_name}</strong>과 계약된 구매 회원(바이어)을 위한 비공개 1:1 발주 공간입니다.
           <br />
           타 도매업자에게 정보가 일체 공유되지 않습니다.
         </p>

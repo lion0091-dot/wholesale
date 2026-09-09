@@ -38,10 +38,10 @@ export async function sendOrderNotificationToWholesaler(
   // 카카오 알림톡 공식 승인 규격 템플릿 포맷
   const formattedMessage = `[신규 B2B 육류 발주 접수 알림]
 
-${payload.wholesalerName} 대표님, 단골 식당으로부터 새로운 발주서가 접수되었습니다.
+${payload.wholesalerName} 대표님, 바이어(구매 회원)로부터 새로운 발주서가 접수되었습니다.
 
 ■ 발주 번호: ${payload.orderNumber}
-■ 발주 식당: ${payload.restaurantName}
+■ 발주처(바이어): ${payload.restaurantName}
 ■ 발주 내역: ${payload.itemsSummary}
 ■ 총 발주 금액: ${payload.totalAmount.toLocaleString()}원
 ■ 배송지: ${payload.deliveryAddress}

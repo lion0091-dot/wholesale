@@ -53,7 +53,7 @@ export default async function WholesalerOrdersPage() {
         id: "demo-order-1",
         wholesaler_id: "demo-wholesaler-id",
         retailer_id: "demo-retailer-1",
-        retailer_name: "을지로 한우마을 (단골식당)",
+        retailer_name: "을지로 한우마을 (구매 회원)",
         order_number: "ORD-20260909-A79B2C",
         total_amount: 255000,
         status: "pending",
@@ -156,7 +156,7 @@ export default async function WholesalerOrdersPage() {
           )}
         </div>
         <p style={{ fontSize: "13px", color: "#64748b" }}>
-          단골 식당에서 접수된 모바일 발주서를 실시간으로 확인하고 출고 및 배송 상태를 처리합니다.
+          바이어(구매 회원)로부터 접수된 모바일 발주서를 실시간으로 확인하고 출고 및 배송 상태를 처리합니다.
         </p>
       </header>
 

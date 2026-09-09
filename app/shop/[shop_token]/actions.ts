@@ -39,7 +39,7 @@ export async function createOrderAction(input: CreateOrderInput): Promise<Create
     }
 
     if (!input.restaurantName || !input.deliveryAddress) {
-      return { success: false, error: "식당 상호명과 배송지 주소는 필수 입력 사항입니다." };
+      return { success: false, error: "사업장(상호)명과 배송지 주소는 필수 입력 사항입니다." };
     }
 
     // 1. 고유 주문번호 생성 (ORD-YYYYMMDD-XXXXXX)

@@ -4,7 +4,7 @@ import { LegalFooter } from "@/components/legal-footer";
 
 export const metadata: Metadata = {
   title: "B2B 육류 도매 발주 시스템",
-  description: "도매업체와 단골 식당을 위한 1:1 모바일 발주 플랫폼",
+  description: "도매업체와 바이어(구매 회원)를 위한 1:1 모바일 발주 플랫폼",
 };
 
 export default function RootLayout({

@@ -189,7 +189,7 @@ export function ProductForm() {
               <textarea
                 name="description"
                 rows={2}
-                placeholder="지육 스펙, 보관 방법 등 식당 전달용 메모"
+                placeholder="지육 스펙, 보관 방법 등 바이어 전달용 메모"
                 style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "14px" }}
               />
             </div>

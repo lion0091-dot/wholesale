@@ -146,7 +146,7 @@ export function OrderList({ initialOrders }: OrderListProps) {
                       </span>
                     </div>
                     <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-                      발주 식당: <strong>{order.retailer_name || "단골 거래처 식당"}</strong> | 접수일시: {new Date(order.ordered_at).toLocaleString("ko-KR")}
+                      발주처(바이어): <strong>{order.retailer_name || "단골 구매 회원"}</strong> | 접수일시: {new Date(order.ordered_at).toLocaleString("ko-KR")}
                     </p>
                   </div>
 
