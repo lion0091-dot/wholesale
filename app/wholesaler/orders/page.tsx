@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { OrderList, type OrderWithDetails } from "./order-list";
+import { CopyInviteButton } from "@/components/copy-invite-button";
 
 export default async function WholesalerOrdersPage() {
   const supabase = await createClient();
@@ -15,6 +16,8 @@ export default async function WholesalerOrdersPage() {
 
   if (!user) {
     isNotAuthenticated = true;
+    wholesalerName = "마장동 태양축산 (테스트 도매)";
+    shopToken = "demo-token-12345";
   } else {
     // 도매업자 정보 조회
     const { data: wholesaler } = await supabase
@@ -140,20 +143,10 @@ export default async function WholesalerOrdersPage() {
               {wholesalerName} 발주 접수 관리
             </h1>
           </div>
-          {shopToken && (
-            <a
-              href={`/shop/${shopToken}`}
-              target="_blank"
-              style={{
-                fontSize: "12px",
-                color: "#2563eb",
-                fontWeight: 600,
-                textDecoration: "underline",
-              }}
-            >
-              내 미니샵 바로가기 ↗
-            </a>
-          )}
+          <CopyInviteButton
+            shopToken={shopToken || "demo-token-12345"}
+            wholesalerName={wholesalerName}
+          />
         </div>
         <p style={{ fontSize: "13px", color: "#64748b" }}>
           바이어(구매 회원)로부터 접수된 모바일 발주서를 실시간으로 확인하고 출고 및 배송 상태를 처리합니다.
