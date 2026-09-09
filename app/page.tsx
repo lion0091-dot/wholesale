@@ -48,6 +48,22 @@ export default function Home() {
           >
             2. 식당 전용 폐쇄형 미니샵 (토큰 체험) →
           </a>
+
+          <a
+            href="/wholesaler/orders"
+            style={{
+              display: "inline-block",
+              backgroundColor: "#2563eb",
+              color: "#ffffff",
+              padding: "10px 16px",
+              borderRadius: "8px",
+              fontWeight: 600,
+              fontSize: "14px",
+              textAlign: "center",
+            }}
+          >
+            3. 도매업자 발주 접수 관리 대시보드 →
+          </a>
         </div>
       </section>
     </main>
