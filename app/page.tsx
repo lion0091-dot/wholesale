@@ -16,7 +16,7 @@ export default function Home() {
           본 시스템은 오픈 마켓이 아니며, 도매업체로부터 전달받으신 <strong>전용 초대 링크</strong>를 통해서만 접속 가능한 비공개 플랫폼입니다.
         </p>
 
-        <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "16px" }}>
+        <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
           <a
             href="/wholesaler/products"
             style={{
@@ -27,9 +27,26 @@ export default function Home() {
               borderRadius: "8px",
               fontWeight: 600,
               fontSize: "14px",
+              textAlign: "center",
             }}
           >
-            도매업자 상품 관리 대시보드 바로가기 →
+            1. 도매업자 상품 관리 대시보드 →
+          </a>
+
+          <a
+            href="/shop/demo-token-12345"
+            style={{
+              display: "inline-block",
+              backgroundColor: "#0f172a",
+              color: "#ffffff",
+              padding: "10px 16px",
+              borderRadius: "8px",
+              fontWeight: 600,
+              fontSize: "14px",
+              textAlign: "center",
+            }}
+          >
+            2. 식당 전용 폐쇄형 미니샵 (토큰 체험) →
           </a>
         </div>
       </section>
