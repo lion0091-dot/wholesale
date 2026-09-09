@@ -46,7 +46,7 @@ export default function Home() {
               textAlign: "center",
             }}
           >
-            2. 바이어(구매 회원) 전용 폐쇄형 미니샵 (토큰 체험) →
+            2. 바이어 전용 모바일 미니샵 (카톡 초대 링크 체험) →
           </a>
 
           <a
