@@ -1,134 +1,176 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { sendOrderNotificationToWholesaler } from "@/lib/notifications/alimtalk";
-import type { Order, OrderItem } from "@/types/database";
+import { loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
+import { lineSubtotal, validateCart } from "@/lib/shop/order-policy";
 
-export interface CreateOrderInput {
+export interface SubmitOrderInput {
   shopToken: string;
-  wholesalerId: string;
-  wholesalerName: string;
-  wholesalerPhone?: string;
+  /** 상품ID + 수량만 전달받고 단가/금액은 서버 카탈로그에서 재계산한다. */
+  items: CartEntryInput[];
   restaurantName: string;
   contactPhone: string;
   deliveryAddress: string;
   deliveryNotes?: string;
-  items: Array<{
-    productId: string;
-    productName: string;
-    unitPrice: number;
-    quantity: number;
-    unit: string;
-    subtotalAmount: number;
-  }>;
-  totalAmount: number;
 }
 
-export interface CreateOrderResult {
+export interface SubmitOrderResult {
   success: boolean;
-  orderNumber?: string;
-  message?: string;
   error?: string;
+  orderNumber?: string;
+  totalAmount?: number;
+  itemsSummary?: string;
   notificationId?: string;
+  /** DB 저장 없이 알림톡 포맷만 검증한 시연 모드 여부 */
+  isDemo?: boolean;
 }
 
-export async function createOrderAction(input: CreateOrderInput): Promise<CreateOrderResult> {
+function buildOrderNumber(): string {
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const suffix = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+  return `ORD-${today}-${suffix}`;
+}
+
+/**
+ * 발주서 최종 제출.
+ * 1) 서버 카탈로그로 단가 재해석 → 2) 최소 주문 금액/수량·재고 검증 →
+ * 3) orders/order_items 저장 → 4) 공급사 카카오 알림톡 트리거
+ */
+export async function submitOrderAction(input: SubmitOrderInput): Promise<SubmitOrderResult> {
   try {
-    if (!input.items || input.items.length === 0) {
-      return { success: false, error: "장바구니에 담긴 품목이 없습니다." };
+    const restaurantName = input.restaurantName?.trim() ?? "";
+    const contactPhone = input.contactPhone?.trim() ?? "";
+    const deliveryAddress = input.deliveryAddress?.trim() ?? "";
+    const deliveryNotes = input.deliveryNotes?.trim() || null;
+
+    if (!restaurantName || !contactPhone || !deliveryAddress) {
+      return {
+        success: false,
+        error: "사업장(상호)명, 담당자 연락처, 배송지 주소는 필수 입력 사항입니다.",
+      };
     }
 
-    if (!input.restaurantName || !input.deliveryAddress) {
-      return { success: false, error: "사업장(상호)명과 배송지 주소는 필수 입력 사항입니다." };
+    const catalog = await loadShopCatalog(input.shopToken);
+    const lines = toCartLines(catalog, input.items ?? []);
+    const validation = validateCart(lines);
+
+    if (!validation.ok) {
+      return { success: false, error: validation.violations[0].message };
     }
 
-    // 1. 고유 주문번호 생성 (ORD-YYYYMMDD-XXXXXX)
-    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const randomHex = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const orderNumber = `ORD-${todayStr}-${randomHex}`;
+    if (!catalog.isDemo && !catalog.customer.retailerId) {
+      return {
+        success: false,
+        error: "초대 링크로 확인된 거래처만 발주할 수 있습니다. 공급사에서 받은 링크로 다시 접속해주세요.",
+      };
+    }
 
+    const totalAmount = validation.totals.totalAmount;
+    const orderNumber = buildOrderNumber();
     const supabase = await createClient();
 
-    // 2. 현재 로그인 사용자 및 식당(retailer) 정보 조회
-    const { data: { user } } = await supabase.auth.getUser();
-    let retailerId = "demo-retailer-id";
+    // 1) 발주서 저장 (Supabase 미설정/데모 카탈로그면 저장을 건너뛰고 알림톡 포맷만 검증)
+    let savedToDb = false;
 
-    if (user) {
-      const { data: retailer } = await supabase
-        .from("retailers")
-        .select("id")
-        .eq("profile_id", user.id)
-        .single();
-      if (retailer) {
-        retailerId = retailer.id;
-      }
-    }
-
-    // 3. Supabase DB 저장 시도 (실제 DB 연결 시)
-    let orderSavedToDb = false;
-    let createdOrderId = "";
-
-    try {
+    if (!catalog.isDemo && catalog.customer.retailerId) {
       const { data: insertedOrder, error: orderError } = await supabase
         .from("orders")
         .insert({
-          wholesaler_id: input.wholesalerId,
-          retailer_id: retailerId,
+          wholesaler_id: catalog.wholesaler.id,
+          retailer_id: catalog.customer.retailerId,
           order_number: orderNumber,
-          total_amount: input.totalAmount,
+          total_amount: totalAmount,
           status: "pending",
-          delivery_address: input.deliveryAddress,
-          delivery_notes: input.deliveryNotes || null,
+          delivery_address: deliveryAddress,
+          delivery_notes: deliveryNotes,
         })
         .select("id")
         .single();
 
-      if (!orderError && insertedOrder) {
-        orderSavedToDb = true;
-        createdOrderId = insertedOrder.id;
-
-        const orderItemsPayload = input.items.map((item) => ({
-          order_id: createdOrderId,
-          product_id: item.productId,
-          product_name: item.productName,
-          unit_price: item.unitPrice,
-          quantity: item.quantity,
-          subtotal_amount: item.subtotalAmount,
-        }));
-
-        await supabase.from("order_items").insert(orderItemsPayload);
+      if (orderError || !insertedOrder) {
+        return {
+          success: false,
+          error: orderError?.message ?? "발주서 저장에 실패했습니다. 잠시 후 다시 시도해주세요.",
+        };
       }
-    } catch (dbErr) {
-      console.warn("[Order Action] DB 저장 Fallback (데모 모드 동작):", dbErr);
+
+      const { error: itemsError } = await supabase.from("order_items").insert(
+        lines.map((line) => ({
+          order_id: insertedOrder.id as string,
+          product_id: line.productId,
+          product_name: line.name,
+          unit_price: line.unitPrice,
+          quantity: line.quantity,
+          subtotal_amount: lineSubtotal(line),
+        }))
+      );
+
+      if (itemsError) {
+        // 품목 없는 빈 발주서가 남지 않도록 헤더를 롤백한다.
+        await supabase.from("orders").delete().eq("id", insertedOrder.id as string);
+
+        return { success: false, error: "발주 품목 저장에 실패했습니다. 다시 시도해주세요." };
+      }
+
+      savedToDb = true;
     }
 
-    // 4. 품목 요약 문구 생성 (예: "한우 1++ 등심 2kg 외 1건")
-    const firstItem = input.items[0];
-    const itemsSummary = input.items.length > 1
-      ? `${firstItem.productName} ${firstItem.quantity}${firstItem.unit} 외 ${input.items.length - 1}건`
-      : `${firstItem.productName} ${firstItem.quantity}${firstItem.unit}`;
+    // 2) 알림톡 품목 요약 ("한우 1++ 등심 2kg 외 1건")
+    const [firstLine] = lines;
+    const itemsSummary =
+      lines.length > 1
+        ? `${firstLine.name} ${firstLine.quantity}${firstLine.unit} 외 ${lines.length - 1}건`
+        : `${firstLine.name} ${firstLine.quantity}${firstLine.unit}`;
 
-    // 5. 카카오 알림톡 발송 트리거 호출
+    // 3) 공급사 대표 연락처 조회 후 카카오 알림톡 발송
+    let wholesalerPhone: string | undefined;
+
+    if (savedToDb) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("phone")
+        .eq("id", catalog.wholesaler.profile_id)
+        .maybeSingle();
+
+      wholesalerPhone = (profile?.phone as string | undefined) ?? undefined;
+    }
+
     const notification = await sendOrderNotificationToWholesaler({
-      wholesalerName: input.wholesalerName,
-      wholesalerPhone: input.wholesalerPhone,
-      restaurantName: input.restaurantName,
+      wholesalerName: catalog.wholesaler.business_name,
+      wholesalerPhone,
+      restaurantName,
       orderNumber,
       itemsSummary,
-      totalAmount: input.totalAmount,
-      deliveryAddress: input.deliveryAddress,
-      deliveryNotes: input.deliveryNotes,
+      totalAmount,
+      deliveryAddress,
+      deliveryNotes,
     });
+
+    if (savedToDb) {
+      revalidatePath("/dashboard/orders");
+      revalidatePath(`/shop/${input.shopToken}`);
+    }
 
     return {
       success: true,
       orderNumber,
+      totalAmount,
+      itemsSummary,
       notificationId: notification.messageId,
-      message: "발주서가 성공적으로 전송되었으며 도매처에 알림톡이 발송되었습니다.",
+      isDemo: !savedToDb,
     };
   } catch (error: unknown) {
-    console.error("[Order Action ERROR]", error);
-    const errorMessage = error instanceof Error ? error.message : "주문 처리 중 알 수 없는 오류가 발생했습니다.";
-    return { success: false, error: errorMessage };
+    console.error("[Shop Order ERROR]", error);
+
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "주문 처리 중 알 수 없는 오류가 발생했습니다.",
+    };
   }
 }

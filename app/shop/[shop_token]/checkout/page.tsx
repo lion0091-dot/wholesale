@@ -1,5 +1,5 @@
 import { loadShopCatalog } from "@/lib/shop/catalog";
-import { ShopView } from "./shop-view";
+import { CheckoutView } from "./checkout-view";
 
 interface PageProps {
   params: Promise<{
@@ -7,9 +7,9 @@ interface PageProps {
   }>;
 }
 
-export default async function MiniShopPage({ params }: PageProps) {
+export default async function CheckoutPage({ params }: PageProps) {
   const { shop_token } = await params;
   const catalog = await loadShopCatalog(shop_token);
 
-  return <ShopView catalog={catalog} />;
+  return <CheckoutView catalog={catalog} />;
 }
