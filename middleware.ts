@@ -12,8 +12,11 @@ const SUPPLIER_PREFIXES = ["/dashboard"];
 /** 플랫폼 거버넌스 콘솔 — profiles.role === "super_admin" 필수 */
 const ADMIN_PREFIXES = ["/admin"];
 
-/** 조직 미소속 사용자를 보낼 온보딩 경로 */
-const ORG_ONBOARDING_PATH = "/dashboard/onboarding";
+/**
+ * 조직 미소속 사용자를 보낼 온보딩 경로.
+ * 백오피스 레이아웃(사이드바/조직 헤더) 밖의 독립 라우트여야 한다.
+ */
+const ORG_ONBOARDING_PATH = "/onboarding";
 
 const LOGIN_PATH = "/login";
 
@@ -85,39 +88,35 @@ export async function middleware(request: NextRequest) {
       );
     }
 
-    // 조직 세션 바인딩 검증: organization_staff 소속이 없으면 온보딩으로 유도
-    if (pathname !== ORG_ONBOARDING_PATH) {
-      const { data: staff } = await supabase
-        .from("organization_staff")
-        .select("organization_id, role")
-        .eq("user_id", user.id)
+    // 조직 세션 바인딩 검증: organization_staff 소속이 없으면 온보딩으로 유도.
+    // 온보딩(/onboarding)은 /dashboard 밖이므로 리다이렉트 루프가 생기지 않는다.
+    const { data: staff } = await supabase
+      .from("organization_staff")
+      .select("organization_id, role")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!staff) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
         .maybeSingle();
 
-      if (!staff) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        // 슈퍼관리자는 조직 소속 없이도 백오피스 접근 허용
-        if (profile?.role !== "super_admin") {
-          // 개발/테스트 환경에서는 온보딩으로 튕기지 않고 통과시킨다.
-          // 기본 테스트 조직 연결은 Node 런타임(로그인 액션 / 온보딩 화면)에서 수행한다.
-          if (!isDevOrgBypassEnabled()) {
-            return withSessionCookies(
-              redirectTo(request, ORG_ONBOARDING_PATH),
-              response
-            );
-          }
-
-          response.headers.set("x-dev-org-bypass", "1");
+      // 슈퍼관리자는 조직 소속 없이도 백오피스 접근 허용
+      if (profile?.role !== "super_admin") {
+        // 개발/테스트 환경에서는 온보딩으로 튕기지 않고 통과시킨다.
+        // 기본 테스트 조직 연결은 Node 런타임(로그인 액션 / 온보딩 화면)에서 수행한다.
+        if (!isDevOrgBypassEnabled()) {
+          return withSessionCookies(redirectTo(request, ORG_ONBOARDING_PATH), response);
         }
-      } else {
-        // 다운스트림(Server Component)에서 재조회 없이 사용할 수 있도록 전달
-        response.headers.set("x-organization-id", String(staff.organization_id));
-        response.headers.set("x-organization-role", String(staff.role));
+
+        response.headers.set("x-dev-org-bypass", "1");
       }
+    } else {
+      // 다운스트림(Server Component)에서 재조회 없이 사용할 수 있도록 전달
+      response.headers.set("x-organization-id", String(staff.organization_id));
+      response.headers.set("x-organization-role", String(staff.role));
     }
 
     return response;

@@ -6,7 +6,7 @@ import { isDevOrgBypassEnabled } from "@/lib/auth/dev-mode";
 import { DevOrgLinkPanel, OrganizationCreateForm } from "./onboarding-form";
 
 export const metadata = {
-  title: "조직 설정 | 공급사 백오피스",
+  title: "공급사 조직 설정 | 온보딩",
 };
 
 const cardStyle: React.CSSProperties = {
@@ -17,13 +17,13 @@ const cardStyle: React.CSSProperties = {
   boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
 };
 
-export default async function DashboardOnboardingPage() {
+export default async function OnboardingPage() {
   const context = await getOrgStaffContext();
   const supabaseConfigured = isSupabaseConfigured();
 
   // 인증이 동작하는 환경인데 세션이 없으면 로그인부터 (미들웨어와 동일한 기준)
   if (supabaseConfigured && !context) {
-    redirect("/login?next=/dashboard/onboarding");
+    redirect("/login?next=/onboarding");
   }
 
   // 이미 조직에 소속된 계정은 이 화면에 머무를 이유가 없다.
@@ -34,12 +34,18 @@ export default async function DashboardOnboardingPage() {
   const devBypass = isDevOrgBypassEnabled();
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "640px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <header>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>공급사 조직 설정</h1>
-        <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px", lineHeight: 1.6 }}>
+        <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a" }}>공급사 조직 설정</h1>
+        <p style={{ fontSize: "13px", color: "#64748b", marginTop: "6px", lineHeight: 1.7 }}>
           이 계정은 아직 소속된 공급사 조직이 없습니다. 조직을 만들면 상품·단가·발주 데이터가
           조직 단위로 분리되어 관리되고, 직원을 초대할 수 있습니다.
+          {context?.email && (
+            <>
+              <br />
+              <span style={{ color: "#94a3b8" }}>로그인 계정: {context.email}</span>
+            </>
+          )}
         </p>
       </header>
 
@@ -93,7 +99,10 @@ export default async function DashboardOnboardingPage() {
           <DevOrgLinkPanel />
 
           <div style={{ marginTop: "10px" }}>
-            <Link href="/dashboard/products" style={{ fontSize: "13px", fontWeight: 600, color: "#2563eb" }}>
+            <Link
+              href="/dashboard/products"
+              style={{ fontSize: "13px", fontWeight: 600, color: "#2563eb" }}
+            >
               조직 연결 없이 상품 관리로 이동 →
             </Link>
           </div>
