@@ -97,6 +97,27 @@ export async function requireSession(): Promise<OrgStaffContext> {
   return context;
 }
 
+/**
+ * 플랫폼 슈퍼관리자 전용 작업 검증.
+ * 공급사 입점 승인/구독 제어처럼 조직 경계를 넘는 거버넌스 액션에 사용한다.
+ */
+export async function requireSuperAdmin(): Promise<OrgStaffContext> {
+  const context = await requireSession();
+
+  if (!context.isSuperAdmin) {
+    throw new RbacError("플랫폼 슈퍼관리자만 접근할 수 있습니다.");
+  }
+
+  return context;
+}
+
+/** 예외 없이 boolean으로만 확인 (Server Component 라우트 가드용) */
+export async function isSuperAdminSession(): Promise<boolean> {
+  const context = await getOrgStaffContext();
+
+  return context?.isSuperAdmin ?? false;
+}
+
 /** 조직 소속 필수. 소속이 없으면 RbacError. */
 export async function requireOrgStaffContext(): Promise<
   OrgStaffContext & { organizationId: string; orgRole: OrgRole }

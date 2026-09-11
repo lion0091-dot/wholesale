@@ -8,6 +8,9 @@ import {
 /** 공급사 백오피스 — 로그인 + 조직 소속(organization_staff) 필수 */
 const SUPPLIER_PREFIXES = ["/dashboard"];
 
+/** 플랫폼 거버넌스 콘솔 — profiles.role === "super_admin" 필수 */
+const ADMIN_PREFIXES = ["/admin"];
+
 /** 조직 미소속 사용자를 보낼 온보딩 경로 */
 const ORG_ONBOARDING_PATH = "/dashboard/onboarding";
 
@@ -35,6 +38,35 @@ function redirectTo(request: NextRequest, pathname: string, params?: Record<stri
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const { response, user, supabase } = await updateSession(request);
+
+  // ------------------------------------------------------------------
+  // 0) 플랫폼 관리자 콘솔 보호 (/admin) — 슈퍼관리자 전용
+  // ------------------------------------------------------------------
+  const isAdminRoute = ADMIN_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+
+  if (isAdminRoute && supabase) {
+    if (!user) {
+      return withSessionCookies(
+        redirectTo(request, LOGIN_PATH, { next: pathname }),
+        response
+      );
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profile?.role !== "super_admin") {
+      // 권한 없는 인증 사용자는 관리자 콘솔의 존재를 노출하지 않고 홈으로 돌려보낸다.
+      return withSessionCookies(redirectTo(request, "/"), response);
+    }
+
+    return response;
+  }
 
   // ------------------------------------------------------------------
   // 1) 공급사 백오피스 보호 (/dashboard)

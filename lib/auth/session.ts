@@ -54,7 +54,7 @@ export async function getSessionContext(): Promise<SessionContext | null> {
 export function getLandingPathForRole(role: UserRole | null | undefined): string {
   switch (role) {
     case "super_admin":
-      return "/admin/wholesalers";
+      return "/admin/suppliers";
     case "wholesaler":
       return "/wholesaler/products";
     case "retailer":
