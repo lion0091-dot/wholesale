@@ -4,22 +4,12 @@ import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
 import type { RelationshipStatus } from "@/types/database";
+import { CustomerCardGrid } from "./customer-card-grid";
+import type { CustomerRow } from "./customer-types";
 
-export interface CustomerRow {
-  id: string;
-  restaurantName: string;
-  representativeName: string;
-  businessNumber: string | null;
-  deliveryAddress: string;
-  relationStatus: RelationshipStatus;
-  memo: string | null;
-  joinedAt: string;
-  /** 맞춤 단가가 지정된 상품 수 (0이면 기본 단가 적용) */
-  customPriceCount: number;
-  orderCount: number;
-  lastOrderedAt: string | null;
-  totalOrderAmount: number;
-}
+export type { CustomerRow } from "./customer-types";
+
+type ViewMode = "card" | "table";
 
 interface CustomerTableProps {
   customers: CustomerRow[];
@@ -81,8 +71,11 @@ export function CustomerTable({
 }: CustomerTableProps) {
   const [keyword, setKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<RelationshipStatus | "all">("all");
+  const [viewMode, setViewMode] = useState<ViewMode>("card");
   const [inviteTarget, setInviteTarget] = useState<CustomerRow | null>(null);
   const [copied, setCopied] = useState<"link" | "message" | null>(null);
+  /** 카드 그리드에서 링크를 복사한 바이어 id (카드별 '복사됨' 표시) */
+  const [copiedCardId, setCopiedCardId] = useState<string | null>(null);
   const [origin, setOrigin] = useState("");
 
   useEffect(() => {
@@ -115,6 +108,17 @@ export function CustomerTable({
       await copyText(text);
       setCopied(kind);
       setTimeout(() => setCopied(null), 3000);
+    } catch {
+      window.alert("복사에 실패했습니다. 브라우저 권한을 확인해 주세요.");
+    }
+  };
+
+  /** 카드에서 모달을 열지 않고 바로 전용 미니샵 링크만 복사한다. */
+  const handleCopyCardLink = async (customer: CustomerRow) => {
+    try {
+      await copyText(`${window.location.origin}/shop/${shopToken}`);
+      setCopiedCardId(customer.id);
+      setTimeout(() => setCopiedCardId(null), 3000);
     } catch {
       window.alert("복사에 실패했습니다. 브라우저 권한을 확인해 주세요.");
     }
@@ -169,6 +173,46 @@ export function CustomerTable({
             <option value="active">거래중</option>
             <option value="blocked">거래중지</option>
           </select>
+
+          {/* 카드(섬네일) / 목록 보기 전환 */}
+          <div
+            role="group"
+            aria-label="보기 방식"
+            style={{
+              display: "flex",
+              gap: "2px",
+              padding: "2px",
+              backgroundColor: "#f1f5f9",
+              borderRadius: "7px",
+            }}
+          >
+            {(
+              [
+                { mode: "card", label: "▦ 카드" },
+                { mode: "table", label: "☰ 목록" },
+              ] as Array<{ mode: ViewMode; label: string }>
+            ).map((option) => (
+              <button
+                key={option.mode}
+                type="button"
+                aria-pressed={viewMode === option.mode}
+                onClick={() => setViewMode(option.mode)}
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  padding: "6px 12px",
+                  borderRadius: "5px",
+                  border: "none",
+                  cursor: "pointer",
+                  backgroundColor: viewMode === option.mode ? "#ffffff" : "transparent",
+                  color: viewMode === option.mode ? "#0f172a" : "#64748b",
+                  boxShadow: viewMode === option.mode ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {visibleCustomers.length === 0 ? (
@@ -177,6 +221,13 @@ export function CustomerTable({
           >
             조건에 맞는 고객(바이어)이 없습니다.
           </p>
+        ) : viewMode === "card" ? (
+          <CustomerCardGrid
+            customers={visibleCustomers}
+            copiedLinkId={copiedCardId}
+            onCopyLink={(customer) => void handleCopyCardLink(customer)}
+            onOpenInvite={setInviteTarget}
+          />
         ) : (
           <div className="dash-table-wrap">
             <table className="dash-table">
@@ -285,7 +336,7 @@ export function CustomerTable({
                             초대 링크
                           </button>
                           <Link
-                            href="/dashboard/custom-prices"
+                            href={`/dashboard/custom-prices?retailer=${encodeURIComponent(customer.id)}`}
                             style={{ ...chipButtonStyle, display: "inline-block" }}
                           >
                             단가 설정

@@ -4,6 +4,7 @@ import {
   CUSTOMER_SESSION_COOKIE,
   verifyCustomerSessionCookie,
 } from "@/lib/auth/customer-token-edge";
+import { isDevOrgBypassEnabled } from "@/lib/auth/dev-mode";
 
 /** 공급사 백오피스 — 로그인 + 조직 소속(organization_staff) 필수 */
 const SUPPLIER_PREFIXES = ["/dashboard"];
@@ -101,10 +102,16 @@ export async function middleware(request: NextRequest) {
 
         // 슈퍼관리자는 조직 소속 없이도 백오피스 접근 허용
         if (profile?.role !== "super_admin") {
-          return withSessionCookies(
-            redirectTo(request, ORG_ONBOARDING_PATH),
-            response
-          );
+          // 개발/테스트 환경에서는 온보딩으로 튕기지 않고 통과시킨다.
+          // 기본 테스트 조직 연결은 Node 런타임(로그인 액션 / 온보딩 화면)에서 수행한다.
+          if (!isDevOrgBypassEnabled()) {
+            return withSessionCookies(
+              redirectTo(request, ORG_ONBOARDING_PATH),
+              response
+            );
+          }
+
+          response.headers.set("x-dev-org-bypass", "1");
         }
       } else {
         // 다운스트림(Server Component)에서 재조회 없이 사용할 수 있도록 전달

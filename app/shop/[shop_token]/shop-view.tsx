@@ -30,14 +30,25 @@ export function ShopView({ catalog }: ShopViewProps) {
     [catalog, entries]
   );
 
-  const displayedItems = catalog.items.filter((item) => {
-    const matchesTab =
-      activeTab === "normal" ? !item.product.is_secret_deal : item.product.is_secret_deal;
+  // 탭별 품목(기본 납품 품목 / 시크릿 딜)을 먼저 분리해 카운트와 목록에 함께 사용한다.
+  const { normalItems, secretItems } = useMemo(() => {
+    const normal: ShopCatalogItem[] = [];
+    const secret: ShopCatalogItem[] = [];
 
-    if (!matchesTab) {
-      return false;
+    for (const item of catalog.items) {
+      if (item.product.is_secret_deal) {
+        secret.push(item);
+      } else {
+        normal.push(item);
+      }
     }
 
+    return { normalItems: normal, secretItems: secret };
+  }, [catalog.items]);
+
+  const tabItems = activeTab === "normal" ? normalItems : secretItems;
+
+  const displayedItems = tabItems.filter((item) => {
     if (selectedCategory === "전체") {
       return true;
     }
@@ -48,6 +59,29 @@ export function ShopView({ catalog }: ShopViewProps) {
 
     return item.product.category === selectedCategory;
   });
+
+  const availableCategories = useMemo(
+    () =>
+      CATEGORIES.filter((category) => {
+        if (category === "전체") {
+          return true;
+        }
+
+        if (category === "가공육/기타") {
+          return tabItems.some((item) => !MAIN_CATEGORIES.includes(item.product.category));
+        }
+
+        return tabItems.some((item) => item.product.category === category);
+      }),
+    [tabItems]
+  );
+
+  // 탭 전환 시 카테고리 필터를 초기화한다.
+  // (이전 탭에만 있던 카테고리가 남아 목록이 비어 보이는 문제 방지)
+  const handleTabChange = (tab: "normal" | "secret") => {
+    setActiveTab(tab);
+    setSelectedCategory("전체");
+  };
 
   /** 카카오 초대 링크로 세션(단골 인증)을 발급받아 시크릿 딜/맞춤 단가를 활성화 */
   const handleActivateSession = () => {
@@ -70,7 +104,9 @@ export function ShopView({ catalog }: ShopViewProps) {
         {/* 일반 상품 / 시크릿 딜 탭 */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "16px" }}>
           <button
-            onClick={() => setActiveTab("normal")}
+            type="button"
+            aria-pressed={activeTab === "normal"}
+            onClick={() => handleTabChange("normal")}
             style={{
               padding: "10px",
               borderRadius: "8px",
@@ -82,10 +118,12 @@ export function ShopView({ catalog }: ShopViewProps) {
               color: activeTab === "normal" ? "#ffffff" : "#64748b",
             }}
           >
-            기본 납품 품목
+            기본 납품 품목 {normalItems.length}
           </button>
           <button
-            onClick={() => setActiveTab("secret")}
+            type="button"
+            aria-pressed={activeTab === "secret"}
+            onClick={() => handleTabChange("secret")}
             style={{
               padding: "10px",
               borderRadius: "8px",
@@ -176,11 +214,12 @@ export function ShopView({ catalog }: ShopViewProps) {
           </div>
         ) : (
           <>
-            {/* 카테고리 필터 */}
+            {/* 카테고리 필터 — 현재 탭에 품목이 있는 카테고리만 노출한다. */}
             <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "12px", marginBottom: "12px" }}>
-              {CATEGORIES.map((category) => (
+              {availableCategories.map((category) => (
                 <button
                   key={category}
+                  type="button"
                   onClick={() => setSelectedCategory(category)}
                   style={{
                     padding: "6px 12px",
@@ -210,7 +249,33 @@ export function ShopView({ catalog }: ShopViewProps) {
                   border: "1px dashed #cbd5e1",
                 }}
               >
-                <p style={{ color: "#64748b", fontSize: "14px" }}>현재 등록된 상품이 없습니다.</p>
+                <p style={{ color: "#64748b", fontSize: "14px" }}>
+                  {tabItems.length === 0
+                    ? activeTab === "normal"
+                      ? "공급사가 아직 기본 납품 품목을 등록하지 않았습니다."
+                      : "현재 공개된 시크릿 특가 품목이 없습니다."
+                    : `'${selectedCategory}' 카테고리에 해당하는 품목이 없습니다.`}
+                </p>
+
+                {tabItems.length > 0 && selectedCategory !== "전체" && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory("전체")}
+                    style={{
+                      marginTop: "12px",
+                      backgroundColor: "#0f172a",
+                      color: "#ffffff",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      padding: "8px 16px",
+                      borderRadius: "6px",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    전체 품목 보기
+                  </button>
+                )}
               </div>
             ) : (
               <div style={{ display: "grid", gap: "12px" }}>

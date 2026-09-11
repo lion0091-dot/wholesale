@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getLandingPathForRole } from "@/lib/auth/session";
+import { isDevOrgBypassEnabled } from "@/lib/auth/dev-mode";
+import { ensureDevDefaultOrganization } from "@/lib/auth/dev-org";
 import type { UserRole } from "@/types/database";
 
 export interface AuthActionResult {
@@ -44,10 +46,21 @@ export async function signIn(formData: FormData): Promise<AuthActionResult> {
     .eq("id", data.user.id)
     .maybeSingle();
 
+  const role = (profile?.role as UserRole | undefined) ?? null;
+  let landingPath = getLandingPathForRole(role);
+
+  // 개발/테스트 환경: 조직 미소속 계정을 기본 테스트 조직에 연결하고
+  // 공급사 백오피스(/dashboard/products)로 바로 진입시킨다.
+  // (슈퍼관리자/구매회원은 각자의 기본 랜딩 경로를 그대로 유지한다.)
+  if (isDevOrgBypassEnabled() && (role === "wholesaler" || role === null)) {
+    await ensureDevDefaultOrganization();
+    landingPath = "/dashboard/products";
+  }
+
   revalidatePath("/", "layout");
 
   // redirect()는 내부적으로 예외를 던지므로 try/catch 밖에서 호출한다.
-  redirect(getLandingPathForRole((profile?.role as UserRole | undefined) ?? null));
+  redirect(landingPath);
 }
 
 /**

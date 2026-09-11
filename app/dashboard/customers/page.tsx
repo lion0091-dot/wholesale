@@ -6,7 +6,8 @@ import {
   DEMO_RETAILERS,
 } from "@/lib/demo/supplier-samples";
 import { formatWon } from "@/lib/orders/status";
-import { CustomerTable, type CustomerRow } from "./customer-table";
+import { CustomerTable } from "./customer-table";
+import type { CustomerRow } from "./customer-types";
 import type { OrderStatus, RelationshipStatus } from "@/types/database";
 
 export const metadata = {

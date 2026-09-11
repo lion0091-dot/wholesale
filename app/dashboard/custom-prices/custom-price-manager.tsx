@@ -35,6 +35,8 @@ interface CustomPriceManagerProps {
   assigned: AssignedCustomPrice[];
   /** 데모(샘플) 데이터일 때는 저장/삭제를 막는다. */
   readOnly?: boolean;
+  /** 고객 관리 카드에서 바로 진입했을 때 미리 선택할 바이어 */
+  initialRetailerId?: string;
 }
 
 const labelStyle: CSSProperties = {
@@ -77,15 +79,17 @@ export function CustomPriceManager({
   products,
   assigned,
   readOnly = false,
+  initialRetailerId,
 }: CustomPriceManagerProps) {
   const router = useRouter();
-  const [retailerId, setRetailerId] = useState(customers[0]?.id ?? "");
+  const [retailerId, setRetailerId] = useState(initialRetailerId ?? customers[0]?.id ?? "");
   const [productId, setProductId] = useState(products[0]?.id ?? "");
   const [price, setPrice] = useState("");
   const [pending, setPending] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
-  const [filterRetailerId, setFilterRetailerId] = useState("all");
+  // 특정 바이어로 진입했으면 지정 목록도 그 바이어로 필터링해 보여준다.
+  const [filterRetailerId, setFilterRetailerId] = useState(initialRetailerId ?? "all");
 
   const selectedProduct = products.find((product) => product.id === productId);
   const inputPrice = Number.parseFloat(price);

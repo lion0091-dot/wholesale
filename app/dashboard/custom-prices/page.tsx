@@ -29,7 +29,13 @@ function relationName(row: RelationRow): string {
   return retailer?.restaurant_name ?? "이름 미등록 바이어";
 }
 
-export default async function CustomPricesPage() {
+interface CustomPricesPageProps {
+  /** 고객 관리 카드에서 넘어올 때 선택될 바이어 (?retailer=<retailer_id>) */
+  searchParams: Promise<{ retailer?: string }>;
+}
+
+export default async function CustomPricesPage({ searchParams }: CustomPricesPageProps) {
+  const { retailer: requestedRetailerId } = await searchParams;
   const scope = await getSupplierScope();
 
   let customers: CustomerOption[] = [];
@@ -148,6 +154,11 @@ export default async function CustomPricesPage() {
         products={products}
         assigned={assigned}
         readOnly={isDemoData}
+        initialRetailerId={
+          customers.some((customer) => customer.id === requestedRetailerId)
+            ? requestedRetailerId
+            : undefined
+        }
       />
     </div>
   );

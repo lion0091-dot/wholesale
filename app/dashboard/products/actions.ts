@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
+import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -284,6 +285,63 @@ export async function deleteProductAction(productId: string): Promise<ActionResu
 
     revalidatePath(REVALIDATE_PATH);
     return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+// ====================================================================
+// 6. 기본 납품 품목 일괄 생성 (온보딩)
+// ====================================================================
+/**
+ * 상품이 한 건도 없는 공급사에 기본 납품 품목 세트를 생성한다.
+ * 이미 상품이 있으면 중복 생성을 막기 위해 거부한다.
+ * 성공 시 미니샵(/shop/<shop_token>)도 함께 무효화하여 데모 카탈로그를 벗어나게 한다.
+ */
+export async function seedDefaultProductsAction(): Promise<ActionResult<{ created: number }>> {
+  try {
+    const { supabase, wholesalerId } = await resolveProductScope();
+
+    const { count, error: countError } = await supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("wholesaler_id", wholesalerId);
+
+    if (countError) {
+      throw new Error(countError.message);
+    }
+
+    if ((count ?? 0) > 0) {
+      throw new RbacError(
+        "이미 등록된 상품이 있습니다. 기본 납품 품목은 상품이 없을 때만 불러올 수 있습니다."
+      );
+    }
+
+    const { data, error } = await supabase
+      .from("products")
+      .insert(
+        DEFAULT_DELIVERY_ITEMS.map((item) => ({ wholesaler_id: wholesalerId, ...item }))
+      )
+      .select("id");
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const { data: wholesaler } = await supabase
+      .from("wholesalers")
+      .select("shop_token")
+      .eq("id", wholesalerId)
+      .maybeSingle();
+
+    revalidatePath(REVALIDATE_PATH);
+    revalidatePath("/dashboard");
+
+    if (wholesaler?.shop_token) {
+      revalidatePath(`/shop/${wholesaler.shop_token}`);
+    }
+
+    return { success: true, data: { created: data?.length ?? 0 } };
   } catch (error) {
     return toResult(error);
   }

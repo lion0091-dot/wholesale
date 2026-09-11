@@ -154,6 +154,14 @@ a {
   gap: 12px;
 }
 
+/* 고객(바이어) 카드 그리드 — 컨테이너 폭에 따라 1~3열 자동 배치 */
+.dash-customer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  padding: 12px;
+}
+
 @media (max-width: 900px) {
   .dash-form-grid,
   .dash-form-grid-3 {
@@ -191,6 +199,10 @@ a {
   }
 
   .dash-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-customer-grid {
     grid-template-columns: 1fr;
   }
 }
