@@ -285,7 +285,7 @@ export default async function DashboardPage() {
               바이어별 맞춤 단가 설정 →
             </Link>
             <Link
-              href="/wholesaler/orders"
+              href="/dashboard/orders"
               style={{ fontSize: "13px", fontWeight: 600, color: "#2563eb" }}
             >
               발주 접수 처리 →
@@ -304,7 +304,7 @@ export default async function DashboardPage() {
           }}
         >
           <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a" }}>최근 발주</div>
-          <Link href="/wholesaler/orders" style={{ fontSize: "12px", color: "#2563eb" }}>
+          <Link href="/dashboard/orders" style={{ fontSize: "12px", color: "#2563eb" }}>
             전체 보기 →
           </Link>
         </div>
