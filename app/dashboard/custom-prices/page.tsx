@@ -1,0 +1,154 @@
+import { createClient } from "@/lib/supabase/server";
+import { getSupplierScope } from "@/lib/supplier/scope";
+import { listCustomPrices } from "@/app/actions/custom_price";
+import {
+  DEMO_CUSTOM_PRICES,
+  DEMO_PRODUCTS,
+  DEMO_RETAILERS,
+} from "@/lib/demo/supplier-samples";
+import {
+  CustomPriceManager,
+  type AssignedCustomPrice,
+  type CustomerOption,
+  type ProductOption,
+} from "./custom-price-manager";
+
+export const metadata = {
+  title: "맞춤 단가 관리 | 공급사 백오피스",
+};
+
+/** wholesaler_retailers + retailers 조인 응답 형태 */
+interface RelationRow {
+  retailer_id: string;
+  retailers: { restaurant_name: string } | { restaurant_name: string }[] | null;
+}
+
+function relationName(row: RelationRow): string {
+  const retailer = Array.isArray(row.retailers) ? row.retailers[0] : row.retailers;
+
+  return retailer?.restaurant_name ?? "이름 미등록 바이어";
+}
+
+export default async function CustomPricesPage() {
+  const scope = await getSupplierScope();
+
+  let customers: CustomerOption[] = [];
+  let products: ProductOption[] = [];
+  let assigned: AssignedCustomPrice[] = [];
+  let isDemoData = true;
+
+  if (scope?.wholesalerId) {
+    const supabase = await createClient();
+
+    const [{ data: relations }, { data: productRows }, customPriceResult] = await Promise.all([
+      supabase
+        .from("wholesaler_retailers")
+        .select("retailer_id, retailers ( restaurant_name )")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .eq("status", "active"),
+      supabase
+        .from("products")
+        .select("id, name, base_price, unit, is_secret_deal")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .order("name", { ascending: true }),
+      listCustomPrices(),
+    ]);
+
+    customers = ((relations ?? []) as RelationRow[]).map((row) => ({
+      id: row.retailer_id,
+      name: relationName(row),
+    }));
+
+    products = ((productRows ?? []) as ProductOption[]).map((row) => ({
+      id: row.id,
+      name: row.name,
+      base_price: Number(row.base_price),
+      unit: row.unit,
+      is_secret_deal: row.is_secret_deal,
+    }));
+
+    if (customers.length > 0 && products.length > 0) {
+      isDemoData = false;
+
+      const productMap = new Map(products.map((product) => [product.id, product]));
+      const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
+
+      assigned = (customPriceResult.success ? customPriceResult.data ?? [] : []).map((row) => ({
+        id: row.id,
+        retailerId: row.retailer_id,
+        retailerName: customerMap.get(row.retailer_id)?.name ?? "거래 종료된 바이어",
+        productId: row.product_id,
+        productName: productMap.get(row.product_id)?.name ?? "삭제된 상품",
+        basePrice: productMap.get(row.product_id)?.base_price ?? 0,
+        unit: productMap.get(row.product_id)?.unit ?? "kg",
+        customPrice: Number(row.custom_price),
+        updatedAt: row.updated_at,
+      }));
+    }
+  }
+
+  if (isDemoData) {
+    customers = DEMO_RETAILERS.map((retailer) => ({
+      id: retailer.id,
+      name: retailer.restaurant_name,
+    }));
+    products = DEMO_PRODUCTS.map((product) => ({
+      id: product.id,
+      name: product.name,
+      base_price: Number(product.base_price),
+      unit: product.unit,
+      is_secret_deal: product.is_secret_deal,
+    }));
+    assigned = DEMO_CUSTOM_PRICES.map((row) => {
+      const product = DEMO_PRODUCTS.find((item) => item.id === row.product_id);
+
+      return {
+        id: row.id,
+        retailerId: row.retailer_id,
+        retailerName:
+          DEMO_RETAILERS.find((item) => item.id === row.retailer_id)?.restaurant_name ?? "-",
+        productId: row.product_id,
+        productName: product?.name ?? "-",
+        basePrice: Number(product?.base_price ?? 0),
+        unit: product?.unit ?? "kg",
+        customPrice: row.custom_price,
+        updatedAt: row.updated_at,
+      };
+    });
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <header>
+        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>맞춤 단가 관리</h1>
+        <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
+          거래 중인 바이어(구매 회원)별 VIP 단가를 지정합니다. 지정하지 않은 상품은 기본 단가가
+          적용되며, 단가는 해당 바이어에게만 노출됩니다.
+        </p>
+      </header>
+
+      {isDemoData && (
+        <div
+          style={{
+            backgroundColor: "#fef3c7",
+            border: "1px solid #fde68a",
+            color: "#92400e",
+            fontSize: "13px",
+            padding: "12px 16px",
+            borderRadius: "8px",
+          }}
+        >
+          ℹ️ 거래 중인 바이어 또는 등록된 상품이 없어 샘플 데이터로 화면을 표시합니다. 샘플
+          데이터는 저장/삭제되지 않습니다.
+        </div>
+      )}
+
+      <CustomPriceManager
+        customers={customers}
+        products={products}
+        assigned={assigned}
+        readOnly={isDemoData}
+      />
+    </div>
+  );
+}
