@@ -1,4 +1,13 @@
-export default function Home() {
+import { isSupabaseConfigured } from "@/lib/supabase/middleware";
+import { isSuperAdminSession } from "@/lib/auth/rbac";
+
+export default async function Home() {
+  // 슈퍼관리자 콘솔 진입 버튼은 DB 권한(profiles.role)이 있을 때만 노출한다.
+  // 라우트 자체는 미들웨어와 라우트 가드가 이중으로 막지만, 버튼을 숨겨
+  // 일반 사용자에게 관리자 콘솔의 존재를 알리지 않는다.
+  // 데모 모드(Supabase 미설정)에서는 시연을 위해 그대로 보여준다.
+  const showAdminEntry = !isSupabaseConfigured() || (await isSuperAdminSession());
+
   return (
     <main style={{ padding: "40px 20px", maxWidth: "600px", margin: "0 auto" }}>
       <header style={{ marginBottom: "32px", textAlign: "center" }}>
@@ -81,21 +90,23 @@ export default function Home() {
             3. 도매업자 발주 접수 관리 대시보드 →
           </a>
 
-          <a
-            href="/admin/suppliers"
-            style={{
-              display: "inline-block",
-              backgroundColor: "#475569",
-              color: "#ffffff",
-              padding: "10px 16px",
-              borderRadius: "8px",
-              fontWeight: 600,
-              fontSize: "14px",
-              textAlign: "center",
-            }}
-          >
-            4. 플랫폼 슈퍼 관리자 (공급사 승인 / 구독 관리) →
-          </a>
+          {showAdminEntry && (
+            <a
+              href="/admin/suppliers"
+              style={{
+                display: "inline-block",
+                backgroundColor: "#475569",
+                color: "#ffffff",
+                padding: "10px 16px",
+                borderRadius: "8px",
+                fontWeight: 600,
+                fontSize: "14px",
+                textAlign: "center",
+              }}
+            >
+              4. 플랫폼 슈퍼 관리자 (공급사 승인 / 구독 관리) →
+            </a>
+          )}
         </div>
       </section>
     </main>

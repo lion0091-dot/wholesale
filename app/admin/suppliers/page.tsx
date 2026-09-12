@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { isSuperAdminSession } from "@/lib/auth/rbac";
+import { ensureSuperAdminBootstrap } from "@/lib/auth/super-admin-bootstrap";
 import { isValidBusinessNumber } from "@/lib/validation/business-number";
 import { SupplierApprovalList } from "./supplier-approval-list";
 import type { Wholesaler } from "@/types/database";
@@ -51,8 +52,16 @@ export default async function AdminSuppliersPage() {
   // 슈퍼관리자 전용 라우트. 데모 모드(Supabase 미설정)에서는 가드를 적용하지 않는다.
   const isConfigured = isSupabaseConfigured();
 
-  if (isConfigured && !(await isSuperAdminSession())) {
-    redirect("/login?next=/admin/suppliers");
+  if (isConfigured) {
+    // SUPER_ADMIN_EMAIL 허용 계정이면 여기서 승격된다. 미들웨어(Edge)는 승격을
+    // 수행할 수 없으므로, 환경변수를 나중에 설정한 경우의 최초 진입을 여기서 받는다.
+    // 이미 승격된 계정은 쓰기 없이 반환하므로 매 요청 호출해도 부담이 없다.
+    const bootstrap = await ensureSuperAdminBootstrap();
+
+    // 접근 허용의 근거는 환경변수가 아니라 DB(profiles.role)다.
+    if (!bootstrap.isSuperAdmin && !(await isSuperAdminSession())) {
+      redirect("/login?next=/admin/suppliers");
+    }
   }
 
   let suppliers: Wholesaler[] = DEMO_SUPPLIERS;

@@ -1,0 +1,163 @@
+/**
+ * 슈퍼관리자 셀프 부트스트랩 — SUPER_ADMIN_EMAIL 계정을 DB 관리자로 승격한다.
+ *
+ * 흐름:
+ *   카카오 로그인 → /auth/callback 에서 세션 확립
+ *     → 세션 이메일이 SUPER_ADMIN_EMAIL 과 일치하면
+ *     → service_role 로 bootstrap_super_admin(uid, email) 호출
+ *     → profiles.role = 'super_admin' 확정 (UUID 결속은 DB가 auth.users 로 재확인)
+ *   이후 /admin 접근 허용은 환경변수가 아니라 이 DB 값으로만 판정한다.
+ *
+ * service_role 키를 쓰는 이유:
+ *   승격 함수는 anon/authenticated 에서 REVOKE 되어 있다. 브라우저 세션이
+ *   자기 자신을 관리자로 만드는 RPC 를 호출할 수 있으면 환경변수 허용 목록이
+ *   방어선 역할을 못 하기 때문이다. 또한 profiles 의 자기 승격 차단 트리거는
+ *   service_role 에도 그대로 걸리므로, 우회는 SECURITY DEFINER 함수 내부의
+ *   전용 세션 플래그로만 열린다.
+ *
+ * 서버 전용 모듈(next/headers 의존). Edge 런타임에서 import 하지 말 것.
+ */
+
+import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
+import { isSupabaseConfigured } from "@/lib/supabase/middleware";
+import { getSuperAdminEmail, isSuperAdminEmail } from "@/lib/auth/super-admin";
+
+export type SuperAdminBootstrapStatus =
+  /** SUPER_ADMIN_EMAIL 미설정 — 부트스트랩 자체를 하지 않는다 */
+  | "disabled"
+  /** Supabase 환경변수 미설정 (데모 모드) */
+  | "unconfigured"
+  /** 로그인 세션 없음 */
+  | "anonymous"
+  /** 허용 이메일이 아닌 계정 (정상 경로 — 대부분의 로그인이 여기다) */
+  | "not_eligible"
+  /** 이미 DB 슈퍼관리자 (재로그인) */
+  | "already_admin"
+  /** 이번 호출에서 승격됨 */
+  | "promoted"
+  /** 승격 시도가 실패함 (키 누락 / RPC 오류) */
+  | "failed";
+
+export interface SuperAdminBootstrapResult {
+  status: SuperAdminBootstrapStatus;
+  /**
+   * DB(profiles.role) 기준 슈퍼관리자 여부.
+   * 화면/라우트 접근 판정에 쓸 수 있는 유일한 값이다.
+   */
+  isSuperAdmin: boolean;
+  userId: string | null;
+  /** 실패/스킵 사유 (서버 로그용) */
+  reason?: string;
+}
+
+function skip(
+  status: SuperAdminBootstrapStatus,
+  userId: string | null = null,
+  reason?: string
+): SuperAdminBootstrapResult {
+  return { status, isSuperAdmin: false, userId, reason };
+}
+
+/**
+ * Service Role 클라이언트. 승격 RPC 는 service_role 에게만 EXECUTE 가 있다.
+ */
+function createAdminClient(): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !serviceRoleKey || serviceRoleKey.includes("your-supabase")) {
+    return null;
+  }
+
+  return createSupabaseClient(url, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+/**
+ * 현재 세션이 허용 이메일이면 슈퍼관리자로 승격한다. (멱등)
+ *
+ * 로그인 콜백과 /admin 라우트 가드에서 호출한다. 이미 승격된 계정은
+ * 쓰기 없이 즉시 반환하므로 매 요청 호출해도 부담이 없다.
+ * 실패해도 예외를 던지지 않는다 — 부트스트랩 실패가 로그인 자체를 막아서는 안 된다.
+ */
+export async function ensureSuperAdminBootstrap(): Promise<SuperAdminBootstrapResult> {
+  const allowedEmail = getSuperAdminEmail();
+
+  if (!allowedEmail) {
+    return skip("disabled", null, "SUPER_ADMIN_EMAIL이 설정되지 않았습니다.");
+  }
+
+  if (!isSupabaseConfigured()) {
+    return skip("unconfigured", null, "Supabase 환경변수가 설정되지 않았습니다 (데모 모드).");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return skip("anonymous");
+  }
+
+  // 카카오 계정이 이메일 동의항목을 주지 않으면 user.email 이 비어 있다.
+  // 이 경우 환경변수 방식으로는 본인 확인이 불가능하므로 승격하지 않는다.
+  if (!isSuperAdminEmail(user.email)) {
+    return skip("not_eligible", user.id);
+  }
+
+  // 이미 승격된 계정이면 service_role 왕복을 생략한다.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profile?.role === "super_admin") {
+    return { status: "already_admin", isSuperAdmin: true, userId: user.id };
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    console.error(
+      "[SuperAdmin Bootstrap] SUPABASE_SERVICE_ROLE_KEY가 없어 승격할 수 없습니다."
+    );
+
+    return skip(
+      "failed",
+      user.id,
+      "SUPABASE_SERVICE_ROLE_KEY가 설정되지 않아 슈퍼관리자 승격을 수행할 수 없습니다."
+    );
+  }
+
+  const { data, error } = await admin.rpc("bootstrap_super_admin", {
+    p_user_id: user.id,
+    p_email: user.email,
+  });
+
+  if (error) {
+    // SUPER_ADMIN_EMAIL 오타나 카카오 계정 변경 시 여기로 떨어진다.
+    console.error("[SuperAdmin Bootstrap] 승격 RPC 오류:", error.message);
+
+    return skip("failed", user.id, error.message);
+  }
+
+  const row = data as { promoted?: boolean; role?: string } | null;
+
+  if (row?.role !== "super_admin") {
+    return skip("failed", user.id, "승격 결과를 확인할 수 없습니다.");
+  }
+
+  if (row.promoted) {
+    console.info(`[SuperAdmin Bootstrap] 슈퍼관리자 승격 완료: ${user.id}`);
+  }
+
+  return {
+    status: row.promoted ? "promoted" : "already_admin",
+    isSuperAdmin: true,
+    userId: user.id,
+  };
+}
