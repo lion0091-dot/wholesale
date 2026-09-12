@@ -1,6 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
 import {
+  describeInviteRestriction,
+  getSupplierAccount,
+} from "@/lib/supplier/verification";
+import { PendingApprovalBanner } from "@/components/pending-approval-banner";
+import {
   DEMO_CUSTOM_PRICES,
   DEMO_ORDERS,
   DEMO_RETAILERS,
@@ -100,10 +105,15 @@ function countByRetailer(rows: Array<{ retailer_id: string }>): Map<string, numb
 
 export default async function DashboardCustomersPage() {
   const scope = await getSupplierScope();
+  // 초대장 발부는 행정 승인(is_verified) 후에만 열린다.
+  const account = await getSupplierAccount();
+  const canIssueInvite = account?.canIssueInvite ?? false;
+  const inviteRestriction = account
+    ? describeInviteRestriction(account)
+    : "로그인 후 승인된 공급사 계정에서만 초대장을 발부할 수 있습니다.";
 
   let customers: CustomerRow[] = [];
-  let shopToken = DEMO_SHOP_TOKEN;
-  let wholesalerName = "마장동 태양축산 (테스트 도매)";
+  let shopToken: string | null = DEMO_SHOP_TOKEN;
   let isDemoData = true;
 
   if (scope?.wholesalerId) {
@@ -155,7 +165,6 @@ export default async function DashboardCustomersPage() {
       });
 
       shopToken = scope.shopToken ?? DEMO_SHOP_TOKEN;
-      wholesalerName = scope.businessName;
       isDemoData = false;
     }
   }
@@ -208,6 +217,10 @@ export default async function DashboardCustomersPage() {
         </p>
       </header>
 
+      {account && !canIssueInvite && inviteRestriction && (
+        <PendingApprovalBanner message={inviteRestriction} showInviteLink />
+      )}
+
       {isDemoData && (
         <div
           style={{
@@ -248,8 +261,9 @@ export default async function DashboardCustomersPage() {
 
       <CustomerTable
         customers={customers}
-        shopToken={shopToken}
-        wholesalerName={wholesalerName}
+        shopToken={canIssueInvite ? shopToken : null}
+        canIssueInvite={canIssueInvite}
+        inviteRestriction={inviteRestriction}
         readOnly={isDemoData}
       />
     </div>

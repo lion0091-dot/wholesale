@@ -18,6 +18,22 @@ export default function Home() {
 
         <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
           <a
+            href="/login"
+            style={{
+              display: "inline-block",
+              backgroundColor: "#fee500",
+              color: "#181600",
+              padding: "12px 16px",
+              borderRadius: "8px",
+              fontWeight: 800,
+              fontSize: "14px",
+              textAlign: "center",
+            }}
+          >
+            공급사(도매) 카카오로 3초 가입 / 로그인 →
+          </a>
+
+          <a
             href="/dashboard/products"
             style={{
               display: "inline-block",

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, useTransition, type CSSProperties } from "react";
 import Link from "next/link";
+import { issueInviteAction, type IssuedInvite } from "@/app/actions/invite";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
 import type { RelationshipStatus } from "@/types/database";
 import { CustomerCardGrid } from "./customer-card-grid";
@@ -13,9 +14,16 @@ type ViewMode = "card" | "table";
 
 interface CustomerTableProps {
   customers: CustomerRow[];
-  /** 미니샵 초대 링크에 사용하는 공급사 shop_token */
-  shopToken: string;
-  wholesalerName: string;
+  /**
+   * 미니샵 미리보기 링크용 shop_token.
+   * 승인된 공급사에게만 전달되며(미승인은 null), 초대 문구/링크 생성은
+   * 항상 서버 액션(issueInviteAction)이 수행한다.
+   */
+  shopToken: string | null;
+  /** 초대장 발부 권한 (미승인 공급사는 false) */
+  canIssueInvite: boolean;
+  /** 발부가 막힌 사유 */
+  inviteRestriction?: string | null;
   /** 데모(샘플) 데이터 여부 — 실제 초대 링크가 아님을 안내한다. */
   readOnly?: boolean;
 }
@@ -37,18 +45,6 @@ const chipButtonStyle: CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-function buildInviteMessage(wholesalerName: string, customerName: string, shopUrl: string) {
-  return `[${customerName} 사장님 전용 모바일 발주서 안내]
-
-안녕하세요, ${wholesalerName}입니다.
-${customerName} 사장님의 빠르고 편리한 육류 발주를 위해 1:1 모바일 미니샵을 준비했습니다.
-
-아래 전용 초대 링크에서 당일 품목과 사장님께만 적용되는 맞춤 단가·마감 특가(시크릿딜)를 확인하시고 간편하게 발주서를 보내주세요!
-
-👉 발주 링크: ${shopUrl}
-(스마트폰 브라우저 메뉴에서 '홈 화면에 추가'해 두시면 매일 편리하게 주문하실 수 있습니다.)`;
-}
-
 async function copyText(text: string) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
@@ -66,7 +62,8 @@ async function copyText(text: string) {
 export function CustomerTable({
   customers,
   shopToken,
-  wholesalerName,
+  canIssueInvite,
+  inviteRestriction,
   readOnly = false,
 }: CustomerTableProps) {
   const [keyword, setKeyword] = useState("");
@@ -76,16 +73,40 @@ export function CustomerTable({
   const [copied, setCopied] = useState<"link" | "message" | null>(null);
   /** 카드 그리드에서 링크를 복사한 바이어 id (카드별 '복사됨' 표시) */
   const [copiedCardId, setCopiedCardId] = useState<string | null>(null);
-  const [origin, setOrigin] = useState("");
+  /** 서버에서 발부받은 초대장 (링크 + 카톡 문구) */
+  const [invite, setInvite] = useState<IssuedInvite | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [invitePending, startInviteTransition] = useTransition();
 
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
-
-  // 모달이 바뀌면 복사 완료 표시를 초기화한다.
+  // 모달을 열 때마다 해당 바이어 전용 문구를 서버에서 새로 발부받는다.
+  // (shop_token 은 미승인 상태에서 클라이언트로 내려오지 않으므로 문구를 조립할 수 없다)
   useEffect(() => {
     setCopied(null);
-  }, [inviteTarget]);
+    setInvite(null);
+    setInviteError(null);
+
+    if (!inviteTarget || !canIssueInvite) {
+      return;
+    }
+
+    let active = true;
+
+    void issueInviteAction(inviteTarget.restaurantName).then((result) => {
+      if (!active) {
+        return;
+      }
+
+      if (result.success && result.data) {
+        setInvite(result.data);
+      } else {
+        setInviteError(result.error ?? "초대장을 생성할 수 없습니다.");
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [inviteTarget, canIssueInvite]);
 
   const normalizedKeyword = keyword.trim().toLowerCase();
 
@@ -101,8 +122,6 @@ export function CustomerTable({
     return matchesKeyword && matchesStatus;
   });
 
-  const shopUrl = `${origin}/shop/${shopToken}`;
-
   const handleCopy = async (kind: "link" | "message", text: string) => {
     try {
       await copyText(text);
@@ -114,14 +133,38 @@ export function CustomerTable({
   };
 
   /** 카드에서 모달을 열지 않고 바로 전용 미니샵 링크만 복사한다. */
-  const handleCopyCardLink = async (customer: CustomerRow) => {
-    try {
-      await copyText(`${window.location.origin}/shop/${shopToken}`);
-      setCopiedCardId(customer.id);
-      setTimeout(() => setCopiedCardId(null), 3000);
-    } catch {
-      window.alert("복사에 실패했습니다. 브라우저 권한을 확인해 주세요.");
+  const handleCopyCardLink = (customer: CustomerRow) => {
+    if (!canIssueInvite) {
+      window.alert(inviteRestriction ?? "승인 완료 후 초대장 발부가 활성화됩니다.");
+      return;
     }
+
+    startInviteTransition(async () => {
+      const result = await issueInviteAction(customer.restaurantName);
+
+      if (!result.success || !result.data) {
+        window.alert(result.error ?? "초대장을 생성할 수 없습니다.");
+        return;
+      }
+
+      try {
+        await copyText(result.data.shopUrl);
+        setCopiedCardId(customer.id);
+        setTimeout(() => setCopiedCardId(null), 3000);
+      } catch {
+        window.alert("복사에 실패했습니다. 브라우저 권한을 확인해 주세요.");
+      }
+    });
+  };
+
+  /** 미승인 상태에서는 모달을 열지 않고 사유만 알린다. */
+  const handleOpenInvite = (customer: CustomerRow) => {
+    if (!canIssueInvite) {
+      window.alert(inviteRestriction ?? "승인 완료 후 초대장 발부가 활성화됩니다.");
+      return;
+    }
+
+    setInviteTarget(customer);
   };
 
   return (
@@ -225,8 +268,10 @@ export function CustomerTable({
           <CustomerCardGrid
             customers={visibleCustomers}
             copiedLinkId={copiedCardId}
-            onCopyLink={(customer) => void handleCopyCardLink(customer)}
-            onOpenInvite={setInviteTarget}
+            canIssueInvite={canIssueInvite}
+            issuePending={invitePending}
+            onCopyLink={handleCopyCardLink}
+            onOpenInvite={handleOpenInvite}
           />
         ) : (
           <div className="dash-table-wrap">
@@ -325,15 +370,18 @@ export function CustomerTable({
                         <div style={{ display: "flex", gap: "6px" }}>
                           <button
                             type="button"
-                            onClick={() => setInviteTarget(customer)}
+                            onClick={() => handleOpenInvite(customer)}
+                            disabled={!canIssueInvite}
+                            title={canIssueInvite ? undefined : (inviteRestriction ?? undefined)}
                             style={{
                               ...chipButtonStyle,
-                              backgroundColor: "#fee500",
-                              borderColor: "#fde047",
-                              color: "#181600",
+                              backgroundColor: canIssueInvite ? "#fee500" : "#f1f5f9",
+                              borderColor: canIssueInvite ? "#fde047" : "#e2e8f0",
+                              color: canIssueInvite ? "#181600" : "#94a3b8",
+                              cursor: canIssueInvite ? "pointer" : "not-allowed",
                             }}
                           >
-                            초대 링크
+                            {canIssueInvite ? "초대 링크" : "🔒 초대 링크"}
                           </button>
                           <Link
                             href={`/dashboard/custom-prices?retailer=${encodeURIComponent(customer.id)}`}
@@ -424,6 +472,23 @@ export function CustomerTable({
               </div>
             )}
 
+            {inviteError && (
+              <div
+                role="alert"
+                style={{
+                  backgroundColor: "#fee2e2",
+                  border: "1px solid #fecaca",
+                  color: "#991b1b",
+                  fontSize: "12px",
+                  padding: "9px 11px",
+                  borderRadius: "8px",
+                  lineHeight: 1.6,
+                }}
+              >
+                {inviteError}
+              </div>
+            )}
+
             <div>
               <label
                 style={{
@@ -439,7 +504,7 @@ export function CustomerTable({
               <div style={{ display: "flex", gap: "6px" }}>
                 <input
                   readOnly
-                  value={shopUrl}
+                  value={invite?.shopUrl ?? (inviteError ? "" : "초대장 발부 중...")}
                   onFocus={(event) => event.currentTarget.select()}
                   style={{
                     flex: 1,
@@ -449,18 +514,20 @@ export function CustomerTable({
                     border: "1px solid #cbd5e1",
                     borderRadius: "6px",
                     backgroundColor: "#f8fafc",
-                    color: "#0f172a",
+                    color: invite ? "#0f172a" : "#94a3b8",
                   }}
                 />
                 <button
                   type="button"
-                  onClick={() => void handleCopy("link", shopUrl)}
+                  disabled={!invite}
+                  onClick={() => invite && void handleCopy("link", invite.shopUrl)}
                   style={{
                     ...chipButtonStyle,
-                    backgroundColor: copied === "link" ? "#16a34a" : "#0f172a",
-                    borderColor: copied === "link" ? "#16a34a" : "#0f172a",
+                    backgroundColor: !invite ? "#94a3b8" : copied === "link" ? "#16a34a" : "#0f172a",
+                    borderColor: !invite ? "#94a3b8" : copied === "link" ? "#16a34a" : "#0f172a",
                     color: "#ffffff",
                     padding: "9px 13px",
+                    cursor: invite ? "pointer" : "not-allowed",
                   }}
                 >
                   {copied === "link" ? "✓ 복사됨" : "링크 복사"}
@@ -482,7 +549,8 @@ export function CustomerTable({
               </label>
               <textarea
                 readOnly
-                value={buildInviteMessage(wholesalerName, inviteTarget.restaurantName, shopUrl)}
+                value={invite?.message ?? ""}
+                placeholder="초대장 문구를 불러오는 중입니다..."
                 rows={10}
                 style={{
                   width: "100%",
@@ -499,29 +567,28 @@ export function CustomerTable({
             </div>
 
             <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-              <a
-                href={`/shop/${shopToken}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ ...chipButtonStyle, display: "inline-block", padding: "9px 13px" }}
-              >
-                미니샵 미리보기 ↗
-              </a>
+              {shopToken && (
+                <a
+                  href={`/shop/${shopToken}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ ...chipButtonStyle, display: "inline-block", padding: "9px 13px" }}
+                >
+                  미니샵 미리보기 ↗
+                </a>
+              )}
               <button
                 type="button"
-                onClick={() =>
-                  void handleCopy(
-                    "message",
-                    buildInviteMessage(wholesalerName, inviteTarget.restaurantName, shopUrl)
-                  )
-                }
+                disabled={!invite}
+                onClick={() => invite && void handleCopy("message", invite.message)}
                 style={{
                   ...chipButtonStyle,
-                  backgroundColor: copied === "message" ? "#16a34a" : "#fee500",
-                  borderColor: copied === "message" ? "#16a34a" : "#fde047",
-                  color: copied === "message" ? "#ffffff" : "#181600",
+                  backgroundColor: !invite ? "#f1f5f9" : copied === "message" ? "#16a34a" : "#fee500",
+                  borderColor: !invite ? "#e2e8f0" : copied === "message" ? "#16a34a" : "#fde047",
+                  color: !invite ? "#94a3b8" : copied === "message" ? "#ffffff" : "#181600",
                   fontWeight: 700,
                   padding: "9px 13px",
+                  cursor: invite ? "pointer" : "not-allowed",
                 }}
               >
                 {copied === "message" ? "✓ 문구 복사 완료" : "💬 카톡 문구 복사"}

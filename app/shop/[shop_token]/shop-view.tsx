@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { enterShopWithToken } from "@/app/actions/customer-session";
+import { claimShopAccessAction } from "@/app/actions/buyer-auth";
 import { useShopCart } from "@/lib/shop/cart-store";
 import { cartTotals, quantityStepFor } from "@/lib/shop/order-policy";
 import { toCartLines, type ShopCatalog, type ShopCatalogItem } from "@/lib/shop/catalog-types";
@@ -11,17 +11,19 @@ import { ShopFooter, ShopHeader, cardStyle, formatWon, shopPageStyle } from "./s
 
 interface ShopViewProps {
   catalog: ShopCatalog;
+  /** OAuth 콜백에서 전달된 인증 실패 안내 */
+  authMessage?: string | null;
 }
 
 const CATEGORIES = ["전체", "소", "돼지", "닭/오리", "가공육/기타"] as const;
 const MAIN_CATEGORIES = ["소", "돼지", "닭/오리"];
 
-export function ShopView({ catalog }: ShopViewProps) {
+export function ShopView({ catalog, authMessage }: ShopViewProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"normal" | "secret">("normal");
   const [selectedCategory, setSelectedCategory] = useState<string>("전체");
   const [isPending, startTransition] = useTransition();
-  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(authMessage ?? null);
 
   const { entries, isLoaded, quantityOf, stepQuantity } = useShopCart(catalog.shopToken);
 
@@ -83,17 +85,22 @@ export function ShopView({ catalog }: ShopViewProps) {
     setSelectedCategory("전체");
   };
 
-  /** 카카오 초대 링크로 세션(단골 인증)을 발급받아 시크릿 딜/맞춤 단가를 활성화 */
-  const handleActivateSession = () => {
+  /**
+   * 단골 등록(초대 링크 클레임).
+   *
+   * 카카오 로그인 콜백에서 이미 자동 실행되지만, 다른 경로로 먼저 로그인한 계정이
+   * 새 공급사의 알림톡 링크를 열었을 때 이 버튼으로 거래 관계를 맺는다.
+   */
+  const handleClaimAccess = () => {
     setSessionError(null);
 
     startTransition(async () => {
-      const result = await enterShopWithToken(catalog.shopToken);
+      const result = await claimShopAccessAction(catalog.shopToken);
 
       if (result.success) {
         router.refresh();
       } else {
-        setSessionError(result.error ?? "단골 인증에 실패했습니다.");
+        setSessionError(result.error ?? "단골 등록에 실패했습니다.");
       }
     });
   };
@@ -218,7 +225,7 @@ export function ShopView({ catalog }: ShopViewProps) {
             )}
 
             <button
-              onClick={handleActivateSession}
+              onClick={handleClaimAccess}
               disabled={isPending}
               style={{
                 backgroundColor: "#fee500",
@@ -231,7 +238,7 @@ export function ShopView({ catalog }: ShopViewProps) {
                 cursor: isPending ? "not-allowed" : "pointer",
               }}
             >
-              {isPending ? "단골 인증 확인 중..." : "카카오 계정으로 단골 인증하기"}
+              {isPending ? "단골 등록 확인 중..." : "이 공급사 단골로 등록하기"}
             </button>
           </div>
         ) : (

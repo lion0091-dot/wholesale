@@ -17,6 +17,16 @@ export interface Profile {
   role: UserRole;
   name: string;
   phone: string;
+  /** 공급사(도매) 계정 여부 — 카카오 가입 직후 트리거가 true로 생성한다. */
+  is_supplier: boolean;
+  /** 회사 승인 + 사업자 검증 완료 여부. false면 초대장 발부만 차단된다. */
+  is_verified: boolean;
+  /** 필수 약관 동의 시각. null이면 최소 정보 입력(온보딩 1단계) 전이다. */
+  terms_agreed_at: string | null;
+  privacy_agreed_at: string | null;
+  marketing_agreed_at: string | null;
+  verified_at: string | null;
+  verified_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -25,7 +35,8 @@ export interface Wholesaler {
   id: string;
   profile_id: string;
   business_name: string;
-  business_number: string;
+  /** 가입 시점에는 미제출(null)일 수 있다. 승인 심사 단계에서 제출받는다. */
+  business_number: string | null;
   representative_name: string;
   shop_token: string;
   status: WholesalerStatus;

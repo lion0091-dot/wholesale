@@ -2,10 +2,19 @@ import { createClient } from "@/lib/supabase/server";
 import { ProductForm } from "./product-form";
 import { ProductList } from "./product-list";
 import { CopyInviteButton } from "@/components/copy-invite-button";
+import {
+  describeInviteRestriction,
+  getSupplierAccount,
+} from "@/lib/supplier/verification";
 import type { Product } from "@/types/database";
 
 export default async function WholesalerProductsPage() {
   const supabase = await createClient();
+
+  // 초대장 발부 권한 (미승인 공급사는 잠김)
+  const inviteAccount = await getSupplierAccount();
+  const inviteRestriction = inviteAccount ? describeInviteRestriction(inviteAccount) : "로그인 후 승인된 공급사 계정에서만 초대장을 발부할 수 있습니다.";
+  const canIssueInvite = inviteAccount?.canIssueInvite ?? false;
 
   // Supabase Auth 세션 확인
   const { data: { user } } = await supabase.auth.getUser();
@@ -107,8 +116,9 @@ export default async function WholesalerProductsPage() {
             <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a" }}>{wholesalerName} 상품 관리</h1>
           </div>
           <CopyInviteButton
-            shopToken={shopToken || "demo-token-12345"}
-            wholesalerName={wholesalerName}
+            canIssue={canIssueInvite}
+            restrictionMessage={inviteRestriction}
+            shopToken={canIssueInvite ? (inviteAccount?.shopToken ?? shopToken) : null}
           />
         </div>
         <p style={{ fontSize: "13px", color: "#64748b" }}>

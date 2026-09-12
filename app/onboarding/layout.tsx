@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "공급사 온보딩 | 미트 파트너스",
-  description: "공급사 조직을 생성해 백오피스 사용을 시작합니다.",
+  description: "약관 동의와 최소 정보만 입력하면 바로 백오피스를 사용할 수 있습니다.",
 };
 
 /**
  * 온보딩 전용 레이아웃.
  *
- * 조직이 없는 계정은 백오피스(사이드바/조직 헤더)를 쓸 수 없으므로
- * /dashboard 레이아웃과 완전히 분리된 독립 화면으로 제공한다.
+ * 최소 정보(약관/연락처/상호)나 조직이 없는 계정은 백오피스(사이드바/조직 헤더)를
+ * 쓸 수 없으므로 /dashboard 레이아웃과 완전히 분리된 독립 화면으로 제공한다.
  */
 export default function OnboardingLayout({
   children,
@@ -48,7 +48,7 @@ export default function OnboardingLayout({
               padding: "3px 10px",
             }}
           >
-            조직 설정 필요
+            가입 마무리 단계
           </span>
         </div>
       </header>

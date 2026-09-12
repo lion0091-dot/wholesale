@@ -19,6 +19,10 @@ interface CustomerCardGridProps {
   customers: CustomerRow[];
   /** 링크 복사 완료 표시 대상 (바이어 id) */
   copiedLinkId: string | null;
+  /** 초대장 발부 권한 — 미승인 공급사는 버튼이 잠긴다. */
+  canIssueInvite: boolean;
+  /** 초대장 발부 요청 진행 중 */
+  issuePending?: boolean;
   onCopyLink: (customer: CustomerRow) => void;
   /** 카톡 문구 / 미니샵 미리보기가 담긴 초대 모달 열기 */
   onOpenInvite: (customer: CustomerRow) => void;
@@ -100,6 +104,8 @@ function StatCell({ label, value }: { label: string; value: string }) {
 export function CustomerCardGrid({
   customers,
   copiedLinkId,
+  canIssueInvite,
+  issuePending = false,
   onCopyLink,
   onOpenInvite,
 }: CustomerCardGridProps) {
@@ -221,14 +227,27 @@ export function CustomerCardGrid({
               <button
                 type="button"
                 onClick={() => onCopyLink(customer)}
+                disabled={!canIssueInvite || issuePending}
+                title={canIssueInvite ? undefined : "승인 완료 후 초대장 발부가 활성화됩니다."}
                 style={{
                   ...actionStyle,
-                  backgroundColor: isCopied ? "#16a34a" : "#fee500",
-                  borderColor: isCopied ? "#16a34a" : "#fde047",
-                  color: isCopied ? "#ffffff" : "#181600",
+                  backgroundColor: !canIssueInvite
+                    ? "#f1f5f9"
+                    : isCopied
+                      ? "#16a34a"
+                      : "#fee500",
+                  borderColor: !canIssueInvite ? "#e2e8f0" : isCopied ? "#16a34a" : "#fde047",
+                  color: !canIssueInvite ? "#94a3b8" : isCopied ? "#ffffff" : "#181600",
+                  cursor: canIssueInvite && !issuePending ? "pointer" : "not-allowed",
                 }}
               >
-                {isCopied ? "✓ 링크 복사됨" : "🔗 초대 링크 복사"}
+                {!canIssueInvite
+                  ? "🔒 승인 후 발부"
+                  : isCopied
+                    ? "✓ 링크 복사됨"
+                    : issuePending
+                      ? "발부 중..."
+                      : "🔗 초대 링크 복사"}
               </button>
 
               <Link
@@ -248,14 +267,15 @@ export function CustomerCardGrid({
             <button
               type="button"
               onClick={() => onOpenInvite(customer)}
+              disabled={!canIssueInvite}
               style={{
                 fontSize: "11px",
                 fontWeight: 600,
-                color: "#2563eb",
+                color: canIssueInvite ? "#2563eb" : "#94a3b8",
                 background: "none",
                 border: "none",
                 padding: 0,
-                cursor: "pointer",
+                cursor: canIssueInvite ? "pointer" : "not-allowed",
                 textAlign: "left",
               }}
             >

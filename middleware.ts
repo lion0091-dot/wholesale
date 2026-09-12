@@ -1,9 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession, withSessionCookies } from "@/lib/supabase/middleware";
-import {
-  CUSTOMER_SESSION_COOKIE,
-  verifyCustomerSessionCookie,
-} from "@/lib/auth/customer-token-edge";
 import { isDevOrgBypassEnabled } from "@/lib/auth/dev-mode";
 
 /** 공급사 백오피스 — 로그인 + 조직 소속(organization_staff) 필수 */
@@ -19,6 +15,9 @@ const ADMIN_PREFIXES = ["/admin"];
 const ORG_ONBOARDING_PATH = "/onboarding";
 
 const LOGIN_PATH = "/login";
+
+/** 폐기된 미니샵 서명 쿠키 — 스테일 값이 남아 있으면 제거한다. */
+const LEGACY_CUSTOMER_SESSION_COOKIE = "wsale_customer_session";
 
 /** /shop/<token> 에서 토큰 추출 */
 function extractShopToken(pathname: string): string | null {
@@ -123,38 +122,20 @@ export async function middleware(request: NextRequest) {
   }
 
   // ------------------------------------------------------------------
-  // 2) 고객 미니샵 토큰 세션 검증 (/shop/<token>)
+  // 2) 고객 미니샵 (/shop/<token>)
+  //
+  //    바이어 인증은 Supabase Auth(카카오 OAuth) 세션 하나로 판정한다.
+  //    폐기된 서명 쿠키(wsale_customer_session)는 남아 있으면 제거만 하고,
+  //    로그인 여부 판정과 [카카오로 3초 시작하기] 게이트는 진입 라우트가 담당한다.
+  //    (미들웨어에서 리다이렉트하지 않는 이유: 카카오 인앱 브라우저에서 OAuth
+  //     왕복 중 중간 리다이렉트가 끼면 동의 화면이 끊기는 경우가 있다)
   // ------------------------------------------------------------------
   const shopToken = extractShopToken(pathname);
 
   if (shopToken) {
-    const raw = request.cookies.get(CUSTOMER_SESSION_COOKIE)?.value;
-    const session = await verifyCustomerSessionCookie(raw);
-
-    if (session && session.shopToken === shopToken) {
-      // 유효한 세션 — 조직/고객사 바인딩 정보를 페이지로 전달
-      response.headers.set("x-customer-session", "valid");
-      response.headers.set("x-shop-wholesaler-id", session.wholesalerId);
-
-      if (session.organizationId) {
-        response.headers.set("x-shop-organization-id", session.organizationId);
-      }
-
-      if (session.retailerId) {
-        response.headers.set("x-shop-retailer-id", session.retailerId);
-      }
-
-      return response;
+    if (request.cookies.get(LEGACY_CUSTOMER_SESSION_COOKIE)) {
+      response.cookies.delete(LEGACY_CUSTOMER_SESSION_COOKIE);
     }
-
-    // 세션이 없거나 다른 공급사 토큰 → 스테일 쿠키 제거 후 재바인딩 요청 신호 전달.
-    // 실제 토큰 DB 검증과 쿠키 발급은 Node 런타임의 enterShopWithToken() 서버 액션이 수행한다.
-    if (raw) {
-      response.cookies.delete(CUSTOMER_SESSION_COOKIE);
-    }
-
-    response.headers.set("x-customer-session", session ? "mismatch" : "required");
-    response.headers.set("x-shop-token", shopToken);
 
     return response;
   }

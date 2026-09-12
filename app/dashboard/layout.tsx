@@ -19,6 +19,7 @@ const NAV_ITEMS: DashboardNavItem[] = [
   { label: "맞춤 단가 관리", href: "/dashboard/custom-prices", icon: "🏷️", ready: true },
   { label: "주문 관리", href: "/dashboard/orders", icon: "🧾", ready: true },
   { label: "고객 관리", href: "/dashboard/customers", icon: "👥", ready: true },
+  { label: "영업 · 초대장", href: "/dashboard/invites", icon: "💬", ready: true },
 ];
 
 const ORG_ROLE_LABELS: Record<string, string> = {

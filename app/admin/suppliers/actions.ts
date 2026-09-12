@@ -83,7 +83,27 @@ export async function updateSupplierStatusAction(
       return { success: false, error: "상태 변경에 실패했습니다." };
     }
 
+    // 계정 단위 승인 플래그(profiles.is_verified)를 함께 반영한다.
+    // 이 플래그가 초대장 발부 권한을 결정하므로 업체 상태와 어긋나면 안 된다.
+    // (업체 대표 + 조직 소속 직원 전원에게 전파된다)
+    const { error: verificationError } = await supabase.rpc("set_supplier_verification", {
+      p_wholesaler_id: supplierId,
+      p_verified: newStatus === "active",
+    });
+
+    if (verificationError) {
+      console.error(
+        "[Admin Supplier Status] 승인 플래그 동기화 오류:",
+        verificationError.message
+      );
+      return {
+        success: false,
+        error: "업체 상태는 변경되었지만 초대장 발부 권한 반영에 실패했습니다. 다시 시도해주세요.",
+      };
+    }
+
     revalidatePath(ADMIN_PATH);
+    revalidatePath("/dashboard", "layout");
     return { success: true };
   } catch (err: unknown) {
     console.error("[Admin Supplier Status ERROR]", err);

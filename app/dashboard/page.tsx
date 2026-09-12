@@ -2,6 +2,11 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getOrgStaffContext } from "@/lib/auth/rbac";
 import { CopyInviteButton } from "@/components/copy-invite-button";
+import { PendingApprovalBanner } from "@/components/pending-approval-banner";
+import {
+  describeInviteRestriction,
+  getSupplierAccount,
+} from "@/lib/supplier/verification";
 import type { OrderStatus } from "@/types/database";
 
 interface DashboardOrder {
@@ -83,6 +88,10 @@ function SummaryCard({
 
 export default async function DashboardPage() {
   const context = await getOrgStaffContext();
+  // 초대장 발부(영업) 권한은 승인 상태에 따라 달라진다.
+  const account = await getSupplierAccount();
+  const inviteRestriction = account ? describeInviteRestriction(account) : null;
+  const canIssueInvite = account?.canIssueInvite ?? false;
   const { todayStart, monthStart } = kstBoundaries();
 
   let businessName = "마장동 태양축산 (테스트 도매)";
@@ -245,6 +254,10 @@ export default async function DashboardPage() {
         />
       </section>
 
+      {account && !canIssueInvite && inviteRestriction && (
+        <PendingApprovalBanner message={inviteRestriction} showInviteLink />
+      )}
+
       <section style={cardStyle}>
         <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "6px" }}>
           미니샵 초대 링크
@@ -253,7 +266,11 @@ export default async function DashboardPage() {
           카카오톡으로 전달할 초대 문구와 전용 발주 링크를 한 번에 복사합니다. 링크를 받은
           바이어만 내 미니샵과 단가를 볼 수 있습니다.
         </p>
-        <CopyInviteButton shopToken={shopToken} wholesalerName={businessName} />
+        <CopyInviteButton
+          canIssue={canIssueInvite}
+          restrictionMessage={inviteRestriction}
+          shopToken={canIssueInvite ? (account?.shopToken ?? shopToken) : null}
+        />
       </section>
 
       <section className="dash-cards">

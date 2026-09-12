@@ -14,7 +14,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
-import { getCustomerSession } from "@/lib/auth/customer-token";
+import { resolveBuyerIdentity } from "@/lib/auth/buyer-auth";
 import {
   DEMO_CUSTOM_PRICES,
   DEMO_PRODUCTS,
@@ -110,81 +110,32 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 /**
  * 접속 고객 식별.
- * 1순위: 초대 링크로 발급된 고객 세션 쿠키(retailer 바인딩 완료)
- * 2순위: 로그인 사용자 → retailers 조회 (세션 쿠키 재발급 전 상태)
- * 도매(공급사) 계정은 고객으로 취급하지 않는다 (경쟁사 염탐 차단).
+ *
+ * 신원 근거는 Supabase Auth 세션(auth.uid()) 하나뿐이다.
+ * 서명 쿠키(wsale_customer_session) 기반 판정은 폐기했다 — 링크/쿠키가 유출되면
+ * 타인이 그대로 대리 조작할 수 있었기 때문이다.
+ * 이제 미니샵 진입 라우트가 카카오 로그인을 먼저 강제하고,
+ * 거래처 매핑은 claim_shop_access() 가 확정한다.
+ *
+ * 도매(공급사)·관리자 계정은 고객으로 취급하지 않는다 (경쟁사 염탐 차단).
  */
 async function resolveCustomer(
   supabase: SupabaseServerClient,
-  wholesalerId: string,
-  shopToken: string
+  wholesalerId: string
 ): Promise<ShopCustomer> {
-  const session = await getCustomerSession();
-  let retailerId = session && session.shopToken === shopToken ? session.retailerId : null;
+  const buyer = await resolveBuyerIdentity(supabase, wholesalerId);
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role, phone")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profile?.role === "wholesaler") {
-      return GUEST_CUSTOMER;
-    }
-
-    if (!retailerId) {
-      const { data: retailer } = await supabase
-        .from("retailers")
-        .select("id")
-        .eq("profile_id", user.id)
-        .maybeSingle();
-
-      retailerId = (retailer?.id as string | undefined) ?? null;
-    }
-  }
-
-  if (!retailerId) {
+  if (!buyer || !buyer.retailerId) {
     return GUEST_CUSTOMER;
   }
-
-  const [{ data: retailer }, { data: relation }] = await Promise.all([
-    supabase
-      .from("retailers")
-      .select("id, profile_id, restaurant_name, representative_name, delivery_address, delivery_address_detail")
-      .eq("id", retailerId)
-      .maybeSingle(),
-    supabase
-      .from("wholesaler_retailers")
-      .select("status")
-      .eq("wholesaler_id", wholesalerId)
-      .eq("retailer_id", retailerId)
-      .maybeSingle(),
-  ]);
-
-  if (!retailer) {
-    return GUEST_CUSTOMER;
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("phone")
-    .eq("id", retailer.profile_id as string)
-    .maybeSingle();
 
   return {
-    retailerId: retailer.id as string,
-    restaurantName: retailer.restaurant_name as string,
-    representativeName: retailer.representative_name as string,
-    contactPhone: (profile?.phone as string | undefined) ?? null,
-    deliveryAddress: [retailer.delivery_address, retailer.delivery_address_detail]
-      .filter(Boolean)
-      .join(", "),
-    isLinked: relation?.status === "active",
+    retailerId: buyer.retailerId,
+    restaurantName: buyer.restaurantName,
+    representativeName: buyer.representativeName,
+    contactPhone: buyer.contactPhone,
+    deliveryAddress: buyer.deliveryAddress,
+    isLinked: buyer.isLinked,
   };
 }
 
@@ -245,7 +196,7 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
     return { ...demoCatalog(shopToken), wholesaler, isDemo: true };
   }
 
-  const customer = await resolveCustomer(supabase, wholesaler.id, shopToken);
+  const customer = await resolveCustomer(supabase, wholesaler.id);
   const canViewSecretDeals = customer.isLinked;
 
   const visibleProducts = products.filter(
