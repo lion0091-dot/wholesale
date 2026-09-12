@@ -4,7 +4,7 @@ import { useState, useTransition, type FormEvent } from "react";
 import { signIn } from "@/app/auth/actions";
 
 interface LoginFormProps {
-  /** 미들웨어가 붙여준 원래 목적지 (?next=...) — 안내 문구로만 사용한다. */
+  /** 미들웨어가 붙여준 원래 목적지 (?next=...) — 안내 문구 + 로그인 후 복귀 경로로 사용한다. */
   nextPath?: string;
   /** Supabase 환경변수 미설정(데모 모드) 여부 */
   authDisabled?: boolean;
@@ -49,6 +49,8 @@ export function LoginForm({ nextPath, authDisabled = false }: LoginFormProps) {
 
   return (
     <form onSubmit={handleSubmit} noValidate>
+      {nextPath && <input type="hidden" name="next" value={nextPath} />}
+
       {nextPath && !error && (
         <div
           style={{
@@ -61,7 +63,7 @@ export function LoginForm({ nextPath, authDisabled = false }: LoginFormProps) {
             marginBottom: "16px",
           }}
         >
-          로그인이 필요한 페이지입니다. 로그인 후 백오피스로 이동합니다.
+          로그인이 필요한 페이지입니다. 로그인 후 요청하신 화면으로 이동합니다.
         </div>
       )}
 
@@ -108,8 +110,7 @@ export function LoginForm({ nextPath, authDisabled = false }: LoginFormProps) {
           type="password"
           autoComplete="current-password"
           required
-          minLength={8}
-          placeholder="8자 이상"
+          placeholder="비밀번호 입력"
           disabled={pending}
           style={inputStyle}
         />

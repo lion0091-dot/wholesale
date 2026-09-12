@@ -6,7 +6,7 @@ import { ProductFormView } from "../../product-form-view";
 import type { Product } from "@/types/database";
 
 export const metadata = {
-  title: "상품 정보 수정 | 공급사 백오피스",
+  title: "상품 정보 수정 | 도매업체 통합관리시스템",
 };
 
 interface EditProductPageProps {

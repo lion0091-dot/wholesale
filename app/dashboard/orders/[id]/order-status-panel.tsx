@@ -6,6 +6,7 @@ import {
   ORDER_STATUS_ACTIONS,
   ORDER_STATUS_BADGES,
   ORDER_STATUS_TRANSITIONS,
+  isSupplierAssignableStatus,
   resolveAlimtalkStatus,
 } from "@/lib/orders/status";
 import { updateOrderStatusAction } from "../actions";
@@ -35,7 +36,8 @@ export function OrderStatusPanel({
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
-  const nextStatuses = ORDER_STATUS_TRANSITIONS[status];
+  // 취소 요청(cancel_requested)은 바이어 전용이므로 공급사 버튼에서는 제외한다.
+  const nextStatuses = ORDER_STATUS_TRANSITIONS[status].filter(isSupplierAssignableStatus);
   const badge = ORDER_STATUS_BADGES[status];
 
   const handleChange = async (nextStatus: OrderStatus) => {

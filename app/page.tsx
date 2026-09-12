@@ -3,7 +3,7 @@ export default function Home() {
     <main style={{ padding: "40px 20px", maxWidth: "600px", margin: "0 auto" }}>
       <header style={{ marginBottom: "32px", textAlign: "center" }}>
         <h1 style={{ fontSize: "24px", fontWeight: "bold", color: "#b91c1c", marginBottom: "8px" }}>
-          B2B 육류 도매 발주 시스템
+          미트 파트너스
         </h1>
         <p style={{ color: "#64748b", fontSize: "14px" }}>
           폐쇄형 1:1 도매업자 - 바이어(구매 회원) 모바일 발주 솔루션
@@ -18,7 +18,7 @@ export default function Home() {
 
         <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
           <a
-            href="/wholesaler/products"
+            href="/dashboard/products"
             style={{
               display: "inline-block",
               backgroundColor: "#dc2626",
@@ -50,7 +50,7 @@ export default function Home() {
           </a>
 
           <a
-            href="/wholesaler/orders"
+            href="/dashboard/orders"
             style={{
               display: "inline-block",
               backgroundColor: "#2563eb",

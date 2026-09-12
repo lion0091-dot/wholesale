@@ -38,7 +38,7 @@ export default async function OnboardingPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <header>
-        <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a" }}>공급사 조직 설정</h1>
+        <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a" }}>판매자 정보 설정</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "6px", lineHeight: 1.7 }}>
           이 계정은 아직 소속된 공급사 조직이 없습니다. 조직을 만들면 상품·단가·발주 데이터가
           조직 단위로 분리되어 관리되고, 직원을 초대할 수 있습니다.

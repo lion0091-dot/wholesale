@@ -2,9 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { sendOrderNotificationToWholesaler } from "@/lib/notifications/alimtalk";
+import {
+  sendCancelRequestNotificationToWholesaler,
+  sendOrderNotificationToWholesaler,
+} from "@/lib/notifications/alimtalk";
+import { canRequestCancel } from "@/lib/orders/status";
 import { loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
+import { validateCancelReason } from "@/lib/shop/order-history-types";
 import { lineSubtotal, validateCart } from "@/lib/shop/order-policy";
+import type { OrderStatus } from "@/types/database";
 
 export interface SubmitOrderInput {
   shopToken: string;
@@ -26,6 +32,8 @@ export interface SubmitOrderResult {
   /** DB 저장 없이 알림톡 포맷만 검증한 시연 모드 여부 */
   isDemo?: boolean;
 }
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function buildOrderNumber(): string {
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -171,6 +179,148 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
         error instanceof Error
           ? error.message
           : "주문 처리 중 알 수 없는 오류가 발생했습니다.",
+    };
+  }
+}
+
+// ====================================================================
+// 주문 취소 요청 (바이어 → 공급사)
+// ====================================================================
+
+export interface RequestOrderCancelInput {
+  shopToken: string;
+  orderId: string;
+  /** 바이어가 입력한 취소 사유 */
+  reason: string;
+}
+
+export interface RequestOrderCancelResult {
+  success: boolean;
+  error?: string;
+  /** 요청 접수 후 주문 상태 */
+  status?: OrderStatus;
+  /** 접수 시각 (ISO) */
+  requestedAt?: string;
+  notificationId?: string;
+}
+
+/**
+ * 주문 취소 '요청' 접수.
+ *
+ * 바이어는 요청까지만 생성할 수 있고 최종 취소/반려는 공급사가 대시보드에서 처리한다.
+ * 1) 사유 검증 → 2) 서버 세션으로 주문 소유권 확인 → 3) 상태 전이 가능 여부 확인 →
+ * 4) status/cancel_reason 저장 → 5) 공급사 카카오 알림톡 트리거
+ *
+ * 주문 식별자만 있으면 되고, 요청자(바이어) 식별은 클라이언트 입력을 신뢰하지 않고
+ * 항상 서버 카탈로그 로더가 해석한 고객 세션을 사용한다.
+ */
+export async function requestOrderCancelAction(
+  input: RequestOrderCancelInput
+): Promise<RequestOrderCancelResult> {
+  try {
+    const reason = input.reason?.trim() ?? "";
+    const reasonError = validateCancelReason(reason);
+
+    if (reasonError) {
+      return { success: false, error: reasonError };
+    }
+
+    if (!UUID_PATTERN.test(input.orderId ?? "")) {
+      return { success: false, error: "올바른 발주서 식별자가 아닙니다." };
+    }
+
+    const catalog = await loadShopCatalog(input.shopToken);
+
+    if (catalog.isDemo || !catalog.customer.retailerId) {
+      return {
+        success: false,
+        error: "초대 링크로 확인된 거래처만 취소를 요청할 수 있습니다. 공급사에서 받은 링크로 다시 접속해주세요.",
+      };
+    }
+
+    const supabase = await createClient();
+
+    // 소유권 검증 — 다른 거래처/다른 공급사의 발주서는 조회 자체가 되지 않아야 한다.
+    const { data: order } = await supabase
+      .from("orders")
+      .select("id, order_number, status, total_amount")
+      .eq("id", input.orderId)
+      .eq("wholesaler_id", catalog.wholesaler.id)
+      .eq("retailer_id", catalog.customer.retailerId)
+      .maybeSingle();
+
+    if (!order) {
+      return { success: false, error: "해당 발주서를 찾을 수 없습니다." };
+    }
+
+    const currentStatus = order.status as OrderStatus;
+
+    if (currentStatus === "cancel_requested") {
+      return { success: false, error: "이미 취소 요청이 접수된 발주서입니다. 공급사 확인을 기다려주세요." };
+    }
+
+    if (!canRequestCancel(currentStatus)) {
+      return {
+        success: false,
+        error: "이미 출고가 진행된 발주서는 직접 취소할 수 없습니다. 공급사에 유선으로 문의해주세요.",
+      };
+    }
+
+    const requestedAt = new Date().toISOString();
+
+    const { error: updateError } = await supabase
+      .from("orders")
+      .update({
+        status: "cancel_requested",
+        cancel_reason: reason,
+        cancel_requested_at: requestedAt,
+        updated_at: requestedAt,
+      })
+      .eq("id", input.orderId)
+      .eq("retailer_id", catalog.customer.retailerId);
+
+    if (updateError) {
+      return {
+        success: false,
+        error: updateError.message ?? "취소 요청 접수에 실패했습니다. 잠시 후 다시 시도해주세요.",
+      };
+    }
+
+    // 공급사 대표 연락처 조회 후 취소 요청 알림톡 발송
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("phone")
+      .eq("id", catalog.wholesaler.profile_id)
+      .maybeSingle();
+
+    const notification = await sendCancelRequestNotificationToWholesaler({
+      wholesalerName: catalog.wholesaler.business_name,
+      wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,
+      restaurantName: catalog.customer.restaurantName ?? "바이어",
+      orderNumber: order.order_number as string,
+      totalAmount: Number(order.total_amount),
+      cancelReason: reason,
+    });
+
+    revalidatePath(`/shop/${input.shopToken}/orders`);
+    revalidatePath("/dashboard/orders");
+    revalidatePath(`/dashboard/orders/${input.orderId}`);
+
+    return {
+      success: true,
+      status: "cancel_requested",
+      requestedAt,
+      notificationId: notification.messageId,
+    };
+  } catch (error: unknown) {
+    console.error("[Shop Cancel Request ERROR]", error);
+
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "취소 요청 처리 중 알 수 없는 오류가 발생했습니다.",
     };
   }
 }

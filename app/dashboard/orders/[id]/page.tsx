@@ -14,7 +14,7 @@ import { OrderStatusPanel } from "./order-status-panel";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 export const metadata = {
-  title: "주문 상세 | 공급사 백오피스",
+  title: "주문 상세 | 도매업체 통합관리시스템",
 };
 
 interface PageProps {
@@ -45,12 +45,22 @@ interface OrderDetail {
 /** 알림톡 발송 이력은 별도 적재 테이블이 없어 상태 진행 순서로 역산해 표시한다. */
 const STAGE_ORDER: OrderStatus[] = ["pending", "confirmed", "shipping", "delivered"];
 
+/** 정상 진행 단계에서 벗어난 취소 관련 상태 */
+const CANCEL_FLOW_STATUSES: OrderStatus[] = ["cancel_requested", "cancel_rejected", "cancelled"];
+
 function buildAlimtalkTimeline(status: OrderStatus): Array<{ status: OrderStatus; sent: boolean }> {
-  if (status === "cancelled") {
-    return [
+  // 취소 플로우(요청 -> 승인/반려)는 진행 단계와 별도 라인으로 표시한다.
+  if (CANCEL_FLOW_STATUSES.includes(status)) {
+    const timeline: Array<{ status: OrderStatus; sent: boolean }> = [
       { status: "pending", sent: true },
-      { status: "cancelled", sent: true },
+      { status: "cancel_requested", sent: true },
     ];
+
+    if (status !== "cancel_requested") {
+      timeline.push({ status, sent: true });
+    }
+
+    return timeline;
   }
 
   const currentIndex = STAGE_ORDER.indexOf(status);

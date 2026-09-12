@@ -3,7 +3,14 @@ export type UserRole = "super_admin" | "wholesaler" | "retailer";
 export type WholesalerStatus = "pending" | "active" | "suspended" | "rejected";
 export type SubscriptionStatus = "trial" | "active" | "overdue" | "cancelled";
 export type RelationshipStatus = "active" | "blocked";
-export type OrderStatus = "pending" | "confirmed" | "shipping" | "delivered" | "cancelled";
+export type OrderStatus =
+  | "pending"
+  | "confirmed"
+  | "shipping"
+  | "delivered"
+  | "cancel_requested"
+  | "cancel_rejected"
+  | "cancelled";
 
 export interface Profile {
   id: string;
@@ -77,6 +84,13 @@ export interface Order {
   delivery_notes: string | null;
   ordered_at: string;
   updated_at: string;
+  /**
+   * 취소 요청 메타데이터 (마이그레이션 20260912000000에서 추가).
+   * 취소 흐름을 거치지 않은 주문과 컬럼 추가 이전 데이터에서는 비어 있다.
+   */
+  cancel_reason?: string | null;
+  cancel_requested_at?: string | null;
+  cancel_resolved_at?: string | null;
 }
 
 export interface OrderItem {

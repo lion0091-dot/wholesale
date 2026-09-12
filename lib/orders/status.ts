@@ -12,27 +12,51 @@ export const ORDER_STATUS_BADGES: Record<OrderStatus, StatusBadge> = {
   confirmed: { label: "확정", bg: "#dbeafe", color: "#1e40af" },
   shipping: { label: "배송중", bg: "#e0e7ff", color: "#3730a3" },
   delivered: { label: "완료", bg: "#dcfce7", color: "#166534" },
+  cancel_requested: { label: "취소요청", bg: "#ffedd5", color: "#9a3412" },
+  cancel_rejected: { label: "취소반려", bg: "#f1f5f9", color: "#475569" },
   cancelled: { label: "취소", bg: "#fee2e2", color: "#991b1b" },
 };
 
-/** 필터 탭 순서 (전체 + 5개 상태) */
+/** 필터 탭 순서 (전체 + 7개 상태) */
 export const ORDER_STATUS_FILTERS: Array<OrderStatus | "all"> = [
   "all",
   "pending",
   "confirmed",
+  "cancel_requested",
   "shipping",
   "delivered",
+  "cancel_rejected",
   "cancelled",
 ];
 
 /** 상태 전이 규칙 — 각 상태에서 이동 가능한 다음 상태 목록 */
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  pending: ["confirmed", "cancelled"],
-  confirmed: ["shipping", "cancelled"],
+  pending: ["confirmed", "cancel_requested", "cancelled"],
+  confirmed: ["shipping", "cancel_requested", "cancelled"],
   shipping: ["delivered"],
   delivered: [],
+  // 취소요청은 공급사가 승인(cancelled) 또는 반려(cancel_rejected)로만 종결한다.
+  cancel_requested: ["cancelled", "cancel_rejected"],
+  // 반려되면 원래 진행 흐름으로 복귀한다.
+  cancel_rejected: ["confirmed", "shipping", "cancelled"],
   cancelled: [],
 };
+
+/**
+ * 바이어(구매 회원)만 요청할 수 있는 상태.
+ * 공급사 대시보드의 상태 변경 액션에서는 노출/허용하지 않는다.
+ */
+export const RETAILER_ONLY_STATUSES: OrderStatus[] = ["cancel_requested"];
+
+/** 공급사(대시보드/서버 액션)가 직접 지정할 수 있는 상태인지 여부 */
+export function isSupplierAssignableStatus(status: OrderStatus): boolean {
+  return !RETAILER_ONLY_STATUSES.includes(status);
+}
+
+/** 바이어가 취소 요청을 넣을 수 있는 상태 (출고 이후에는 불가) */
+export function canRequestCancel(status: OrderStatus): boolean {
+  return ORDER_STATUS_TRANSITIONS[status].includes("cancel_requested");
+}
 
 export interface StatusActionConfig {
   status: OrderStatus;
@@ -47,6 +71,18 @@ export const ORDER_STATUS_ACTIONS: Record<OrderStatus, StatusActionConfig> = {
   confirmed: { status: "confirmed", label: "발주 확정 (접수 확인)", tone: "primary" },
   shipping: { status: "shipping", label: "출고 / 배송 시작", tone: "info" },
   delivered: { status: "delivered", label: "배송 완료 처리", tone: "success" },
+  cancel_requested: {
+    status: "cancel_requested",
+    label: "주문 취소 요청",
+    confirmMessage: "이 발주서의 취소를 요청하시겠습니까? 공급사 승인 후 취소가 확정됩니다.",
+    tone: "danger",
+  },
+  cancel_rejected: {
+    status: "cancel_rejected",
+    label: "취소 요청 반려",
+    confirmMessage: "취소 요청을 반려하시겠습니까? 발주는 기존 일정대로 진행됩니다.",
+    tone: "primary",
+  },
   cancelled: {
     status: "cancelled",
     label: "주문 취소",
@@ -98,6 +134,18 @@ const ALIMTALK_BY_STATUS: Record<OrderStatus, AlimtalkStatus> = {
     target: "바이어(구매 회원)",
     bg: "#dcfce7",
     color: "#166534",
+  },
+  cancel_requested: {
+    label: "주문 취소 요청 접수 안내",
+    target: "공급사 담당자",
+    bg: "#ffedd5",
+    color: "#9a3412",
+  },
+  cancel_rejected: {
+    label: "취소 요청 반려 안내",
+    target: "바이어(구매 회원)",
+    bg: "#f1f5f9",
+    color: "#475569",
   },
   cancelled: {
     label: "주문 취소 안내",

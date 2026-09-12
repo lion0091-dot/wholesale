@@ -8,7 +8,7 @@ import { SeedDefaultProductsButton } from "./seed-default-products-button";
 import type { Product } from "@/types/database";
 
 export const metadata = {
-  title: "상품 관리 | 공급사 백오피스",
+  title: "상품 관리 | 도매업체 통합관리시스템",
 };
 
 export default async function DashboardProductsPage() {

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
-import { ORDER_STATUS_TRANSITIONS } from "@/lib/orders/status";
+import { ORDER_STATUS_TRANSITIONS, isSupplierAssignableStatus } from "@/lib/orders/status";
 import type { OrderStatus } from "@/types/database";
 
 export interface ActionResult<T = undefined> {
@@ -23,6 +23,8 @@ const VALID_STATUSES: OrderStatus[] = [
   "confirmed",
   "shipping",
   "delivered",
+  "cancel_requested",
+  "cancel_rejected",
   "cancelled",
 ];
 
@@ -88,6 +90,11 @@ export async function updateOrderStatusAction(
 
     if (!VALID_STATUSES.includes(nextStatus)) {
       throw new RbacError("변경할 수 없는 주문 상태입니다.");
+    }
+
+    // 취소 '요청'은 바이어만 생성할 수 있고, 공급사는 승인/반려만 한다.
+    if (!isSupplierAssignableStatus(nextStatus)) {
+      throw new RbacError("취소 요청은 바이어만 생성할 수 있습니다.");
     }
 
     const { data: order } = await supabase

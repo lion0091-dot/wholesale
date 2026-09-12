@@ -138,6 +138,28 @@ export function ShopView({ catalog }: ShopViewProps) {
             🔥 시크릿 특가 룸
           </button>
         </div>
+
+        {/* 발주 내역 조회 / 주문 취소 요청 진입점 */}
+        <Link
+          href={`/shop/${catalog.shopToken}/orders`}
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginTop: "8px",
+            padding: "10px 12px",
+            borderRadius: "8px",
+            border: "1px solid #e2e8f0",
+            backgroundColor: "#f8fafc",
+            fontSize: "13px",
+            fontWeight: 600,
+            color: "#334155",
+            textDecoration: "none",
+          }}
+        >
+          <span>📋 내 발주 내역 · 주문 취소 요청</span>
+          <span style={{ color: "#94a3b8" }}>→</span>
+        </Link>
       </ShopHeader>
 
       <div style={{ padding: "16px" }}>

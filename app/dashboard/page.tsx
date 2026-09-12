@@ -17,6 +17,8 @@ const STATUS_LABELS: Record<OrderStatus, { label: string; bg: string; color: str
   confirmed: { label: "접수 확인", bg: "#dbeafe", color: "#1e40af" },
   shipping: { label: "배송 중", bg: "#e0e7ff", color: "#3730a3" },
   delivered: { label: "배송 완료", bg: "#dcfce7", color: "#166534" },
+  cancel_requested: { label: "취소 요청", bg: "#ffedd5", color: "#9a3412" },
+  cancel_rejected: { label: "취소 반려", bg: "#f1f5f9", color: "#475569" },
   cancelled: { label: "주문 취소", bg: "#fee2e2", color: "#991b1b" },
 };
 

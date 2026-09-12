@@ -48,6 +48,27 @@ export async function getSessionContext(): Promise<SessionContext | null> {
 }
 
 /**
+ * `?next=` 목적지 검증. 오픈 리다이렉트를 막기 위해 내부 절대 경로만 허용하고,
+ * 로그인 화면으로 되돌아가는 값은 리다이렉트 루프가 되므로 버린다.
+ */
+export function sanitizeNextPath(next: string | null | undefined): string | null {
+  if (!next || !next.startsWith("/")) {
+    return null;
+  }
+
+  // "//host", "/\host" → 프로토콜 상대 URL(외부 도메인)로 해석될 수 있다.
+  if (next.startsWith("//") || next.includes("\\")) {
+    return null;
+  }
+
+  if (next === "/login" || next.startsWith("/login/") || next.startsWith("/login?")) {
+    return null;
+  }
+
+  return next;
+}
+
+/**
  * Role별 기본 랜딩 경로.
  * 단일 계정은 하나의 Role만 가지므로(RBAC 분리 원칙) 교차 진입 경로를 만들지 않는다.
  */
@@ -56,10 +77,14 @@ export function getLandingPathForRole(role: UserRole | null | undefined): string
     case "super_admin":
       return "/admin/suppliers";
     case "wholesaler":
-      return "/wholesaler/products";
+      // 공급사 백오피스는 /dashboard 트리다. (/wholesaler/*는 Phase 1 레거시 화면)
+      return "/dashboard";
     case "retailer":
+      // 바이어(구매 회원)는 백오피스 계정이 아니며 전용 초대 링크(/shop/<token>)로만 진입한다.
       return "/";
     default:
-      return "/";
+      // profiles.role이 아직 없는 신규 계정도 백오피스로 보낸다.
+      // 조직 미소속이면 미들웨어가 /onboarding으로 유도하므로 가드는 한 곳에만 둔다.
+      return "/dashboard";
   }
 }

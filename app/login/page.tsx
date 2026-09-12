@@ -1,10 +1,16 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
+import {
+  getLandingPathForRole,
+  getSessionContext,
+  sanitizeNextPath,
+} from "@/lib/auth/session";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
-  title: "공급사 로그인 | B2B 육류 도매 발주 시스템",
+  title: "공급사 로그인 | 미트 파트너스",
   description: "도매(공급사) 전용 백오피스 로그인",
 };
 
@@ -16,7 +22,18 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const { next } = await searchParams;
 
   // 오픈 리다이렉트 방지: 내부 절대 경로만 허용한다.
-  const nextPath = next && next.startsWith("/") && !next.startsWith("//") ? next : undefined;
+  const nextPath = sanitizeNextPath(next) ?? undefined;
+  const authEnabled = isSupabaseConfigured();
+
+  // 이미 로그인된 계정이 로그인 화면에 머무르면 백오피스에 못 들어간 것처럼 보인다.
+  // 세션이 있으면 원래 목적지 또는 역할별 랜딩 경로로 즉시 보낸다.
+  if (authEnabled) {
+    const context = await getSessionContext();
+
+    if (context) {
+      redirect(nextPath ?? getLandingPathForRole(context.profile?.role));
+    }
+  }
 
   return (
     <main
@@ -56,7 +73,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
         }}
       >
-        <LoginForm nextPath={nextPath} authDisabled={!isSupabaseConfigured()} />
+        <LoginForm nextPath={nextPath} authDisabled={!authEnabled} />
       </section>
 
       <p

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "공급사 온보딩 | B2B 육류 도매 발주 시스템",
+  title: "공급사 온보딩 | 미트 파트너스",
   description: "공급사 조직을 생성해 백오피스 사용을 시작합니다.",
 };
 
@@ -34,7 +34,7 @@ export default function OnboardingLayout({
         >
           <span style={{ fontSize: "18px" }}>🥩</span>
           <span style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>
-            B2B 육류 도매 발주 시스템
+            미트 파트너스
           </span>
           <span
             style={{

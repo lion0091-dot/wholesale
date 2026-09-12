@@ -18,6 +18,8 @@ const STATUS_LABELS: Record<OrderStatus, { label: string; bg: string; color: str
   confirmed: { label: "접수 확인", bg: "#dbeafe", color: "#1e40af" },
   shipping: { label: "배송 중", bg: "#e0e7ff", color: "#3730a3" },
   delivered: { label: "배송 완료", bg: "#dcfce7", color: "#166534" },
+  cancel_requested: { label: "취소 요청", bg: "#ffedd5", color: "#9a3412" },
+  cancel_rejected: { label: "취소 반려", bg: "#f1f5f9", color: "#475569" },
   cancelled: { label: "주문 취소", bg: "#fee2e2", color: "#991b1b" },
 };
 
@@ -275,6 +277,66 @@ export function OrderList({ initialOrders }: OrderListProps) {
                       }}
                     >
                       {isBusy ? "처리 중..." : "배송 완료"}
+                    </button>
+                  )}
+
+                  {order.status === "cancel_requested" && (
+                    <>
+                      <button
+                        disabled={isBusy}
+                        onClick={() => {
+                          if (confirm("취소 요청을 승인하시겠습니까? 승인 후에는 되돌릴 수 없습니다.")) {
+                            handleStatusChange(order.id, "cancelled");
+                          }
+                        }}
+                        style={{
+                          backgroundColor: "#ffffff",
+                          color: "#dc2626",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          padding: "6px 14px",
+                          borderRadius: "6px",
+                          border: "1px solid #fca5a5",
+                          cursor: isBusy ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        취소 승인
+                      </button>
+                      <button
+                        disabled={isBusy}
+                        onClick={() => handleStatusChange(order.id, "cancel_rejected")}
+                        style={{
+                          backgroundColor: "#0f172a",
+                          color: "#ffffff",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          padding: "6px 14px",
+                          borderRadius: "6px",
+                          border: "none",
+                          cursor: isBusy ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {isBusy ? "처리 중..." : "취소 요청 반려"}
+                      </button>
+                    </>
+                  )}
+
+                  {order.status === "cancel_rejected" && (
+                    <button
+                      disabled={isBusy}
+                      onClick={() => handleStatusChange(order.id, "shipping")}
+                      style={{
+                        backgroundColor: "#2563eb",
+                        color: "#ffffff",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        padding: "6px 14px",
+                        borderRadius: "6px",
+                        border: "none",
+                        cursor: isBusy ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {isBusy ? "처리 중..." : "출고 / 배송 시작"}
                     </button>
                   )}
 

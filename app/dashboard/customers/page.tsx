@@ -11,7 +11,7 @@ import type { CustomerRow } from "./customer-types";
 import type { OrderStatus, RelationshipStatus } from "@/types/database";
 
 export const metadata = {
-  title: "고객 관리 | 공급사 백오피스",
+  title: "고객 관리 | 도매업체 통합관리시스템",
 };
 
 const DEMO_SHOP_TOKEN = "demo-token-12345";

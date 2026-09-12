@@ -6,7 +6,7 @@ import { OrderBoard, type OrderRow } from "./order-board";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 export const metadata = {
-  title: "주문 관리 | 공급사 백오피스",
+  title: "주문 관리 | 도매업체 통합관리시스템",
 };
 
 /** orders + order_items + retailers 조인 응답 형태 */

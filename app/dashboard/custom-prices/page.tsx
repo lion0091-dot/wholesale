@@ -14,7 +14,7 @@ import {
 } from "./custom-price-manager";
 
 export const metadata = {
-  title: "맞춤 단가 관리 | 공급사 백오피스",
+  title: "맞춤 단가 관리 | 도매업체 통합관리시스템",
 };
 
 /** wholesaler_retailers + retailers 조인 응답 형태 */
