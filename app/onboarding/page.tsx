@@ -31,7 +31,9 @@ export default async function OnboardingPage() {
     redirect("/dashboard");
   }
 
-  const devBypass = isDevOrgBypassEnabled();
+  // 프로덕션에서는 개발 안내 박스를 아예 트리에서 제외한다(여백까지 제거).
+  const isProduction = process.env.NODE_ENV === "production";
+  const showDevPanel = !isProduction && isDevOrgBypassEnabled();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -85,7 +87,7 @@ export default async function OnboardingPage() {
         </div>
       )}
 
-      {devBypass && (
+      {showDevPanel ? (
         <section style={{ ...cardStyle, borderColor: "#bfdbfe", backgroundColor: "#f8fbff" }}>
           <div style={{ fontSize: "14px", fontWeight: 700, color: "#1e40af", marginBottom: "6px" }}>
             개발/테스트 모드
@@ -107,7 +109,7 @@ export default async function OnboardingPage() {
             </Link>
           </div>
         </section>
-      )}
+      ) : null}
 
       <section style={cardStyle}>
         <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "14px" }}>
