@@ -41,7 +41,7 @@ export function DashboardShell({
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   const currentLabel =
-    navItems.find((item) => isActive(item.href))?.label ?? "백오피스";
+    navItems.find((item) => isActive(item.href))?.label ?? "도매업체 통합관리시스템";
 
   return (
     <div className="dash-shell" data-sidebar-open={sidebarOpen}>
@@ -56,7 +56,7 @@ export function DashboardShell({
       <aside className="dash-sidebar">
         <div style={{ padding: "4px 10px 16px" }}>
           <div style={{ fontSize: "11px", fontWeight: 700, color: "#f87171", letterSpacing: "0.04em" }}>
-            SUPPLIER BACKOFFICE
+            도매업체 통합관리시스템
           </div>
           <div
             style={{

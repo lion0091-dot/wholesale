@@ -5,7 +5,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { DashboardShell, type DashboardNavItem } from "./dashboard-shell";
 
 export const metadata: Metadata = {
-  title: "공급사 백오피스 | B2B 육류 도매 발주 시스템",
+  title: "도매업체 통합관리시스템 | 미트 파트너스",
   description: "상품·맞춤 단가·발주·고객 관리를 위한 도매(공급사) 관리자 화면",
 };
 
@@ -60,7 +60,7 @@ export default async function DashboardLayout({
         .eq("profile_id", context.userId)
         .maybeSingle();
 
-      organizationName = wholesaler?.business_name ?? "공급사 백오피스";
+      organizationName = wholesaler?.business_name ?? "도매업체 통합관리시스템";
     }
   }
 
