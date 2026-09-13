@@ -524,20 +524,26 @@ COMMENT ON FUNCTION public.grant_platform_admin(UUID, UUID, BOOLEAN, TEXT) IS
 --                심사도 없이 정회원 공급사가 된다.
 --      미보유  → 'retailer'. claim_shop_access 의 바이어 전환과 같은 값.
 --
---    락아웃 가드 2개:
+--    락아웃 가드 3개:
 --      · 행위자 can_grant 검증 (6-1과 동일)
 --      · 자기 자신 회수 금지
+--      · 마지막 can_grant 관리자 회수 금지
 --
---    "마지막 can_grant 관리자가 사라지는" 상황은 별도 검사가 필요 없다.
---    회수자는 항상 can_grant 보유자이고 자기 자신은 회수할 수 없으므로,
---    어떤 회수가 성공하든 회수자 자신이 활성 편집자로 남는다.
---    (관리자 전원이 잠기는 경우는 명단 밖에서 profiles 를 직접 건드렸을 때뿐이고,
---     그 복구 경로가 SUPER_ADMIN_EMAIL 비상용 루트다)
+--    ⚠ 2026-09-20 수정: "회수자는 항상 can_grant 보유자이고 자기 자신은
+--    회수할 수 없으므로 별도 검사가 필요 없다"던 이전 가정은 두 can_grant
+--    관리자가 서로를 동시에 회수하는 경쟁 상황에서 깨진다 — 각자의 트랜잭션은
+--    서로 다른 대상 행만 잠그므로(7-4) 잠금 충돌 없이 둘 다 커밋되어
+--    can_grant 관리자가 0명이 될 수 있다. 그래서 대상을 잠그기 전에
+--    활성 can_grant 행 전체를 정해진 순서로 잠가(7-3) 두 트랜잭션을
+--    직렬화하고, 회수 후 0명이 되는 경우를 명시적으로 차단한다.
+--    (그래도 명단 밖에서 profiles 를 직접 건드려 관리자가 전원 잠기는
+--     경우의 복구 경로는 여전히 SUPER_ADMIN_EMAIL 비상용 루트다)
 --
 --    예외:
 --      PLATFORM_ADMIN_INVALID_INPUT     인수 누락
 --      PLATFORM_ADMIN_SELF_REVOKE       자기 자신 회수 시도
 --      PLATFORM_ADMIN_GRANT_FORBIDDEN   행위자에게 명단 편집 권한 없음
+--      PLATFORM_ADMIN_LAST_GRANTER      마지막 can_grant 관리자 회수 시도
 --      PLATFORM_ADMIN_NOT_ALLOWLISTED   대상에게 활성 명단 항목이 없음
 -- ====================================================================
 CREATE OR REPLACE FUNCTION public.revoke_platform_admin(
@@ -555,6 +561,7 @@ DECLARE
     v_has_wholesaler BOOLEAN;
     v_is_verified    BOOLEAN;
     v_new_role       TEXT;
+    v_active_can_grant INTEGER;
 BEGIN
     IF p_user_id IS NULL OR p_actor_id IS NULL THEN
         RAISE EXCEPTION 'PLATFORM_ADMIN_INVALID_INPUT';
@@ -565,6 +572,7 @@ BEGIN
         RAISE EXCEPTION 'PLATFORM_ADMIN_SELF_REVOKE';
     END IF;
 
+    -- 7-2. 행위자 can_grant 검증 (6-1과 동일 조건).
     IF NOT EXISTS (
         SELECT 1
           FROM public.platform_admin_allowlist a
@@ -577,8 +585,42 @@ BEGIN
         RAISE EXCEPTION 'PLATFORM_ADMIN_GRANT_FORBIDDEN';
     END IF;
 
-    -- 7-2. 대상의 활성 항목을 잠근다. 같은 대상에 대한 동시 회수가
-    --      이중 강등을 일으키지 않도록 FOR UPDATE 로 직렬화한다.
+    -- 7-3. 마지막 can_grant 관리자 잠금 방지.
+    --
+    --      활성 can_grant 행 "전체"를 정해진 순서(user_id)로 먼저 잠근다.
+    --      두 can_grant 관리자가 서로를 동시에 회수하면 각자 대상 행만
+    --      잠그므로(예전 7-2, 지금의 7-4) 잠금 충돌 없이 둘 다 커밋되어
+    --      can_grant 관리자가 0명이 될 수 있었다 — 이 전체 잠금이 그 경쟁을
+    --      직렬화한다: 두 트랜잭션 모두 같은 행 집합을 같은 순서로 잠그려
+    --      하므로 하나가 먼저 잠그면 다른 하나는 그 트랜잭션이 끝날 때까지
+    --      대기하고, 재개된 뒤에는 방금 커밋된 최신 상태(v_active_can_grant)로
+    --      다시 판정한다.
+    PERFORM 1
+       FROM public.platform_admin_allowlist a
+      WHERE a.can_grant = true
+        AND a.revoked_at IS NULL
+      ORDER BY a.user_id
+        FOR UPDATE;
+
+    SELECT count(*) INTO v_active_can_grant
+      FROM public.platform_admin_allowlist a
+     WHERE a.can_grant = true
+       AND a.revoked_at IS NULL;
+
+    IF v_active_can_grant <= 1 AND EXISTS (
+        SELECT 1
+          FROM public.platform_admin_allowlist a
+         WHERE a.user_id = p_user_id
+           AND a.revoked_at IS NULL
+           AND a.can_grant = true
+    ) THEN
+        RAISE EXCEPTION 'PLATFORM_ADMIN_LAST_GRANTER';
+    END IF;
+
+    -- 7-4. 대상의 활성 항목을 잠근다. 7-3에서 이미 이 행을 포함해 잠갔을
+    --      수 있지만(대상이 can_grant=true인 경우), can_grant=false인
+    --      대상(거버넌스 전용 관리자)은 7-3의 잠금 대상이 아니므로 별도로
+    --      다시 잠가야 한다.
     PERFORM 1
        FROM public.platform_admin_allowlist a
       WHERE a.user_id = p_user_id
@@ -589,7 +631,7 @@ BEGIN
         RAISE EXCEPTION 'PLATFORM_ADMIN_NOT_ALLOWLISTED';
     END IF;
 
-    -- 7-3. 명단 먼저 무효화. 이 순서여야 재승격 루프가 생기지 않는다.
+    -- 7-5. 명단 먼저 무효화. 이 순서여야 재승격 루프가 생기지 않는다.
     UPDATE public.platform_admin_allowlist a
        SET revoked_at = v_now,
            revoked_by = p_actor_id,
@@ -598,7 +640,7 @@ BEGIN
      WHERE a.user_id = p_user_id
        AND a.revoked_at IS NULL;
 
-    -- 7-4. 역할 강등. 이미 강등되어 있으면 profiles 는 건드리지 않는다.
+    -- 7-6. 역할 강등. 이미 강등되어 있으면 profiles 는 건드리지 않는다.
     SELECT p.role INTO v_role FROM public.profiles p WHERE p.id = p_user_id;
 
     IF v_role IS DISTINCT FROM 'super_admin' THEN
