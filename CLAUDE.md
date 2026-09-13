@@ -8,7 +8,7 @@
 ### 잠긴 설계 결정 (재검토 금지)
 - **이메일 사전등록 미지원**: 가입 전 이메일로 관리자 초대하는 기능은 스코프 제외. `user_id` 기반의, 이미 존재하는 계정 승격만 지원.
 - **`can_grant` 컬럼**: "다른 관리자를 관리할 수 있음"과 "일반 관리자"를 구분. 모든 관리자가 서로 승격/강등 못 하게 하려는 목적.
-- **`revoke_platform_admin`**: allowlist revoke + `profiles.role` 강등을 한 트랜잭션에서 원자적으로 처리. lockout 가드(자가 revoke 불가, 마지막 `can_grant=true` 관리자 revoke 불가).
+- **`revoke_platform_admin`**: allowlist revoke + `profiles.role` 강등을 한 트랜잭션에서 원자적으로 처리. lockout 가드(자가 revoke 불가, 마지막 `can_grant=true` 관리자 revoke 불가). ✅ 마지막 `can_grant` 관리자 가드(`PLATFORM_ADMIN_LAST_GRANTER`, 동시 회수 경쟁 상황까지 막는 전체 행 잠금 포함)는 구현/SQL Editor 적용/검증(공급사 계정으로 grant→revoke 왕복 테스트) 완료 — 커밋 `86a554c`.
 - **`promote_platform_admin`의 `is_verified` 가드**: `is_verified = true`(이미 승인된 wholesaler/supplier) 계정은 승격 거부 — 승인된 공급사의 이해상충 방지.
   - `source = 'env_root'`는 이 가드에서 예외 (root 계정이 나중에 verified supplier가 돼도 복구 경로 막히면 안 됨).
   - `is_verified = false` 계정은 role/is_supplier 무관하게 승격 가능 — `handle_new_user()`가 신규 카카오 가입자를 전부 `role='wholesaler', is_supplier=true, is_verified=false`로 만들기 때문에, 이게 스태프 온보딩과 root 첫 로그인의 유일한 경로. **더 좁히면 안 됨.**
@@ -39,8 +39,10 @@
    - 타입체크/빌드/env-root 재로그인(멱등 케이스 포함) 테스트 통과.
 4. 🚧 `/admin/admins` UI 구축 (`requireAdminGranter()` → `can_current_user_grant_admin()` RPC로 게이팅) — **진행 중**.
    - ✅ `lib/auth/admin-granter.ts` `requireAdminGranter()` — 페이지 가드, fail-closed.
-   - ✅ `app/admin/admins/actions.ts` — `searchAdminCandidatesAction`/`promoteAdminAction`/`revokeAdminAction` 구현 완료. `is_verified = true` 계정은 쿼리 조건에서 제외(승격 후보 목록에 안 뜸 — 안 하면 `PLATFORM_ADMIN_TARGET_ALREADY_VERIFIED` 에러). `wholesalers` row 보유 계정(= 실제 입점 신청자)도 후보 검색에서 제외 — 아래 "내부 스태프 로그인 분리" 참고.
-   - ❌ `app/admin/admins/page.tsx` — 아직 헤더만 있는 빈 껍데기. 검색창/후보 리스트/승격 버튼 UI 미구현. 화면으로는 아직 테스트 불가, `actions.ts` 함수들은 SQL Editor로 직접 RPC 호출해서 테스트함.
+   - ✅ `app/admin/admins/actions.ts` — `searchAdminCandidatesAction`/`promoteAdminAction`/`revokeAdminAction`/`listAdminsAction` 구현 완료. `is_verified = true` 계정은 쿼리 조건에서 제외(승격 후보 목록에 안 뜸 — 안 하면 `PLATFORM_ADMIN_TARGET_ALREADY_VERIFIED` 에러). `wholesalers` row 보유 계정(= 실제 입점 신청자)도 후보 검색에서 제외 — 아래 "내부 스태프 로그인 분리" 참고.
+     - **주의(PostgREST 임베드 함정)**: `platform_admin_allowlist.user_id`와 `profiles.id`는 둘 다 `auth.users(id)`를 각자 참조하는 형제 관계라 테이블 간 직접 FK가 없다. `.select("...profiles:user_id(...)")` 같은 임베드 조인은 relationship을 못 찾아 실패한다 — `listAdminsAction`/`searchAdminCandidatesAction`처럼 두 번 조회해서 JS에서 `Map`으로 합치는 패턴을 써야 한다.
+   - ❌ `app/admin/admins/page.tsx` — 아직 헤더만 있는 빈 껍데기. 검색창/후보 리스트/관리자 목록/승격·회수 버튼 UI 미구현. 화면으로는 아직 테스트 불가, `actions.ts` 함수들은 SQL Editor로 직접 RPC 호출해서 테스트함.
+   - **남은 서브스텝**: `active-admins-list.tsx`(현재 관리자 목록 + 회수 버튼, 신규) → `admin-candidate-search.tsx`(검색창 + 후보 리스트 + 승격 버튼, 신규) → `page.tsx`에서 `listAdminsAction()` 서버 호출 후 두 컴포넌트 연결. `/admin/suppliers`의 `SupplierApprovalList` 패턴(초기 데이터 서버에서 로드 → 클라이언트 컴포넌트에 prop으로 전달) 재사용 예정.
 5. (안정화 후) `enforce_profile_role_immutable()` 트리거 강화 — 활성 allowlist 항목을 통해서만 `profiles.role`을 `super_admin`으로 직접 UPDATE 허용.
 
 ### 관련 기능: 내부 스태프 로그인 분리 (signup_channel)
