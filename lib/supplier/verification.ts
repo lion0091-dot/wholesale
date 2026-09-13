@@ -14,12 +14,18 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { resolveDisplayName } from "@/lib/auth/display-name";
 import type { UserRole, WholesalerStatus } from "@/types/database";
 
 export interface SupplierAccount {
   userId: string;
   email: string | null;
   name: string | null;
+  /**
+   * 화면 표시용 이름. profiles.name → 카카오 닉네임 → "사용자" 순으로 해석되며
+   * 항상 값이 있다. 이메일 없는 카카오 계정에서도 안전하게 쓸 수 있다.
+   */
+  displayName: string;
   phone: string | null;
   platformRole: UserRole | null;
   isSuperAdmin: boolean;
@@ -120,6 +126,10 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
     userId: user.id,
     email: user.email ?? null,
     name: (profile?.name as string | undefined) ?? null,
+    displayName: resolveDisplayName(
+      profile?.name as string | null | undefined,
+      user.user_metadata
+    ),
     phone: (profile?.phone as string | undefined) ?? null,
     platformRole,
     isSuperAdmin,

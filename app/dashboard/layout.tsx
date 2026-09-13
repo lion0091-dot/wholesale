@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { getOrgStaffContext } from "@/lib/auth/rbac";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
+import { FALLBACK_DISPLAY_NAME, resolveDisplayName } from "@/lib/auth/display-name";
 import { DashboardShell, type DashboardNavItem } from "./dashboard-shell";
 
 export const metadata: Metadata = {
@@ -35,6 +36,7 @@ export default async function DashboardLayout({
 
   let organizationName = "마장동 태양축산 (테스트 도매)";
   let roleLabel = "데모 열람 모드";
+  let displayName = FALLBACK_DISPLAY_NAME;
 
   if (context) {
     roleLabel = context.isSuperAdmin
@@ -42,6 +44,18 @@ export default async function DashboardLayout({
       : ORG_ROLE_LABELS[context.orgRole ?? ""] ?? "조직 미소속";
 
     const supabase = await createClient();
+
+    // 표시 이름: profiles.name → 카카오 닉네임(user_metadata) → "사용자".
+    // 이메일 없는 카카오 계정도 정상 로그인이므로 이메일은 판단에 쓰지 않는다.
+    const [{ data: profile }, { data: auth }] = await Promise.all([
+      supabase.from("profiles").select("name").eq("id", context.userId).maybeSingle(),
+      supabase.auth.getUser(),
+    ]);
+
+    displayName = resolveDisplayName(
+      profile?.name as string | null | undefined,
+      auth.user?.user_metadata
+    );
 
     if (context.organizationId) {
       const { data: organization } = await supabase
@@ -69,7 +83,7 @@ export default async function DashboardLayout({
     <DashboardShell
       navItems={NAV_ITEMS}
       organizationName={organizationName}
-      userEmail={context?.email ?? null}
+      displayName={displayName}
       roleLabel={roleLabel}
       isDemoMode={!context || !isSupabaseConfigured()}
     >

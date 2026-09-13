@@ -23,6 +23,18 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { getSuperAdminEmail, isSuperAdminEmail } from "@/lib/auth/super-admin";
 
+/**
+ * '세션에 이메일이 없어 승격 불가' 안내를 프로세스당 1회로 제한한다.
+ *
+ * 이 경로는 카카오 이메일 미동의 계정의 모든 로그인과 /admin 매 요청이 지나가므로
+ * 매번 찍으면 로그가 이 한 줄로 덮인다. 진단에 필요한 사실은 "이 배포에서 이
+ * 상황이 일어났다" 하나뿐이라 첫 발생만 남긴다.
+ *
+ * 서버리스 환경에서는 인스턴스가 새로 뜰 때마다 초기화되므로 '인스턴스당 1회'다.
+ * 정확한 발생 횟수 집계용이 아니라 원인 추적용 단서라는 뜻이다.
+ */
+let missingEmailNoticeLogged = false;
+
 export type SuperAdminBootstrapStatus =
   /** SUPER_ADMIN_EMAIL 미설정 — 부트스트랩 자체를 하지 않는다 */
   | "disabled"
@@ -105,6 +117,19 @@ export async function ensureSuperAdminBootstrap(): Promise<SuperAdminBootstrapRe
   // 카카오 계정이 이메일 동의항목을 주지 않으면 user.email 이 비어 있다.
   // 이 경우 환경변수 방식으로는 본인 확인이 불가능하므로 승격하지 않는다.
   if (!isSuperAdminEmail(user.email)) {
+    // 이메일 불일치("not_eligible")는 대부분의 로그인이 지나는 정상 경로라 조용히 넘어간다.
+    // 그런데 세션에 이메일 자체가 없는 경우는 원인이 전혀 다르다 — 카카오가 이메일
+    // 동의항목을 주지 않은 계정은 비교할 값이 없어 '영구히' 승격 대상이 되지 못한다.
+    // 두 경우가 같은 상태로 뭉개지면 "환경변수는 맞게 넣었는데 /admin 이 홈으로
+    // 튕긴다"를 추적할 단서가 남지 않으므로, 구분해서 한 줄 남긴다.
+    if (!user.email && !missingEmailNoticeLogged) {
+      missingEmailNoticeLogged = true;
+
+      console.info(
+        `[SuperAdmin Bootstrap] SUPER_ADMIN_EMAIL이 설정되어 있으나 세션에 이메일이 없어 승격을 건너뜁니다 (카카오 이메일 미동의 계정). 최초 관측: ${user.id} — 이후 동일 사례는 생략합니다.`
+      );
+    }
+
     return skip("not_eligible", user.id);
   }
 

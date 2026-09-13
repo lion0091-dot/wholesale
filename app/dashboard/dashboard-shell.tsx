@@ -16,7 +16,8 @@ export interface DashboardNavItem {
 interface DashboardShellProps {
   navItems: DashboardNavItem[];
   organizationName: string;
-  userEmail: string | null;
+  /** 표시용 계정 이름 (profiles.name → 카카오 닉네임 → "사용자"). 항상 값이 있다. */
+  displayName: string;
   roleLabel: string;
   isDemoMode: boolean;
   children: ReactNode;
@@ -25,7 +26,7 @@ interface DashboardShellProps {
 export function DashboardShell({
   navItems,
   organizationName,
-  userEmail,
+  displayName,
   roleLabel,
   isDemoMode,
   children,
@@ -123,7 +124,8 @@ export function DashboardShell({
             wordBreak: "break-all",
           }}
         >
-          {userEmail ?? "데모 모드 (미인증)"}
+          {/* 데모 모드 안내는 헤더 배지(isDemoMode)가 담당한다. 이름은 인증 상태와 무관하다. */}
+          {displayName}
           <div style={{ marginTop: "8px" }}>
             <Link href="/" style={{ color: "#cbd5e1", textDecoration: "underline" }}>
               서비스 홈 →

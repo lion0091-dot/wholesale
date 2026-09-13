@@ -83,10 +83,10 @@ export default async function OnboardingPage() {
               조직 단위로 분리되어 관리되고, 직원을 초대할 수 있습니다.
             </>
           )}
-          {account?.email && (
+          {account && (
             <>
               <br />
-              <span style={{ color: "#94a3b8" }}>로그인 계정: {account.email}</span>
+              <span style={{ color: "#94a3b8" }}>로그인 계정: {account.displayName}</span>
             </>
           )}
         </p>
