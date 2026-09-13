@@ -185,6 +185,93 @@ export async function searchAdminCandidatesAction(
   return { success: true, data: Array.from(merged.values()).slice(0, CANDIDATE_SEARCH_LIMIT) };
 }
 
+/** 활성 관리자 목록 한 행. platform_admin_allowlist + profiles 조인 결과. */
+export interface AdminListEntry {
+  id: string;
+  name: string;
+  phone: string;
+  canGrant: boolean;
+  source: string;
+  createdAt: string;
+}
+
+/**
+ * 현재 활성 관리자 목록을 조회한다 (revoked_at IS NULL).
+ *
+ * service_role이 아니라 세션 클라이언트로 직접 읽는다 — platform_admin_allowlist의
+ * RLS 정책("Admin allowlist viewable by super admin")이 이미 super_admin에게
+ * SELECT를 열어뒀으므로 서비스 롤을 또 꺼낼 필요가 없다. 다만 can_grant 없는
+ * 일반 관리자는 이 화면 자체에 못 들어와야 하므로 assertCanGrantAdmin으로 먼저
+ * 좁힌다(RLS만 믿지 않는다 — 명단 화면 접근 권한은 can_grant, RLS는 role뿐).
+ *
+ * platform_admin_allowlist.user_id와 profiles.id는 둘 다 auth.users(id)를 각자
+ * 참조하는 형제 관계라 테이블 간 직접 FK가 없다 — PostgREST 임베드(`profiles:user_id(...)`)를
+ * 못 쓴다. searchAdminCandidatesAction의 wholesalers 필터링과 동일하게
+ * 두 번 조회해서 JS에서 합친다.
+ */
+export async function listAdminsAction(): Promise<ActionResult<AdminListEntry[]>> {
+  const guard = await assertCanGrantAdmin();
+
+  if ("error" in guard) {
+    return { success: false, error: guard.error };
+  }
+
+  const supabase = await createClient();
+
+  const { data: allowlistRows, error: allowlistError } = await supabase
+    .from("platform_admin_allowlist")
+    .select("user_id, can_grant, source, created_at")
+    .is("revoked_at", null)
+    .order("created_at", { ascending: true });
+
+  if (allowlistError) {
+    console.error("[AdminActions] 관리자 명단 조회 오류:", allowlistError.message);
+
+    return { success: false, error: "관리자 목록을 불러오지 못했습니다." };
+  }
+
+  type AllowlistRow = { user_id: string; can_grant: boolean; source: string; created_at: string };
+  const rows = (allowlistRows ?? []) as AllowlistRow[];
+
+  if (rows.length === 0) {
+    return { success: true, data: [] };
+  }
+
+  const { data: profileRows, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, name, phone")
+    .in(
+      "id",
+      rows.map((r) => r.user_id)
+    );
+
+  if (profileError) {
+    console.error("[AdminActions] 관리자 프로필 조회 오류:", profileError.message);
+
+    return { success: false, error: "관리자 목록을 불러오지 못했습니다." };
+  }
+
+  type ProfileRow = { id: string; name: string | null; phone: string | null };
+  const profileById = new Map(
+    ((profileRows ?? []) as ProfileRow[]).map((p) => [p.id, p])
+  );
+
+  const entries: AdminListEntry[] = rows.map((row) => {
+    const profile = profileById.get(row.user_id);
+
+    return {
+      id: row.user_id,
+      name: profile?.name ?? "(이름 없음)",
+      phone: profile?.phone ?? "",
+      canGrant: row.can_grant,
+      source: row.source,
+      createdAt: row.created_at,
+    };
+  });
+
+  return { success: true, data: entries };
+}
+
 export interface PromoteAdminInput {
   userId: string;
   /** 관리자 명단 편집 권한까지 줄지 여부. 기본값은 거버넌스 업무만(false). */
