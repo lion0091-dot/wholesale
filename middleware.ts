@@ -72,7 +72,13 @@ export async function middleware(request: NextRequest) {
       // 설정했거나, 승격 전에 만들어진 세션으로 접근한 경우). 미들웨어는 Edge 런타임이라
       // service_role 승격을 수행하지 않으므로, 통과만 시키고 판정은 라우트에 맡긴다.
       // 라우트(app/admin/suppliers/page.tsx)가 부트스트랩 후 DB 값으로 다시 검사한다.
-      if (!isSuperAdminEmail(user.email)) {
+      const { data: isEligible, error: eligibilityError } = await supabase.rpc(
+        "is_self_admin_eligible"
+      );
+      // RPC 실패(네트워크 에러 등) 시 fail-closed — 명단 조회 실패를 승인으로 취급하지 않는다.
+      // env-root 여부는 이 실패와 무관하게 항상 별도로 평가한다.
+      const isAllowlisted = !eligibilityError && isEligible === true;
+      if (!isAllowlisted && !isSuperAdminEmail(user.email)) {
         // 권한 없는 인증 사용자는 관리자 콘솔의 존재를 노출하지 않고 홈으로 돌려보낸다.
         return withSessionCookies(redirectTo(request, "/"), response);
       }
