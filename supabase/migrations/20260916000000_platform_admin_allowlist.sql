@@ -248,9 +248,13 @@ $$;
 --      auth.users 의 실제 이메일과 일치하는지 DB 안에서 재확인한다.
 --      즉 신뢰 경계는 기존 구조(service_role 키 + 서버 환경변수)와 같다.
 --
+--    승격 대상 가드 (5-5):
+--      is_verified = true 계정은 승격을 거부한다. 단 env 루트는 면제한다.
+--
 --    예외:
---      PLATFORM_ADMIN_INVALID_INPUT    인수 누락
---      PLATFORM_ADMIN_USER_NOT_FOUND   auth.users 에 없는 UUID
+--      PLATFORM_ADMIN_INVALID_INPUT           인수 누락
+--      PLATFORM_ADMIN_USER_NOT_FOUND          auth.users 에 없는 UUID
+--      PLATFORM_ADMIN_TARGET_ALREADY_VERIFIED 행정 승인이 끝난 계정 (5-5)
 -- ====================================================================
 CREATE OR REPLACE FUNCTION public.promote_platform_admin(
     p_user_id         UUID,
@@ -267,6 +271,7 @@ DECLARE
     v_email       TEXT;
     v_name        TEXT;
     v_role        TEXT;
+    v_is_verified BOOLEAN;
     v_source      TEXT;
     v_can_grant   BOOLEAN := false;
 BEGIN
@@ -291,7 +296,10 @@ BEGIN
         RAISE EXCEPTION 'PLATFORM_ADMIN_USER_NOT_FOUND';
     END IF;
 
-    SELECT p.role INTO v_role FROM public.profiles p WHERE p.id = p_user_id;
+    SELECT p.role, p.is_verified
+      INTO v_role, v_is_verified
+      FROM public.profiles p
+     WHERE p.id = p_user_id;
 
     -- 5-2. 자격 판정 (1) 명단
     SELECT a.can_grant INTO v_can_grant
@@ -341,6 +349,35 @@ BEGIN
             'can_grant', v_can_grant,
             'is_super_admin', true
         );
+    END IF;
+
+    -- 5-5. 승격 대상 상태 가드 — 행정 승인이 끝난 계정은 관리자가 될 수 없다.
+    --
+    --    is_verified = true 는 "사업자 검증까지 끝난 정회원 공급사"를 뜻한다
+    --    (20260914 주석 참조). 그 계정을 플랫폼 관리자로 만들면 자기 업체를
+    --    자기가 승인하고 경쟁사 데이터까지 보는 이해충돌이 생긴다.
+    --
+    --    반대로 is_verified = false 는 차단하지 않는다. role 이나 is_supplier
+    --    값과도 무관하다. handle_new_user 가 모든 신규 카카오 계정을
+    --    role='wholesaler', is_supplier=true, is_verified=false 로 만들기 때문에,
+    --    이 상태를 막으면 직원 등재와 루트 최초 부트스트랩의 유일한 경로가
+    --    함께 막힌다.
+    --
+    --    검사 위치가 자격 판정(5-2/5-3)과 멱등 반환(5-4) 뒤인 이유:
+    --      이 함수는 모든 로그인에서 호출된다. 앞쪽에 두면 승격 대상이 아닌
+    --      일반 정회원 공급사가 로그인할 때마다 예외가 터진다. 실제로 role 을
+    --      쓰기 직전, 자격이 확인된 대상에 대해서만 검사해야 한다.
+    --
+    --    env 루트를 면제하는 이유:
+    --      SUPER_ADMIN_EMAIL 은 명단이 비었을 때의 유일한 복구 경로다.
+    --      루트 운영자 계정이 승인된 공급사이기도 하면(개발/시연 겸용 계정은
+    --      그렇게 되기 쉽다) 이 가드가 복구 자체를 잠근다.
+    --
+    --    명단에 있으나 수동으로 강등된 계정이 is_verified = true 인 채로
+    --    재로그인하면 여기서 예외가 된다. 호출부는 부트스트랩 실패를
+    --    로그로만 남기고 로그인을 막지 않으므로(조용한 재승격 방지) 의도된 동작이다.
+    IF v_source <> 'env_root' AND COALESCE(v_is_verified, false) THEN
+        RAISE EXCEPTION 'PLATFORM_ADMIN_TARGET_ALREADY_VERIFIED';
     END IF;
 
     PERFORM set_config('app.super_admin_bootstrap', 'on', true);
@@ -409,6 +446,9 @@ COMMENT ON FUNCTION public.promote_platform_admin(UUID, TEXT) IS
 --      PLATFORM_ADMIN_GRANT_FORBIDDEN   행위자에게 명단 편집 권한 없음
 --      PLATFORM_ADMIN_USER_NOT_FOUND    대상이 auth.users 에 없음
 --                                       (= 아직 로그인한 적 없는 계정)
+--      + promote_platform_admin 의 승격 대상 가드 예외
+--        (PLATFORM_ADMIN_TARGET_ALREADY_VERIFIED). 이 경우 같은 트랜잭션의
+--        명단 INSERT 까지 함께 롤백되므로, 실패한 부여가 명단에 남지 않는다.
 -- ====================================================================
 CREATE OR REPLACE FUNCTION public.grant_platform_admin(
     p_user_id   UUID,
