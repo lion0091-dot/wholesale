@@ -1,15 +1,19 @@
 /**
  * OAuth 콜백 — 카카오 로그인 코드를 Supabase Auth 세션으로 교환한다.
  *
- * 공급사와 바이어가 같은 카카오 채널을 쓰므로 이 라우트가 두 흐름을 함께 처리한다.
- * 구분 기준은 쿼리스트링 하나뿐이다.
+ * 공급사/바이어/내부 스태프가 같은 카카오 채널을 쓰므로 이 라우트가 세 흐름을
+ * 함께 처리한다. 구분 기준은 쿼리스트링 하나뿐이다.
  *
  *   ?shop_token=<uuid>    바이어 — claim_shop_access() 로
  *                         auth.uid() ↔ profiles ↔ retailers ↔ wholesaler_retailers 매핑 확정
  *   ?intent=supplier      공급사 — 최소 정보(약관/연락처/상호) 미입력이면 /onboarding,
  *                         완료 상태면 백오피스로 복귀
+ *   ?intent=staff         내부 스태프 — 온보딩으로 보내지 않고 STAFF_PENDING_PATH로
+ *                         보낸다(lib/auth/staff-auth.ts). wholesalers row가 생기지
+ *                         않게 하는 게 핵심 — 이게 관리자 후보 검색과 실제 입점
+ *                         신청자를 구분하는 신호가 된다.
  *
- * 두 흐름으로 갈라지기 전에 슈퍼관리자 부트스트랩을 먼저 수행한다.
+ * 세 흐름으로 갈라지기 전에 슈퍼관리자 부트스트랩을 먼저 수행한다.
  * (SUPER_ADMIN_EMAIL 계정이 초대 링크를 먼저 클릭해 바이어로 굳는 일을 막는다)
  *
  * 어느 경로든 이 시점 이후 모든 권한 판정은 auth.uid() 만 사용한다.
@@ -29,6 +33,8 @@ import {
   SUPPLIER_ONBOARDING_PATH,
   sanitizeSupplierReturnPath,
 } from "@/lib/auth/supplier-auth";
+import { STAFF_INTENT, STAFF_PENDING_PATH } from "@/lib/auth/staff-auth";
+import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import { getSupplierAccount } from "@/lib/supplier/verification";
 import { ensureSuperAdminBootstrap } from "@/lib/auth/super-admin-bootstrap";
 import { getLandingPathForRole } from "@/lib/auth/session";
@@ -58,6 +64,7 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const shopToken = searchParams.get("shop_token");
   const isSupplierFlow = searchParams.get("intent") === SUPPLIER_INTENT;
+  const isStaffFlow = searchParams.get("intent") === STAFF_INTENT;
 
   // 오픈 리다이렉트 방지: 바이어는 /shop/<uuid> 하위, 공급사는 내부 절대 경로만 허용한다.
   // 검증을 통과한 '명시적' 목적지는 따로 들고 있는다 — 슈퍼관리자 도착지를 정할 때
@@ -68,11 +75,13 @@ export async function GET(request: NextRequest) {
 
   const nextPath = isSupplierFlow
     ? (requestedNext ?? SUPPLIER_LANDING_PATH)
-    : (sanitizeShopReturnPath(searchParams.get("next")) ??
-      (isValidShopToken(shopToken) ? `/shop/${shopToken}` : "/"));
+    : isStaffFlow
+      ? STAFF_PENDING_PATH
+      : (sanitizeShopReturnPath(searchParams.get("next")) ??
+        (isValidShopToken(shopToken) ? `/shop/${shopToken}` : "/"));
 
-  // 실패 시 되돌아갈 화면 (공급사는 로그인 게이트, 바이어는 미니샵 게이트)
-  const errorPath = isSupplierFlow ? "/login" : nextPath;
+  // 실패 시 되돌아갈 화면 (공급사는 로그인 게이트, 스태프는 스태프 게이트, 바이어는 미니샵 게이트)
+  const errorPath = isSupplierFlow ? "/login" : isStaffFlow ? "/staff-login" : nextPath;
 
   // 사용자가 카카오 동의 화면에서 취소한 경우
   if (searchParams.get("error") || !code) {
@@ -86,7 +95,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createClient();
 
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+  const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
   if (exchangeError) {
     return redirectWithError(
@@ -107,6 +116,57 @@ export async function GET(request: NextRequest) {
   //   실패해도 로그인을 막지 않는다. (승격 실패 = 일반 계정으로 계속 진행)
   // ------------------------------------------------------------------
   const superAdmin = await ensureSuperAdminBootstrap();
+
+  // ------------------------------------------------------------------
+  // 내부 스태프 — 온보딩(업체 등록)으로 절대 보내지 않는다.
+  //
+  //   handle_new_user() 트리거가 만든 기본 프로필(role='wholesaler',
+  //   is_supplier=true, is_verified=false)은 공급사와 똑같지만, 이 흐름은
+  //   SUPPLIER_ONBOARDING_PATH를 거치지 않으므로 wholesalers row가 생기지
+  //   않는다 — 그게 관리자 후보 검색이 실제 입점 신청자와 이 계정을
+  //   구분하는 유일한 신호다(lib/auth/staff-auth.ts 참고).
+  //
+  //   이미 승격된 계정(재로그인)은 대기 화면 대신 바로 거버넌스 콘솔로 보낸다.
+  //
+  //   signup_channel='staff' 기록은 여기서 service_role로 한다 — 본인 세션으로는
+  //   못 쓴다(profiles 컬럼을 자기 UPDATE로 못 채워야 이 값이 분류 힌트로 의미가
+  //   있다). 실패해도 로그인 자체는 막지 않는다(ensureSuperAdminBootstrap과 같은
+  //   방어적 패턴) — 대신 이 계정은 다음 단계(후보 검색 wholesalers 필터)에서
+  //   안전망 하나를 덜 갖게 될 뿐, 온보딩 자체는 이미 STAFF_PENDING_PATH로
+  //   보내므로 즉시 문제가 되진 않는다.
+  // ------------------------------------------------------------------
+  if (isStaffFlow) {
+    if (!superAdmin.isSuperAdmin && exchangeData?.user?.id) {
+      try {
+        const admin = createServiceRoleClient();
+
+        if (admin) {
+          const { error: markError } = await admin
+            .from("profiles")
+            .update({ signup_channel: "staff" })
+            .eq("id", exchangeData.user.id);
+
+          if (markError) {
+            console.error("[AuthCallback] signup_channel 기록 실패:", markError.message);
+          }
+        } else {
+          console.error(
+            "[AuthCallback] SUPABASE_SERVICE_ROLE_KEY가 없어 signup_channel을 기록할 수 없습니다."
+          );
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[AuthCallback] signup_channel 기록 예외:", message);
+      }
+    }
+
+    return NextResponse.redirect(
+      new URL(
+        superAdmin.isSuperAdmin ? getLandingPathForRole("super_admin") : STAFF_PENDING_PATH,
+        request.url
+      )
+    );
+  }
 
   // ------------------------------------------------------------------
   // 공급사 — 최소 정보 입력 여부로 도착지를 나눈다.
