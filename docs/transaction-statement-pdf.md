@@ -12,7 +12,7 @@
 ### 잠긴 설계 결정 (재검토 금지)
 - **거래명세서 ≠ 세금계산서**: 법정 증빙서류가 아니므로 별도 ASP 연동/사업자 위임 없이 DB의 발주 데이터를 그대로 PDF로 변환. PDF 본문에도 이 취지를 고정 문구로 박아둠(`lib/pdf/transaction-statement.tsx`) — 제거 금지.
 - **주소 미등록 시 조용히 `-`로 발행 금지**: `lib/orders/statement.ts`의 `findMissingStatementFields()`가 공급자 주소 누락을 감지하면, 양쪽 라우트 모두 PDF 렌더링 전에 422 + 사람이 읽을 수 있는 경고 HTML(`lib/pdf/statement-warning-page.ts`)을 반환한다. 경고 없이 빈 값으로 발행하는 변경은 하지 말 것.
-- **온보딩(가입) 폼엔 주소를 넣지 않음**: `complete_supplier_signup`은 SECURITY DEFINER 트랜잭션 함수라 리스크가 크고, 기존 레코드 백필이 우선이라 판단해 `/dashboard/invites`(기존 "사업자 정보 제출" 화면)에만 필수 입력 폼(`business-address-form.tsx`)을 추가했다. 신규 가입 필수화는 별도 논의 필요.
+- **온보딩(가입) 폼에도 주소가 필수** (`20260926000000_supplier_onboarding_business_address.sql`, 결정 뒤집음): 처음엔 `complete_supplier_signup`(SECURITY DEFINER 트랜잭션 함수) 리스크 때문에 `/dashboard/invites` 백필 폼만 추가했으나, 이후 신규 가입 시점부터 필수화하기로 결정 변경. `complete_supplier_signup`에 `p_business_address TEXT`(기본값 없음, 필수) 파라미터를 추가하고 `INVALID_BUSINESS_ADDRESS`(5자 미만 시) 가드를 넣었다. **함수 시그니처가 바뀌어서 `CREATE OR REPLACE`로 대체 불가** — 기존 5-arg 함수를 `DROP FUNCTION`한 뒤 6-arg로 새로 만듦(파라미터 순서: name, representative_name, phone, **business_address**, business_number DEFAULT NULL, marketing_agreed DEFAULT false). `/dashboard/invites` 백필 폼은 이 마이그레이션 이전 가입자를 위해 계속 남겨둔다.
 - **`business_address` 컬럼은 SECURITY DEFINER RPC 없이 직접 UPDATE**: `business_number`와 달리 승인 후 잠금·중복검사·`organizations` 동기화가 필요 없어, 기존 RLS 정책("Wholesalers updatable by self or admin", `profile_id = auth.uid()`)만으로 충분하다고 판단(`submitSupplierBusinessAddressAction`, `app/actions/supplier-auth.ts`). 새 RPC를 추가하려 하지 말 것.
 - **한글 폰트는 Git LFS로 추적**: `assets/fonts/NotoSansKR-{Regular,Bold}.ttf`(정적 인스턴스, 각 ~6MB, Noto Sans KR 가변 폰트를 `fonttools varLib.instancer`로 추출). `@react-pdf/renderer`(fontkit 기반)는 가변 폰트의 굵기 축을 제대로 반영하지 못해 두 정적 인스턴스로 분리했다. `.gitattributes`: `assets/fonts/*.ttf filter=lfs diff=lfs merge=lfs -text`.
 - **`Font.register`의 `src`는 파일 경로 문자열**: Buffer가 아니라 `path.join(process.cwd(), "assets/fonts", ...)` 문자열을 그대로 넘긴다 — `@react-pdf/font`가 URL이 아니면 내부적으로 `fontkit.open()`(파일 경로)로 처리하기 때문. Buffer를 넘기면 타입 에러남.
@@ -22,8 +22,9 @@
 - 로컬 `next dev` 서버로 실제 route handler를 직접 호출해 한글(Regular/Bold) 렌더링 확인, 인앱 미리보기(`StatementPreviewButton`)의 정상/발행불가 두 케이스 모두 모의 데이터로 확인. 테스트용 임시 라우트는 매번 정리함(커밋 안 됨).
 - **실제 Supabase 인증 세션(공급사/바이어 실계정)으로는 아직 검증 안 함** — 로컬 dev + 데모/모의 데이터로만 확인.
 - `wholesalers.business_address` 마이그레이션(`20260925000000_wholesaler_business_address.sql`)은 사용자가 Supabase SQL Editor에 직접 적용함 — Claude 세션에서 DB에 직접 쓴 적 없음.
+- `20260926000000_supplier_onboarding_business_address.sql`(`complete_supplier_signup` 6-arg 전환)은 라이브 DB에 적용하기 전, `pg` 드라이버(`npm install --no-save pg`, `scripts/db-connect.mjs` 재사용)로 실제 스키마에 `BEGIN...ROLLBACK` 트랜잭션을 걸고 그 안에서 (1) 마이그레이션 SQL 자체가 적용되는지, (2) 새 시그니처가 맞는지, (3) 빈 주소가 `INVALID_BUSINESS_ADDRESS`로 거절되는지, (4) 정상 케이스에서 `wholesalers.business_address`까지 실제로 저장되는지 확인함 — 전부 통과, 라이브 데이터는 변경 없음(스크립트는 커밋 안 됨). **실제 적용은 사용자가 직접 SQL Editor에서 수행 예정.**
 
 ### 남은 과제
+- `20260926000000_supplier_onboarding_business_address.sql` 라이브 적용(사용자가 SQL Editor에서 수행).
 - 실계정 라이브 검증(공급사 로그인 → 주소 등록 → PDF 발행, 바이어 로그인 → 발행 확인).
-- 신규 온보딩 시점 주소 필수화 여부 결정.
 - 국세청 전자세금계산서 ASP 자동 연동(별도 스코프, ROADMAP 후순위, 미착수).

@@ -19,6 +19,13 @@ export interface ActionResult<T = undefined> {
   data?: T;
 }
 
+/**
+ * 사업장 주소 입력 길이 제한 — 온보딩 폼과 /dashboard/invites 백필 폼이 공유한다.
+ * 너무 짧으면 "-"류 무의미 입력을 막고, 너무 길면 PDF 레이아웃이 깨진다.
+ */
+const MIN_BUSINESS_ADDRESS_LENGTH = 5;
+const MAX_BUSINESS_ADDRESS_LENGTH = 200;
+
 function toResult(error: unknown): ActionResult<never> {
   if (error instanceof SupplierAuthError) {
     return { success: false, error: error.message };
@@ -98,6 +105,7 @@ export async function completeSupplierSignupAction(
     const businessName = ((formData.get("business_name") as string) || "").trim();
     const representativeName = ((formData.get("representative_name") as string) || "").trim();
     const phone = ((formData.get("phone") as string) || "").replace(/\D/g, "");
+    const businessAddress = ((formData.get("business_address") as string) || "").trim();
     const businessNumberRaw = normalizeBusinessNumber(
       (formData.get("business_number") as string) || ""
     );
@@ -124,6 +132,16 @@ export async function completeSupplierSignupAction(
       throw new SupplierAuthError("invalid_input", "연락처를 정확히 입력해주세요. (숫자만 9~11자리)");
     }
 
+    if (
+      businessAddress.length < MIN_BUSINESS_ADDRESS_LENGTH ||
+      businessAddress.length > MAX_BUSINESS_ADDRESS_LENGTH
+    ) {
+      throw new SupplierAuthError(
+        "invalid_input",
+        `사업장 주소를 ${MIN_BUSINESS_ADDRESS_LENGTH}~${MAX_BUSINESS_ADDRESS_LENGTH}자 이내로 정확히 입력해주세요.`
+      );
+    }
+
     if (businessNumberRaw && !isValidBusinessNumber(businessNumberRaw)) {
       throw new SupplierAuthError(
         "invalid_input",
@@ -137,6 +155,7 @@ export async function completeSupplierSignupAction(
       p_business_name: businessName,
       p_representative_name: representativeName,
       p_phone: phone,
+      p_business_address: businessAddress,
       p_business_number: businessNumberRaw || null,
       p_marketing_agreed: agreedMarketing,
     });
@@ -171,10 +190,6 @@ export async function completeSupplierSignupAction(
     return toResult(error);
   }
 }
-
-/** 사업장 주소 입력 길이 제한 — 너무 짧으면 "-"류 무의미 입력을 막고, 너무 길면 PDF 레이아웃이 깨진다 */
-const MIN_BUSINESS_ADDRESS_LENGTH = 5;
-const MAX_BUSINESS_ADDRESS_LENGTH = 200;
 
 /**
  * 사업장 주소 등록/수정 (공급사 본인).
