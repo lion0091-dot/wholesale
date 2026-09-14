@@ -37,12 +37,15 @@
    - RPC 호출 try/catch — `PLATFORM_ADMIN_TARGET_ALREADY_VERIFIED` 등 예외 시 `"failed"` + reason에 메시지.
    - 미사용 코드(`isSuperAdminEmail` import, `missingEmailNoticeLogged`) 제거.
    - 타입체크/빌드/env-root 재로그인(멱등 케이스 포함) 테스트 통과.
-4. 🚧 `/admin/admins` UI 구축 (`requireAdminGranter()` → `can_current_user_grant_admin()` RPC로 게이팅) — **진행 중**.
-   - ✅ `lib/auth/admin-granter.ts` `requireAdminGranter()` — 페이지 가드, fail-closed.
-   - ✅ `app/admin/admins/actions.ts` — `searchAdminCandidatesAction`/`promoteAdminAction`/`revokeAdminAction`/`listAdminsAction` 구현 완료. `is_verified = true` 계정은 쿼리 조건에서 제외(승격 후보 목록에 안 뜸 — 안 하면 `PLATFORM_ADMIN_TARGET_ALREADY_VERIFIED` 에러). `wholesalers` row 보유 계정(= 실제 입점 신청자)도 후보 검색에서 제외 — [staff-login-separation.md](./staff-login-separation.md) 참고.
+4. ✅ `/admin/admins` UI 구축 (`requireAdminGranter()` → `can_current_user_grant_admin()` RPC로 게이팅) — **완료**.
+   - `lib/auth/admin-granter.ts` `requireAdminGranter()` — 페이지 가드, fail-closed.
+   - `app/admin/admins/actions.ts` — `searchAdminCandidatesAction`/`promoteAdminAction`/`revokeAdminAction`/`listAdminsAction`. `is_verified = true` 계정, `wholesalers` row 보유 계정(= 실제 입점 신청자)은 후보 검색에서 제외 — [staff-login-separation.md](./staff-login-separation.md) 참고.
      - **주의(PostgREST 임베드 함정)**: `platform_admin_allowlist.user_id`와 `profiles.id`는 둘 다 `auth.users(id)`를 각자 참조하는 형제 관계라 테이블 간 직접 FK가 없다. `.select("...profiles:user_id(...)")` 같은 임베드 조인은 relationship을 못 찾아 실패한다 — `listAdminsAction`/`searchAdminCandidatesAction`처럼 두 번 조회해서 JS에서 `Map`으로 합치는 패턴을 써야 한다.
-   - ❌ `app/admin/admins/page.tsx` — 아직 헤더만 있는 빈 껍데기. 검색창/후보 리스트/관리자 목록/승격·회수 버튼 UI 미구현. 화면으로는 아직 테스트 불가, `actions.ts` 함수들은 SQL Editor로 직접 RPC 호출해서 테스트함.
-   - **남은 서브스텝**: `active-admins-list.tsx`(현재 관리자 목록 + 회수 버튼, 신규) → `admin-candidate-search.tsx`(검색창 + 후보 리스트 + 승격 버튼, 신규) → `page.tsx`에서 `listAdminsAction()` 서버 호출 후 두 컴포넌트 연결. `/admin/suppliers`의 `SupplierApprovalList` 패턴(초기 데이터 서버에서 로드 → 클라이언트 컴포넌트에 prop으로 전달) 재사용 예정.
+   - `app/admin/admins/active-admins-list.tsx` — 관리자 목록 + 회수 버튼(자기 자신 행은 버튼 숨김).
+   - `app/admin/admins/admin-candidate-search.tsx` — 이름/전화 검색 + 승격(명단 편집 권한 체크박스 포함).
+   - `app/admin/admins/admin-admins-client.tsx` — 두 컴포넌트가 공유하는 `admins` state 래퍼(승격/회수 시 전체 재조회 없이 로컬 갱신). `/admin/suppliers`의 `SupplierApprovalList` 패턴(초기 데이터 서버 로드 → 클라이언트 컴포넌트 prop 전달)을 참고해 구성.
+   - `page.tsx` — `listAdminsAction()` 서버 호출 후 위 클라이언트 래퍼에 배선.
+   - typecheck + `next build` 통과 확인 — 커밋 `6d81a3a`.
 5. (안정화 후) `enforce_profile_role_immutable()` 트리거 강화 — 활성 allowlist 항목을 통해서만 `profiles.role`을 `super_admin`으로 직접 UPDATE 허용.
 
 ### 검증 관련
