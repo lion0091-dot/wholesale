@@ -108,6 +108,55 @@ export async function claimShopAccessAction(
   }
 }
 
+/**
+ * 바이어 이용약관/개인정보 수집·이용 동의 기록.
+ *
+ * 카카오 로그인 직후 아직 동의를 받지 않은 상태(profiles.terms_agreed_at IS NULL)면
+ * 미니샵 카탈로그 대신 동의 화면이 먼저 뜬다. 이 액션이 그 화면의 제출을 처리한다.
+ * (record_buyer_consent()는 role='retailer' 계정 본인의 profiles만 갱신하고,
+ *  이미 동의했으면 재호출해도 덮어쓰지 않는다 — 멱등)
+ */
+export async function recordBuyerConsentAction(
+  shopToken: string,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    if (!isValidShopToken(shopToken)) {
+      throw new BuyerAuthError("invalid_shop", "올바른 미니샵 주소가 아닙니다.");
+    }
+
+    const agreedTerms = formData.get("agree_terms") === "on";
+    const agreedPrivacy = formData.get("agree_privacy") === "on";
+    const agreedMarketing = formData.get("agree_marketing") === "on";
+
+    if (!agreedTerms || !agreedPrivacy) {
+      return {
+        success: false,
+        error: "서비스 이용약관과 개인정보 수집·이용에 모두 동의해야 이용할 수 있습니다.",
+      };
+    }
+
+    const supabase = await createClient();
+
+    const { error } = await supabase.rpc("record_buyer_consent", {
+      p_marketing_agreed: agreedMarketing,
+    });
+
+    if (error) {
+      return {
+        success: false,
+        error: "동의 처리에 실패했습니다. 잠시 후 다시 시도해주세요.",
+      };
+    }
+
+    revalidatePath(`/shop/${shopToken}`);
+
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
 /** 미니샵 로그아웃 (기기 공유 상황 대비) */
 export async function signOutBuyerAction(shopToken: string): Promise<ActionResult> {
   try {
