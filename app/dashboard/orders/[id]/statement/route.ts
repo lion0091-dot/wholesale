@@ -1,8 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
-import { loadStatementDataForSupplier, type StatementData } from "@/lib/orders/statement";
+import {
+  findMissingStatementFields,
+  loadStatementDataForSupplier,
+  type StatementData,
+} from "@/lib/orders/statement";
 import { renderTransactionStatementPdf } from "@/lib/pdf/transaction-statement";
+import { renderMissingFieldsHtml } from "@/lib/pdf/statement-warning-page";
 import { DEMO_ORDERS, DEMO_RETAILERS } from "@/lib/demo/supplier-samples";
 
 // @react-pdf/renderer는 Node.js API(fs 등)에 의존해 Edge 런타임에서 동작하지 않는다.
@@ -40,7 +45,9 @@ function buildDemoStatement(orderId: string): StatementData | null {
       name: "마장동 태양축산 (테스트 도매)",
       representativeName: "김도매",
       businessNumber: "123-45-67890",
-      address: null,
+      // 데모는 항상 발행 가능한 상태를 보여준다 — 주소 누락 가드(findMissingStatementFields)는
+      // 실제 미등록 공급사 시나리오에서만 걸리도록 샘플 주소를 채워둔다.
+      address: "서울 성동구 마장로 123, 2층 (샘플)",
       phone: null,
     },
     buyer: {
@@ -65,6 +72,19 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 
   if (!data) {
     return NextResponse.json({ error: "주문을 찾을 수 없습니다." }, { status: 404 });
+  }
+
+  const missingFields = findMissingStatementFields(data);
+
+  if (missingFields.length > 0) {
+    return new NextResponse(
+      renderMissingFieldsHtml({
+        missingFields,
+        actionHref: "/dashboard/invites",
+        actionLabel: "사업장 주소 등록하러 가기",
+      }),
+      { status: 422, headers: { "Content-Type": "text/html; charset=utf-8" } }
+    );
   }
 
   const pdfBuffer = await renderTransactionStatementPdf(data);

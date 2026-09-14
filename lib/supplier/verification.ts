@@ -45,6 +45,8 @@ export interface SupplierAccount {
   wholesalerId: string | null;
   businessName: string | null;
   businessNumber: string | null;
+  /** 사업장 주소 — 거래명세서 PDF 발행에 필수. null이면 발행이 막힌다 */
+  businessAddress: string | null;
   shopToken: string | null;
   supplierStatus: WholesalerStatus | null;
   /** 최소 정보(약관 + 연락처 + 상호) 입력이 남아 있는지 */
@@ -108,12 +110,12 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
   const { data: wholesaler } = linkedWholesalerId
     ? await supabase
         .from("wholesalers")
-        .select("id, business_name, business_number, shop_token, status")
+        .select("id, business_name, business_number, business_address, shop_token, status")
         .eq("id", linkedWholesalerId)
         .maybeSingle()
     : await supabase
         .from("wholesalers")
-        .select("id, business_name, business_number, shop_token, status")
+        .select("id, business_name, business_number, business_address, shop_token, status")
         .eq("profile_id", user.id)
         .maybeSingle();
 
@@ -155,6 +157,7 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
     wholesalerId: (wholesaler?.id as string | undefined) ?? null,
     businessName: (wholesaler?.business_name as string | undefined) ?? null,
     businessNumber: (wholesaler?.business_number as string | null | undefined) ?? null,
+    businessAddress: (wholesaler?.business_address as string | null | undefined) ?? null,
     shopToken,
     supplierStatus,
     needsMinimumInfo,

@@ -209,6 +209,24 @@ export async function loadStatementDataForSupplier(
   return toStatementData(core.order, core.items, parties);
 }
 
+/**
+ * 발행에 필요한 필수 정보가 다 갖춰졌는지 확인한다.
+ *
+ * wholesalers.business_address는 2026-09-25 마이그레이션으로 새로 추가된
+ * 컬럼이라 기존 레코드는 NULL로 남아 있다. 이걸 그냥 '-'로 조용히 인쇄하면
+ * 실사용자가 빈 문서를 정상 문서로 착각할 수 있어, 라우트 핸들러가 반드시
+ * 이 함수로 먼저 확인한 뒤 비어 있으면 발행 자체를 막아야 한다.
+ */
+export function findMissingStatementFields(data: StatementData): string[] {
+  const missing: string[] = [];
+
+  if (!data.supplier.address) {
+    missing.push("공급자(도매업자) 사업장 주소");
+  }
+
+  return missing;
+}
+
 /** 바이어(미니샵) 인가 — wholesalerId + retailerId 둘 다 일치해야 함(교차 조회 차단) */
 export async function loadStatementDataForBuyer(
   supabase: SupabaseServerClient,

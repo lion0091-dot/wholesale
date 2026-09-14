@@ -38,6 +38,11 @@ export interface Wholesaler {
   /** 가입 시점에는 미제출(null)일 수 있다. 승인 심사 단계에서 제출받는다. */
   business_number: string | null;
   representative_name: string;
+  /**
+   * 사업장 소재지. 온보딩에서 받지 않아 기존 레코드는 NULL일 수 있다 —
+   * 거래명세서 PDF 발행 전 /dashboard/invites에서 직접 등록해야 한다.
+   */
+  business_address: string | null;
   shop_token: string;
   status: WholesalerStatus;
   subscription_status: SubscriptionStatus;
