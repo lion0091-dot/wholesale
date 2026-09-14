@@ -132,8 +132,8 @@ export default async function OnboardingPage() {
               공급사 기본 정보
             </div>
             <SupplierSignupForm
-              defaultName={account?.name ?? null}
-              defaultPhone={account?.phone || null}
+              defaultName={account?.name || account?.kakaoName || null}
+              defaultPhone={account?.phone || account?.kakaoPhone || null}
             />
           </section>
         </>

@@ -89,9 +89,12 @@ const SIGNUP_ERROR_MESSAGES: Record<string, string> = {
   AUTH_REQUIRED: "로그인이 필요합니다. 카카오 로그인을 다시 시도해주세요.",
   NOT_A_SUPPLIER_ACCOUNT:
     "이미 바이어(구매 회원)로 가입된 카카오 계정입니다. 공급사 가입은 다른 카카오 계정으로 진행해주세요.",
+  STAFF_ACCOUNT_CANNOT_ONBOARD:
+    "내부 스태프 계정은 공급사 가입을 진행할 수 없습니다. 관리자 권한 부여를 기다려주세요.",
   INVALID_BUSINESS_NAME: "상호(업체명)를 2자 이상 입력해주세요.",
   INVALID_REPRESENTATIVE_NAME: "담당자(대표자) 성명을 입력해주세요.",
   INVALID_PHONE: "연락처를 숫자 9자리 이상으로 정확히 입력해주세요.",
+  INVALID_BUSINESS_ADDRESS: "사업장 주소를 5자 이상 입력해주세요.",
   INVALID_BUSINESS_NUMBER: "사업자등록번호 10자리를 정확히 입력해주세요.",
   DUPLICATE_BUSINESS_NUMBER: "이미 등록된 사업자등록번호입니다. 플랫폼 운영팀에 문의해주세요.",
   SUPPLIER_NOT_FOUND: "공급사 정보가 아직 등록되지 않았습니다. 최소 정보 입력을 먼저 완료해주세요.",
@@ -115,7 +118,7 @@ export function toSupplierAuthError(
   const code: SupplierAuthErrorCode =
     matched === "AUTH_REQUIRED"
       ? "auth_required"
-      : matched === "NOT_A_SUPPLIER_ACCOUNT"
+      : matched === "NOT_A_SUPPLIER_ACCOUNT" || matched === "STAFF_ACCOUNT_CANNOT_ONBOARD"
         ? "not_a_supplier"
         : "invalid_input";
 
