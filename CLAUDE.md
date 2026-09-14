@@ -6,3 +6,7 @@
 ## 가입 시 개인정보 동의 시점 정렬 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
 
 - [docs/supplier-signup-pii-consent.md](docs/supplier-signup-pii-consent.md) — 카카오 가입 직후 동의 전에 개인정보가 저장되던 문제와 수정 내역. 바이어 쪽 동의 화면 부재는 후속 과제로 남음.
+
+## wholesaler_retailers RLS 정책 누락 (심각 버그, 별도 발견)
+
+- [docs/wholesaler-retailers-rls-fix.md](docs/wholesaler-retailers-rls-fix.md) — RLS 정책이 0개라 카탈로그/발주/고객관리가 전부 막혀있던 문제와 수정. 실계정 라이브 재검증 아직 안 함.
