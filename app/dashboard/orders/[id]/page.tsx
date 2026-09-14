@@ -202,6 +202,25 @@ export default async function OrderDetailPage({ params }: PageProps) {
           >
             {badge.label}
           </span>
+
+          <a
+            href={`/dashboard/orders/${order.id}/statement`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              marginLeft: "auto",
+              fontSize: "12px",
+              fontWeight: 700,
+              color: "#2563eb",
+              border: "1px solid #bfdbfe",
+              backgroundColor: "#eff6ff",
+              borderRadius: "6px",
+              padding: "6px 10px",
+              textDecoration: "none",
+            }}
+          >
+            📄 거래명세서 PDF
+          </a>
         </div>
 
         <p style={{ fontSize: "13px", color: "#64748b" }}>

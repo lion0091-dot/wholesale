@@ -221,6 +221,22 @@ export function OrderHistoryView({ catalog, history }: OrderHistoryViewProps) {
                 </strong>
               </div>
 
+              <a
+                href={`/shop/${shopToken}/orders/${order.id}/statement`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-block",
+                  marginTop: "10px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: "#2563eb",
+                  textDecoration: "none",
+                }}
+              >
+                📄 거래명세서 PDF 보기
+              </a>
+
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "8px", lineHeight: 1.6 }}>
                 배송지: {order.deliveryAddress || "-"}
                 {order.deliveryNotes && (
