@@ -19,6 +19,13 @@ export interface ActionResult<T = undefined> {
   data?: T;
 }
 
+/**
+ * 사업장 주소 입력 길이 제한 — 온보딩 폼과 /dashboard/invites 백필 폼이 공유한다.
+ * 너무 짧으면 "-"류 무의미 입력을 막고, 너무 길면 PDF 레이아웃이 깨진다.
+ */
+const MIN_BUSINESS_ADDRESS_LENGTH = 5;
+const MAX_BUSINESS_ADDRESS_LENGTH = 200;
+
 function toResult(error: unknown): ActionResult<never> {
   if (error instanceof SupplierAuthError) {
     return { success: false, error: error.message };
@@ -98,6 +105,7 @@ export async function completeSupplierSignupAction(
     const businessName = ((formData.get("business_name") as string) || "").trim();
     const representativeName = ((formData.get("representative_name") as string) || "").trim();
     const phone = ((formData.get("phone") as string) || "").replace(/\D/g, "");
+    const businessAddress = ((formData.get("business_address") as string) || "").trim();
     const businessNumberRaw = normalizeBusinessNumber(
       (formData.get("business_number") as string) || ""
     );
@@ -124,6 +132,16 @@ export async function completeSupplierSignupAction(
       throw new SupplierAuthError("invalid_input", "연락처를 정확히 입력해주세요. (숫자만 9~11자리)");
     }
 
+    if (
+      businessAddress.length < MIN_BUSINESS_ADDRESS_LENGTH ||
+      businessAddress.length > MAX_BUSINESS_ADDRESS_LENGTH
+    ) {
+      throw new SupplierAuthError(
+        "invalid_input",
+        `사업장 주소를 ${MIN_BUSINESS_ADDRESS_LENGTH}~${MAX_BUSINESS_ADDRESS_LENGTH}자 이내로 정확히 입력해주세요.`
+      );
+    }
+
     if (businessNumberRaw && !isValidBusinessNumber(businessNumberRaw)) {
       throw new SupplierAuthError(
         "invalid_input",
@@ -137,6 +155,7 @@ export async function completeSupplierSignupAction(
       p_business_name: businessName,
       p_representative_name: representativeName,
       p_phone: phone,
+      p_business_address: businessAddress,
       p_business_number: businessNumberRaw || null,
       p_marketing_agreed: agreedMarketing,
     });
@@ -167,6 +186,67 @@ export async function completeSupplierSignupAction(
         businessNumberSubmitted: row.business_number_submitted,
       },
     };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
+ * 사업장 주소 등록/수정 (공급사 본인).
+ *
+ * business_number와 달리 승인 후 잠금·중복 검사·organizations 동기화가 필요 없어
+ * SECURITY DEFINER RPC 없이 RLS("Wholesalers updatable by self or admin")가
+ * 허용하는 범위 내에서 직접 UPDATE한다.
+ *
+ * 거래명세서 PDF(lib/orders/statement.ts)의 공급자란이 이 값을 그대로 쓰고,
+ * 비어 있으면 PDF 라우트가 발행 자체를 막는다.
+ */
+export async function submitSupplierBusinessAddressAction(
+  formData: FormData
+): Promise<ActionResult<{ businessAddress: string }>> {
+  try {
+    const businessAddress = ((formData.get("business_address") as string) || "").trim();
+
+    if (
+      businessAddress.length < MIN_BUSINESS_ADDRESS_LENGTH ||
+      businessAddress.length > MAX_BUSINESS_ADDRESS_LENGTH
+    ) {
+      throw new SupplierAuthError(
+        "invalid_input",
+        `사업장 주소를 ${MIN_BUSINESS_ADDRESS_LENGTH}~${MAX_BUSINESS_ADDRESS_LENGTH}자 이내로 정확히 입력해주세요.`
+      );
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new SupplierAuthError("auth_required", "로그인이 필요합니다.");
+    }
+
+    const { data, error } = await supabase
+      .from("wholesalers")
+      .update({ business_address: businessAddress })
+      .eq("profile_id", user.id)
+      .select("business_address")
+      .maybeSingle();
+
+    if (error) {
+      throw new Error("사업장 주소 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    if (!data) {
+      throw new SupplierAuthError(
+        "not_a_supplier",
+        "공급사 정보를 찾을 수 없습니다. 온보딩을 먼저 완료해주세요."
+      );
+    }
+
+    revalidatePath("/dashboard", "layout");
+
+    return { success: true, data: { businessAddress: data.business_address as string } };
   } catch (error) {
     return toResult(error);
   }

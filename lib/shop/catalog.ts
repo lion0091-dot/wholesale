@@ -55,6 +55,7 @@ function demoWholesaler(shopToken: string): Wholesaler {
     business_name: "마장동 태양축산 (테스트 도매)",
     business_number: "123-45-67890",
     representative_name: "김태양",
+    business_address: "서울 성동구 마장로 123, 2층",
     shop_token: shopToken,
     status: "active",
     subscription_status: "active",
