@@ -66,6 +66,7 @@ type WholesalerRow = {
   business_name: string;
   business_number: string | null;
   representative_name: string;
+  business_address: string | null;
   profile_id: string;
 };
 
@@ -123,7 +124,7 @@ async function fetchParties(
   const [{ data: wholesaler }, { data: retailer }] = await Promise.all([
     supabase
       .from("wholesalers")
-      .select("business_name, business_number, representative_name, profile_id")
+      .select("business_name, business_number, representative_name, business_address, profile_id")
       .eq("id", wholesalerId)
       .maybeSingle(),
     supabase
@@ -153,7 +154,7 @@ async function fetchParties(
       name: w?.business_name ?? "공급사 정보 미등록",
       representativeName: w?.representative_name ?? null,
       businessNumber: w?.business_number ?? null,
-      address: null, // wholesalers 테이블에 사업장 주소 컬럼이 아직 없음
+      address: w?.business_address ?? null,
       phone: (w?.profile_id && phoneByProfileId.get(w.profile_id)) || null,
     },
     buyer: {
