@@ -205,4 +205,10 @@ a {
   .dash-customer-grid {
     grid-template-columns: 1fr;
   }
+
+  /* 좁은 화면(카톡 인앱 브라우저 등)에서는 가로 스크롤이 필요한 목록 뷰 대신
+     항상 카드 뷰만 쓰도록 전환 버튼을 숨긴다. */
+  .dash-view-toggle {
+    display: none !important;
+  }
 }

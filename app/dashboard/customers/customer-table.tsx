@@ -70,6 +70,27 @@ export function CustomerTable({
   const [keyword, setKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<RelationshipStatus | "all">("all");
   const [viewMode, setViewMode] = useState<ViewMode>("card");
+
+  // 목록 뷰 전환 버튼은 좁은 화면(카톡 인앱 브라우저 등)에서 CSS로 숨겨지므로,
+  // 넓은 화면에서 목록 뷰를 켜둔 채 창을 좁히거나 좁은 화면으로 페이지가 복원되는
+  // 경우에도 가로 스크롤 테이블이 남지 않도록 강제로 카드 뷰로 되돌린다.
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 900px)");
+
+    const syncViewMode = (isNarrow: boolean) => {
+      if (isNarrow) {
+        setViewMode("card");
+      }
+    };
+
+    syncViewMode(mediaQuery.matches);
+
+    const handleChange = (event: MediaQueryListEvent) => syncViewMode(event.matches);
+
+    mediaQuery.addEventListener("change", handleChange);
+
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
   const [inviteTarget, setInviteTarget] = useState<CustomerRow | null>(null);
   const [copied, setCopied] = useState<"link" | "message" | null>(null);
   /** 카드 그리드에서 링크를 복사한 바이어 id (카드별 '복사됨' 표시) */
@@ -267,10 +288,12 @@ export function CustomerTable({
             <option value="blocked">거래중지</option>
           </select>
 
-          {/* 카드(섬네일) / 목록 보기 전환 */}
+          {/* 카드(섬네일) / 목록 보기 전환 — 좁은 화면(카톡 인앱 브라우저 등)에서는
+              가로 스크롤이 필요한 목록 뷰 대신 항상 카드 뷰만 쓰도록 전환 버튼 자체를 숨긴다. */}
           <div
             role="group"
             aria-label="보기 방식"
+            className="dash-view-toggle"
             style={{
               display: "flex",
               gap: "2px",
