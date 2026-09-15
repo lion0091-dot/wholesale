@@ -68,6 +68,7 @@ export default async function AdminSuppliersPage() {
   }
 
   let suppliers: Wholesaler[] = DEMO_SUPPLIERS;
+  let canGrantAdmin = false;
 
   if (isConfigured) {
     const supabase = await createClient();
@@ -78,6 +79,11 @@ export default async function AdminSuppliersPage() {
       .order("created_at", { ascending: false });
 
     suppliers = (data as Wholesaler[] | null) ?? [];
+
+    // "관리자 관리" 링크는 다른 관리자를 승격/강등할 수 있는 계정(can_grant=true)에게만 보인다.
+    // /admin/admins 자체의 가드(requireAdminGranter)와 동일한 RPC로 판정한다.
+    const { data: grantCheck } = await supabase.rpc("can_current_user_grant_admin");
+    canGrantAdmin = Boolean(grantCheck);
   }
 
   const pendingCount = suppliers.filter((s) => s.status === "pending").length;
@@ -93,6 +99,14 @@ export default async function AdminSuppliersPage() {
           <Link href="/" style={{ fontSize: "12px", color: "#64748b", textDecoration: "underline" }}>
             ← 메인 허브로 이동
           </Link>
+          {canGrantAdmin && (
+            <Link
+              href="/admin/admins"
+              style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}
+            >
+              관리자 관리 →
+            </Link>
+          )}
         </div>
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
           공급사 입점 승인 및 구독 거버넌스
