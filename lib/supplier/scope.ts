@@ -38,17 +38,24 @@ export async function getSupplierScope(): Promise<SupplierScope | null> {
     wholesalerId = (organization?.wholesaler_id as string | null) ?? null;
   }
 
+  // super_admin은 조직 소속(wholesalerId)이 없는 한 자기 profile_id로 업체를 자동 매칭하지
+  // 않는다. 과거에 같은 계정으로 공급사 온보딩을 테스트했다면 wholesalers 행이 남아 있을 수
+  // 있는데, 그걸 "내 회사"로 오인해 대시보드에 노출하면 안 되기 때문이다.
+  const shouldLookupByProfile = !wholesalerId && !context.isSuperAdmin;
+
   const { data: wholesaler } = wholesalerId
     ? await supabase
         .from("wholesalers")
         .select("id, business_name, shop_token")
         .eq("id", wholesalerId)
         .maybeSingle()
-    : await supabase
-        .from("wholesalers")
-        .select("id, business_name, shop_token")
-        .eq("profile_id", context.userId)
-        .maybeSingle();
+    : shouldLookupByProfile
+      ? await supabase
+          .from("wholesalers")
+          .select("id, business_name, shop_token")
+          .eq("profile_id", context.userId)
+          .maybeSingle()
+      : { data: null };
 
   return {
     userId: context.userId,
