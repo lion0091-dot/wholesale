@@ -4,6 +4,7 @@ import { getOrgStaffContext } from "@/lib/auth/rbac";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { FALLBACK_DISPLAY_NAME, resolveDisplayName } from "@/lib/auth/display-name";
 import { DashboardShell, type DashboardNavItem } from "./dashboard-shell";
+import type { SubscriptionStatus } from "@/types/database";
 
 export const metadata: Metadata = {
   title: "도매업체 통합관리시스템 | 미트 파트너스",
@@ -38,6 +39,9 @@ export default async function DashboardLayout({
   let organizationName = "마장동 태양축산 (테스트 도매)";
   let roleLabel = "데모 열람 모드";
   let displayName = FALLBACK_DISPLAY_NAME;
+  // 슈퍼관리자(조직 미소속 감독 열람)나 아직 업체 레코드가 없는 계정은 null —
+  // 배지 자체를 숨긴다(관리자 전용 화면과 달리 여기선 "해당 없음"을 굳이 안 보여줌).
+  let subscriptionStatus: SubscriptionStatus | null = null;
 
   if (context) {
     roleLabel = context.isSuperAdmin
@@ -61,22 +65,33 @@ export default async function DashboardLayout({
     if (context.organizationId) {
       const { data: organization } = await supabase
         .from("organizations")
-        .select("name")
+        .select("name, wholesaler_id")
         .eq("id", context.organizationId)
         .maybeSingle();
 
       if (organization?.name) {
         organizationName = organization.name;
       }
+
+      if (organization?.wholesaler_id) {
+        const { data: wholesaler } = await supabase
+          .from("wholesalers")
+          .select("subscription_status")
+          .eq("id", organization.wholesaler_id as string)
+          .maybeSingle();
+
+        subscriptionStatus = (wholesaler?.subscription_status as SubscriptionStatus | undefined) ?? null;
+      }
     } else {
       // 조직 생성 전 단계 — Phase 1의 wholesalers 업체명을 사용한다.
       const { data: wholesaler } = await supabase
         .from("wholesalers")
-        .select("business_name")
+        .select("business_name, subscription_status")
         .eq("profile_id", context.userId)
         .maybeSingle();
 
       organizationName = wholesaler?.business_name ?? "도매업체 통합관리시스템";
+      subscriptionStatus = (wholesaler?.subscription_status as SubscriptionStatus | undefined) ?? null;
     }
   }
 
@@ -86,6 +101,7 @@ export default async function DashboardLayout({
       organizationName={organizationName}
       displayName={displayName}
       roleLabel={roleLabel}
+      subscriptionStatus={subscriptionStatus}
       isDemoMode={!context || !isSupabaseConfigured()}
     >
       {children}

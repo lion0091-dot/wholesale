@@ -16,6 +16,7 @@
  */
 
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/types/database";
 
@@ -424,4 +425,42 @@ export async function claimShopAccess(shopToken: string): Promise<ClaimShopAcces
     businessName: row.business_name,
     isLinked: row.is_linked,
   };
+}
+
+// ====================================================================
+// 동의 게이트 재확인 (cart/checkout/orders 등 하위 경로)
+// ====================================================================
+
+/**
+ * 하위 경로 진입 시 동의 게이트 재확인.
+ *
+ * 루트(/shop/<token>)는 로그인 직후 profiles.terms_agreed_at이 비어 있으면
+ * 카탈로그 대신 동의 화면을 보여준다(app/shop/[shop_token]/page.tsx). 하지만
+ * 동의를 건너뛰고 cart/checkout/orders를 직접 북마크·재방문하면 그 게이트를
+ * 안 거치고 들어올 수 있었다. 이 함수를 하위 페이지 최상단에서 호출해 같은
+ * 조건이면 루트로 되돌려보낸다(거기서 다시 동의 화면이 뜬다).
+ *
+ * 미로그인 사용자는 건드리지 않는다 — 하위 페이지들은 원래도 로그인을
+ * 강제하지 않고 guest 카탈로그로 대체해왔다(이 함수의 책임 범위 밖).
+ */
+export async function requireBuyerConsent(shopToken: string): Promise<void> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return;
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role, terms_agreed_at")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profile?.role === "retailer" && !profile.terms_agreed_at) {
+    redirect(`/shop/${shopToken}`);
+  }
 }

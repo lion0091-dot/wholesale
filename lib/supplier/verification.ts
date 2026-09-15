@@ -14,7 +14,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
-import { resolveDisplayName } from "@/lib/auth/display-name";
+import { resolveDisplayName, resolveKakaoNickname } from "@/lib/auth/display-name";
 import type { UserRole, WholesalerStatus } from "@/types/database";
 
 export interface SupplierAccount {
@@ -27,6 +27,13 @@ export interface SupplierAccount {
    */
   displayName: string;
   phone: string | null;
+  /**
+   * 카카오 세션(user_metadata)에서 읽은 이름/전화 제안값. DB(profiles)에는
+   * 저장되지 않은 값이라 폼 프리필 용도로만 쓴다 — 동의(complete_supplier_signup)
+   * 전에는 profiles.name/phone이 항상 비어 있으므로 이 값으로 대신 채운다.
+   */
+  kakaoName: string | null;
+  kakaoPhone: string | null;
   platformRole: UserRole | null;
   isSuperAdmin: boolean;
   isSupplier: boolean;
@@ -110,6 +117,12 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
         .eq("profile_id", user.id)
         .maybeSingle();
 
+  const kakaoName = resolveKakaoNickname(user.user_metadata);
+  const kakaoPhone =
+    (typeof user.user_metadata?.phone_number === "string"
+      ? user.user_metadata.phone_number.trim() || null
+      : null) ?? (user.phone || null);
+
   const isSuperAdmin = platformRole === "super_admin";
   const isSupplier = (profile?.is_supplier as boolean | undefined) ?? platformRole === "wholesaler";
   const isVerified = (profile?.is_verified as boolean | undefined) ?? false;
@@ -131,6 +144,8 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
       user.user_metadata
     ),
     phone: (profile?.phone as string | undefined) ?? null,
+    kakaoName,
+    kakaoPhone,
     platformRole,
     isSuperAdmin,
     isSupplier,

@@ -111,6 +111,23 @@ export interface Order {
   settled_at?: string | null;
 }
 
+/** 플랫폼 관리자 allowlist 항목 (public.platform_admin_allowlist 행 그대로). */
+export interface PlatformAdminAllowlistEntry {
+  id: string;
+  user_id: string;
+  /** 관리자 명단 편집 권한 (2단 권한의 상위 등급). */
+  can_grant: boolean;
+  /** 부여 경로 — 사람이 부여한 권한과 자동 부트스트랩을 감사에서 구분한다. */
+  source: "admin_grant" | "env_root" | "migration_backfill";
+  note: string | null;
+  granted_by: string | null;
+  /** null이면 활성. */
+  revoked_at: string | null;
+  revoked_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface OrderItem {
   id: string;
   order_id: string;
