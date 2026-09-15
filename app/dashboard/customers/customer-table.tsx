@@ -6,6 +6,7 @@ import { issueInviteAction, type IssuedInvite } from "@/app/actions/invite";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
 import type { RelationshipStatus } from "@/types/database";
 import { CustomerCardGrid } from "./customer-card-grid";
+import { updateCreditLimitAction } from "./actions";
 import type { CustomerRow } from "./customer-types";
 
 export type { CustomerRow } from "./customer-types";
@@ -77,6 +78,11 @@ export function CustomerTable({
   const [invite, setInvite] = useState<IssuedInvite | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [invitePending, startInviteTransition] = useTransition();
+
+  const [creditTarget, setCreditTarget] = useState<CustomerRow | null>(null);
+  const [creditValue, setCreditValue] = useState("");
+  const [creditError, setCreditError] = useState<string | null>(null);
+  const [creditPending, startCreditTransition] = useTransition();
 
   // 모달을 열 때마다 해당 바이어 전용 문구를 서버에서 새로 발부받는다.
   // (shop_token 은 미승인 상태에서 클라이언트로 내려오지 않으므로 문구를 조립할 수 없다)
@@ -165,6 +171,42 @@ export function CustomerTable({
     }
 
     setInviteTarget(customer);
+  };
+
+  const handleOpenCredit = (customer: CustomerRow) => {
+    if (readOnly) {
+      window.alert("샘플 데이터입니다. 로그인 후 실제 거래처에서 이용해주세요.");
+      return;
+    }
+
+    setCreditError(null);
+    setCreditValue(String(customer.creditLimit));
+    setCreditTarget(customer);
+  };
+
+  const handleSaveCredit = () => {
+    if (!creditTarget) {
+      return;
+    }
+
+    const parsed = Number(creditValue);
+
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setCreditError("0 이상의 숫자를 입력해주세요.");
+      return;
+    }
+
+    setCreditError(null);
+
+    startCreditTransition(async () => {
+      const result = await updateCreditLimitAction(creditTarget.id, parsed);
+
+      if (result.success) {
+        setCreditTarget(null);
+      } else {
+        setCreditError(result.error ?? "여신 한도 저장에 실패했습니다.");
+      }
+    });
   };
 
   return (
@@ -272,6 +314,7 @@ export function CustomerTable({
             issuePending={invitePending}
             onCopyLink={handleCopyCardLink}
             onOpenInvite={handleOpenInvite}
+            onOpenCredit={handleOpenCredit}
           />
         ) : (
           <div className="dash-table-wrap">
@@ -283,6 +326,7 @@ export function CustomerTable({
                   <th>배송지</th>
                   <th>맞춤 단가</th>
                   <th>발주 실적</th>
+                  <th>여신 한도</th>
                   <th>거래 상태</th>
                   <th>관리</th>
                 </tr>
@@ -350,6 +394,19 @@ export function CustomerTable({
                         </div>
                       </td>
 
+                      <td style={{ fontSize: "12px", whiteSpace: "nowrap" }}>
+                        {customer.creditLimit > 0 ? (
+                          <>
+                            <div style={{ fontWeight: 700 }}>{formatWon(customer.creditLimit)}</div>
+                            <div style={{ color: "#94a3b8", marginTop: "2px" }}>
+                              미수금 {formatWon(customer.outstandingBalance)}
+                            </div>
+                          </>
+                        ) : (
+                          <span style={{ color: "#94a3b8" }}>외상 미설정</span>
+                        )}
+                      </td>
+
                       <td>
                         <span
                           style={{
@@ -368,6 +425,13 @@ export function CustomerTable({
 
                       <td>
                         <div style={{ display: "flex", gap: "6px" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCredit(customer)}
+                            style={chipButtonStyle}
+                          >
+                            한도 수정
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleOpenInvite(customer)}
@@ -592,6 +656,137 @@ export function CustomerTable({
                 }}
               >
                 {copied === "message" ? "✓ 문구 복사 완료" : "💬 카톡 문구 복사"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 여신 한도 수정 모달 */}
+      {creditTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="여신 한도 수정"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 60,
+            backgroundColor: "rgba(15, 23, 42, 0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "16px",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "14px",
+              padding: "20px",
+              width: "100%",
+              maxWidth: "400px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "14px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+              <div style={{ flex: 1 }}>
+                <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
+                  여신 한도 수정
+                </h2>
+                <p style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
+                  {creditTarget.restaurantName} — 현재 미수금 {formatWon(creditTarget.outstandingBalance)}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="닫기"
+                onClick={() => setCreditTarget(null)}
+                style={{
+                  ...chipButtonStyle,
+                  border: "none",
+                  background: "none",
+                  fontSize: "18px",
+                  padding: "0 4px",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#475569",
+                  marginBottom: "5px",
+                }}
+              >
+                여신 한도 (원)
+              </label>
+              <input
+                type="number"
+                min={0}
+                step={10000}
+                value={creditValue}
+                onChange={(event) => setCreditValue(event.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "9px 11px",
+                  fontSize: "14px",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "6px",
+                }}
+              />
+              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+                0으로 설정하면 이 거래처는 외상 주문을 선택할 수 없습니다.
+              </p>
+            </div>
+
+            {creditError && (
+              <div
+                role="alert"
+                style={{
+                  backgroundColor: "#fee2e2",
+                  border: "1px solid #fecaca",
+                  color: "#991b1b",
+                  fontSize: "12px",
+                  padding: "9px 11px",
+                  borderRadius: "8px",
+                  lineHeight: 1.6,
+                }}
+              >
+                {creditError}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setCreditTarget(null)}
+                disabled={creditPending}
+                style={{ ...chipButtonStyle, padding: "9px 13px" }}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCredit}
+                disabled={creditPending}
+                style={{
+                  ...chipButtonStyle,
+                  backgroundColor: creditPending ? "#94a3b8" : "#0f172a",
+                  borderColor: creditPending ? "#94a3b8" : "#0f172a",
+                  color: "#ffffff",
+                  padding: "9px 13px",
+                  cursor: creditPending ? "not-allowed" : "pointer",
+                }}
+              >
+                {creditPending ? "저장 중..." : "저장"}
               </button>
             </div>
           </div>

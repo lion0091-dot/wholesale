@@ -43,6 +43,7 @@ const GUEST_CUSTOMER: ShopCustomer = {
   contactPhone: null,
   deliveryAddress: null,
   isLinked: false,
+  creditLimit: 0,
 };
 
 function demoWholesaler(shopToken: string): Wholesaler {
@@ -75,6 +76,8 @@ function demoCustomer(): ShopCustomer {
       .filter(Boolean)
       .join(", "),
     isLinked: retailer.status === "active",
+    // 데모 모드는 실제 wholesaler_retailers 행이 없으므로 외상 UI 시연용 고정값을 사용한다.
+    creditLimit: 300000,
   };
 }
 
@@ -136,6 +139,7 @@ async function resolveCustomer(
     contactPhone: buyer.contactPhone,
     deliveryAddress: buyer.deliveryAddress,
     isLinked: buyer.isLinked,
+    creditLimit: buyer.creditLimit,
   };
 }
 

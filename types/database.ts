@@ -11,6 +11,7 @@ export type OrderStatus =
   | "cancel_requested"
   | "cancel_rejected"
   | "cancelled";
+export type PaymentMethod = "prepaid" | "on_credit";
 
 export interface Profile {
   id: string;
@@ -91,6 +92,7 @@ export interface Order {
   order_number: string;
   total_amount: number;
   status: OrderStatus;
+  payment_method: PaymentMethod;
   delivery_address: string;
   delivery_notes: string | null;
   ordered_at: string;

@@ -155,6 +155,8 @@ export interface BuyerIdentity {
   deliveryAddress: string | null;
   /** 이 공급사와 활성(active) 거래 관계가 확인된 단골 여부 */
   isLinked: boolean;
+  /** 여신 한도 (0이면 외상 거래 불가). 미연결 상태면 0 */
+  creditLimit: number;
 }
 
 /** 거래 관계까지 확인된 바이어 — 발주/취소 요청의 전제 조건 */
@@ -167,6 +169,10 @@ export interface LinkedBuyer {
   wholesalerId: string;
   wholesalerName: string;
   wholesalerProfileId: string;
+  /** wholesaler_retailers.id — 외상 주문 시 apply_credit_order RPC 대상 식별자 */
+  relationshipId: string;
+  creditLimit: number;
+  outstandingBalance: number;
 }
 
 /**
@@ -205,6 +211,7 @@ export async function resolveBuyerIdentity(
       contactPhone: null,
       deliveryAddress: null,
       isLinked: false,
+      creditLimit: 0,
     };
   }
 
@@ -224,20 +231,23 @@ export async function resolveBuyerIdentity(
       contactPhone: (profile?.phone as string | undefined) ?? null,
       deliveryAddress: null,
       isLinked: false,
+      creditLimit: 0,
     };
   }
 
   let isLinked = false;
+  let creditLimit = 0;
 
   if (wholesalerId) {
     const { data: relation } = await supabase
       .from("wholesaler_retailers")
-      .select("status")
+      .select("status, credit_limit")
       .eq("wholesaler_id", wholesalerId)
       .eq("retailer_id", retailer.id as string)
       .maybeSingle();
 
     isLinked = relation?.status === "active";
+    creditLimit = isLinked ? Number(relation?.credit_limit ?? 0) : 0;
   }
 
   return {
@@ -251,6 +261,7 @@ export async function resolveBuyerIdentity(
       [retailer.delivery_address, retailer.delivery_address_detail].filter(Boolean).join(", ") ||
       null,
     isLinked,
+    creditLimit,
   };
 }
 
@@ -327,7 +338,7 @@ export async function requireLinkedBuyer(
 
   const { data: relation } = await supabase
     .from("wholesaler_retailers")
-    .select("status")
+    .select("id, status, credit_limit, outstanding_balance")
     .eq("wholesaler_id", wholesaler.id as string)
     .eq("retailer_id", retailer.id as string)
     .maybeSingle();
@@ -350,6 +361,9 @@ export async function requireLinkedBuyer(
     wholesalerId: wholesaler.id as string,
     wholesalerName: wholesaler.business_name as string,
     wholesalerProfileId: wholesaler.profile_id as string,
+    relationshipId: relation.id as string,
+    creditLimit: Number(relation.credit_limit ?? 0),
+    outstandingBalance: Number(relation.outstanding_balance ?? 0),
   };
 }
 

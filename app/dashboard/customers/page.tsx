@@ -27,6 +27,8 @@ interface RelationJoinRow {
   status: RelationshipStatus;
   memo: string | null;
   created_at: string;
+  credit_limit: number;
+  outstanding_balance: number;
   retailers:
     | {
         restaurant_name: string;
@@ -123,7 +125,7 @@ export default async function DashboardCustomersPage() {
       supabase
         .from("wholesaler_retailers")
         .select(
-          "retailer_id, status, memo, created_at, retailers ( restaurant_name, business_number, representative_name, delivery_address, delivery_address_detail )"
+          "retailer_id, status, memo, created_at, credit_limit, outstanding_balance, retailers ( restaurant_name, business_number, representative_name, delivery_address, delivery_address_detail )"
         )
         .eq("wholesaler_id", scope.wholesalerId)
         .order("created_at", { ascending: false }),
@@ -161,6 +163,8 @@ export default async function DashboardCustomersPage() {
           orderCount: stat?.orderCount ?? 0,
           lastOrderedAt: stat?.lastOrderedAt ?? null,
           totalOrderAmount: stat?.totalOrderAmount ?? 0,
+          creditLimit: Number(row.credit_limit ?? 0),
+          outstandingBalance: Number(row.outstanding_balance ?? 0),
         };
       });
 
@@ -199,6 +203,8 @@ export default async function DashboardCustomersPage() {
         orderCount: stat?.orderCount ?? 0,
         lastOrderedAt: stat?.lastOrderedAt ?? null,
         totalOrderAmount: stat?.totalOrderAmount ?? 0,
+        creditLimit: retailer.credit_limit,
+        outstandingBalance: retailer.outstanding_balance,
       };
     });
   }

@@ -15,4 +15,7 @@ export interface CustomerRow {
   orderCount: number;
   lastOrderedAt: string | null;
   totalOrderAmount: number;
+  /** 여신 한도 (0이면 외상 거래 불가) */
+  creditLimit: number;
+  outstandingBalance: number;
 }

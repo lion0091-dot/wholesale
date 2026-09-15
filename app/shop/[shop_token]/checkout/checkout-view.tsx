@@ -15,6 +15,7 @@ import {
   shopPageStyle,
 } from "../shop-chrome";
 import { submitOrderAction } from "../actions";
+import type { PaymentMethod } from "@/types/database";
 
 interface CheckoutViewProps {
   catalog: ShopCatalog;
@@ -36,6 +37,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
   const [contactPhone, setContactPhone] = useState(customer.contactPhone ?? "");
   const [deliveryAddress, setDeliveryAddress] = useState(customer.deliveryAddress ?? "");
   const [deliveryNotes, setDeliveryNotes] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("prepaid");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
@@ -67,6 +69,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
         contactPhone,
         deliveryAddress,
         deliveryNotes,
+        paymentMethod,
       });
 
       if (result.success && result.orderNumber) {
@@ -336,6 +339,54 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               style={{ ...inputStyle, resize: "vertical" }}
             />
           </div>
+
+          {customer.creditLimit > 0 && (
+            <div>
+              <label style={labelStyle}>결제 방식</label>
+              <div style={{ display: "flex", gap: "8px" }}>
+                {(
+                  [
+                    { value: "prepaid" as PaymentMethod, label: "즉시 결제" },
+                    { value: "on_credit" as PaymentMethod, label: "외상 거래" },
+                  ]
+                ).map((option) => (
+                  <label
+                    key={option.value}
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: `1px solid ${paymentMethod === option.value ? "#0f172a" : "#e2e8f0"}`,
+                      backgroundColor: paymentMethod === option.value ? "#0f172a" : "#ffffff",
+                      color: paymentMethod === option.value ? "#ffffff" : "#334155",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="payment-method"
+                      value={option.value}
+                      checked={paymentMethod === option.value}
+                      onChange={() => setPaymentMethod(option.value)}
+                      style={{ display: "none" }}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+              {paymentMethod === "on_credit" && (
+                <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "6px" }}>
+                  여신 한도 내에서 미수금으로 기록되며, 정산은 공급사와의 약정에 따릅니다.
+                </p>
+              )}
+            </div>
+          )}
 
           <div
             style={{
