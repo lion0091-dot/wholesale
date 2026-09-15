@@ -1,24 +1,12 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { requireAdminGranter } from "@/lib/auth/admin-granter";
-import { createClient } from "@/lib/supabase/server";
 import { listAdminsAction } from "./actions";
 import { AdminAdminsClient } from "./admin-admins-client";
 
 export default async function AdminAdminsPage() {
   // 다른 관리자를 승격/강등할 수 있는 계정(can_grant=true super_admin)만 통과.
-  // 통과하지 못하면 내부에서 redirect() 로 처리되므로 반환값은 보지 않는다.
-  await requireAdminGranter();
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // requireAdminGranter()를 통과했다면 세션이 있어야 하지만, 방어적으로 한 번 더 확인한다.
-  if (!user) {
-    redirect("/login?next=/admin/admins");
-  }
+  // 통과하지 못하면 내부에서 redirect() 로 처리되므로 실패 케이스는 신경 쓰지 않는다.
+  const userId = await requireAdminGranter();
 
   const result = await listAdminsAction();
 
@@ -59,7 +47,7 @@ export default async function AdminAdminsPage() {
         </p>
       </header>
 
-      <AdminAdminsClient initialAdmins={result.data ?? []} currentUserId={user.id} />
+      <AdminAdminsClient initialAdmins={result.data ?? []} currentUserId={userId} />
     </main>
   );
 }

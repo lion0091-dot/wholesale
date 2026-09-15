@@ -16,13 +16,22 @@ import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 /**
  * 현재 세션이 다른 관리자를 승격/강등할 수 있는 계정인지 확인한다.
  * 통과하지 못하면 redirect() 로 로그인 페이지로 보낸다(반환하지 않음).
+ * 통과하면 호출부가 다시 getUser()를 부르지 않도록 세션 사용자 id를 돌려준다.
  */
-export async function requireAdminGranter(): Promise<void> {
+export async function requireAdminGranter(): Promise<string> {
   if (!isSupabaseConfigured()) {
     redirect("/login?next=/admin/admins");
   }
 
   const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login?next=/admin/admins");
+  }
 
   let data: unknown;
   let error: { message: string } | null;
@@ -45,4 +54,6 @@ export async function requireAdminGranter(): Promise<void> {
   if (!data) {
     redirect("/login?next=/admin/admins");
   }
+
+  return user.id;
 }

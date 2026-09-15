@@ -65,7 +65,7 @@ export default async function DashboardLayout({
     if (context.organizationId) {
       const { data: organization } = await supabase
         .from("organizations")
-        .select("name, wholesaler_id")
+        .select("name, wholesalers ( subscription_status )")
         .eq("id", context.organizationId)
         .maybeSingle();
 
@@ -73,15 +73,11 @@ export default async function DashboardLayout({
         organizationName = organization.name;
       }
 
-      if (organization?.wholesaler_id) {
-        const { data: wholesaler } = await supabase
-          .from("wholesalers")
-          .select("subscription_status")
-          .eq("id", organization.wholesaler_id as string)
-          .maybeSingle();
+      const wholesaler = Array.isArray(organization?.wholesalers)
+        ? organization.wholesalers[0]
+        : organization?.wholesalers;
 
-        subscriptionStatus = (wholesaler?.subscription_status as SubscriptionStatus | undefined) ?? null;
-      }
+      subscriptionStatus = (wholesaler?.subscription_status as SubscriptionStatus | undefined) ?? null;
     } else {
       // 조직 생성 전 단계 — Phase 1의 wholesalers 업체명을 사용한다.
       const { data: wholesaler } = await supabase
