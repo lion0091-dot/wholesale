@@ -30,6 +30,16 @@ export interface CancelRequestNotificationPayload {
   cancelReason: string;
 }
 
+export interface CreditLimitExceededNotificationPayload {
+  wholesalerName: string;
+  wholesalerPhone?: string;
+  restaurantName: string;
+  creditLimit: number;
+  outstandingBalance: number;
+  /** 거절된 주문의 시도 금액 */
+  attemptedAmount: number;
+}
+
 export interface ReceivablesReminderPayload {
   wholesalerName: string;
   retailerName: string;
@@ -156,6 +166,33 @@ ${payload.wholesalerName} 대표님, 바이어(구매 회원)가 접수된 발�
 
   return dispatchAlimtalk({
     templateTitle: "주문 취소 요청 접수 알림",
+    formattedMessage,
+    targetPhone: payload.wholesalerPhone,
+  });
+}
+
+/**
+ * 도매업자 대상 '여신 한도 초과로 주문 거절' 알림톡.
+ *
+ * 바이어가 외상 주문을 시도했으나 한도 초과로 주문 자체가 성립되지 않았을 때 트리거된다.
+ * (사전 체크 또는 apply_credit_order RPC 백스톱 두 경로 모두 이 함수를 호출한다)
+ */
+export async function sendCreditLimitExceededNotificationToWholesaler(
+  payload: CreditLimitExceededNotificationPayload
+): Promise<NotificationResult> {
+  const formattedMessage = `[여신 한도 초과 - 외상 주문 거절 안내]
+
+${payload.wholesalerName} 대표님, ${payload.restaurantName}에서 외상 주문을 시도했으나 여신 한도를
+초과하여 주문이 접수되지 않았습니다.
+
+■ 여신 한도: ${formatWon(payload.creditLimit)}
+■ 현재 미수금: ${formatWon(payload.outstandingBalance)}
+■ 시도한 주문 금액: ${formatWon(payload.attemptedAmount)}
+
+미수금 정산 화면에서 정산 처리하거나 거래처 한도를 조정하시면 재주문이 가능합니다.`;
+
+  return dispatchAlimtalk({
+    templateTitle: "여신 한도 초과 주문 거절 안내",
     formattedMessage,
     targetPhone: payload.wholesalerPhone,
   });

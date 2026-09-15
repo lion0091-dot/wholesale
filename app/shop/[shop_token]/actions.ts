@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { BuyerAuthError, requireLinkedBuyer, type LinkedBuyer } from "@/lib/auth/buyer-auth";
 import {
   sendCancelRequestNotificationToWholesaler,
+  sendCreditLimitExceededNotificationToWholesaler,
   sendOrderNotificationToWholesaler,
 } from "@/lib/notifications/alimtalk";
 import { canRequestCancel } from "@/lib/orders/status";
@@ -87,6 +88,32 @@ async function backfillRetailerProfile(
 }
 
 /**
+ * 여신 한도 초과로 외상 주문이 거절됐을 때 도매업자에게 알림톡을 보낸다.
+ * 사전 체크(빠른 실패)와 apply_credit_order RPC 백스톱 두 경로 모두에서 호출된다.
+ */
+async function notifyCreditLimitExceeded(
+  supabase: SupabaseServerClient,
+  buyer: LinkedBuyer,
+  restaurantName: string,
+  attemptedAmount: number
+): Promise<void> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("phone")
+    .eq("id", buyer.wholesalerProfileId)
+    .maybeSingle();
+
+  await sendCreditLimitExceededNotificationToWholesaler({
+    wholesalerName: buyer.wholesalerName,
+    wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,
+    restaurantName,
+    creditLimit: buyer.creditLimit,
+    outstandingBalance: buyer.outstandingBalance,
+    attemptedAmount,
+  });
+}
+
+/**
  * 발주서 최종 제출.
  * 1) 서버 카탈로그로 단가 재해석 → 2) 최소 주문 금액/수량·재고 검증 →
  * 3) auth.uid() 기반 바이어 신원·거래 관계 검증 → 4) orders/order_items 저장
@@ -151,6 +178,8 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
         // 빠른 실패용 사전 검증. 동시 주문에 의한 한도 초과는 apply_credit_order RPC가
         // 원자적으로 다시 막는다 (아래 3번 단계).
         if (buyer.outstandingBalance + totalAmount > buyer.creditLimit) {
+          await notifyCreditLimitExceeded(supabase, buyer, restaurantName, totalAmount);
+
           return {
             success: false,
             error: "여신 한도를 초과하여 주문할 수 없습니다. 미수금 정산 후 다시 시도해주세요.",
@@ -215,9 +244,15 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
           // 잔액 반영에 실패한 외상 주문은 남겨두지 않는다 (order_items는 CASCADE로 함께 삭제).
           await supabase.from("orders").delete().eq("id", insertedOrder.id as string);
 
+          const isCreditLimitExceeded = creditError.message.includes("CREDIT_LIMIT_EXCEEDED");
+
+          if (isCreditLimitExceeded) {
+            await notifyCreditLimitExceeded(supabase, buyer, restaurantName, totalAmount);
+          }
+
           return {
             success: false,
-            error: creditError.message.includes("CREDIT_LIMIT_EXCEEDED")
+            error: isCreditLimitExceeded
               ? "여신 한도를 초과하여 주문할 수 없습니다. 미수금 정산 후 다시 시도해주세요."
               : "외상 잔액 반영에 실패했습니다. 잠시 후 다시 시도해주세요.",
           };
