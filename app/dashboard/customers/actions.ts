@@ -6,17 +6,22 @@ import { getSupplierScope } from "@/lib/supplier/scope";
 import type { ActionResult } from "@/app/actions/invite";
 
 /**
- * 거래처(바이어)의 여신 한도 수정.
+ * 거래처(바이어)의 여신 한도 / 연체 기준일 수정.
  * RLS(wholesaler_id = get_current_wholesaler_id())가 소유권을 한 번 더 검증하므로,
  * 여기서의 wholesaler_id 필터는 방어선 중 하나일 뿐이다.
  */
 export async function updateCreditLimitAction(
   retailerId: string,
-  creditLimit: number
+  creditLimit: number,
+  settlementDueDays: number
 ): Promise<ActionResult> {
   try {
     if (!Number.isFinite(creditLimit) || creditLimit < 0) {
       return { success: false, error: "여신 한도는 0 이상의 숫자여야 합니다." };
+    }
+
+    if (!Number.isFinite(settlementDueDays) || settlementDueDays <= 0) {
+      return { success: false, error: "연체 기준일은 1 이상의 숫자여야 합니다." };
     }
 
     const scope = await getSupplierScope();
@@ -29,7 +34,7 @@ export async function updateCreditLimitAction(
 
     const { data, error } = await supabase
       .from("wholesaler_retailers")
-      .update({ credit_limit: creditLimit })
+      .update({ credit_limit: creditLimit, settlement_due_days: settlementDueDays })
       .eq("wholesaler_id", scope.wholesalerId)
       .eq("retailer_id", retailerId)
       .select("id")
@@ -44,6 +49,7 @@ export async function updateCreditLimitAction(
     }
 
     revalidatePath("/dashboard/customers");
+    revalidatePath("/dashboard/receivables");
 
     return { success: true };
   } catch (error) {

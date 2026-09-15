@@ -18,4 +18,6 @@ export interface CustomerRow {
   /** 여신 한도 (0이면 외상 거래 불가) */
   creditLimit: number;
   outstandingBalance: number;
+  /** 연체 기준일 — 주문일로부터 이 일수가 지나면 미수금 정산 화면에서 연체로 표시 */
+  settlementDueDays: number;
 }

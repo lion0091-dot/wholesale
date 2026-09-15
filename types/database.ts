@@ -104,6 +104,11 @@ export interface Order {
   cancel_reason?: string | null;
   cancel_requested_at?: string | null;
   cancel_resolved_at?: string | null;
+  /**
+   * 외상(on_credit) 주문 정산 완료 시각 (마이그레이션 20260915040000에서 추가).
+   * NULL이면 미정산. prepaid 주문에는 의미가 없다.
+   */
+  settled_at?: string | null;
 }
 
 export interface OrderItem {

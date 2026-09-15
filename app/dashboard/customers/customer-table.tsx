@@ -81,6 +81,7 @@ export function CustomerTable({
 
   const [creditTarget, setCreditTarget] = useState<CustomerRow | null>(null);
   const [creditValue, setCreditValue] = useState("");
+  const [dueDaysValue, setDueDaysValue] = useState("");
   const [creditError, setCreditError] = useState<string | null>(null);
   const [creditPending, startCreditTransition] = useTransition();
 
@@ -181,6 +182,7 @@ export function CustomerTable({
 
     setCreditError(null);
     setCreditValue(String(customer.creditLimit));
+    setDueDaysValue(String(customer.settlementDueDays));
     setCreditTarget(customer);
   };
 
@@ -189,17 +191,23 @@ export function CustomerTable({
       return;
     }
 
-    const parsed = Number(creditValue);
+    const parsedCredit = Number(creditValue);
+    const parsedDueDays = Number(dueDaysValue);
 
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      setCreditError("0 이상의 숫자를 입력해주세요.");
+    if (!Number.isFinite(parsedCredit) || parsedCredit < 0) {
+      setCreditError("여신 한도는 0 이상의 숫자를 입력해주세요.");
+      return;
+    }
+
+    if (!Number.isFinite(parsedDueDays) || parsedDueDays <= 0) {
+      setCreditError("연체 기준일은 1 이상의 숫자를 입력해주세요.");
       return;
     }
 
     setCreditError(null);
 
     startCreditTransition(async () => {
-      const result = await updateCreditLimitAction(creditTarget.id, parsed);
+      const result = await updateCreditLimitAction(creditTarget.id, parsedCredit, parsedDueDays);
 
       if (result.success) {
         setCreditTarget(null);
@@ -744,6 +752,37 @@ export function CustomerTable({
               />
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
                 0으로 설정하면 이 거래처는 외상 주문을 선택할 수 없습니다.
+              </p>
+            </div>
+
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#475569",
+                  marginBottom: "5px",
+                }}
+              >
+                연체 기준일 (일)
+              </label>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={dueDaysValue}
+                onChange={(event) => setDueDaysValue(event.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "9px 11px",
+                  fontSize: "14px",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "6px",
+                }}
+              />
+              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+                주문일로부터 이 일수가 지나면 미수금 정산 화면에서 연체로 표시됩니다.
               </p>
             </div>
 

@@ -76,6 +76,7 @@ export interface DemoRetailer {
   /** 여신 한도 (0이면 외상 거래 불가) */
   credit_limit: number;
   outstanding_balance: number;
+  settlement_due_days: number;
 }
 
 export const DEMO_RETAILERS: DemoRetailer[] = [
@@ -91,6 +92,7 @@ export const DEMO_RETAILERS: DemoRetailer[] = [
     created_at: "2026-06-14T02:10:00.000Z",
     credit_limit: 0,
     outstanding_balance: 0,
+    settlement_due_days: 30,
   },
   {
     id: "demo-retailer-2",
@@ -104,6 +106,7 @@ export const DEMO_RETAILERS: DemoRetailer[] = [
     created_at: "2026-07-02T05:30:00.000Z",
     credit_limit: 500000,
     outstanding_balance: 185000,
+    settlement_due_days: 30,
   },
   {
     id: "demo-retailer-3",
@@ -117,6 +120,7 @@ export const DEMO_RETAILERS: DemoRetailer[] = [
     created_at: "2026-08-21T01:05:00.000Z",
     credit_limit: 200000,
     outstanding_balance: 0,
+    settlement_due_days: 14,
   },
 ];
 
