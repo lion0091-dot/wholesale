@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
+import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { computeDueAt, isOverdue } from "@/lib/orders/receivables";
 import { formatWon } from "@/lib/orders/status";
 import { DEMO_ORDERS, DEMO_RETAILERS } from "@/lib/demo/supplier-samples";
@@ -111,6 +112,10 @@ function demoGroups(): ReceivableCustomerGroup[] {
 
 export default async function DashboardReceivablesPage() {
   const scope = await getSupplierScope();
+
+  if (scope?.isSuperAdmin && !scope.wholesalerId) {
+    return <AdminScopeNotice />;
+  }
 
   let groups: ReceivableCustomerGroup[] = [];
   let isDemoData = true;

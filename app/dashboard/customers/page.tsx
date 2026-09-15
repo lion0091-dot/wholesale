@@ -5,6 +5,7 @@ import {
   getSupplierAccount,
 } from "@/lib/supplier/verification";
 import { PendingApprovalBanner } from "@/components/pending-approval-banner";
+import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import {
   DEMO_CUSTOM_PRICES,
   DEMO_ORDERS,
@@ -108,6 +109,11 @@ function countByRetailer(rows: Array<{ retailer_id: string }>): Map<string, numb
 
 export default async function DashboardCustomersPage() {
   const scope = await getSupplierScope();
+
+  if (scope?.isSuperAdmin && !scope.wholesalerId) {
+    return <AdminScopeNotice />;
+  }
+
   // 초대장 발부는 행정 승인(is_verified) 후에만 열린다.
   const account = await getSupplierAccount();
   const canIssueInvite = account?.canIssueInvite ?? false;

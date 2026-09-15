@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
+import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { listCustomPrices } from "@/app/actions/custom_price";
 import {
   DEMO_CUSTOM_PRICES,
@@ -37,6 +38,10 @@ interface CustomPricesPageProps {
 export default async function CustomPricesPage({ searchParams }: CustomPricesPageProps) {
   const { retailer: requestedRetailerId } = await searchParams;
   const scope = await getSupplierScope();
+
+  if (scope?.isSuperAdmin && !scope.wholesalerId) {
+    return <AdminScopeNotice />;
+  }
 
   let customers: CustomerOption[] = [];
   let products: ProductOption[] = [];
