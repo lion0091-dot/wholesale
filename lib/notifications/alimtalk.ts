@@ -7,6 +7,8 @@
  * - 개발 및 테스트 환경에서는 카카오 알림톡 규격 템플릿 포맷팅과 구조화된 mock 발송 영수증을 반환
  */
 
+import { formatOrderedAt, formatWon } from "@/lib/orders/status";
+
 export interface OrderNotificationPayload {
   wholesalerName: string;
   wholesalerPhone?: string;
@@ -26,6 +28,17 @@ export interface CancelRequestNotificationPayload {
   totalAmount: number;
   /** 바이어가 입력한 취소 요청 사유 */
   cancelReason: string;
+}
+
+export interface ReceivablesReminderPayload {
+  wholesalerName: string;
+  retailerName: string;
+  retailerPhone?: string;
+  outstandingBalance: number;
+  /** 정산 기한이 가장 임박한(또는 지난) 주문의 기한 — 표시용 */
+  nearestDueAt: string;
+  /** true면 이미 연체(경과), false면 기한 임박 */
+  isOverdue: boolean;
 }
 
 export interface NotificationResult {
@@ -145,5 +158,34 @@ ${payload.wholesalerName} 대표님, 바이어(구매 회원)가 접수된 발�
     templateTitle: "주문 취소 요청 접수 알림",
     formattedMessage,
     targetPhone: payload.wholesalerPhone,
+  });
+}
+
+/**
+ * 거래처(식당) 대상 미수금 정산 기한 리마인드 알림톡.
+ *
+ * 공급사가 미수금 정산 화면에서 거래처별로 수동 발송한다.
+ * 기한 임박/경과 여부에 따라 문구만 달라지고 발송 경로는 동일하다.
+ */
+export async function sendReceivablesReminderToRetailer(
+  payload: ReceivablesReminderPayload
+): Promise<NotificationResult> {
+  const statusLine = payload.isOverdue
+    ? `정산 기한이 ${formatOrderedAt(payload.nearestDueAt)}에 이미 지났습니다.`
+    : `정산 기한(${formatOrderedAt(payload.nearestDueAt)})이 임박했습니다.`;
+
+  const formattedMessage = `[외상 거래 미수금 정산 안내]
+
+${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
+
+■ 현재 미수금: ${formatWon(payload.outstandingBalance)}
+■ ${statusLine}
+
+빠른 시일 내 정산 부탁드립니다. 이미 정산을 완료하셨다면 안내를 확인해 주시기 바랍니다.`;
+
+  return dispatchAlimtalk({
+    templateTitle: payload.isOverdue ? "미수금 정산 경과 리마인드" : "미수금 정산 기한 임박 리마인드",
+    formattedMessage,
+    targetPhone: payload.retailerPhone,
   });
 }

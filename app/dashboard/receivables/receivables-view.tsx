@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
-import { settleCreditOrdersAction } from "./actions";
+import { sendReceivablesReminderAction, settleCreditOrdersAction } from "./actions";
 import type { ReceivableCustomerGroup } from "./receivable-types";
 
 interface ReceivablesViewProps {
@@ -16,6 +16,12 @@ export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewPro
   const [pendingGroupId, setPendingGroupId] = useState<string | null>(null);
   const [errorByGroup, setErrorByGroup] = useState<Record<string, string>>({});
   const [isPending, startTransition] = useTransition();
+
+  const [reminderPendingGroupId, setReminderPendingGroupId] = useState<string | null>(null);
+  const [reminderStatusByGroup, setReminderStatusByGroup] = useState<
+    Record<string, { type: "success" | "error"; text: string } | undefined>
+  >({});
+  const [isReminderPending, startReminderTransition] = useTransition();
 
   const toggleOrder = (orderId: string) => {
     setSelected((prev) => {
@@ -83,6 +89,29 @@ export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewPro
     });
   };
 
+  const handleSendReminder = (group: ReceivableCustomerGroup) => {
+    if (readOnly) {
+      window.alert("샘플 데이터입니다. 로그인 후 실제 거래처에서 이용해주세요.");
+      return;
+    }
+
+    setReminderStatusByGroup((prev) => ({ ...prev, [group.retailerId]: undefined }));
+    setReminderPendingGroupId(group.retailerId);
+
+    startReminderTransition(async () => {
+      const result = await sendReceivablesReminderAction(group.retailerId);
+
+      setReminderStatusByGroup((prev) => ({
+        ...prev,
+        [group.retailerId]: result.success
+          ? { type: "success", text: result.data ?? "리마인드를 발송했습니다." }
+          : { type: "error", text: result.error ?? "리마인드 발송에 실패했습니다." },
+      }));
+
+      setReminderPendingGroupId(null);
+    });
+  };
+
   const totalSelected = useMemo(() => selected.size, [selected]);
 
   if (groups.length === 0) {
@@ -112,6 +141,8 @@ export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewPro
         const groupPending = isPending && pendingGroupId === group.retailerId;
         const groupError = errorByGroup[group.retailerId];
         const hasOverdue = group.orders.some((order) => order.isOverdue);
+        const reminderPending = isReminderPending && reminderPendingGroupId === group.retailerId;
+        const reminderStatus = reminderStatusByGroup[group.retailerId];
 
         return (
           <section
@@ -160,24 +191,45 @@ export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewPro
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleSettle(group)}
-                disabled={groupPending}
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  padding: "8px 14px",
-                  borderRadius: "7px",
-                  border: "none",
-                  backgroundColor: groupPending ? "#94a3b8" : "#0f172a",
-                  color: "#ffffff",
-                  cursor: groupPending ? "not-allowed" : "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {groupPending ? "처리 중..." : "선택 항목 정산 완료"}
-              </button>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => handleSendReminder(group)}
+                  disabled={reminderPending}
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    padding: "8px 14px",
+                    borderRadius: "7px",
+                    border: "1px solid #cbd5e1",
+                    backgroundColor: reminderPending ? "#f1f5f9" : "#ffffff",
+                    color: "#334155",
+                    cursor: reminderPending ? "not-allowed" : "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {reminderPending ? "발송 중..." : "리마인드 발송"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSettle(group)}
+                  disabled={groupPending}
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    padding: "8px 14px",
+                    borderRadius: "7px",
+                    border: "none",
+                    backgroundColor: groupPending ? "#94a3b8" : "#0f172a",
+                    color: "#ffffff",
+                    cursor: groupPending ? "not-allowed" : "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {groupPending ? "처리 중..." : "선택 항목 정산 완료"}
+                </button>
+              </div>
             </div>
 
             {groupError && (
@@ -191,6 +243,20 @@ export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewPro
                 }}
               >
                 {groupError}
+              </div>
+            )}
+
+            {reminderStatus && (
+              <div
+                role="status"
+                style={{
+                  backgroundColor: reminderStatus.type === "success" ? "#f0fdf4" : "#fee2e2",
+                  color: reminderStatus.type === "success" ? "#166534" : "#991b1b",
+                  fontSize: "12px",
+                  padding: "8px 16px",
+                }}
+              >
+                {reminderStatus.text}
               </div>
             )}
 
