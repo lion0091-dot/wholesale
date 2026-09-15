@@ -116,7 +116,7 @@ try {
   await actAs(SUPPLIER_UID);
 
   const { rows: signup } = await client.query(
-    `SELECT public.complete_supplier_signup('마장동 태양축산', '김태양', '010-1234-5678', NULL, true) AS result`
+    `SELECT public.complete_supplier_signup('마장동 태양축산', '김태양', '010-1234-5678', '서울 성동구 마장로 123, 2층', NULL, true) AS result`
   );
   const signupResult = signup[0].result;
 

@@ -22,6 +22,7 @@ import {
   shopPageStyle,
 } from "../shop-chrome";
 import { requestOrderCancelAction } from "../actions";
+import { StatementPreviewButton } from "@/components/statement-preview-button";
 
 interface OrderHistoryViewProps {
   catalog: ShopCatalog;
@@ -219,6 +220,13 @@ export function OrderHistoryView({ catalog, history }: OrderHistoryViewProps) {
                 <strong style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
                   {formatWon(order.totalAmount)}
                 </strong>
+              </div>
+
+              <div style={{ marginTop: "10px" }}>
+                <StatementPreviewButton
+                  href={`/shop/${shopToken}/orders/${order.id}/statement`}
+                  label="거래명세서"
+                />
               </div>
 
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "8px", lineHeight: 1.6 }}>

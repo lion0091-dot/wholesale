@@ -1,5 +1,6 @@
-import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import {
   DEFAULT_DEV_BUSINESS_NUMBER,
@@ -33,23 +34,9 @@ export interface DevOrgResult {
   reason?: string;
 }
 
-/**
- * Service Role 클라이언트. 기본 테스트 조직은 RLS(소속 직원만 조회 가능,
- * 직원 없는 조직에만 self-bootstrap 허용)에 걸리기 때문에, 키가 있으면
- * 이를 경유해야 여러 테스트 계정을 같은 조직에 붙일 수 있다.
- */
-function createAdminClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceRoleKey || serviceRoleKey.includes("your-supabase")) {
-    return null;
-  }
-
-  return createSupabaseClient(url, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
+// 기본 테스트 조직은 RLS(소속 직원만 조회 가능, 직원 없는 조직에만 self-bootstrap 허용)에
+// 걸리기 때문에, service_role 키가 있으면 이를 경유해야 여러 테스트 계정을 같은 조직에
+// 붙일 수 있다. 클라이언트 생성 자체는 lib/supabase/service-role-client.ts 공용 헬퍼를 쓴다.
 
 export async function ensureDevDefaultOrganization(): Promise<DevOrgResult> {
   if (!isDevOrgBypassEnabled()) {
@@ -87,7 +74,7 @@ export async function ensureDevDefaultOrganization(): Promise<DevOrgResult> {
   }
 
   // RLS를 우회할 수 있으면 admin, 아니면 사용자 클라이언트로 best-effort 시도
-  const admin = createAdminClient();
+  const admin = createServiceRoleClient();
   const writer: SupabaseClient = admin ?? (supabase as unknown as SupabaseClient);
 
   // 1) 기본 테스트 조직 조회

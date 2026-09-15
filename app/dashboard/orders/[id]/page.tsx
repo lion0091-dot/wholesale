@@ -11,6 +11,7 @@ import {
   resolveAlimtalkStatus,
 } from "@/lib/orders/status";
 import { OrderStatusPanel } from "./order-status-panel";
+import { StatementPreviewButton } from "@/components/statement-preview-button";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 export const metadata = {
@@ -207,6 +208,8 @@ export default async function OrderDetailPage({ params }: PageProps) {
         <p style={{ fontSize: "13px", color: "#64748b" }}>
           접수 {formatOrderedAt(order.orderedAt)} · 최근 변경 {formatOrderedAt(order.updatedAt)}
         </p>
+
+        <StatementPreviewButton href={`/dashboard/orders/${order.id}/statement`} label="거래명세서" />
       </header>
 
       {isDemoData && (

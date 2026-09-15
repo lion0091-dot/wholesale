@@ -43,6 +43,7 @@ const GUEST_CUSTOMER: ShopCustomer = {
   contactPhone: null,
   deliveryAddress: null,
   isLinked: false,
+  creditLimit: 0,
 };
 
 function demoWholesaler(shopToken: string): Wholesaler {
@@ -54,6 +55,7 @@ function demoWholesaler(shopToken: string): Wholesaler {
     business_name: "마장동 태양축산 (테스트 도매)",
     business_number: "123-45-67890",
     representative_name: "김태양",
+    business_address: "서울 성동구 마장로 123, 2층",
     shop_token: shopToken,
     status: "active",
     subscription_status: "active",
@@ -75,6 +77,8 @@ function demoCustomer(): ShopCustomer {
       .filter(Boolean)
       .join(", "),
     isLinked: retailer.status === "active",
+    // 데모 모드는 실제 wholesaler_retailers 행이 없으므로 외상 UI 시연용 고정값을 사용한다.
+    creditLimit: 300000,
   };
 }
 
@@ -136,6 +140,7 @@ async function resolveCustomer(
     contactPhone: buyer.contactPhone,
     deliveryAddress: buyer.deliveryAddress,
     isLinked: buyer.isLinked,
+    creditLimit: buyer.creditLimit,
   };
 }
 

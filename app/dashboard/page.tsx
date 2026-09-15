@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getOrgStaffContext } from "@/lib/auth/rbac";
 import { CopyInviteButton } from "@/components/copy-invite-button";
 import { PendingApprovalBanner } from "@/components/pending-approval-banner";
+import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import {
   describeInviteRestriction,
   getSupplierAccount,
@@ -117,17 +118,23 @@ export default async function DashboardPage() {
       wholesalerId = (organization?.wholesaler_id as string | null) ?? null;
     }
 
+    // super_admin은 조직 소속(wholesalerId)이 없는 한 자기 profile_id로 업체를 자동
+    // 매칭하지 않는다 (lib/supplier/scope.ts의 getSupplierScope()와 동일한 방어).
+    const shouldLookupByProfile = !wholesalerId && !context.isSuperAdmin;
+
     const { data: wholesaler } = wholesalerId
       ? await supabase
           .from("wholesalers")
           .select("id, business_name, shop_token")
           .eq("id", wholesalerId)
           .maybeSingle()
-      : await supabase
-          .from("wholesalers")
-          .select("id, business_name, shop_token")
-          .eq("profile_id", context.userId)
-          .maybeSingle();
+      : shouldLookupByProfile
+        ? await supabase
+            .from("wholesalers")
+            .select("id, business_name, shop_token")
+            .eq("profile_id", context.userId)
+            .maybeSingle()
+        : { data: null };
 
     if (wholesaler) {
       wholesalerId = wholesaler.id as string;
@@ -162,6 +169,10 @@ export default async function DashboardPage() {
         isDemoData = false;
       }
     }
+  }
+
+  if (isDemoData && context?.isSuperAdmin) {
+    return <AdminScopeNotice />;
   }
 
   // 미인증(데모) 또는 이번 달 데이터가 아직 없을 때 보여줄 샘플 요약

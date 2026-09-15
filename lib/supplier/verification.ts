@@ -14,7 +14,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
-import { resolveDisplayName } from "@/lib/auth/display-name";
+import { resolveDisplayName, resolveKakaoNickname } from "@/lib/auth/display-name";
 import type { UserRole, WholesalerStatus } from "@/types/database";
 
 export interface SupplierAccount {
@@ -27,6 +27,13 @@ export interface SupplierAccount {
    */
   displayName: string;
   phone: string | null;
+  /**
+   * 카카오 세션(user_metadata)에서 읽은 이름/전화 제안값. DB(profiles)에는
+   * 저장되지 않은 값이라 폼 프리필 용도로만 쓴다 — 동의(complete_supplier_signup)
+   * 전에는 profiles.name/phone이 항상 비어 있으므로 이 값으로 대신 채운다.
+   */
+  kakaoName: string | null;
+  kakaoPhone: string | null;
   platformRole: UserRole | null;
   isSuperAdmin: boolean;
   isSupplier: boolean;
@@ -38,6 +45,8 @@ export interface SupplierAccount {
   wholesalerId: string | null;
   businessName: string | null;
   businessNumber: string | null;
+  /** 사업장 주소 — 거래명세서 PDF 발행에 필수. null이면 발행이 막힌다 */
+  businessAddress: string | null;
   shopToken: string | null;
   supplierStatus: WholesalerStatus | null;
   /** 최소 정보(약관 + 연락처 + 상호) 입력이 남아 있는지 */
@@ -101,14 +110,20 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
   const { data: wholesaler } = linkedWholesalerId
     ? await supabase
         .from("wholesalers")
-        .select("id, business_name, business_number, shop_token, status")
+        .select("id, business_name, business_number, business_address, shop_token, status")
         .eq("id", linkedWholesalerId)
         .maybeSingle()
     : await supabase
         .from("wholesalers")
-        .select("id, business_name, business_number, shop_token, status")
+        .select("id, business_name, business_number, business_address, shop_token, status")
         .eq("profile_id", user.id)
         .maybeSingle();
+
+  const kakaoName = resolveKakaoNickname(user.user_metadata);
+  const kakaoPhone =
+    (typeof user.user_metadata?.phone_number === "string"
+      ? user.user_metadata.phone_number.trim() || null
+      : null) ?? (user.phone || null);
 
   const isSuperAdmin = platformRole === "super_admin";
   const isSupplier = (profile?.is_supplier as boolean | undefined) ?? platformRole === "wholesaler";
@@ -131,6 +146,8 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
       user.user_metadata
     ),
     phone: (profile?.phone as string | undefined) ?? null,
+    kakaoName,
+    kakaoPhone,
     platformRole,
     isSuperAdmin,
     isSupplier,
@@ -140,6 +157,7 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
     wholesalerId: (wholesaler?.id as string | undefined) ?? null,
     businessName: (wholesaler?.business_name as string | undefined) ?? null,
     businessNumber: (wholesaler?.business_number as string | null | undefined) ?? null,
+    businessAddress: (wholesaler?.business_address as string | null | undefined) ?? null,
     shopToken,
     supplierStatus,
     needsMinimumInfo,

@@ -11,6 +11,7 @@ export type OrderStatus =
   | "cancel_requested"
   | "cancel_rejected"
   | "cancelled";
+export type PaymentMethod = "prepaid" | "on_credit";
 
 export interface Profile {
   id: string;
@@ -38,6 +39,11 @@ export interface Wholesaler {
   /** 가입 시점에는 미제출(null)일 수 있다. 승인 심사 단계에서 제출받는다. */
   business_number: string | null;
   representative_name: string;
+  /**
+   * 사업장 소재지. 온보딩에서 받지 않아 기존 레코드는 NULL일 수 있다 —
+   * 거래명세서 PDF 발행 전 /dashboard/invites에서 직접 등록해야 한다.
+   */
+  business_address: string | null;
   shop_token: string;
   status: WholesalerStatus;
   subscription_status: SubscriptionStatus;
@@ -91,6 +97,7 @@ export interface Order {
   order_number: string;
   total_amount: number;
   status: OrderStatus;
+  payment_method: PaymentMethod;
   delivery_address: string;
   delivery_notes: string | null;
   ordered_at: string;
@@ -102,6 +109,28 @@ export interface Order {
   cancel_reason?: string | null;
   cancel_requested_at?: string | null;
   cancel_resolved_at?: string | null;
+  /**
+   * 외상(on_credit) 주문 정산 완료 시각 (마이그레이션 20260915040000에서 추가).
+   * NULL이면 미정산. prepaid 주문에는 의미가 없다.
+   */
+  settled_at?: string | null;
+}
+
+/** 플랫폼 관리자 allowlist 항목 (public.platform_admin_allowlist 행 그대로). */
+export interface PlatformAdminAllowlistEntry {
+  id: string;
+  user_id: string;
+  /** 관리자 명단 편집 권한 (2단 권한의 상위 등급). */
+  can_grant: boolean;
+  /** 부여 경로 — 사람이 부여한 권한과 자동 부트스트랩을 감사에서 구분한다. */
+  source: "admin_grant" | "env_root" | "migration_backfill";
+  note: string | null;
+  granted_by: string | null;
+  /** null이면 활성. */
+  revoked_at: string | null;
+  revoked_by: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface OrderItem {

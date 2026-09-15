@@ -40,6 +40,8 @@ CREATE TABLE public.retailers (
 );
 
 -- 4. WHOLESALER_RETAILERS (1:1 단골 거래처 관계)
+-- TODO: 주석 문구 오해 소지 — 실제로는 N:N 조인 테이블(UNIQUE(wholesaler_id, retailer_id)만 있음).
+--       "1:1"을 "N:N"으로 고칠 것. 스키마 변경 아님, 문서 정정만.
 CREATE TABLE public.wholesaler_retailers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     wholesaler_id UUID NOT NULL REFERENCES public.wholesalers(id) ON DELETE CASCADE,

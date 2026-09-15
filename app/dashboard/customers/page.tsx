@@ -1,10 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
-import { getSupplierScope } from "@/lib/supplier/scope";
+import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import {
   describeInviteRestriction,
   getSupplierAccount,
 } from "@/lib/supplier/verification";
 import { PendingApprovalBanner } from "@/components/pending-approval-banner";
+import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import {
   DEMO_CUSTOM_PRICES,
   DEMO_ORDERS,
@@ -27,6 +28,9 @@ interface RelationJoinRow {
   status: RelationshipStatus;
   memo: string | null;
   created_at: string;
+  credit_limit: number;
+  outstanding_balance: number;
+  settlement_due_days: number;
   retailers:
     | {
         restaurant_name: string;
@@ -105,6 +109,11 @@ function countByRetailer(rows: Array<{ retailer_id: string }>): Map<string, numb
 
 export default async function DashboardCustomersPage() {
   const scope = await getSupplierScope();
+
+  if (isSuperAdminWithoutScope(scope)) {
+    return <AdminScopeNotice />;
+  }
+
   // 초대장 발부는 행정 승인(is_verified) 후에만 열린다.
   const account = await getSupplierAccount();
   const canIssueInvite = account?.canIssueInvite ?? false;
@@ -123,7 +132,7 @@ export default async function DashboardCustomersPage() {
       supabase
         .from("wholesaler_retailers")
         .select(
-          "retailer_id, status, memo, created_at, retailers ( restaurant_name, business_number, representative_name, delivery_address, delivery_address_detail )"
+          "retailer_id, status, memo, created_at, credit_limit, outstanding_balance, settlement_due_days, retailers ( restaurant_name, business_number, representative_name, delivery_address, delivery_address_detail )"
         )
         .eq("wholesaler_id", scope.wholesalerId)
         .order("created_at", { ascending: false }),
@@ -161,6 +170,9 @@ export default async function DashboardCustomersPage() {
           orderCount: stat?.orderCount ?? 0,
           lastOrderedAt: stat?.lastOrderedAt ?? null,
           totalOrderAmount: stat?.totalOrderAmount ?? 0,
+          creditLimit: Number(row.credit_limit ?? 0),
+          outstandingBalance: Number(row.outstanding_balance ?? 0),
+          settlementDueDays: Number(row.settlement_due_days ?? 30),
         };
       });
 
@@ -199,6 +211,9 @@ export default async function DashboardCustomersPage() {
         orderCount: stat?.orderCount ?? 0,
         lastOrderedAt: stat?.lastOrderedAt ?? null,
         totalOrderAmount: stat?.totalOrderAmount ?? 0,
+        creditLimit: retailer.credit_limit,
+        outstandingBalance: retailer.outstanding_balance,
+        settlementDueDays: retailer.settlement_due_days,
       };
     });
   }

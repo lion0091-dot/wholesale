@@ -49,3 +49,20 @@
   3. **Phase 3:** Cart, order placement, and Kakao AlimTalk notification triggers.
   4. **Phase 4:** Super Admin approval workflows, system-wide cleanup scripts, and footer legal compliance templates.
 - **Excluded (Post-MVP / Future):** AI OCR for paper price tags/receipts, automated tax invoicing, multi-vendor search, and full-scale autonomous multi-agent systems.
+
+## 8. Planned Design (Not Yet Implemented): Accounts Receivable & Tax Invoice Draft Assistant
+> Status: design only, targeted for next implementation session (PC). No schema/code exists yet.
+
+- **Accounts Receivable / Credit Transaction (외상거래):**
+  - Per-customer credit limit (`credit_limit`) and running outstanding balance (`outstanding_balance`) on the customer record.
+  - Orders gain a payment method flag (cash/prepaid vs. `on_credit`); an on-credit order increases the customer's outstanding balance instead of requiring immediate payment.
+  - Wholesaler-defined settlement cycle per customer (e.g., weekly/monthly closing date) to batch-settle outstanding orders.
+  - Ledger view for the wholesaler: list of unpaid/partially-paid orders per customer, sorted by due date, with overdue highlighting.
+  - RLS: a restaurant (buyer) can only see its own balance/ledger; a wholesaler can only see ledgers for its own customers.
+  - Optional AlimTalk reminder near/after the due date (reuses existing notification infrastructure).
+- **Tax Invoice Draft Assistant (세금계산서 작성 도우미):**
+  - MVP scope explicitly excludes direct NTS (홈택스) API submission — draft/preparation only.
+  - Aggregates existing `orders` data (supply amount, 10% VAT, transaction date, buyer/seller business info from profiles) into a standard tax-invoice field layout.
+  - On-screen editable preview so the wholesaler can correct amounts/dates before manual entry.
+  - Exportable/printable summary (e.g., print-friendly view or PDF) that the wholesaler manually re-enters into 홈택스 or their own invoicing tool.
+  - Future (Post-MVP): automatic issuance via NTS API, replacing the manual re-entry step.

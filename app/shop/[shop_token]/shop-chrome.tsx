@@ -138,6 +138,18 @@ export function ShopFooter({ businessName }: { businessName: string }) {
         <br />
         타 도매업자에게 정보가 일체 공유되지 않습니다.
       </p>
+      <Link
+        href="/my-shops"
+        style={{
+          display: "inline-block",
+          marginTop: "10px",
+          fontSize: "11px",
+          color: "#2563eb",
+          textDecoration: "underline",
+        }}
+      >
+        내 거래처 목록 보기
+      </Link>
     </footer>
   );
 }

@@ -5,13 +5,14 @@ import { createClient } from "@/lib/supabase/server";
 import { BuyerAuthError, requireLinkedBuyer, type LinkedBuyer } from "@/lib/auth/buyer-auth";
 import {
   sendCancelRequestNotificationToWholesaler,
+  sendCreditLimitExceededNotificationToWholesaler,
   sendOrderNotificationToWholesaler,
 } from "@/lib/notifications/alimtalk";
 import { canRequestCancel } from "@/lib/orders/status";
 import { loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
 import { validateCancelReason } from "@/lib/shop/order-history-types";
 import { lineSubtotal, validateCart } from "@/lib/shop/order-policy";
-import type { OrderStatus } from "@/types/database";
+import type { OrderStatus, PaymentMethod } from "@/types/database";
 
 export interface SubmitOrderInput {
   shopToken: string;
@@ -21,6 +22,8 @@ export interface SubmitOrderInput {
   contactPhone: string;
   deliveryAddress: string;
   deliveryNotes?: string;
+  /** 미지정 시 prepaid(즉시결제)로 처리 */
+  paymentMethod?: PaymentMethod;
 }
 
 export interface SubmitOrderResult {
@@ -85,9 +88,36 @@ async function backfillRetailerProfile(
 }
 
 /**
+ * 여신 한도 초과로 외상 주문이 거절됐을 때 도매업자에게 알림톡을 보낸다.
+ * 사전 체크(빠른 실패)와 apply_credit_order RPC 백스톱 두 경로 모두에서 호출된다.
+ */
+async function notifyCreditLimitExceeded(
+  supabase: SupabaseServerClient,
+  buyer: LinkedBuyer,
+  restaurantName: string,
+  attemptedAmount: number
+): Promise<void> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("phone")
+    .eq("id", buyer.wholesalerProfileId)
+    .maybeSingle();
+
+  await sendCreditLimitExceededNotificationToWholesaler({
+    wholesalerName: buyer.wholesalerName,
+    wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,
+    restaurantName,
+    creditLimit: buyer.creditLimit,
+    outstandingBalance: buyer.outstandingBalance,
+    attemptedAmount,
+  });
+}
+
+/**
  * 발주서 최종 제출.
  * 1) 서버 카탈로그로 단가 재해석 → 2) 최소 주문 금액/수량·재고 검증 →
- * 3) auth.uid() 기반 바이어 신원·거래 관계 검증 → 4) orders/order_items 저장 →
+ * 3) auth.uid() 기반 바이어 신원·거래 관계 검증 → 4) orders/order_items 저장
+ * (외상 주문이면 apply_credit_order RPC로 미수금 잔액도 원자적으로 반영) →
  * 5) 공급사 카카오 알림톡 트리거
  *
  * 요청자(바이어) 식별에는 클라이언트 입력을 신뢰하지 않는다. 클라이언트가 보내는 값은
@@ -125,6 +155,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
 
     const totalAmount = validation.totals.totalAmount;
     const orderNumber = buildOrderNumber();
+    const paymentMethod: PaymentMethod = input.paymentMethod === "on_credit" ? "on_credit" : "prepaid";
     const supabase = await createClient();
 
     // Supabase 미설정/데모 카탈로그면 저장을 건너뛰고 알림톡 포맷만 검증한다.
@@ -136,6 +167,26 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
 
     // 1) 발주서 저장
     if (buyer) {
+      if (paymentMethod === "on_credit") {
+        if (buyer.creditLimit <= 0) {
+          return {
+            success: false,
+            error: "이 거래처는 외상 거래가 허용되지 않았습니다. 공급사에 문의해주세요.",
+          };
+        }
+
+        // 빠른 실패용 사전 검증. 동시 주문에 의한 한도 초과는 apply_credit_order RPC가
+        // 원자적으로 다시 막는다 (아래 3번 단계).
+        if (buyer.outstandingBalance + totalAmount > buyer.creditLimit) {
+          await notifyCreditLimitExceeded(supabase, buyer, restaurantName, totalAmount);
+
+          return {
+            success: false,
+            error: "여신 한도를 초과하여 주문할 수 없습니다. 미수금 정산 후 다시 시도해주세요.",
+          };
+        }
+      }
+
       await backfillRetailerProfile(supabase, buyer, {
         restaurantName,
         contactPhone,
@@ -150,6 +201,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
           order_number: orderNumber,
           total_amount: totalAmount,
           status: "pending",
+          payment_method: paymentMethod,
           delivery_address: deliveryAddress,
           delivery_notes: deliveryNotes,
         })
@@ -180,16 +232,42 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
 
         return { success: false, error: "발주 품목 저장에 실패했습니다. 다시 시도해주세요." };
       }
+
+      // 3) 외상 주문이면 미수금 잔액을 원자적으로 증가시킨다 (한도 재검증 포함).
+      if (paymentMethod === "on_credit") {
+        const { error: creditError } = await supabase.rpc("apply_credit_order", {
+          p_wholesaler_retailer_id: buyer.relationshipId,
+          p_amount: totalAmount,
+        });
+
+        if (creditError) {
+          // 잔액 반영에 실패한 외상 주문은 남겨두지 않는다 (order_items는 CASCADE로 함께 삭제).
+          await supabase.from("orders").delete().eq("id", insertedOrder.id as string);
+
+          const isCreditLimitExceeded = creditError.message.includes("CREDIT_LIMIT_EXCEEDED");
+
+          if (isCreditLimitExceeded) {
+            await notifyCreditLimitExceeded(supabase, buyer, restaurantName, totalAmount);
+          }
+
+          return {
+            success: false,
+            error: isCreditLimitExceeded
+              ? "여신 한도를 초과하여 주문할 수 없습니다. 미수금 정산 후 다시 시도해주세요."
+              : "외상 잔액 반영에 실패했습니다. 잠시 후 다시 시도해주세요.",
+          };
+        }
+      }
     }
 
-    // 2) 알림톡 품목 요약 ("한우 1++ 등심 2kg 외 1건")
+    // 4) 알림톡 품목 요약 ("한우 1++ 등심 2kg 외 1건")
     const [firstLine] = lines;
     const itemsSummary =
       lines.length > 1
         ? `${firstLine.name} ${firstLine.quantity}${firstLine.unit} 외 ${lines.length - 1}건`
         : `${firstLine.name} ${firstLine.quantity}${firstLine.unit}`;
 
-    // 3) 공급사 대표 연락처 조회 후 카카오 알림톡 발송
+    // 5) 공급사 대표 연락처 조회 후 카카오 알림톡 발송
     let wholesalerPhone: string | undefined;
 
     if (buyer) {

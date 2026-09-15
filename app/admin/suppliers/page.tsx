@@ -16,6 +16,7 @@ const DEMO_SUPPLIERS: Wholesaler[] = [
     business_name: "마장동 태양축산 (테스트 공급사)",
     business_number: "123-45-67890",
     representative_name: "김태양",
+    business_address: "서울 성동구 마장로 123, 2층",
     shop_token: "demo-token-12345",
     status: "active",
     subscription_status: "active",
@@ -28,6 +29,7 @@ const DEMO_SUPPLIERS: Wholesaler[] = [
     business_name: "독산동 한우유통 (신규 신청)",
     business_number: "220-81-62517",
     representative_name: "박한우",
+    business_address: null,
     shop_token: "token-doksan-hanwoo",
     status: "pending",
     subscription_status: "trial",
@@ -40,6 +42,7 @@ const DEMO_SUPPLIERS: Wholesaler[] = [
     business_name: "가락 미트센터 (미납 업체)",
     business_number: "456-78-91011",
     representative_name: "최가락",
+    business_address: "서울 송파구 가락로 45",
     shop_token: "token-garak-meat",
     status: "suspended",
     subscription_status: "overdue",
@@ -65,6 +68,7 @@ export default async function AdminSuppliersPage() {
   }
 
   let suppliers: Wholesaler[] = DEMO_SUPPLIERS;
+  let canGrantAdmin = false;
 
   if (isConfigured) {
     const supabase = await createClient();
@@ -75,6 +79,11 @@ export default async function AdminSuppliersPage() {
       .order("created_at", { ascending: false });
 
     suppliers = (data as Wholesaler[] | null) ?? [];
+
+    // "관리자 관리" 링크는 다른 관리자를 승격/강등할 수 있는 계정(can_grant=true)에게만 보인다.
+    // /admin/admins 자체의 가드(requireAdminGranter)와 동일한 RPC로 판정한다.
+    const { data: grantCheck } = await supabase.rpc("can_current_user_grant_admin");
+    canGrantAdmin = Boolean(grantCheck);
   }
 
   const pendingCount = suppliers.filter((s) => s.status === "pending").length;
@@ -90,6 +99,14 @@ export default async function AdminSuppliersPage() {
           <Link href="/" style={{ fontSize: "12px", color: "#64748b", textDecoration: "underline" }}>
             ← 메인 허브로 이동
           </Link>
+          {canGrantAdmin && (
+            <Link
+              href="/admin/admins"
+              style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}
+            >
+              관리자 관리 →
+            </Link>
+          )}
         </div>
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
           공급사 입점 승인 및 구독 거버넌스

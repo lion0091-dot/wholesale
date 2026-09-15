@@ -163,6 +163,24 @@ export function SupplierSignupForm({ defaultName, defaultPhone }: SupplierSignup
         <p style={hintStyle}>발주 접수 알림과 승인 결과 안내를 받을 번호입니다.</p>
       </div>
 
+      <div style={{ marginBottom: "14px" }}>
+        <label htmlFor="business_address" style={labelStyle}>
+          사업장 주소 <span style={{ color: "#dc2626" }}>*</span>
+        </label>
+        <input
+          id="business_address"
+          name="business_address"
+          type="text"
+          required
+          minLength={5}
+          maxLength={200}
+          placeholder="예) 서울 성동구 마장로 123, 2층"
+          disabled={pending}
+          style={inputStyle}
+        />
+        <p style={hintStyle}>거래명세서 PDF의 공급자란에 표시됩니다. 나중에 초대장 메뉴에서 수정할 수 있습니다.</p>
+      </div>
+
       <div style={{ marginBottom: "18px" }}>
         <label htmlFor="business_number" style={labelStyle}>
           사업자등록번호 <span style={{ color: "#64748b", fontWeight: 500 }}>(선택)</span>

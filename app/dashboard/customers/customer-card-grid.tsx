@@ -26,6 +26,8 @@ interface CustomerCardGridProps {
   onCopyLink: (customer: CustomerRow) => void;
   /** 카톡 문구 / 미니샵 미리보기가 담긴 초대 모달 열기 */
   onOpenInvite: (customer: CustomerRow) => void;
+  /** 여신 한도 수정 모달 열기 */
+  onOpenCredit: (customer: CustomerRow) => void;
 }
 
 const RELATION_BADGES: Record<RelationshipStatus, { label: string; bg: string; color: string }> = {
@@ -108,6 +110,7 @@ export function CustomerCardGrid({
   issuePending = false,
   onCopyLink,
   onOpenInvite,
+  onOpenCredit,
 }: CustomerCardGridProps) {
   return (
     <div className="dash-customer-grid">
@@ -181,6 +184,11 @@ export function CustomerCardGrid({
               >
                 {hasCustomPrice ? `🏷️ 맞춤 단가 ${customer.customPriceCount}개` : "기본 단가 적용"}
               </span>
+              {customer.creditLimit > 0 && (
+                <span style={{ ...badgeStyle, backgroundColor: "#fef3c7", color: "#92400e" }}>
+                  💳 한도 {formatWon(customer.creditLimit)} / 미수금 {formatWon(customer.outstandingBalance)}
+                </span>
+              )}
             </div>
 
             <p
@@ -280,6 +288,23 @@ export function CustomerCardGrid({
               }}
             >
               카톡 문구 · 미니샵 미리보기 →
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onOpenCredit(customer)}
+              style={{
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#2563eb",
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              여신 한도 수정 →
             </button>
           </article>
         );

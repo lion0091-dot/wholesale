@@ -16,6 +16,7 @@
  */
 
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/types/database";
 
@@ -155,6 +156,8 @@ export interface BuyerIdentity {
   deliveryAddress: string | null;
   /** 이 공급사와 활성(active) 거래 관계가 확인된 단골 여부 */
   isLinked: boolean;
+  /** 여신 한도 (0이면 외상 거래 불가). 미연결 상태면 0 */
+  creditLimit: number;
 }
 
 /** 거래 관계까지 확인된 바이어 — 발주/취소 요청의 전제 조건 */
@@ -167,6 +170,10 @@ export interface LinkedBuyer {
   wholesalerId: string;
   wholesalerName: string;
   wholesalerProfileId: string;
+  /** wholesaler_retailers.id — 외상 주문 시 apply_credit_order RPC 대상 식별자 */
+  relationshipId: string;
+  creditLimit: number;
+  outstandingBalance: number;
 }
 
 /**
@@ -205,6 +212,7 @@ export async function resolveBuyerIdentity(
       contactPhone: null,
       deliveryAddress: null,
       isLinked: false,
+      creditLimit: 0,
     };
   }
 
@@ -224,20 +232,23 @@ export async function resolveBuyerIdentity(
       contactPhone: (profile?.phone as string | undefined) ?? null,
       deliveryAddress: null,
       isLinked: false,
+      creditLimit: 0,
     };
   }
 
   let isLinked = false;
+  let creditLimit = 0;
 
   if (wholesalerId) {
     const { data: relation } = await supabase
       .from("wholesaler_retailers")
-      .select("status")
+      .select("status, credit_limit")
       .eq("wholesaler_id", wholesalerId)
       .eq("retailer_id", retailer.id as string)
       .maybeSingle();
 
     isLinked = relation?.status === "active";
+    creditLimit = isLinked ? Number(relation?.credit_limit ?? 0) : 0;
   }
 
   return {
@@ -251,6 +262,7 @@ export async function resolveBuyerIdentity(
       [retailer.delivery_address, retailer.delivery_address_detail].filter(Boolean).join(", ") ||
       null,
     isLinked,
+    creditLimit,
   };
 }
 
@@ -327,7 +339,7 @@ export async function requireLinkedBuyer(
 
   const { data: relation } = await supabase
     .from("wholesaler_retailers")
-    .select("status")
+    .select("id, status, credit_limit, outstanding_balance")
     .eq("wholesaler_id", wholesaler.id as string)
     .eq("retailer_id", retailer.id as string)
     .maybeSingle();
@@ -350,6 +362,9 @@ export async function requireLinkedBuyer(
     wholesalerId: wholesaler.id as string,
     wholesalerName: wholesaler.business_name as string,
     wholesalerProfileId: wholesaler.profile_id as string,
+    relationshipId: relation.id as string,
+    creditLimit: Number(relation.credit_limit ?? 0),
+    outstandingBalance: Number(relation.outstanding_balance ?? 0),
   };
 }
 
@@ -410,4 +425,42 @@ export async function claimShopAccess(shopToken: string): Promise<ClaimShopAcces
     businessName: row.business_name,
     isLinked: row.is_linked,
   };
+}
+
+// ====================================================================
+// 동의 게이트 재확인 (cart/checkout/orders 등 하위 경로)
+// ====================================================================
+
+/**
+ * 하위 경로 진입 시 동의 게이트 재확인.
+ *
+ * 루트(/shop/<token>)는 로그인 직후 profiles.terms_agreed_at이 비어 있으면
+ * 카탈로그 대신 동의 화면을 보여준다(app/shop/[shop_token]/page.tsx). 하지만
+ * 동의를 건너뛰고 cart/checkout/orders를 직접 북마크·재방문하면 그 게이트를
+ * 안 거치고 들어올 수 있었다. 이 함수를 하위 페이지 최상단에서 호출해 같은
+ * 조건이면 루트로 되돌려보낸다(거기서 다시 동의 화면이 뜬다).
+ *
+ * 미로그인 사용자는 건드리지 않는다 — 하위 페이지들은 원래도 로그인을
+ * 강제하지 않고 guest 카탈로그로 대체해왔다(이 함수의 책임 범위 밖).
+ */
+export async function requireBuyerConsent(shopToken: string): Promise<void> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return;
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role, terms_agreed_at")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profile?.role === "retailer" && !profile.terms_agreed_at) {
+    redirect(`/shop/${shopToken}`);
+  }
 }

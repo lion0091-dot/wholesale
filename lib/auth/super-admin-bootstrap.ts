@@ -18,22 +18,10 @@
  * 서버 전용 모듈(next/headers 의존). Edge 런타임에서 import 하지 말 것.
  */
 
-import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
-import { getSuperAdminEmail, isSuperAdminEmail } from "@/lib/auth/super-admin";
-
-/**
- * '세션에 이메일이 없어 승격 불가' 안내를 프로세스당 1회로 제한한다.
- *
- * 이 경로는 카카오 이메일 미동의 계정의 모든 로그인과 /admin 매 요청이 지나가므로
- * 매번 찍으면 로그가 이 한 줄로 덮인다. 진단에 필요한 사실은 "이 배포에서 이
- * 상황이 일어났다" 하나뿐이라 첫 발생만 남긴다.
- *
- * 서버리스 환경에서는 인스턴스가 새로 뜰 때마다 초기화되므로 '인스턴스당 1회'다.
- * 정확한 발생 횟수 집계용이 아니라 원인 추적용 단서라는 뜻이다.
- */
-let missingEmailNoticeLogged = false;
+import { getSuperAdminEmail } from "@/lib/auth/super-admin";
 
 export type SuperAdminBootstrapStatus =
   /** SUPER_ADMIN_EMAIL 미설정 — 부트스트랩 자체를 하지 않는다 */
@@ -61,6 +49,8 @@ export interface SuperAdminBootstrapResult {
   userId: string | null;
   /** 실패/스킵 사유 (서버 로그용) */
   reason?: string;
+  /** 승격 근거 (예: "allowlist" | "env_root" | "not_eligible") — promote_platform_admin RPC 응답 전달용 */
+  source?: string | null;
 }
 
 function skip(
@@ -71,21 +61,8 @@ function skip(
   return { status, isSuperAdmin: false, userId, reason };
 }
 
-/**
- * Service Role 클라이언트. 승격 RPC 는 service_role 에게만 EXECUTE 가 있다.
- */
-function createAdminClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceRoleKey || serviceRoleKey.includes("your-supabase")) {
-    return null;
-  }
-
-  return createSupabaseClient(url, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
+// 승격 RPC 는 service_role 에게만 EXECUTE 가 있다. 클라이언트 생성 자체는
+// lib/supabase/service-role-client.ts 공용 헬퍼를 쓴다.
 
 /**
  * 현재 세션이 허용 이메일이면 슈퍼관리자로 승격한다. (멱등)
@@ -96,10 +73,6 @@ function createAdminClient(): SupabaseClient | null {
  */
 export async function ensureSuperAdminBootstrap(): Promise<SuperAdminBootstrapResult> {
   const allowedEmail = getSuperAdminEmail();
-
-  if (!allowedEmail) {
-    return skip("disabled", null, "SUPER_ADMIN_EMAIL이 설정되지 않았습니다.");
-  }
 
   if (!isSupabaseConfigured()) {
     return skip("unconfigured", null, "Supabase 환경변수가 설정되지 않았습니다 (데모 모드).");
@@ -114,25 +87,6 @@ export async function ensureSuperAdminBootstrap(): Promise<SuperAdminBootstrapRe
     return skip("anonymous");
   }
 
-  // 카카오 계정이 이메일 동의항목을 주지 않으면 user.email 이 비어 있다.
-  // 이 경우 환경변수 방식으로는 본인 확인이 불가능하므로 승격하지 않는다.
-  if (!isSuperAdminEmail(user.email)) {
-    // 이메일 불일치("not_eligible")는 대부분의 로그인이 지나는 정상 경로라 조용히 넘어간다.
-    // 그런데 세션에 이메일 자체가 없는 경우는 원인이 전혀 다르다 — 카카오가 이메일
-    // 동의항목을 주지 않은 계정은 비교할 값이 없어 '영구히' 승격 대상이 되지 못한다.
-    // 두 경우가 같은 상태로 뭉개지면 "환경변수는 맞게 넣었는데 /admin 이 홈으로
-    // 튕긴다"를 추적할 단서가 남지 않으므로, 구분해서 한 줄 남긴다.
-    if (!user.email && !missingEmailNoticeLogged) {
-      missingEmailNoticeLogged = true;
-
-      console.info(
-        `[SuperAdmin Bootstrap] SUPER_ADMIN_EMAIL이 설정되어 있으나 세션에 이메일이 없어 승격을 건너뜁니다 (카카오 이메일 미동의 계정). 최초 관측: ${user.id} — 이후 동일 사례는 생략합니다.`
-      );
-    }
-
-    return skip("not_eligible", user.id);
-  }
-
   // 이미 승격된 계정이면 service_role 왕복을 생략한다.
   const { data: profile } = await supabase
     .from("profiles")
@@ -144,7 +98,7 @@ export async function ensureSuperAdminBootstrap(): Promise<SuperAdminBootstrapRe
     return { status: "already_admin", isSuperAdmin: true, userId: user.id };
   }
 
-  const admin = createAdminClient();
+  const admin = createServiceRoleClient();
 
   if (!admin) {
     console.error(
@@ -158,10 +112,22 @@ export async function ensureSuperAdminBootstrap(): Promise<SuperAdminBootstrapRe
     );
   }
 
-  const { data, error } = await admin.rpc("bootstrap_super_admin", {
-    p_user_id: user.id,
-    p_email: user.email,
-  });
+  let data: unknown;
+  let error: { message: string } | null;
+
+  try {
+    ({ data, error } = await admin.rpc("promote_platform_admin", {
+      p_user_id: user.id,
+      p_bootstrap_email: allowedEmail,
+    }));
+  } catch (err) {
+    // PLATFORM_ADMIN_TARGET_ALREADY_VERIFIED / PLATFORM_ADMIN_USER_NOT_FOUND /
+    // PLATFORM_ADMIN_INVALID_INPUT 등 RPC 내부에서 RAISE EXCEPTION 된 경우 여기로 떨어진다.
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[SuperAdmin Bootstrap] 승격 RPC 예외:", message);
+
+    return skip("failed", user.id, message);
+  }
 
   if (error) {
     // SUPER_ADMIN_EMAIL 오타나 카카오 계정 변경 시 여기로 떨어진다.
@@ -170,19 +136,32 @@ export async function ensureSuperAdminBootstrap(): Promise<SuperAdminBootstrapRe
     return skip("failed", user.id, error.message);
   }
 
-  const row = data as { promoted?: boolean; role?: string } | null;
+  const row = data as { promoted?: boolean; role?: string; source?: string | null } | null;
 
-  if (row?.role !== "super_admin") {
-    return skip("failed", user.id, "승격 결과를 확인할 수 없습니다.");
+  if (row?.promoted) {
+    console.info(`[SuperAdmin Bootstrap] 슈퍼관리자 승격 완료: ${user.id}`);
+
+    return {
+      status: "promoted",
+      isSuperAdmin: true,
+      userId: user.id,
+      source: row.source ?? null,
+    };
   }
 
-  if (row.promoted) {
-    console.info(`[SuperAdmin Bootstrap] 슈퍼관리자 승격 완료: ${user.id}`);
+  if (row?.role === "super_admin") {
+    return {
+      status: "already_admin",
+      isSuperAdmin: true,
+      userId: user.id,
+      source: row.source ?? null,
+    };
   }
 
   return {
-    status: row.promoted ? "promoted" : "already_admin",
-    isSuperAdmin: true,
+    status: "not_eligible",
+    isSuperAdmin: false,
     userId: user.id,
+    source: row?.source ?? null,
   };
 }

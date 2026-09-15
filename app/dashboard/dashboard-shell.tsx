@@ -4,6 +4,15 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SignOutButton } from "@/components/sign-out-button";
+import type { SubscriptionStatus } from "@/types/database";
+
+/** 관리자 화면(app/admin/suppliers/supplier-approval-list.tsx)의 SUB_BADGES와 라벨/색을 맞춤. */
+const SUBSCRIPTION_BADGES: Record<SubscriptionStatus, { label: string; bg: string; color: string }> = {
+  trial: { label: "무료 체험중", bg: "#e0e7ff", color: "#3730a3" },
+  active: { label: "구독 활성", bg: "#dcfce7", color: "#166534" },
+  overdue: { label: "구독료 미납", bg: "#fee2e2", color: "#991b1b" },
+  cancelled: { label: "구독 해지됨", bg: "#f1f5f9", color: "#64748b" },
+};
 
 export interface DashboardNavItem {
   label: string;
@@ -19,6 +28,8 @@ interface DashboardShellProps {
   /** 표시용 계정 이름 (profiles.name → 카카오 닉네임 → "사용자"). 항상 값이 있다. */
   displayName: string;
   roleLabel: string;
+  /** null이면 배지 자체를 숨김(슈퍼관리자 감독 열람, 업체 레코드 없는 계정 등) */
+  subscriptionStatus: SubscriptionStatus | null;
   isDemoMode: boolean;
   children: ReactNode;
 }
@@ -28,6 +39,7 @@ export function DashboardShell({
   organizationName,
   displayName,
   roleLabel,
+  subscriptionStatus,
   isDemoMode,
   children,
 }: DashboardShellProps) {
@@ -173,6 +185,21 @@ export function DashboardShell({
           </div>
 
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
+            {subscriptionStatus && (
+              <span
+                title="구독 상태는 플랫폼 운영팀이 결제 확인 후 반영합니다. 문의사항은 운영팀에 연락해주세요."
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: SUBSCRIPTION_BADGES[subscriptionStatus].color,
+                  backgroundColor: SUBSCRIPTION_BADGES[subscriptionStatus].bg,
+                  borderRadius: "6px",
+                  padding: "5px 8px",
+                }}
+              >
+                {SUBSCRIPTION_BADGES[subscriptionStatus].label}
+              </span>
+            )}
             {isDemoMode && (
               <span
                 style={{

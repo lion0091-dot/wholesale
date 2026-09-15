@@ -73,6 +73,10 @@ export interface DemoRetailer {
   status: RelationshipStatus;
   memo: string | null;
   created_at: string;
+  /** 여신 한도 (0이면 외상 거래 불가) */
+  credit_limit: number;
+  outstanding_balance: number;
+  settlement_due_days: number;
 }
 
 export const DEMO_RETAILERS: DemoRetailer[] = [
@@ -86,6 +90,9 @@ export const DEMO_RETAILERS: DemoRetailer[] = [
     status: "active",
     memo: "매주 화/금 오전 6시 이전 납품 요청",
     created_at: "2026-06-14T02:10:00.000Z",
+    credit_limit: 0,
+    outstanding_balance: 0,
+    settlement_due_days: 30,
   },
   {
     id: "demo-retailer-2",
@@ -97,6 +104,9 @@ export const DEMO_RETAILERS: DemoRetailer[] = [
     status: "active",
     memo: "세금계산서 월말 일괄 발행",
     created_at: "2026-07-02T05:30:00.000Z",
+    credit_limit: 500000,
+    outstanding_balance: 185000,
+    settlement_due_days: 30,
   },
   {
     id: "demo-retailer-3",
@@ -108,6 +118,9 @@ export const DEMO_RETAILERS: DemoRetailer[] = [
     status: "blocked",
     memo: "미수금 정산 후 거래 재개 예정",
     created_at: "2026-08-21T01:05:00.000Z",
+    credit_limit: 200000,
+    outstanding_balance: 0,
+    settlement_due_days: 14,
   },
 ];
 
@@ -174,6 +187,7 @@ export const DEMO_ORDERS: DemoOrder[] = [
     order_number: "ORD-20260911-A79B2C",
     total_amount: 255000,
     status: "pending",
+    payment_method: "prepaid",
     delivery_address: "서울 중구 을지로 123길 45, 1층 주방",
     delivery_notes: "내일 오전 6시 전까지 주방 뒷문 보냉박스에 넣어주세요.",
     ordered_at: minutesAgo(25),
@@ -192,6 +206,7 @@ export const DEMO_ORDERS: DemoOrder[] = [
     order_number: "ORD-20260911-E54D1F",
     total_amount: 185000,
     status: "confirmed",
+    payment_method: "on_credit",
     delivery_address: "서울 성동구 성수일로 89, 지하 1층",
     delivery_notes: "세금계산서 발행 완료 부탁드립니다.",
     ordered_at: minutesAgo(190),
@@ -206,6 +221,7 @@ export const DEMO_ORDERS: DemoOrder[] = [
     order_number: "ORD-20260910-77C019",
     total_amount: 316000,
     status: "shipping",
+    payment_method: "prepaid",
     delivery_address: "서울 중구 을지로 123길 45, 1층 주방",
     delivery_notes: null,
     ordered_at: minutesAgo(1380),
@@ -222,6 +238,7 @@ export const DEMO_ORDERS: DemoOrder[] = [
     order_number: "ORD-20260909-B21A08",
     total_amount: 92500,
     status: "delivered",
+    payment_method: "prepaid",
     delivery_address: "서울 마포구 도화동 12-3",
     delivery_notes: "정문 앞에 두고 전화 주세요.",
     ordered_at: minutesAgo(2900),
@@ -236,6 +253,7 @@ export const DEMO_ORDERS: DemoOrder[] = [
     order_number: "ORD-20260908-4D9E71",
     total_amount: 58000,
     status: "cancelled",
+    payment_method: "prepaid",
     delivery_address: "서울 마포구 도화동 12-3",
     delivery_notes: null,
     ordered_at: minutesAgo(4300),

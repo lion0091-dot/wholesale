@@ -7,6 +7,7 @@ import {
   describeInviteRestriction,
   getSupplierAccount,
 } from "@/lib/supplier/verification";
+import { BusinessAddressForm } from "./business-address-form";
 import { BusinessNumberForm } from "./business-number-form";
 
 export const metadata = {
@@ -172,6 +173,16 @@ export default async function DashboardInvitesPage() {
           }
         />
         <StateRow
+          label="사업장 주소"
+          value={
+            account.businessAddress ? (
+              account.businessAddress
+            ) : (
+              <span style={{ color: "#b91c1c", fontWeight: 700 }}>미등록 (거래명세서 발행 불가)</span>
+            )
+          }
+        />
+        <StateRow
           label="초대장 발부 권한"
           value={canIssue ? "사용 가능" : "승인 후 활성화"}
         />
@@ -187,6 +198,19 @@ export default async function DashboardInvitesPage() {
             승인 전에도 상품 등록·단가·발주 관리는 제한 없이 사용할 수 있습니다.
           </p>
           <BusinessNumberForm currentBusinessNumber={account.businessNumber} />
+        </section>
+      )}
+
+      {account.wholesalerId && (
+        <section style={cardStyle}>
+          <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>
+            사업장 주소 {account.businessAddress ? "" : "— 아직 등록되지 않았습니다"}
+          </div>
+          <p style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.7, marginBottom: "12px" }}>
+            거래명세서 PDF의 공급자란에 표시되는 주소입니다. 승인 여부와 무관하게 언제든 등록·수정할
+            수 있습니다.
+          </p>
+          <BusinessAddressForm currentBusinessAddress={account.businessAddress} />
         </section>
       )}
     </div>

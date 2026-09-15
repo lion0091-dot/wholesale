@@ -24,6 +24,8 @@ export interface ShopCustomer {
   deliveryAddress: string | null;
   /** 공급사와 활성 거래 관계(단골)가 확인된 고객 여부 */
   isLinked: boolean;
+  /** 여신 한도 (0이면 외상 거래 불가) */
+  creditLimit: number;
 }
 
 export interface ShopCatalog {
