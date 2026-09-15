@@ -98,7 +98,7 @@ function demoGroups(): ReceivableCustomerGroup[] {
   }));
 
   const creditOrders: CreditOrderRow[] = DEMO_ORDERS.filter(
-    (order) => order.payment_method === "on_credit" && !order.settled_at
+    (order) => order.payment_method === "on_credit" && !order.settled_at && order.status !== "cancelled"
   ).map((order) => ({
     id: order.id,
     order_number: order.order_number,
@@ -135,7 +135,8 @@ export default async function DashboardReceivablesPage() {
         .select("id, order_number, retailer_id, total_amount, ordered_at")
         .eq("wholesaler_id", scope.wholesalerId)
         .eq("payment_method", "on_credit")
-        .is("settled_at", null),
+        .is("settled_at", null)
+        .neq("status", "cancelled"),
     ]);
 
     if (relations && relations.length > 0) {

@@ -98,6 +98,7 @@ export async function sendReceivablesReminderAction(retailerId: string): Promise
       .eq("retailer_id", retailerId)
       .eq("payment_method", "on_credit")
       .is("settled_at", null)
+      .neq("status", "cancelled")
       .order("ordered_at", { ascending: true })
       .limit(1)
       .maybeSingle();
