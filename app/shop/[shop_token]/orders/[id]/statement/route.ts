@@ -1,9 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { BuyerAuthError, requireLinkedBuyer } from "@/lib/auth/buyer-auth";
-import { findMissingStatementFields, loadStatementDataForBuyer } from "@/lib/orders/statement";
-import { renderTransactionStatementPdf } from "@/lib/pdf/transaction-statement";
-import { renderMissingFieldsHtml } from "@/lib/pdf/statement-warning-page";
+import { loadStatementDataForBuyer } from "@/lib/orders/statement";
+import { buildStatementResponse } from "@/lib/pdf/statement-response";
 
 // @react-pdf/renderer는 Node.js API(fs 등)에 의존해 Edge 런타임에서 동작하지 않는다.
 export const runtime = "nodejs";
@@ -27,26 +26,8 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "주문을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    const missingFields = findMissingStatementFields(data);
-
-    if (missingFields.length > 0) {
-      return new NextResponse(
-        renderMissingFieldsHtml({
-          missingFields,
-          note: "공급사가 아직 사업장 주소를 등록하지 않았습니다. 공급사에 등록을 요청해주세요.",
-        }),
-        { status: 422, headers: { "Content-Type": "text/html; charset=utf-8" } }
-      );
-    }
-
-    const pdfBuffer = await renderTransactionStatementPdf(data);
-
-    return new NextResponse(new Uint8Array(pdfBuffer), {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="statement_${data.orderNumber}.pdf"`,
-        "Cache-Control": "private, no-store",
-      },
+    return await buildStatementResponse(data, {
+      note: "공급사가 아직 사업장 주소를 등록하지 않았습니다. 공급사에 등록을 요청해주세요.",
     });
   } catch (error) {
     if (error instanceof BuyerAuthError) {
