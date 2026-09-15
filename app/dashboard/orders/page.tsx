@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getSupplierScope } from "@/lib/supplier/scope";
+import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { DEMO_ORDERS } from "@/lib/demo/supplier-samples";
 import { formatWon, isAlimtalkLiveChannel } from "@/lib/orders/status";
@@ -43,7 +43,7 @@ function summarizeItems(items: Pick<OrderItem, "product_name" | "quantity">[]): 
 export default async function DashboardOrdersPage() {
   const scope = await getSupplierScope();
 
-  if (scope?.isSuperAdmin && !scope.wholesalerId) {
+  if (isSuperAdminWithoutScope(scope)) {
     return <AdminScopeNotice />;
   }
 

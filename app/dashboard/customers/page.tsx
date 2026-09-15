@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getSupplierScope } from "@/lib/supplier/scope";
+import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import {
   describeInviteRestriction,
   getSupplierAccount,
@@ -110,7 +110,7 @@ function countByRetailer(rows: Array<{ retailer_id: string }>): Map<string, numb
 export default async function DashboardCustomersPage() {
   const scope = await getSupplierScope();
 
-  if (scope?.isSuperAdmin && !scope.wholesalerId) {
+  if (isSuperAdminWithoutScope(scope)) {
     return <AdminScopeNotice />;
   }
 

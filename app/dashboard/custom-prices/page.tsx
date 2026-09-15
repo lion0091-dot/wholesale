@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getSupplierScope } from "@/lib/supplier/scope";
+import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { listCustomPrices } from "@/app/actions/custom_price";
 import {
@@ -39,7 +39,7 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
   const { retailer: requestedRetailerId } = await searchParams;
   const scope = await getSupplierScope();
 
-  if (scope?.isSuperAdmin && !scope.wholesalerId) {
+  if (isSuperAdminWithoutScope(scope)) {
     return <AdminScopeNotice />;
   }
 

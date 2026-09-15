@@ -68,3 +68,16 @@ export async function getSupplierScope(): Promise<SupplierScope | null> {
     shopToken: (wholesaler?.shop_token as string | undefined) ?? null,
   };
 }
+
+/**
+ * 조직 미소속 super_admin이 업체 스코프 데이터 화면에 들어왔는지 여부.
+ * 이 경우 데모 데이터 대신 <AdminScopeNotice />를 보여줘야 한다
+ * (공급사 전용 데이터를 감독 계정에게 남의 업체 데모처럼 보여주면 안 되므로).
+ *
+ * 주의: 대시보드 홈(app/dashboard/page.tsx)과 영업·초대장(app/dashboard/invites/page.tsx)은
+ * 이 조건에서 의도적으로 제외된다 — 두 화면은 super_admin 조직 미소속 상태를 전체
+ * 페이지 교체가 아니라 자체 UI 분기로 처리한다.
+ */
+export function isSuperAdminWithoutScope(scope: SupplierScope | null): boolean {
+  return Boolean(scope?.isSuperAdmin && !scope.wholesalerId);
+}

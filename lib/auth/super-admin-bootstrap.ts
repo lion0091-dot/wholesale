@@ -18,8 +18,8 @@
  * 서버 전용 모듈(next/headers 의존). Edge 런타임에서 import 하지 말 것.
  */
 
-import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { getSuperAdminEmail } from "@/lib/auth/super-admin";
 
@@ -61,21 +61,8 @@ function skip(
   return { status, isSuperAdmin: false, userId, reason };
 }
 
-/**
- * Service Role 클라이언트. 승격 RPC 는 service_role 에게만 EXECUTE 가 있다.
- */
-function createAdminClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceRoleKey || serviceRoleKey.includes("your-supabase")) {
-    return null;
-  }
-
-  return createSupabaseClient(url, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
+// 승격 RPC 는 service_role 에게만 EXECUTE 가 있다. 클라이언트 생성 자체는
+// lib/supabase/service-role-client.ts 공용 헬퍼를 쓴다.
 
 /**
  * 현재 세션이 허용 이메일이면 슈퍼관리자로 승격한다. (멱등)
@@ -111,7 +98,7 @@ export async function ensureSuperAdminBootstrap(): Promise<SuperAdminBootstrapRe
     return { status: "already_admin", isSuperAdmin: true, userId: user.id };
   }
 
-  const admin = createAdminClient();
+  const admin = createServiceRoleClient();
 
   if (!admin) {
     console.error(

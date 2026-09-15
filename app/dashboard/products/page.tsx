@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getSupplierScope } from "@/lib/supplier/scope";
+import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { DEMO_PRODUCTS } from "@/lib/demo/supplier-samples";
 import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
@@ -15,7 +15,7 @@ export const metadata = {
 export default async function DashboardProductsPage() {
   const scope = await getSupplierScope();
 
-  if (scope?.isSuperAdmin && !scope.wholesalerId) {
+  if (isSuperAdminWithoutScope(scope)) {
     return <AdminScopeNotice />;
   }
 
