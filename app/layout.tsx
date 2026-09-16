@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { LegalFooter } from "@/components/legal-footer";
+import { StagingBanner } from "@/components/staging-banner";
 
 export const metadata: Metadata = {
   title: "미트 파트너스",
@@ -15,6 +16,7 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+        <StagingBanner />
         <div style={{ flex: 1 }}>{children}</div>
         <LegalFooter />
       </body>
