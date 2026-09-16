@@ -126,6 +126,7 @@ export function ProductFormView({ product, isDemoMode = false }: ProductFormView
               minLength={2}
               defaultValue={product?.name}
               placeholder="예: 한우 1++ 등심"
+              autoComplete="off"
               style={fieldStyle}
             />
           </div>
@@ -162,6 +163,7 @@ export function ProductFormView({ product, isDemoMode = false }: ProductFormView
               required
               defaultValue={product?.origin}
               placeholder="예: 국내산, 미국산"
+              autoComplete="off"
               style={fieldStyle}
             />
           </div>
@@ -176,6 +178,7 @@ export function ProductFormView({ product, isDemoMode = false }: ProductFormView
               type="text"
               defaultValue={product?.grade ?? ""}
               placeholder="예: 1++, 1등급, 프라임"
+              autoComplete="off"
               style={fieldStyle}
             />
           </div>
