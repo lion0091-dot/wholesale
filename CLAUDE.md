@@ -14,3 +14,7 @@
 ## 거래명세서 PDF 생성 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
 
 - [docs/transaction-statement-pdf.md](docs/transaction-statement-pdf.md) — 세금계산서와는 별개인 거래명세서(법정 증빙서류 아님) 서버사이드 PDF 생성. 아키텍처, 잠긴 설계 결정(주소 미등록 시 발행 차단, 한글 폰트 Git LFS 추적 등), 검증 상태(실계정 라이브 미검증), 남은 과제.
+
+## Downloads 폴더 패치 3개 보류 (2026-09-16, Vercel 배포 우선 진행 중)
+
+- [docs/deferred-drive-patches.md](docs/deferred-drive-patches.md) — 이전 세션 산출물 패치 3개(PRD/ROADMAP 8번 섹션 추가, wholesaler 구버전 화면 삭제, KNOWN_GAPS.md 신규 생성) 검토 결과 전부 stale로 판정, 적용 보류. Vercel 배포 완료 후 재검토 예정.

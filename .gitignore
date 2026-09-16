@@ -33,3 +33,9 @@ Thumbs.db
 .vscode/
 .idea/
 *.tsbuildinfo
+
+# Scratch files (커밋 메시지 초안, 발표자료 등 리포 무관 개인 작업물)
+temp/
+ppt.md
+ppt.pdf
+slide.md
