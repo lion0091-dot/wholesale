@@ -39,6 +39,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
 
-    throw error;
+    // TODO(temp-debug): 프로덕션 500 원인 파악용 — 원인 확인되면 되돌릴 것.
+    return NextResponse.json(
+      {
+        debug: true,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : null,
+      },
+      { status: 500 }
+    );
   }
 }
