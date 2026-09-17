@@ -6,6 +6,19 @@ import { usePathname } from "next/navigation";
 import { SignOutButton } from "@/components/sign-out-button";
 import type { SubscriptionStatus } from "@/types/database";
 
+/**
+ * 이모지 아이콘은 폰트/플랫폼마다 글자 내부 여백이 달라 텍스트와 수직 정렬이
+ * 미세하게 어긋나 보인다. 고정 크기 박스 안에서 다시 중앙 정렬해 흡수한다.
+ */
+const navIconStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "20px",
+  fontSize: "15px",
+  flexShrink: 0,
+};
+
 /** 관리자 화면(app/admin/suppliers/supplier-approval-list.tsx)의 SUB_BADGES와 라벨/색을 맞춤. */
 const SUBSCRIPTION_BADGES: Record<SubscriptionStatus, { label: string; bg: string; color: string }> = {
   trial: { label: "무료 체험중", bg: "#e0e7ff", color: "#3730a3" },
@@ -68,21 +81,34 @@ export function DashboardShell({
 
       <aside className="dash-sidebar">
         <div style={{ padding: "4px 10px 16px" }}>
-          <div style={{ fontSize: "11px", fontWeight: 700, color: "#f87171", letterSpacing: "0.04em" }}>
+          <div style={{ fontSize: "10px", fontWeight: 600, color: "#94a3b8", letterSpacing: "0.04em" }}>
             도매업체 통합관리시스템
           </div>
           <div
             style={{
-              fontSize: "16px",
+              fontSize: "19px",
               fontWeight: 800,
               color: "#ffffff",
-              marginTop: "4px",
+              marginTop: "3px",
               wordBreak: "keep-all",
             }}
           >
             {organizationName}
           </div>
-          <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>{roleLabel}</div>
+          <span
+            style={{
+              display: "inline-block",
+              fontSize: "11px",
+              fontWeight: 600,
+              color: "#fca5a5",
+              backgroundColor: "rgba(248, 113, 113, 0.12)",
+              borderRadius: "999px",
+              padding: "2px 9px",
+              marginTop: "6px",
+            }}
+          >
+            {roleLabel}
+          </span>
         </div>
 
         <nav style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
@@ -94,7 +120,7 @@ export function DashboardShell({
                 className="dash-nav-link"
                 data-active={isActive(item.href)}
               >
-                <span aria-hidden>{item.icon}</span>
+                <span aria-hidden style={navIconStyle}>{item.icon}</span>
                 <span>{item.label}</span>
               </Link>
             ) : (
@@ -105,7 +131,7 @@ export function DashboardShell({
                 aria-disabled="true"
                 title="다음 단계에서 구현 예정입니다."
               >
-                <span aria-hidden>{item.icon}</span>
+                <span aria-hidden style={navIconStyle}>{item.icon}</span>
                 <span>{item.label}</span>
                 <span
                   style={{
@@ -129,7 +155,8 @@ export function DashboardShell({
           style={{
             marginTop: "auto",
             paddingTop: "16px",
-            borderTop: "1px solid #1e293b",
+            paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))",
+            borderTop: "1px solid #334155",
             fontSize: "11px",
             color: "#94a3b8",
             lineHeight: 1.6,

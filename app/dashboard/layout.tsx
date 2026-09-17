@@ -28,9 +28,9 @@ const NAV_ITEMS: DashboardNavItem[] = [
 ];
 
 const ORG_ROLE_LABELS: Record<string, string> = {
-  owner: "대표 (Owner)",
-  manager: "관리자 (Manager)",
-  staff: "직원 (Staff)",
+  owner: "대표",
+  manager: "관리자",
+  staff: "직원",
 };
 
 export default async function DashboardLayout({

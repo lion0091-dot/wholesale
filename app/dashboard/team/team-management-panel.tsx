@@ -21,9 +21,9 @@ interface TeamManagementPanelProps {
 }
 
 const ROLE_LABELS: Record<OrgRole, string> = {
-  owner: "대표 (Owner)",
-  manager: "관리자 (Manager)",
-  staff: "직원 (Staff)",
+  owner: "대표",
+  manager: "관리자",
+  staff: "직원",
 };
 
 const cardStyle: React.CSSProperties = {
