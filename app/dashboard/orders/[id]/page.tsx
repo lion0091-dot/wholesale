@@ -246,7 +246,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
       <section style={cardStyle}>
         <div style={cardTitleStyle}>발주 품목 ({order.items.length}개)</div>
 
-        <div className="dash-table-wrap">
+        <div className="dash-table-wrap dash-desktop-only">
           <table className="dash-table">
             <thead>
               <tr>
@@ -269,6 +269,28 @@ export default async function OrderDetailPage({ params }: PageProps) {
               ))}
             </tbody>
           </table>
+        </div>
+
+        <div className="dash-mobile-only" style={{ flexDirection: "column", gap: "8px" }}>
+          {order.items.map((item) => (
+            <div
+              key={item.id}
+              style={{
+                border: "1px solid #e2e8f0",
+                borderRadius: "10px",
+                padding: "12px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: "14px" }}>{item.product_name}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#64748b" }}>
+                <span>{formatWon(item.unit_price)} × {Number(item.quantity)}</span>
+                <span style={{ fontWeight: 700, color: "#0f172a" }}>{formatWon(item.subtotal_amount)}</span>
+              </div>
+            </div>
+          ))}
         </div>
 
         <div

@@ -341,7 +341,7 @@ export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewPro
               </div>
             )}
 
-            <div className="dash-table-wrap">
+            <div className="dash-table-wrap dash-desktop-only">
               <table className="dash-table">
                 <thead>
                   <tr>
@@ -383,6 +383,44 @@ export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewPro
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <div className="dash-mobile-only" style={{ flexDirection: "column", gap: "8px", padding: "12px" }}>
+              {group.orders.map((order) => (
+                <label
+                  key={order.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "10px",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "10px",
+                    padding: "12px",
+                    backgroundColor: order.isOverdue ? "#fef2f2" : "#ffffff",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(order.id)}
+                    onChange={() => toggleOrder(order.id)}
+                    aria-label={`${order.orderNumber} 선택`}
+                    style={{ marginTop: "3px", flexShrink: 0 }}
+                  />
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: "13px", fontWeight: 700 }}>{order.orderNumber}</span>
+                      <span style={{ fontSize: "14px", fontWeight: 700 }}>{formatWon(order.totalAmount)}</span>
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#64748b" }}>
+                      주문일 {formatOrderedAt(order.orderedAt)}
+                    </div>
+                    <div style={{ fontSize: "12px", color: order.isOverdue ? "#b91c1c" : "#64748b" }}>
+                      정산 기한 {formatOrderedAt(order.dueAt)}
+                      {order.isOverdue && " (연체)"}
+                    </div>
+                  </div>
+                </label>
+              ))}
             </div>
           </section>
         );

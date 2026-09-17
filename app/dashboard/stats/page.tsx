@@ -259,7 +259,7 @@ export default async function DashboardStatsPage({
                 </span>
               </div>
 
-              <div className="dash-table-wrap">
+              <div className="dash-table-wrap dash-desktop-only">
                 <table className="dash-table">
                   <thead>
                     <tr>
@@ -278,6 +278,19 @@ export default async function DashboardStatsPage({
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="dash-mobile-only" style={{ flexDirection: "column", gap: "6px", padding: "10px 12px" }}>
+                {category.subcategories.map((sub) => (
+                  <div
+                    key={sub.label}
+                    style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", padding: "4px 0" }}
+                  >
+                    <span style={{ color: "#334155" }}>{sub.label}</span>
+                    <span style={{ color: "#64748b" }}>{sub.quantity.toLocaleString("ko-KR")}개</span>
+                    <span style={{ fontWeight: 700 }}>{formatWon(sub.amount)}</span>
+                  </div>
+                ))}
               </div>
             </section>
           ))}
