@@ -12,6 +12,7 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
+import { SampleBadge } from "@/components/sample-badge";
 import type { RelationshipStatus } from "@/types/database";
 import type { CustomerRow } from "./customer-types";
 
@@ -28,6 +29,8 @@ interface CustomerCardGridProps {
   onOpenInvite: (customer: CustomerRow) => void;
   /** 여신 한도 수정 모달 열기 */
   onOpenCredit: (customer: CustomerRow) => void;
+  /** 샘플(데모) 고객 목록 여부 — 카드마다 "샘플" 배지를 붙인다. */
+  isDemo?: boolean;
 }
 
 const RELATION_BADGES: Record<RelationshipStatus, { label: string; bg: string; color: string }> = {
@@ -111,6 +114,7 @@ export function CustomerCardGrid({
   onCopyLink,
   onOpenInvite,
   onOpenCredit,
+  isDemo = false,
 }: CustomerCardGridProps) {
   return (
     <div className="dash-customer-grid">
@@ -151,16 +155,19 @@ export function CustomerCardGrid({
               </div>
 
               <div style={{ minWidth: 0, flex: 1 }}>
-                <h3
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: 800,
-                    color: "#0f172a",
-                    wordBreak: "keep-all",
-                  }}
-                >
-                  {customer.restaurantName}
-                </h3>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                  <h3
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: 800,
+                      color: "#0f172a",
+                      wordBreak: "keep-all",
+                    }}
+                  >
+                    {customer.restaurantName}
+                  </h3>
+                  {isDemo && <SampleBadge />}
+                </div>
                 <p style={{ fontSize: "12px", color: "#475569", marginTop: "3px" }}>
                   담당자 {customer.representativeName}
                 </p>

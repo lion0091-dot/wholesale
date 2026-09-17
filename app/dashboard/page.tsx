@@ -4,6 +4,7 @@ import { getOrgStaffContext } from "@/lib/auth/rbac";
 import { CopyInviteButton } from "@/components/copy-invite-button";
 import { PendingApprovalBanner } from "@/components/pending-approval-banner";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
+import { SampleBadge } from "@/components/sample-badge";
 import {
   describeInviteRestriction,
   getSupplierAccount,
@@ -374,6 +375,7 @@ export default async function DashboardPage() {
                   <span style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>
                     {order.order_number}
                   </span>
+                  {isDemoData && <SampleBadge />}
                   <span style={{ fontSize: "12px", color: "#94a3b8" }}>
                     {formatTime(order.ordered_at)}
                   </span>

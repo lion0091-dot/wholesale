@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
+import { SampleBadge } from "@/components/sample-badge";
 import {
   getReceivableAuditLogAction,
   sendReceivablesReminderAction,
@@ -213,6 +214,11 @@ export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewPro
                       }}
                     >
                       연체
+                    </span>
+                  )}
+                  {readOnly && (
+                    <span style={{ marginLeft: "8px" }}>
+                      <SampleBadge />
                     </span>
                   )}
                 </div>

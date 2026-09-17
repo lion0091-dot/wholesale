@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Product } from "@/types/database";
 import { AuditLogPanel } from "@/components/audit-log-panel";
+import { SampleBadge } from "@/components/sample-badge";
 import {
   deleteProductAction,
   toggleProductFlagAction,
@@ -305,7 +306,10 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                           {categoryIcon(product.category)}
                         </span>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 700 }}>{product.name}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <div style={{ fontWeight: 700 }}>{product.name}</div>
+                            {readOnly && <SampleBadge />}
+                          </div>
                           <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
                             {product.category}
                             {product.subcategory ? ` · ${product.subcategory}` : ""} · {product.origin}
@@ -500,8 +504,11 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                     {categoryIcon(product.category)}
                   </span>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>
-                      {product.name}
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>
+                        {product.name}
+                      </div>
+                      {readOnly && <SampleBadge />}
                     </div>
                     <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
                       {product.category}

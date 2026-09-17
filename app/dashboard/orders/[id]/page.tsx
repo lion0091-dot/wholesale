@@ -17,6 +17,7 @@ import { TaxInvoiceDraftPanel } from "@/components/tax-invoice-draft-panel";
 import { AuditLogPanel } from "@/components/audit-log-panel";
 import { isSweetTrackerConfigured } from "@/lib/verification/sweettracker";
 import { signExternalOpenToken } from "@/lib/pdf/external-open-token";
+import { SampleBadge } from "@/components/sample-badge";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 export const metadata = {
@@ -244,6 +245,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
           >
             {badge.label}
           </span>
+          {isDemoData && <SampleBadge />}
         </div>
 
         <p style={{ fontSize: "13px", color: "#64748b" }}>

@@ -23,6 +23,7 @@ import {
 } from "../shop-chrome";
 import { fetchBuyerTrackingStatusAction, requestOrderCancelAction } from "../actions";
 import { StatementPreviewButton } from "@/components/statement-preview-button";
+import { SampleBadge } from "@/components/sample-badge";
 import { courierLabel, type TrackingResult } from "@/lib/verification/sweettracker";
 
 interface OrderHistoryViewProps {
@@ -215,8 +216,11 @@ export function OrderHistoryView({
                 }}
               >
                 <div>
-                  <div style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>
-                    {order.orderNumber}
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <div style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>
+                      {order.orderNumber}
+                    </div>
+                    {catalog.isDemo && <SampleBadge />}
                   </div>
                   <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "3px" }}>
                     {formatOrderedAt(order.orderedAt)} 접수

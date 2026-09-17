@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition, type CSSProperties } from "react";
 import Link from "next/link";
 import { issueInviteAction, type IssuedInvite } from "@/app/actions/invite";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
+import { SampleBadge } from "@/components/sample-badge";
 import type { RelationshipStatus } from "@/types/database";
 import { CustomerCardGrid } from "./customer-card-grid";
 import { updateCreditLimitAction } from "./actions";
@@ -346,6 +347,7 @@ export function CustomerTable({
             onCopyLink={handleCopyCardLink}
             onOpenInvite={handleOpenInvite}
             onOpenCredit={handleOpenCredit}
+            isDemo={readOnly}
           />
         ) : (
           <div className="dash-table-wrap">
@@ -373,7 +375,10 @@ export function CustomerTable({
                       style={{ opacity: customer.relationStatus === "blocked" ? 0.6 : 1 }}
                     >
                       <td>
-                        <div style={{ fontWeight: 700 }}>{customer.restaurantName}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <div style={{ fontWeight: 700 }}>{customer.restaurantName}</div>
+                          {readOnly && <SampleBadge />}
+                        </div>
                         <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
                           거래 시작 {formatOrderedAt(customer.joinedAt)}
                         </div>

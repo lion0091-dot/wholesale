@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
+import { SampleBadge } from "@/components/sample-badge";
 import { DEMO_ORDERS } from "@/lib/demo/supplier-samples";
 import { formatWon } from "@/lib/orders/status";
 import type { OrderItem, OrderStatus } from "@/types/database";
@@ -148,7 +149,10 @@ export default async function DashboardStatsPage({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <header>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>판매 통계</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+          <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>판매 통계</h1>
+          {isDemoData && <SampleBadge />}
+        </div>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
           축종 → 부위 기준으로 판매량/매출을 집계합니다. 취소된 주문은 제외됩니다.
         </p>

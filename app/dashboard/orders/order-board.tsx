@@ -9,6 +9,7 @@ import {
   formatWon,
   resolveAlimtalkStatus,
 } from "@/lib/orders/status";
+import { SampleBadge } from "@/components/sample-badge";
 import type { OrderStatus } from "@/types/database";
 
 /** 목록 테이블 1행에 필요한 최소 정보 */
@@ -28,9 +29,11 @@ interface OrderBoardProps {
   orders: OrderRow[];
   /** 알림톡 실발송 채널 사용 여부 (미설정 시 테스트 발송으로 표기) */
   isLiveChannel: boolean;
+  /** 샘플(데모) 발주서 여부 — 각 행/카드에 "샘플" 배지를 붙인다. */
+  isDemo?: boolean;
 }
 
-export function OrderBoard({ orders, isLiveChannel }: OrderBoardProps) {
+export function OrderBoard({ orders, isLiveChannel, isDemo = false }: OrderBoardProps) {
   const [activeFilter, setActiveFilter] = useState<OrderStatus | "all">("all");
   const [keyword, setKeyword] = useState("");
   const filterScrollRef = useRef<HTMLDivElement>(null);
@@ -184,7 +187,10 @@ export function OrderBoard({ orders, isLiveChannel }: OrderBoardProps) {
                 return (
                   <tr key={order.id} style={{ opacity: order.status === "cancelled" ? 0.6 : 1 }}>
                     <td style={{ whiteSpace: "nowrap" }}>
-                      <div style={{ fontWeight: 700 }}>{order.orderNumber}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <div style={{ fontWeight: 700 }}>{order.orderNumber}</div>
+                        {isDemo && <SampleBadge />}
+                      </div>
                       <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
                         {formatOrderedAt(order.orderedAt)}
                       </div>
@@ -285,18 +291,21 @@ export function OrderBoard({ orders, isLiveChannel }: OrderBoardProps) {
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: "#64748b",
-                      backgroundColor: "#f1f5f9",
-                      borderRadius: "4px",
-                      padding: "3px 7px",
-                    }}
-                  >
-                    {order.orderNumber}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "#64748b",
+                        backgroundColor: "#f1f5f9",
+                        borderRadius: "4px",
+                        padding: "3px 7px",
+                      }}
+                    >
+                      {order.orderNumber}
+                    </span>
+                    {isDemo && <SampleBadge />}
+                  </div>
                   <span style={{ fontSize: "11px", color: "#94a3b8" }}>
                     {formatOrderedAt(order.orderedAt)}
                   </span>

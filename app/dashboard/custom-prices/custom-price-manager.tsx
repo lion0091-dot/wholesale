@@ -3,6 +3,7 @@
 import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { deleteCustomPrice, setCustomPrice } from "@/app/actions/custom_price";
+import { SampleBadge } from "@/components/sample-badge";
 
 export interface CustomerOption {
   id: string;
@@ -396,7 +397,12 @@ export function CustomPriceManager({
 
                   return (
                     <tr key={row.id}>
-                      <td style={{ fontWeight: 600 }}>{row.retailerName}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          {row.retailerName}
+                          {readOnly && <SampleBadge />}
+                        </div>
+                      </td>
                       <td>{row.productName}</td>
                       <td style={{ whiteSpace: "nowrap", color: "#64748b" }}>
                         {formatWon(row.basePrice)} / {row.unit}
@@ -473,8 +479,11 @@ export function CustomPriceManager({
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>
-                      {row.retailerName}
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>
+                        {row.retailerName}
+                      </div>
+                      {readOnly && <SampleBadge />}
                     </div>
                     <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
                       {row.productName}

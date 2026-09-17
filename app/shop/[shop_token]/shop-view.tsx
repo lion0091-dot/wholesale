@@ -8,6 +8,7 @@ import { useShopCart } from "@/lib/shop/cart-store";
 import { cartTotals, quantityStepFor } from "@/lib/shop/order-policy";
 import { toCartLines, type ShopCatalog, type ShopCatalogItem } from "@/lib/shop/catalog-types";
 import { ShopFooter, ShopHeader, cardStyle, formatWon, shopPageStyle } from "./shop-chrome";
+import { SampleBadge } from "@/components/sample-badge";
 
 interface ShopViewProps {
   catalog: ShopCatalog;
@@ -321,6 +322,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
                         Number(item.product.stock_quantity)
                       )
                     }
+                    isDemo={catalog.isDemo}
                   />
                 ))}
               </div>
@@ -381,9 +383,10 @@ interface ProductCardProps {
   item: ShopCatalogItem;
   quantity: number;
   onStep: (direction: 1 | -1) => void;
+  isDemo?: boolean;
 }
 
-function ProductCard({ item, quantity, onStep }: ProductCardProps) {
+function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProps) {
   const { product, effectivePrice, isCustomPrice } = item;
   const stock = Number(product.stock_quantity);
   const isSoldOut = stock <= 0;
@@ -427,6 +430,7 @@ function ProductCard({ item, quantity, onStep }: ProductCardProps) {
               </span>
             )}
             <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>{product.name}</h3>
+            {isDemo && <SampleBadge />}
           </div>
           <p style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
             원산지: {product.origin}

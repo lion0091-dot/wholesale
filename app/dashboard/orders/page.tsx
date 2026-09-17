@@ -151,7 +151,7 @@ export default async function DashboardOrdersPage() {
         ))}
       </section>
 
-      <OrderBoard orders={orders} isLiveChannel={isAlimtalkLiveChannel()} />
+      <OrderBoard orders={orders} isLiveChannel={isAlimtalkLiveChannel()} isDemo={isDemoData} />
     </div>
   );
 }
