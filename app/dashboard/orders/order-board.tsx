@@ -28,11 +28,9 @@ interface OrderBoardProps {
   orders: OrderRow[];
   /** 알림톡 실발송 채널 사용 여부 (미설정 시 테스트 발송으로 표기) */
   isLiveChannel: boolean;
-  /** 데모(샘플) 데이터일 때는 상세 진입을 막는다. */
-  readOnly?: boolean;
 }
 
-export function OrderBoard({ orders, isLiveChannel, readOnly = false }: OrderBoardProps) {
+export function OrderBoard({ orders, isLiveChannel }: OrderBoardProps) {
   const [activeFilter, setActiveFilter] = useState<OrderStatus | "all">("all");
   const [keyword, setKeyword] = useState("");
   const filterScrollRef = useRef<HTMLDivElement>(null);
@@ -245,25 +243,21 @@ export function OrderBoard({ orders, isLiveChannel, readOnly = false }: OrderBoa
                     </td>
 
                     <td>
-                      {readOnly ? (
-                        <span style={{ fontSize: "11px", color: "#94a3b8" }}>샘플</span>
-                      ) : (
-                        <Link
-                          href={`/dashboard/orders/${order.id}`}
-                          style={{
-                            display: "inline-block",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            padding: "5px 9px",
-                            borderRadius: "6px",
-                            border: "1px solid #cbd5e1",
-                            color: "#334155",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          상세 보기
-                        </Link>
-                      )}
+                      <Link
+                        href={`/dashboard/orders/${order.id}`}
+                        style={{
+                          display: "inline-block",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          padding: "5px 9px",
+                          borderRadius: "6px",
+                          border: "1px solid #cbd5e1",
+                          color: "#334155",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        상세 보기
+                      </Link>
                     </td>
                   </tr>
                 );
@@ -368,23 +362,19 @@ export function OrderBoard({ orders, isLiveChannel, readOnly = false }: OrderBoa
                     </div>
                   </div>
 
-                  {readOnly ? (
-                    <span style={{ fontSize: "11px", color: "#94a3b8" }}>샘플</span>
-                  ) : (
-                    <Link
-                      href={`/dashboard/orders/${order.id}`}
-                      style={{
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        padding: "6px 12px",
-                        borderRadius: "6px",
-                        border: "1px solid #cbd5e1",
-                        color: "#334155",
-                      }}
-                    >
-                      상세 보기
-                    </Link>
-                  )}
+                  <Link
+                    href={`/dashboard/orders/${order.id}`}
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      padding: "6px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid #cbd5e1",
+                      color: "#334155",
+                    }}
+                  >
+                    상세 보기
+                  </Link>
                 </div>
               </div>
             );
