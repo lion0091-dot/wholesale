@@ -12,6 +12,7 @@
 export interface DefaultDeliveryItem {
   name: string;
   category: string;
+  subcategory: string | null;
   origin: string;
   grade: string | null;
   base_price: number;
@@ -26,6 +27,7 @@ export const DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = [
   {
     name: "한우 1++ 등심",
     category: "소",
+    subcategory: "등심",
     origin: "국내산",
     grade: "1++ (No.9)",
     base_price: 85000,
@@ -38,6 +40,7 @@ export const DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = [
   {
     name: "한우 1등급 양지/사태",
     category: "소",
+    subcategory: "양지",
     origin: "국내산",
     grade: "1등급",
     base_price: 29000,
@@ -50,6 +53,7 @@ export const DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = [
   {
     name: "국내산 암퇘지 삼겹살",
     category: "돼지",
+    subcategory: "삼겹살",
     origin: "국내산",
     grade: "1등급",
     base_price: 18500,
@@ -62,6 +66,7 @@ export const DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = [
   {
     name: "국내산 목살",
     category: "돼지",
+    subcategory: "목살",
     origin: "국내산",
     grade: "1등급",
     base_price: 16500,
@@ -74,6 +79,7 @@ export const DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = [
   {
     name: "닭 정육 (다리살)",
     category: "닭/오리",
+    subcategory: "다리살",
     origin: "국내산",
     grade: null,
     base_price: 7900,
@@ -86,6 +92,7 @@ export const DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = [
   {
     name: "생닭 10호",
     category: "닭/오리",
+    subcategory: "통닭",
     origin: "국내산",
     grade: null,
     base_price: 4200,
@@ -98,6 +105,7 @@ export const DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = [
   {
     name: "수제 양념 소불고기",
     category: "가공육",
+    subcategory: null,
     origin: "국내산",
     grade: null,
     base_price: 21000,
@@ -110,6 +118,7 @@ export const DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = [
   {
     name: "대패 삼겹살",
     category: "가공육",
+    subcategory: null,
     origin: "국내산",
     grade: null,
     base_price: 13500,

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
 import { DEMO_PRODUCTS } from "@/lib/demo/supplier-samples";
 import { ProductFormView } from "../../product-form-view";
+import { fetchSubcategoriesByCategory } from "../../get-subcategories";
 import type { Product } from "@/types/database";
 
 export const metadata = {
@@ -22,6 +23,7 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
     .select("name")
     .order("sort_order", { ascending: true });
   const categories = ((categoryRows ?? []) as Array<{ name: string }>).map((row) => row.name);
+  const subcategoriesByCategory = await fetchSubcategoriesByCategory(supabase);
 
   if (scope?.wholesalerId) {
     const { data } = await supabase
@@ -32,7 +34,13 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
       .maybeSingle();
 
     if (data) {
-      return <ProductFormView product={data as Product} categories={categories} />;
+      return (
+        <ProductFormView
+          product={data as Product}
+          categories={categories}
+          subcategoriesByCategory={subcategoriesByCategory}
+        />
+      );
     }
   }
 
@@ -43,5 +51,12 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
     notFound();
   }
 
-  return <ProductFormView product={demoProduct} isDemoMode categories={categories} />;
+  return (
+    <ProductFormView
+      product={demoProduct}
+      isDemoMode
+      categories={categories}
+      subcategoriesByCategory={subcategoriesByCategory}
+    />
+  );
 }

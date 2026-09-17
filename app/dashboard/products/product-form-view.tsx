@@ -13,6 +13,8 @@ interface ProductFormViewProps {
   isDemoMode?: boolean;
   /** 플랫폼 공용 카테고리 목록(product_categories 테이블) — 슈퍼관리자가 관리 */
   categories: string[];
+  /** 축종별 부위 목록(product_subcategories 테이블). 카테고리 선택에 따라 캐스케이딩된다. */
+  subcategoriesByCategory: Record<string, string[]>;
 }
 
 const FALLBACK_CATEGORIES = ["소", "돼지", "닭/오리", "양", "가공육"];
@@ -40,10 +42,14 @@ export function ProductFormView({
   product,
   isDemoMode = false,
   categories,
+  subcategoriesByCategory,
 }: ProductFormViewProps) {
   const categoryOptions = categories.length > 0 ? categories : FALLBACK_CATEGORIES;
   const router = useRouter();
   const isEdit = Boolean(product);
+
+  const [selectedCategory, setSelectedCategory] = useState(product?.category ?? categoryOptions[0]);
+  const subcategoryOptions = subcategoriesByCategory[selectedCategory] ?? [];
 
   const [basePrice, setBasePrice] = useState(product ? String(product.base_price) : "");
   const [purchasePrice, setPurchasePrice] = useState("");
@@ -140,13 +146,14 @@ export function ProductFormView({
 
           <div>
             <label htmlFor="category" style={labelStyle}>
-              부위/카테고리 *
+              축종/카테고리 *
             </label>
             <select
               id="category"
               name="category"
               required
-              defaultValue={product?.category ?? categoryOptions[0]}
+              value={selectedCategory}
+              onChange={(event) => setSelectedCategory(event.target.value)}
               style={fieldStyle}
             >
               {categoryOptions.map((item) => (
@@ -158,7 +165,28 @@ export function ProductFormView({
           </div>
         </div>
 
-        <div className="dash-form-grid">
+        <div className="dash-form-grid-3">
+          <div>
+            <label htmlFor="subcategory" style={labelStyle}>
+              부위 (선택)
+            </label>
+            <select
+              id="subcategory"
+              name="subcategory"
+              key={selectedCategory}
+              defaultValue={subcategoryOptions.includes(product?.subcategory ?? "") ? product?.subcategory ?? "" : ""}
+              disabled={subcategoryOptions.length === 0}
+              style={fieldStyle}
+            >
+              <option value="">선택 안 함</option>
+              {subcategoryOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label htmlFor="origin" style={labelStyle}>
               원산지 *

@@ -68,6 +68,7 @@ async function resolveProductScope() {
 interface ProductInput {
   name: string;
   category: string;
+  subcategory: string | null;
   origin: string;
   grade: string | null;
   base_price: number;
@@ -82,6 +83,7 @@ interface ProductInput {
 function parseProductForm(formData: FormData): ProductInput {
   const name = ((formData.get("name") as string) || "").trim();
   const category = ((formData.get("category") as string) || "").trim();
+  const subcategory = ((formData.get("subcategory") as string) || "").trim() || null;
   const origin = ((formData.get("origin") as string) || "").trim();
   const grade = ((formData.get("grade") as string) || "").trim() || null;
   const unit = ((formData.get("unit") as string) || "kg").trim();
@@ -112,6 +114,7 @@ function parseProductForm(formData: FormData): ProductInput {
   return {
     name,
     category,
+    subcategory,
     origin,
     grade,
     base_price: basePrice,

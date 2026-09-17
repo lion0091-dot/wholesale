@@ -412,6 +412,20 @@ function ProductCard({ item, quantity, onStep }: ProductCardProps) {
             >
               {product.category}
             </span>
+            {product.subcategory && (
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: "#475569",
+                  backgroundColor: "#f1f5f9",
+                  padding: "2px 6px",
+                  borderRadius: "4px",
+                }}
+              >
+                {product.subcategory}
+              </span>
+            )}
             <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>{product.name}</h3>
           </div>
           <p style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>

@@ -20,16 +20,34 @@ export default async function AdminCategoriesPage() {
     }
   }
 
-  let categories: Array<{ id: string; name: string }> = [];
+  let categories: Array<{
+    id: string;
+    name: string;
+    subcategories: Array<{ id: string; name: string }>;
+  }> = [];
 
   if (isConfigured) {
     const supabase = await createClient();
-    const { data } = await supabase
-      .from("product_categories")
-      .select("id, name")
-      .order("sort_order", { ascending: true });
+    const [{ data: categoryRows }, { data: subcategoryRows }] = await Promise.all([
+      supabase.from("product_categories").select("id, name").order("sort_order", { ascending: true }),
+      supabase
+        .from("product_subcategories")
+        .select("id, name, category_id")
+        .order("sort_order", { ascending: true }),
+    ]);
 
-    categories = (data ?? []) as Array<{ id: string; name: string }>;
+    const subcategoriesByCategoryId = new Map<string, Array<{ id: string; name: string }>>();
+
+    for (const row of (subcategoryRows ?? []) as Array<{ id: string; name: string; category_id: string }>) {
+      const list = subcategoriesByCategoryId.get(row.category_id) ?? [];
+      list.push({ id: row.id, name: row.name });
+      subcategoriesByCategoryId.set(row.category_id, list);
+    }
+
+    categories = ((categoryRows ?? []) as Array<{ id: string; name: string }>).map((category) => ({
+      ...category,
+      subcategories: subcategoriesByCategoryId.get(category.id) ?? [],
+    }));
   }
 
   return (

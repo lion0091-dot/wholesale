@@ -76,6 +76,8 @@ export interface Product {
   wholesaler_id: string;
   name: string;
   category: string;
+  /** 부위 (예: 등심, 삼겹살) — product_subcategories 시드값, 자유 텍스트 아님. 기존 상품은 null일 수 있다. */
+  subcategory: string | null;
   origin: string;
   grade: string | null;
   base_price: number;

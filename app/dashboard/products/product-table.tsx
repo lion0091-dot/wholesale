@@ -207,7 +207,8 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                     <td>
                       <div style={{ fontWeight: 700 }}>{product.name}</div>
                       <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                        {product.category} · {product.origin}
+                        {product.category}
+                        {product.subcategory ? ` · ${product.subcategory}` : ""} · {product.origin}
                         {product.grade ? ` · ${product.grade}` : ""}
                       </div>
                       {(product.created_by || product.updated_by) && (
