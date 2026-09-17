@@ -64,7 +64,7 @@ export interface DocumentVerification {
  */
 export function resolveDocumentVerification(
   businessNumber: string | null | undefined,
-  accountStatus: "pending" | "active" | "suspended" | "rejected"
+  accountStatus: "pending" | "active" | "suspended" | "rejected" | "closed"
 ): DocumentVerification {
   const checksumValid = isValidBusinessNumber(businessNumber);
 
@@ -74,6 +74,15 @@ export function resolveDocumentVerification(
       checksumValid,
       label: "번호 오류",
       description: "국세청 체크섬 불일치 — 등록증 사본으로 번호를 재확인해야 합니다.",
+    };
+  }
+
+  if (accountStatus === "closed") {
+    return {
+      level: "rejected",
+      checksumValid,
+      label: "사업 종료",
+      description: "본인 신청으로 사업을 종료(탈퇴)한 공급사입니다.",
     };
   }
 

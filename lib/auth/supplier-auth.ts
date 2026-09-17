@@ -101,6 +101,12 @@ const SIGNUP_ERROR_MESSAGES: Record<string, string> = {
   SUPPLIER_NOT_FOUND: "공급사 정보가 아직 등록되지 않았습니다. 최소 정보 입력을 먼저 완료해주세요.",
   ALREADY_VERIFIED: "이미 승인이 완료된 업체입니다. 사업자 정보 변경은 운영팀에 문의해주세요.",
   SUPER_ADMIN_REQUIRED: "플랫폼 슈퍼관리자만 수행할 수 있는 작업입니다.",
+  NOT_A_WHOLESALER_OWNER: "업체 대표(가입 당사자) 계정만 사업 종료를 신청할 수 있습니다.",
+  ALREADY_CLOSED: "이미 사업 종료 처리된 계정입니다.",
+  OUTSTANDING_BALANCE_EXISTS:
+    "정산되지 않은 미수금이 남아있어 사업 종료를 진행할 수 없습니다. 먼저 미수금을 정산해주세요.",
+  NOT_AUTHORIZED_FOR_THUMBNAIL: "업체 대표 또는 관리자 권한 직원만 미니샵 썸네일을 변경할 수 있습니다.",
+  WHOLESALER_NOT_FOUND: "공급사 정보를 찾을 수 없습니다.",
 };
 
 /** RPC 오류 메시지에서 코드를 찾아 안내 문구로 바꾼다. */

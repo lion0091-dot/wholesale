@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import {
   AUTH_CALLBACK_PATH,
   BuyerAuthError,
@@ -150,6 +151,69 @@ export async function recordBuyerConsentAction(
     }
 
     revalidatePath(`/shop/${shopToken}`);
+
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
+ * 바이어(구매회원) 회원탈퇴.
+ *
+ * 완전 삭제가 아니라 "개인정보 익명화(withdraw_retailer_account RPC) + 로그인 영구 차단"으로
+ * 처리한다. orders/order_items는 손대지 않는다(전자상거래법상 계약/결제 기록 보관 의무).
+ *
+ * 로그인 차단은 Postgres RPC가 아니라 여기(서버 액션)에서 service_role Auth Admin API로
+ * 수행한다 — auth.users는 Supabase가 관리하는 스키마라 공식 API(ban_duration)만 쓴다.
+ * SUPABASE_SERVICE_ROLE_KEY가 없는 데모 환경에서는 익명화만 되고 차단은 건너뛴다
+ * (개발 편의 — 실제 배포 환경에는 항상 키가 있어야 한다).
+ */
+export async function withdrawBuyerAccountAction(): Promise<ActionResult> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new BuyerAuthError("auth_required", "로그인이 필요합니다.");
+    }
+
+    const { error: rpcError } = await supabase.rpc("withdraw_retailer_account");
+
+    if (rpcError) {
+      const message = rpcError.message ?? "";
+
+      if (message.includes("NOT_A_RETAILER_ACCOUNT")) {
+        throw new BuyerAuthError("not_a_buyer", "바이어(구매회원) 계정만 탈퇴할 수 있습니다.");
+      }
+
+      if (message.includes("RETAILER_NOT_FOUND")) {
+        throw new BuyerAuthError("profile_missing", "회원 정보를 찾을 수 없습니다.");
+      }
+
+      throw new Error("탈퇴 처리에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    const admin = createServiceRoleClient();
+
+    if (admin) {
+      // 사실상 영구 차단(약 100년). Supabase는 무기한 값을 별도로 지원하지 않는다.
+      const { error: banError } = await admin.auth.admin.updateUserById(user.id, {
+        ban_duration: "876000h",
+      });
+
+      if (banError) {
+        console.error("[Buyer Withdrawal] 계정 정지 실패:", banError.message);
+      }
+    } else {
+      console.error("[Buyer Withdrawal] SUPABASE_SERVICE_ROLE_KEY가 없어 계정을 정지할 수 없습니다.");
+    }
+
+    await supabase.auth.signOut();
+
+    revalidatePath("/", "layout");
 
     return { success: true };
   } catch (error) {

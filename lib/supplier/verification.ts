@@ -52,12 +52,16 @@ export interface SupplierAccount {
   /** 사업자등록증 사본 Storage 경로. null이면 미제출 — 실제 파일은 서명된 URL로만 조회 */
   businessLicensePath: string | null;
   businessLicenseUploadedAt: string | null;
+  /** 미니샵 썸네일(업체 사진/로고) 공개 URL. null이면 미등록 */
+  shopThumbnailUrl: string | null;
   shopToken: string | null;
   supplierStatus: WholesalerStatus | null;
   /** 최소 정보(약관 + 연락처 + 상호) 입력이 남아 있는지 */
   needsMinimumInfo: boolean;
   /** 초대장(미니샵 초대 링크) 발부 가능 여부 */
   canIssueInvite: boolean;
+  /** 업체 대표(가입 당사자) 본인 여부 — true여야 사업 종료(탈퇴)를 신청할 수 있다 */
+  isWholesalerOwner: boolean;
 }
 
 /** 미승인 공급사에게 노출하는 공통 안내 문구 */
@@ -116,14 +120,14 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
     ? await supabase
         .from("wholesalers")
         .select(
-          "id, business_name, business_number, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_token, status"
+          "id, profile_id, business_name, business_number, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_thumbnail_url, shop_token, status"
         )
         .eq("id", linkedWholesalerId)
         .maybeSingle()
     : await supabase
         .from("wholesalers")
         .select(
-          "id, business_name, business_number, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_token, status"
+          "id, profile_id, business_name, business_number, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_thumbnail_url, shop_token, status"
         )
         .eq("profile_id", user.id)
         .maybeSingle();
@@ -171,12 +175,20 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
     businessLicensePath: (wholesaler?.business_license_path as string | null | undefined) ?? null,
     businessLicenseUploadedAt:
       (wholesaler?.business_license_uploaded_at as string | null | undefined) ?? null,
+    shopThumbnailUrl: (wholesaler?.shop_thumbnail_url as string | null | undefined) ?? null,
     shopToken,
     supplierStatus,
     needsMinimumInfo,
     canIssueInvite: Boolean(
       shopToken &&
-        (isSuperAdmin || (isSupplier && administrativelyApproved && supplierStatus !== "suspended"))
+        (isSuperAdmin ||
+          (isSupplier &&
+            administrativelyApproved &&
+            supplierStatus !== "suspended" &&
+            supplierStatus !== "closed"))
+    ),
+    isWholesalerOwner: Boolean(
+      wholesaler?.profile_id && (wholesaler.profile_id as string) === user.id
     ),
   };
 }
@@ -189,6 +201,10 @@ export function describeInviteRestriction(account: SupplierAccount): string | nu
 
   if (!account.isSupplier && !account.isSuperAdmin) {
     return "공급사 계정만 초대장을 발부할 수 있습니다.";
+  }
+
+  if (account.supplierStatus === "closed") {
+    return "본인 신청으로 사업을 종료(탈퇴)한 상태입니다.";
   }
 
   if (account.supplierStatus === "suspended") {

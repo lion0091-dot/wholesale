@@ -10,6 +10,8 @@ import {
 import { BusinessAddressForm } from "./business-address-form";
 import { BusinessNumberForm } from "./business-number-form";
 import { BusinessLicenseForm } from "./business-license-form";
+import { ShopThumbnailForm } from "./shop-thumbnail-form";
+import { WithdrawWholesalerButton } from "./withdraw-wholesaler-button";
 
 export const metadata = {
   title: "영업 · 초대장 | 도매업체 통합관리시스템",
@@ -217,6 +219,22 @@ export default async function DashboardInvitesPage() {
           </p>
           <BusinessAddressForm currentBusinessAddress={account.businessAddress} />
         </section>
+      )}
+
+      {account.wholesalerId && (
+        <section style={cardStyle}>
+          <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>
+            미니샵 썸네일
+          </div>
+          <p style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.7, marginBottom: "12px" }}>
+            바이어의 &quot;내 거래처&quot; 목록에서 상호명 옆에 표시되는 업체 대표 사진/로고입니다.
+          </p>
+          <ShopThumbnailForm currentThumbnailUrl={account.shopThumbnailUrl} />
+        </section>
+      )}
+
+      {account.wholesalerId && account.isWholesalerOwner && account.supplierStatus !== "closed" && (
+        <WithdrawWholesalerButton />
       )}
     </div>
   );

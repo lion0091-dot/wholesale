@@ -29,6 +29,7 @@ const STATUS_BADGES: Record<WholesalerStatus, BadgeStyle> = {
   active: { label: "정상 영업중", bg: "#dcfce7", color: "#166534" },
   suspended: { label: "이용 일시정지", bg: "#fee2e2", color: "#991b1b" },
   rejected: { label: "가입 거절", bg: "#f1f5f9", color: "#64748b" },
+  closed: { label: "사업 종료(탈퇴)", bg: "#f1f5f9", color: "#475569" },
 };
 
 const SUB_BADGES: Record<SubscriptionStatus, BadgeStyle> = {

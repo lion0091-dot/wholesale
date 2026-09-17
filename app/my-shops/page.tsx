@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { WithdrawAccountButton } from "./withdraw-account-button";
 import type { RelationshipStatus, WholesalerStatus } from "@/types/database";
 
 export const metadata = {
@@ -39,8 +40,20 @@ const noticeStyle: React.CSSProperties = {
 
 interface JoinRow {
   wholesalers:
-    | { business_name: string; representative_name: string; shop_token: string; status: WholesalerStatus }
-    | Array<{ business_name: string; representative_name: string; shop_token: string; status: WholesalerStatus }>
+    | {
+        business_name: string;
+        representative_name: string;
+        shop_token: string;
+        status: WholesalerStatus;
+        shop_thumbnail_url: string | null;
+      }
+    | Array<{
+        business_name: string;
+        representative_name: string;
+        shop_token: string;
+        status: WholesalerStatus;
+        shop_thumbnail_url: string | null;
+      }>
     | null;
 }
 
@@ -92,7 +105,9 @@ export default async function MyShopsPage() {
 
   const { data: rows } = await supabase
     .from("wholesaler_retailers")
-    .select("created_at, wholesalers ( business_name, representative_name, shop_token, status )")
+    .select(
+      "created_at, wholesalers ( business_name, representative_name, shop_token, status, shop_thumbnail_url )"
+    )
     .eq("retailer_id", retailer.id as string)
     .eq("status", "active" satisfies RelationshipStatus)
     .order("created_at", { ascending: false });
@@ -131,22 +146,58 @@ export default async function MyShopsPage() {
                 gap: "10px",
               }}
             >
-              <div>
-                <div style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>
-                  {shop.business_name}
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                {shop.shop_thumbnail_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={shop.shop_thumbnail_url}
+                    alt=""
+                    style={{
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "8px",
+                      objectFit: "cover",
+                      border: "1px solid #e2e8f0",
+                      flexShrink: 0,
+                    }}
+                  />
+                ) : (
+                  <div
+                    aria-hidden
+                    style={{
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "8px",
+                      backgroundColor: "#f1f5f9",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "18px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    🏬
+                  </div>
+                )}
+                <div>
+                  <div style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>
+                    {shop.business_name}
+                  </div>
+                  <p style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
+                    대표자: {shop.representative_name}
+                    {shop.status !== "active" && (
+                      <span style={{ color: "#b91c1c", fontWeight: 700 }}> · 현재 이용 불가</span>
+                    )}
+                  </p>
                 </div>
-                <p style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
-                  대표자: {shop.representative_name}
-                  {shop.status !== "active" && (
-                    <span style={{ color: "#b91c1c", fontWeight: 700 }}> · 현재 이용 불가</span>
-                  )}
-                </p>
               </div>
               <span style={{ fontSize: "13px", color: "#2563eb", fontWeight: 700 }}>이동 →</span>
             </Link>
           ))}
         </div>
       )}
+
+      <WithdrawAccountButton />
     </main>
   );
 }
