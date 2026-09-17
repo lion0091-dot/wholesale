@@ -51,6 +51,15 @@ export interface TaxInvoiceOverrides {
   note: string;
 }
 
+/**
+ * 거래명세서(짙은 네이비 #0f172a 톤)와 나란히 출력했을 때 헷갈리지 않도록,
+ * 이 문서는 화면의 "계산서 작성 도우미" 버튼과 같은 앰버/오렌지 톤으로 통일한다.
+ * (components/tax-invoice-draft-panel.tsx의 버튼 색상과 동일 계열)
+ */
+const ACCENT = "#9a3412";
+const ACCENT_SOFT = "#fff7ed";
+const ACCENT_BORDER = "#fed7aa";
+
 const styles = StyleSheet.create({
   page: {
     fontFamily: FONT_FAMILY,
@@ -58,16 +67,28 @@ const styles = StyleSheet.create({
     color: "#0f172a",
     padding: 32,
   },
+  draftBadge: {
+    alignSelf: "center",
+    backgroundColor: ACCENT,
+    color: "#ffffff",
+    fontSize: 8,
+    fontWeight: 700,
+    borderRadius: 999,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    marginBottom: 8,
+  },
   title: {
     fontSize: 20,
     fontWeight: 700,
     textAlign: "center",
     marginBottom: 4,
+    color: ACCENT,
   },
   subtitle: {
     fontSize: 9,
     textAlign: "center",
-    color: "#64748b",
+    color: "#9a5b2e",
     marginBottom: 20,
   },
   metaRow: {
@@ -84,7 +105,7 @@ const styles = StyleSheet.create({
   },
   partyBox: {
     flex: 1,
-    border: "1px solid #e2e8f0",
+    border: `1px solid ${ACCENT_BORDER}`,
     borderRadius: 6,
     padding: 10,
   },
@@ -92,7 +113,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: 700,
     color: "#ffffff",
-    backgroundColor: "#0f172a",
+    backgroundColor: ACCENT,
     borderRadius: 4,
     paddingVertical: 3,
     paddingHorizontal: 6,
@@ -112,25 +133,25 @@ const styles = StyleSheet.create({
     color: "#0f172a",
   },
   table: {
-    border: "1px solid #e2e8f0",
+    border: `1px solid ${ACCENT_BORDER}`,
     borderRadius: 6,
     marginBottom: 12,
   },
   tableHeaderRow: {
     flexDirection: "row",
-    backgroundColor: "#f1f5f9",
-    borderBottom: "1px solid #e2e8f0",
+    backgroundColor: ACCENT_SOFT,
+    borderBottom: `1px solid ${ACCENT_BORDER}`,
   },
   tableRow: {
     flexDirection: "row",
-    borderBottom: "1px solid #f1f5f9",
+    borderBottom: "1px solid #fef3e8",
   },
   cellNo: { width: 28, padding: 6, textAlign: "center" },
   cellName: { flex: 1, padding: 6 },
   cellPrice: { width: 80, padding: 6, textAlign: "right" },
   cellQty: { width: 56, padding: 6, textAlign: "right" },
   cellAmount: { width: 90, padding: 6, textAlign: "right" },
-  headerCell: { fontWeight: 700, color: "#334155" },
+  headerCell: { fontWeight: 700, color: "#7c2d12" },
   totalRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -139,7 +160,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   totalLabel: { fontSize: 10, color: "#64748b" },
-  totalValue: { fontSize: 14, fontWeight: 700 },
+  totalValue: { fontSize: 14, fontWeight: 700, color: ACCENT },
   notesBox: {
     border: "1px solid #fde68a",
     backgroundColor: "#fffbeb",
@@ -151,10 +172,10 @@ const styles = StyleSheet.create({
   },
   disclaimer: {
     marginTop: "auto",
-    borderTop: "1px solid #e2e8f0",
+    borderTop: `1px solid ${ACCENT_BORDER}`,
     paddingTop: 8,
     fontSize: 7.5,
-    color: "#94a3b8",
+    color: "#9a5b2e",
     lineHeight: 1.5,
   },
 });
@@ -212,6 +233,7 @@ function TaxInvoiceDocument({
   return (
     <Document title={`계산서_${data.orderNumber}`}>
       <Page size="A4" style={styles.page}>
+        <Text style={styles.draftBadge}>홈택스 미발행 · 작성 초안</Text>
         <Text style={styles.title}>계산서</Text>
         <Text style={styles.subtitle}>(면세) Tax-Exempt Invoice Draft</Text>
 
