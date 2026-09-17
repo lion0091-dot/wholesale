@@ -3,12 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
+import { requireOrgRole, RbacError } from "@/lib/auth/rbac";
 import type { ActionResult } from "@/app/actions/invite";
 
 /**
- * 거래처(바이어)의 여신 한도 / 연체 기준일 수정.
- * RLS(wholesaler_id = get_current_wholesaler_id())가 소유권을 한 번 더 검증하므로,
- * 여기서의 wholesaler_id 필터는 방어선 중 하나일 뿐이다.
+ * 거래처(바이어)의 여신 한도 / 연체 기준일 수정. 돈과 직결되는 조작이라
+ * owner/manager만 허용한다(RLS도 20260930000019에서 동일 기준으로 맞춰둠).
  */
 export async function updateCreditLimitAction(
   retailerId: string,
@@ -22,6 +22,12 @@ export async function updateCreditLimitAction(
 
     if (!Number.isFinite(settlementDueDays) || settlementDueDays <= 0) {
       return { success: false, error: "연체 기준일은 1 이상의 숫자여야 합니다." };
+    }
+
+    try {
+      await requireOrgRole(["owner", "manager"]);
+    } catch (err) {
+      return { success: false, error: err instanceof RbacError ? err.message : "권한이 없습니다." };
     }
 
     const scope = await getSupplierScope();

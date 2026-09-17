@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
+import { requireOrgRole, RbacError } from "@/lib/auth/rbac";
 import { computeDueAt, isOverdue } from "@/lib/orders/receivables";
 import { sendReceivablesReminderToRetailer } from "@/lib/notifications/alimtalk";
 import type { ActionResult } from "@/app/actions/invite";
@@ -17,6 +18,12 @@ export async function settleCreditOrdersAction(orderIds: string[]): Promise<Acti
   try {
     if (orderIds.length === 0) {
       return { success: false, error: "정산할 주문을 선택해주세요." };
+    }
+
+    try {
+      await requireOrgRole(["owner", "manager"]);
+    } catch (err) {
+      return { success: false, error: err instanceof RbacError ? err.message : "권한이 없습니다." };
     }
 
     const scope = await getSupplierScope();
