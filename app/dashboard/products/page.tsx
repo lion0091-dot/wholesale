@@ -75,7 +75,7 @@ export default async function DashboardProductsPage() {
         <Link
           href="/dashboard/products/new"
           style={{
-            backgroundColor: "#dc2626",
+            backgroundColor: "#0f172a",
             color: "#ffffff",
             fontSize: "13px",
             fontWeight: 700,
