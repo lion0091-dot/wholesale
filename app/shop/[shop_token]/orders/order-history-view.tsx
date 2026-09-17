@@ -30,6 +30,8 @@ interface OrderHistoryViewProps {
   history: ShopOrderHistory;
   /** 스위트트래커 API 키 미설정 시 배송 조회 버튼 자체를 숨긴다. */
   sweetTrackerConfigured: boolean;
+  /** 주문 ID별 카카오 인앱 "외부에서 열기" 전용 토큰 경로(/doc/[token]). 없으면 기존 href로 폴백. */
+  statementExternalOpenHrefByOrderId: Record<string, string>;
 }
 
 /** 자체 열림/조회 상태를 갖는 배송 조회 버튼 — StatementPreviewButton과 동일한 패턴. */
@@ -96,7 +98,12 @@ const REASON_PRESETS = [
   "납품 일정이 변경되었습니다.",
 ];
 
-export function OrderHistoryView({ catalog, history, sweetTrackerConfigured }: OrderHistoryViewProps) {
+export function OrderHistoryView({
+  catalog,
+  history,
+  sweetTrackerConfigured,
+  statementExternalOpenHrefByOrderId,
+}: OrderHistoryViewProps) {
   const router = useRouter();
   const { wholesaler, customer, shopToken } = catalog;
 
@@ -285,6 +292,7 @@ export function OrderHistoryView({ catalog, history, sweetTrackerConfigured }: O
                 <StatementPreviewButton
                   href={`/shop/${shopToken}/orders/${order.id}/statement`}
                   label="거래명세서"
+                  externalOpenHref={statementExternalOpenHrefByOrderId[order.id] ?? null}
                 />
                 {sweetTrackerConfigured && order.courierCode && order.trackingNumber && (
                   <TrackingLookupButton shopToken={shopToken} order={order} />

@@ -8,6 +8,13 @@ interface StatementPreviewButtonProps {
   href: string;
   /** 버튼 라벨 앞에 붙는 텍스트 */
   label?: string;
+  /**
+   * 카카오톡 인앱 브라우저에서 "외부 브라우저에서 열기"를 누를 때 대신 열 경로.
+   * 세션 쿠키 없이도 서명 토큰만으로 인가되는 /doc/[token] 경로를 넘겨받는다.
+   * 없으면(토큰 발급 실패 등) 기존 href로 폴백 — 이 경우 외부 브라우저에서는
+   * 로그인 화면으로 튕길 수 있다.
+   */
+  externalOpenHref?: string | null;
 }
 
 /**
@@ -23,7 +30,11 @@ interface StatementPreviewButtonProps {
  * 다운로드는 "페이지가 작동하지 않습니다" 오류로 나타난다. 이 환경에서는 iframe
  * 대신 기본 브라우저로 넘기는 버튼만 보여준다.
  */
-export function StatementPreviewButton({ href, label = "거래명세서" }: StatementPreviewButtonProps) {
+export function StatementPreviewButton({
+  href,
+  label = "거래명세서",
+  externalOpenHref,
+}: StatementPreviewButtonProps) {
   const [open, setOpen] = useState(false);
   const [isKakaoInApp, setIsKakaoInApp] = useState(false);
 
@@ -32,7 +43,9 @@ export function StatementPreviewButton({ href, label = "거래명세서" }: Stat
   }, []);
 
   const externalOpenUrl = isKakaoInApp
-    ? buildKakaoExternalOpenUrl(new URL(href, window.location.origin).toString())
+    ? buildKakaoExternalOpenUrl(
+        new URL(externalOpenHref ?? href, window.location.origin).toString()
+      )
     : null;
 
   return (

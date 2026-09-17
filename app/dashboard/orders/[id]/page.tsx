@@ -16,6 +16,7 @@ import { StatementPreviewButton } from "@/components/statement-preview-button";
 import { TaxInvoiceDraftPanel } from "@/components/tax-invoice-draft-panel";
 import { AuditLogPanel } from "@/components/audit-log-panel";
 import { isSweetTrackerConfigured } from "@/lib/verification/sweettracker";
+import { signExternalOpenToken } from "@/lib/pdf/external-open-token";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 export const metadata = {
@@ -83,7 +84,9 @@ function firstOrSelf<T>(value: T | T[] | null): T | null {
   return value;
 }
 
-async function loadOrder(orderId: string): Promise<{ order: OrderDetail; isDemoData: boolean } | null> {
+async function loadOrder(
+  orderId: string
+): Promise<{ order: OrderDetail; isDemoData: boolean; wholesalerId: string | null } | null> {
   const scope = await getSupplierScope();
 
   if (scope?.wholesalerId) {
@@ -103,6 +106,7 @@ async function loadOrder(orderId: string): Promise<{ order: OrderDetail; isDemoD
 
       return {
         isDemoData: false,
+        wholesalerId: scope.wholesalerId,
         order: {
           id: row.id as string,
           orderNumber: row.order_number as string,
@@ -140,6 +144,7 @@ async function loadOrder(orderId: string): Promise<{ order: OrderDetail; isDemoD
 
   return {
     isDemoData: true,
+    wholesalerId: null,
     order: {
       id: demoOrder.id,
       orderNumber: demoOrder.order_number,
@@ -185,10 +190,36 @@ export default async function OrderDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const { order, isDemoData } = loaded;
+  const { order, isDemoData, wholesalerId } = loaded;
   const badge = ORDER_STATUS_BADGES[order.status];
   const timeline = buildAlimtalkTimeline(order.status);
   const isLiveChannel = isAlimtalkLiveChannel();
+
+  // 카카오 인앱 브라우저 "외부에서 열기" 전용 — 세션 쿠키 없이도 인가되는 단발성 토큰.
+  // wholesalerId가 없으면(데모) 발급하지 않고, 버튼은 기존 href로 폴백한다.
+  const statementExternalOpenHref = wholesalerId
+    ? (() => {
+        const token = signExternalOpenToken({
+          kind: "supplier-statement",
+          orderId: order.id,
+          wholesalerId,
+        });
+
+        return token ? `/doc/${token}` : null;
+      })()
+    : null;
+
+  const taxInvoiceExternalOpenHref = wholesalerId
+    ? (() => {
+        const token = signExternalOpenToken({
+          kind: "tax-invoice",
+          orderId: order.id,
+          wholesalerId,
+        });
+
+        return token ? `/doc/${token}` : null;
+      })()
+    : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -220,10 +251,15 @@ export default async function OrderDetailPage({ params }: PageProps) {
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-start" }}>
-          <StatementPreviewButton href={`/dashboard/orders/${order.id}/statement`} label="거래명세서" />
+          <StatementPreviewButton
+            href={`/dashboard/orders/${order.id}/statement`}
+            label="거래명세서"
+            externalOpenHref={statementExternalOpenHref}
+          />
           <TaxInvoiceDraftPanel
             baseHref={`/dashboard/orders/${order.id}/tax-invoice`}
             defaultIssueDate={order.orderedAt.slice(0, 10)}
+            externalOpenBaseHref={taxInvoiceExternalOpenHref}
           />
           <AuditLogPanel tableName="orders" rowId={order.id} />
         </div>

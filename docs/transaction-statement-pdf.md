@@ -17,6 +17,16 @@
 - **한글 폰트는 일반 git blob으로 커밋** (2026-09-17, 결정 뒤집음): `assets/fonts/NotoSansKR-{Regular,Bold}.ttf`(정적 인스턴스, 각 ~6MB, Noto Sans KR 가변 폰트를 `fonttools varLib.instancer`로 추출). `@react-pdf/renderer`(fontkit 기반)는 가변 폰트의 굵기 축을 제대로 반영하지 못해 두 정적 인스턴스로 분리했다. 원래는 Git LFS로 추적(`assets/fonts/*.ttf filter=lfs diff=lfs merge=lfs -text`)했으나, Vercel 배포에서 거래명세서/계산서 PDF 라우트가 500을 내는 원인이 됐다 — `git cat-file`로 확인해보니 커밋된 blob이 실제 폰트가 아니라 132바이트짜리 LFS 포인터 텍스트였고, Vercel 빌드가 이걸 스무지하지 않아 fontkit이 그대로 파싱하다 깨진 것. 로컬은 git-lfs가 설치돼 있어 체크아웃 시 smudge되므로 재현이 안 됐다. 폰트 크기가 LFS 없이도 문제없는 수준(6MB대)이라 LFS 추적을 해제하고 실제 바이너리를 git에 직접 커밋하는 쪽으로 되돌렸다. `.gitattributes`는 이제 비어 있다(삭제해도 무방).
 - **`Font.register`의 `src`는 파일 경로 문자열**: Buffer가 아니라 `path.join(process.cwd(), "assets/fonts", ...)` 문자열을 그대로 넘긴다 — `@react-pdf/font`가 URL이 아니면 내부적으로 `fontkit.open()`(파일 경로)로 처리하기 때문. Buffer를 넘기면 타입 에러남.
 
+### 카카오 인앱 브라우저 "외부에서 열기" 재로그인 문제 (2026-09-18 수정)
+- **증상**: 카카오톡 인앱 브라우저(iOS)에서 거래명세서/계산서 "외부 브라우저에서 열기"를 누르면 `kakaotalk://web/openExternal?url=`로 Safari가 새로 뜨는데, 세션 쿠키(Supabase Auth)는 카카오 인앱 웹뷰에만 있고 Safari와 공유되지 않아 `/dashboard`, `/shop/<token>` 보호 라우트가 로그인 화면으로 튕겨버림 — 사용자 입장에선 "방금 로그인했는데 또 로그인하라"는 것처럼 보임.
+- **해결**: 세션 쿠키 대신 짧은 유효시간(10분) 서명 토큰으로 인가하는 별도 공개 라우트 `app/doc/[token]/route.ts`를 추가. `/dashboard`, `/admin` 접두사 밖이라 `middleware.ts`는 전혀 건드리지 않음.
+  - `lib/pdf/external-open-token.ts` — `signExternalOpenToken`/`verifyExternalOpenToken`. Node `crypto` HMAC-SHA256, payload는 `{ kind, orderId, wholesalerId?, retailerId?, exp }`. `DOCUMENT_LINK_SECRET` 미설정 시 `sign`은 `null`을 반환 — 호출부가 토큰 없이 기존(보호된 라우트 직접 링크) 방식으로 폴백한다.
+  - 원래 페이지(이미 로그인된 서버 렌더링 시점)가 토큰을 만들어 `StatementPreviewButton`/`TaxInvoiceDraftPanel`에 `externalOpenHref`/`externalOpenBaseHref`로 내려주고, 컴포넌트는 카카오 인앱일 때만 이 경로로 `kakaotalk://web/openExternal`을 연다. 일반 브라우저의 "새 탭에서 열기"/iframe 미리보기는 기존 세션 기반 라우트를 그대로 쓴다(같은 브라우저라 쿠키 문제가 없음).
+  - `/doc/[token]` 라우트는 토큰 검증 후 `service_role` 클라이언트(`lib/supabase/service-role-client.ts`)로 조회한다 — 요청에 세션이 전혀 없어 일반 클라이언트로는 RLS에 걸려 데이터가 안 보이기 때문. 토큰 자체가 이미 서버에서 검증된 인가이므로 안전.
+  - 적용 3곳: 공급사 거래명세서(`app/dashboard/orders/[id]/page.tsx`, `kind: "supplier-statement"`), 계산서 작성 도우미(같은 페이지, `kind: "tax-invoice"`), 바이어 거래명세서(`app/shop/[shop_token]/orders/page.tsx`, `kind: "buyer-statement"`).
+  - 데모 데이터(미승인/미연결)는 `wholesalerId`/`retailerId`가 없어 토큰을 발급하지 않고 기존 방식 그대로 유지 — 회귀 없음.
+- **검증**: `tsc --noEmit` 통과. **카카오 인앱 실기기(iOS)로는 아직 재현 검증 안 함** — 다음에 실계정으로 카톡 인앱 → 외부열기 → 로그인 없이 PDF가 뜨는지 확인 필요.
+
 ### 검증 상태
 - `tsc --noEmit` 통과.
 - 로컬 `next dev` 서버로 실제 route handler를 직접 호출해 한글(Regular/Bold) 렌더링 확인, 인앱 미리보기(`StatementPreviewButton`)의 정상/발행불가 두 케이스 모두 모의 데이터로 확인. 테스트용 임시 라우트는 매번 정리함(커밋 안 됨).
@@ -29,3 +39,5 @@
 - 실계정 라이브 검증(공급사 로그인 → 주소 등록 → PDF 발행, 바이어 로그인 → 발행 확인).
 - 국세청 전자세금계산서 ASP 자동 연동(별도 스코프, ROADMAP 후순위, 미착수).
 - **Git LFS → 일반 blob 전환이 실제로 Vercel 500을 고치는지 배포 후 재확인 필요** (2026-09-17 수정, 아직 배포 확인 전).
+- `DOCUMENT_LINK_SECRET`을 `.env.local` + Vercel에 설정(사용자가 직접 — 무작위 문자열, 예: `openssl rand -hex 32`).
+- 카카오 인앱 브라우저 실기기(iOS)에서 "외부에서 열기" → 재로그인 없이 PDF가 뜨는지 실계정으로 재현 검증.

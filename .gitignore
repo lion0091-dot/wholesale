@@ -39,3 +39,5 @@ temp/
 ppt.md
 ppt.pdf
 slide.md
+.vercel
+.env*

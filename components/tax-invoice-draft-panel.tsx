@@ -8,6 +8,12 @@ interface TaxInvoiceDraftPanelProps {
   baseHref: string;
   /** 작성일자 입력 기본값 — 보통 발주일 */
   defaultIssueDate: string;
+  /**
+   * 카카오톡 인앱 브라우저에서 "외부 브라우저에서 열기"를 누를 때 대신 쓸 기본 경로
+   * (/doc/[token]). 세션 쿠키 없이도 서명 토큰만으로 인가된다. 없으면 baseHref로 폴백 —
+   * 이 경우 외부 브라우저에서는 로그인 화면으로 튕길 수 있다.
+   */
+  externalOpenBaseHref?: string | null;
 }
 
 const fieldStyle: React.CSSProperties = {
@@ -35,7 +41,11 @@ const labelStyle: React.CSSProperties = {
  * PDF 라우트에 넘긴다 — 저장하지 않고 미리보기/내보내기마다 그때그때 반영한다.
  * ROADMAP §7: "화면에서 수정 가능한 미리보기(초안) 폼" 요구사항.
  */
-export function TaxInvoiceDraftPanel({ baseHref, defaultIssueDate }: TaxInvoiceDraftPanelProps) {
+export function TaxInvoiceDraftPanel({
+  baseHref,
+  defaultIssueDate,
+  externalOpenBaseHref,
+}: TaxInvoiceDraftPanelProps) {
   const [open, setOpen] = useState(false);
   const [issueDate, setIssueDate] = useState(defaultIssueDate);
   const [supplierBusinessType, setSupplierBusinessType] = useState("");
@@ -51,18 +61,25 @@ export function TaxInvoiceDraftPanel({ baseHref, defaultIssueDate }: TaxInvoiceD
     setIsKakaoInApp(isKakaoInAppBrowser(window.navigator.userAgent));
   }, []);
 
-  const href = useMemo(() => {
-    const query = new URLSearchParams({
-      issueDate,
-      supplierBusinessType,
-      supplierBusinessItem,
-      buyerBusinessType,
-      buyerBusinessItem,
-      note,
-    });
+  const query = useMemo(
+    () =>
+      new URLSearchParams({
+        issueDate,
+        supplierBusinessType,
+        supplierBusinessItem,
+        buyerBusinessType,
+        buyerBusinessItem,
+        note,
+      }),
+    [issueDate, supplierBusinessType, supplierBusinessItem, buyerBusinessType, buyerBusinessItem, note]
+  );
 
-    return `${baseHref}?${query.toString()}`;
-  }, [baseHref, issueDate, supplierBusinessType, supplierBusinessItem, buyerBusinessType, buyerBusinessItem, note]);
+  const href = useMemo(() => `${baseHref}?${query.toString()}`, [baseHref, query]);
+
+  const externalHref = useMemo(
+    () => `${externalOpenBaseHref ?? baseHref}?${query.toString()}`,
+    [externalOpenBaseHref, baseHref, query]
+  );
 
   return (
     <div>
@@ -212,7 +229,7 @@ export function TaxInvoiceDraftPanel({ baseHref, defaultIssueDate }: TaxInvoiceD
                     아래 버튼으로 기본 브라우저에서 열어주세요.
                   </p>
                   <a
-                    href={buildKakaoExternalOpenUrl(new URL(href, window.location.origin).toString())}
+                    href={buildKakaoExternalOpenUrl(new URL(externalHref, window.location.origin).toString())}
                     style={{
                       display: "inline-block",
                       backgroundColor: "#7c2d12",
