@@ -87,7 +87,8 @@ function parseProductForm(formData: FormData): ProductInput {
   const origin = ((formData.get("origin") as string) || "").trim();
   const grade = ((formData.get("grade") as string) || "").trim() || null;
   const unit = ((formData.get("unit") as string) || "kg").trim();
-  const basePrice = Number.parseFloat((formData.get("base_price") as string) || "");
+  // 화면에서 천 단위 콤마를 붙여 표시하므로("25,000") 서버에서 항상 콤마를 제거하고 파싱한다.
+  const basePrice = Number.parseFloat(((formData.get("base_price") as string) || "").replace(/,/g, ""));
   const stockQuantity = Number.parseFloat((formData.get("stock_quantity") as string) || "0");
   const description = ((formData.get("description") as string) || "").trim() || null;
 
