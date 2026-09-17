@@ -6,6 +6,7 @@ import { DEMO_PRODUCTS } from "@/lib/demo/supplier-samples";
 import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
 import { ProductTable } from "./product-table";
 import { SeedDefaultProductsButton } from "./seed-default-products-button";
+import { DemoNoticeBanner } from "./demo-notice-banner";
 import type { Product } from "@/types/database";
 
 export const metadata = {
@@ -89,31 +90,12 @@ export default async function DashboardProductsPage() {
       </header>
 
       {isDemoData && (
-        <div
-          style={{
-            backgroundColor: "#fef3c7",
-            border: "1px solid #fde68a",
-            color: "#92400e",
-            fontSize: "14px",
-            lineHeight: 1.7,
-            padding: "12px 16px",
-            borderRadius: "8px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "10px",
-          }}
-        >
-          <span>
-            ℹ️ 등록된 상품이 없거나 미인증(데모) 상태여서 샘플 상품을 표시하고 있습니다. 샘플 행의
-            저장/삭제는 동작하지 않습니다. 아래 버튼으로 기본 납품 품목을 실제 상품으로 한 번에
-            등록하면 미니샵에 바로 노출됩니다.
-          </span>
-
+        <DemoNoticeBanner>
           <SeedDefaultProductsButton
             disabled={!scope?.wholesalerId}
             itemCount={DEFAULT_DELIVERY_ITEMS.length}
           />
-        </div>
+        </DemoNoticeBanner>
       )}
 
       <section className="dash-cards">
