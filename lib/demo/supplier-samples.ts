@@ -175,11 +175,15 @@ function demoItem(
   unitPrice: number,
   quantity: number
 ): OrderItem {
+  const product = DEMO_PRODUCTS.find((item) => item.id === productId);
+
   return {
     id: `${orderId}-item-${index}`,
     order_id: orderId,
     product_id: productId,
     product_name: productName,
+    category: product?.category ?? null,
+    subcategory: product?.subcategory ?? null,
     unit_price: unitPrice,
     quantity,
     subtotal_amount: Math.round(unitPrice * quantity),

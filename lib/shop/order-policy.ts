@@ -40,6 +40,8 @@ export function normalizeQuantity(raw: number, unit: string, stockQuantity: numb
 export interface CartLine {
   productId: string;
   name: string;
+  category: string;
+  subcategory: string | null;
   unit: string;
   /** 해당 식당에 실제 적용되는 단가 (맞춤 단가 우선) */
   unitPrice: number;

@@ -220,6 +220,8 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
           order_id: insertedOrder.id as string,
           product_id: line.productId,
           product_name: line.name,
+          category: line.category,
+          subcategory: line.subcategory,
           unit_price: line.unitPrice,
           quantity: line.quantity,
           subtotal_amount: lineSubtotal(line),

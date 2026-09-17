@@ -152,6 +152,9 @@ export interface OrderItem {
   order_id: string;
   product_id: string;
   product_name: string;
+  /** 주문 시점 축종/부위 스냅샷 (마이그레이션 20260930000023 이전 데이터는 상품 현재값으로 보정됨) */
+  category: string | null;
+  subcategory: string | null;
   unit_price: number;
   quantity: number;
   subtotal_amount: number;

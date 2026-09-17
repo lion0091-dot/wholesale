@@ -76,6 +76,8 @@ export function toCartLines(catalog: ShopCatalog, entries: CartEntryInput[]): Ca
     lines.push({
       productId: item.product.id,
       name: item.product.name,
+      category: item.product.category,
+      subcategory: item.product.subcategory,
       unit: item.product.unit,
       unitPrice: item.effectivePrice,
       basePrice: Number(item.product.base_price),
