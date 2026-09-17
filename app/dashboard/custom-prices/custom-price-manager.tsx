@@ -229,7 +229,7 @@ export function CustomPriceManager({
               required
               value={price}
               onChange={(event) => setPrice(event.target.value)}
-              placeholder={selectedProduct ? String(selectedProduct.base_price) : "0"}
+              placeholder={selectedProduct ? selectedProduct.base_price.toLocaleString("ko-KR") : "예: 25,000"}
               style={fieldStyle}
             />
           </div>
@@ -265,12 +265,27 @@ export function CustomPriceManager({
               </strong>
             )}
           </span>
-          {existing && (
-            <span style={{ color: "#c2410c", fontWeight: 600 }}>
-              이미 지정된 단가({formatWon(existing.customPrice)})가 있어 덮어쓰기됩니다.
-            </span>
-          )}
         </div>
+
+        {existing && (
+          <div
+            role="alert"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              backgroundColor: "#ffedd5",
+              border: "1px solid #fdba74",
+              borderRadius: "8px",
+              padding: "10px 12px",
+              fontSize: "13px",
+              fontWeight: 700,
+              color: "#9a3412",
+            }}
+          >
+            ⚠️ 이미 지정된 단가({formatWon(existing.customPrice)})가 있습니다 — 저장하면 덮어씁니다.
+          </div>
+        )}
 
         {message && (
           <div
@@ -362,7 +377,8 @@ export function CustomPriceManager({
             지정된 맞춤 단가가 없습니다. 위 폼에서 바이어별 VIP 단가를 설정하세요.
           </p>
         ) : (
-          <div className="dash-table-wrap">
+          <>
+          <div className="dash-table-wrap dash-desktop-only">
             <table className="dash-table">
               <thead>
                 <tr>
@@ -439,6 +455,97 @@ export function CustomPriceManager({
               </tbody>
             </table>
           </div>
+
+          <div className="dash-mobile-only" style={{ flexDirection: "column", gap: "10px", padding: "12px" }}>
+            {visibleRows.map((row) => {
+              const rate = discountRate(row.basePrice, row.customPrice);
+
+              return (
+                <div
+                  key={row.id}
+                  style={{
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "10px",
+                    padding: "12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>
+                      {row.retailerName}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
+                      {row.productName}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "12px", color: "#64748b" }}>
+                      기준 {formatWon(row.basePrice)} / {row.unit}
+                    </span>
+                    <span style={{ fontSize: "16px", fontWeight: 700, color: "#b91c1c" }}>
+                      {formatWon(row.customPrice)}
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: "12px", color: "#334155" }}>
+                    할인율: {rate === null ? "-" : `${rate.toFixed(1)}%`}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "6px",
+                      borderTop: "1px solid #f1f5f9",
+                      paddingTop: "8px",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRetailerId(row.retailerId);
+                        setProductId(row.productId);
+                        setPrice(String(row.customPrice));
+                        setMessage(null);
+                      }}
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        padding: "7px 11px",
+                        borderRadius: "6px",
+                        border: "1px solid #cbd5e1",
+                        backgroundColor: "#ffffff",
+                        color: "#334155",
+                        cursor: "pointer",
+                      }}
+                    >
+                      수정
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId === row.id}
+                      onClick={() => void handleDelete(row)}
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        padding: "7px 11px",
+                        borderRadius: "6px",
+                        border: "1px solid #fecaca",
+                        backgroundColor: "#ffffff",
+                        color: "#dc2626",
+                        cursor: "pointer",
+                      }}
+                    >
+                      삭제
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          </>
         )}
       </section>
     </div>

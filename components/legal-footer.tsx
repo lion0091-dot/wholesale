@@ -31,9 +31,9 @@ export function LegalFooter() {
     <footer
       style={{
         backgroundColor: "#0f172a",
-        color: "#94a3b8",
+        color: "#cbd5e1",
         padding: "36px 20px 48px",
-        fontSize: "12px",
+        fontSize: "13px",
         lineHeight: "1.7",
         borderTop: "1px solid #1e293b",
         marginTop: "auto",
