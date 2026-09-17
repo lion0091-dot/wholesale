@@ -12,8 +12,8 @@
 - ✅ `/dashboard/receivables` — 목록 카드형(체크박스 포함)
 - ✅ `/dashboard/stats` — 부위별 테이블 카드형
 - ✅ `/dashboard/customers` — 이전 세션에서 이미 카드/테이블 토글 구현됨(확인만, 재작업 불필요)
-- ⬜ `/dashboard` (대시보드 홈) — 배너/사이드바만 손봤음, 본문 카드 영역 미검토
-- ⬜ `/dashboard/team` (팀원 관리) — 직함 라벨 텍스트만 수정, 전체 모바일 미검토
+- ✅ `/dashboard` (대시보드 홈) — 이미 카드/flex-wrap 구조라 테이블 잘림 문제 없음, 추가 수정 불필요
+- ✅ `/dashboard/team` (팀원 관리) — 이미 카드형 div+flexWrap 구조, 잘림 문제 없음
 - ⬜ `/dashboard/invites` (영업·초대장) — 미검토
 
 ## 관리자 (/admin/*)
