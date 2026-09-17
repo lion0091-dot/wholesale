@@ -20,7 +20,14 @@ interface ProductFormViewProps {
 const FALLBACK_CATEGORIES = ["소", "돼지", "닭/오리", "양", "가공육"];
 const UNITS = ["kg", "박스", "마리", "팩"];
 const FORM_ID = "product-form";
-const QUICK_ADD_AMOUNTS = [10000, 50000, 100000];
+const QUICK_ADD_AMOUNTS = [1000, 5000, 10000, 50000];
+
+/** 1000 -> "+1천", 50000 -> "+5만" 같은 짧은 라벨. */
+function formatQuickAddLabel(amount: number): string {
+  if (amount % 10000 === 0) return `+${amount / 10000}만`;
+  if (amount % 1000 === 0) return `+${amount / 1000}천`;
+  return `+${amount.toLocaleString("ko-KR")}`;
+}
 
 /** 숫자만 남긴 문자열에 천 단위 콤마를 붙인다 ("25000" -> "25,000"). */
 function formatThousands(digitsOnly: string): string {
@@ -44,6 +51,8 @@ const fieldStyle: CSSProperties = {
   borderRadius: "6px",
   backgroundColor: "#ffffff",
   color: "#0f172a",
+  // 좁은 화면에서 한글이 어절 중간에서 잘려 줄바꿈되면 오타처럼 보인다(예: "전달용" -> "전달\n용").
+  wordBreak: "keep-all",
 };
 
 /** 체크박스 대신 쓰는 토글 스위치 — 행 전체가 터치 영역, 옵션명 옆 "?"로 짧은 설명을 띄운다. */
@@ -556,7 +565,7 @@ export function ProductFormView({
                     cursor: "pointer",
                   }}
                 >
-                  +{amount / 10000}만
+                  {formatQuickAddLabel(amount)}
                 </button>
               ))}
             </div>
