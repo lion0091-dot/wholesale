@@ -72,9 +72,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
   const scope = await getSupplierScope();
 
-  const data = scope?.wholesalerId
-    ? await loadStatementDataForSupplier(await createClient(), id, scope.wholesalerId)
-    : buildDemoStatement(id);
+  // 실계정인데 아직 실주문이 없으면 /dashboard/orders/[id] 페이지와 동일하게
+  // 샘플 주문으로 폴백한다 (app/dashboard/orders/[id]/statement/route.ts와 동일 패턴).
+  const data =
+    (scope?.wholesalerId
+      ? await loadStatementDataForSupplier(await createClient(), id, scope.wholesalerId)
+      : null) ?? buildDemoStatement(id);
 
   if (!data) {
     return NextResponse.json({ error: "주문을 찾을 수 없습니다." }, { status: 404 });

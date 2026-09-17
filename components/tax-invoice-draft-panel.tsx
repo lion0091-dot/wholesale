@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { buildKakaoExternalOpenUrl, isKakaoInAppBrowser } from "@/lib/kakao-in-app";
 
 interface TaxInvoiceDraftPanelProps {
   /** PDF(또는 발행 불가 경고 HTML)를 돌려주는 라우트 — /dashboard/orders/[id]/tax-invoice */
@@ -44,6 +45,11 @@ export function TaxInvoiceDraftPanel({ baseHref, defaultIssueDate }: TaxInvoiceD
   const [note, setNote] = useState("");
   const [previewKey, setPreviewKey] = useState(0);
   const [showPreview, setShowPreview] = useState(false);
+  const [isKakaoInApp, setIsKakaoInApp] = useState(false);
+
+  useEffect(() => {
+    setIsKakaoInApp(isKakaoInAppBrowser(window.navigator.userAgent));
+  }, []);
 
   const href = useMemo(() => {
     const query = new URLSearchParams({
@@ -167,7 +173,7 @@ export function TaxInvoiceDraftPanel({ baseHref, defaultIssueDate }: TaxInvoiceD
             >
               미리보기 갱신
             </button>
-            {showPreview && (
+            {showPreview && !isKakaoInApp && (
               <a
                 href={href}
                 target="_blank"
@@ -198,12 +204,37 @@ export function TaxInvoiceDraftPanel({ baseHref, defaultIssueDate }: TaxInvoiceD
                 backgroundColor: "#ffffff",
               }}
             >
-              <iframe
-                key={previewKey}
-                src={href}
-                title="계산서 작성 초안 미리보기"
-                style={{ width: "100%", height: "70vh", minHeight: "420px", border: "none", display: "block" }}
-              />
+              {isKakaoInApp ? (
+                <div style={{ padding: "20px 16px", textAlign: "center" }}>
+                  <p style={{ fontSize: "12px", color: "#92400e", lineHeight: 1.7, marginBottom: "14px" }}>
+                    카카오톡 브라우저에서는 PDF를 바로 볼 수 없습니다.
+                    <br />
+                    아래 버튼으로 기본 브라우저에서 열어주세요.
+                  </p>
+                  <a
+                    href={buildKakaoExternalOpenUrl(new URL(href, window.location.origin).toString())}
+                    style={{
+                      display: "inline-block",
+                      backgroundColor: "#7c2d12",
+                      color: "#ffffff",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      padding: "10px 20px",
+                      borderRadius: "8px",
+                      textDecoration: "none",
+                    }}
+                  >
+                    외부 브라우저에서 열기 ↗
+                  </a>
+                </div>
+              ) : (
+                <iframe
+                  key={previewKey}
+                  src={href}
+                  title="계산서 작성 초안 미리보기"
+                  style={{ width: "100%", height: "70vh", minHeight: "420px", border: "none", display: "block" }}
+                />
+              )}
             </div>
           )}
         </div>
