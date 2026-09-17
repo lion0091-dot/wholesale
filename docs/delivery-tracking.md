@@ -32,16 +32,9 @@
   버튼 대신 안내 문구만 보여준다(`ALIMTALK_API_KEY` 없을 때의 "테스트 발송" 폴백과 동일 패턴).
   운송장번호 입력/저장 자체는 키 유무와 무관하게 항상 가능하다.
 
-## ⚠️ 배포 순서 주의 (2026-09-17, master 미병합 상태)
-코드는 `claude/markdown-accounts-recevable-ah816p` 브랜치에 커밋/푸시 완료(`fadc7ff`)했으나
-**master 병합/배포는 보류 중**이다. `lib/shop/order-history.ts`가 바이어 주문내역 조회 시
-`courier_code, tracking_number`를 명시적으로 select하는데, 라이브 DB에 이 컬럼이 없는 상태로
-배포하면 바이어의 "내 발주 내역" 화면이 즉시 깨진다(존재하지 않는 컬럼 요청 에러).
-
-**반드시 이 순서로 진행**:
-1. 사용자가 `supabase/migrations/20260930000030_orders_tracking_columns.sql`을 Supabase SQL
-   Editor에서 먼저 적용
-2. 적용 확인 후에만 `claude/markdown-accounts-recevable-ah816p` → `master` fast-forward 병합 + push
+## 배포 상태 (2026-09-17)
+라이브 DB에 마이그레이션(`20260930000030_orders_tracking_columns.sql`) 적용 확인 후
+`claude/markdown-accounts-recevable-ah816p` → `master` fast-forward 병합 + push 완료(`714a1f9`).
 
 ## 남은 과제 / 미확정 사항
 - **API 키 미발급** (2026-09-17 기준) — 사용자가 tracking.sweettracker.co.kr에서 발급 후
