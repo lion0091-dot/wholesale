@@ -13,6 +13,7 @@ import {
 import { OrderStatusPanel } from "./order-status-panel";
 import { StatementPreviewButton } from "@/components/statement-preview-button";
 import { TaxInvoiceDraftPanel } from "@/components/tax-invoice-draft-panel";
+import { AuditLogPanel } from "@/components/audit-log-panel";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 export const metadata = {
@@ -216,6 +217,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
             baseHref={`/dashboard/orders/${order.id}/tax-invoice`}
             defaultIssueDate={order.orderedAt.slice(0, 10)}
           />
+          <AuditLogPanel tableName="orders" rowId={order.id} />
         </div>
       </header>
 

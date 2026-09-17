@@ -47,6 +47,86 @@ export async function settleCreditOrdersAction(orderIds: string[]): Promise<Acti
   }
 }
 
+export interface ReceivableAuditEntry {
+  id: number;
+  action: "insert" | "update" | "delete";
+  changedByName: string;
+  creditLimitBefore: number | null;
+  creditLimitAfter: number | null;
+  outstandingBalanceBefore: number | null;
+  outstandingBalanceAfter: number | null;
+  statusBefore: string | null;
+  statusAfter: string | null;
+  createdAt: string;
+}
+
+interface AuditLogRow {
+  id: number;
+  action: "insert" | "update" | "delete";
+  changed_by: string | null;
+  old_data: Record<string, unknown> | null;
+  new_data: Record<string, unknown> | null;
+  created_at: string;
+}
+
+function toNumberOrNull(value: unknown): number | null {
+  return value === null || value === undefined ? null : Number(value);
+}
+
+/** 거래처의 여신(한도/미수금/상태) 변경 이력 — 여러 직원이 쓰는 백오피스라 "누가" 바꿨는지 포함 */
+export async function getReceivableAuditLogAction(
+  retailerId: string
+): Promise<ActionResult<ReceivableAuditEntry[]>> {
+  try {
+    const scope = await getSupplierScope();
+
+    if (!scope?.wholesalerId) {
+      return { success: false, error: "로그인이 필요합니다. 다시 로그인 후 시도해주세요." };
+    }
+
+    const supabase = await createClient();
+
+    const [{ data, error }, { data: members }] = await Promise.all([
+      supabase.rpc("get_wholesaler_retailer_audit_log", {
+        p_wholesaler_id: scope.wholesalerId,
+        p_retailer_id: retailerId,
+      }),
+      supabase.rpc("list_wholesaler_member_names", { p_wholesaler_id: scope.wholesalerId }),
+    ]);
+
+    if (error) {
+      return { success: false, error: "이력 조회에 실패했습니다." };
+    }
+
+    const nameMap = new Map(
+      ((members ?? []) as Array<{ user_id: string; name: string | null }>).map((member) => [
+        member.user_id,
+        member.name || "이름 미등록",
+      ])
+    );
+
+    const entries: ReceivableAuditEntry[] = ((data ?? []) as AuditLogRow[]).map((row) => ({
+      id: row.id,
+      action: row.action,
+      changedByName: row.changed_by ? (nameMap.get(row.changed_by) ?? "알 수 없음") : "시스템",
+      creditLimitBefore: toNumberOrNull(row.old_data?.credit_limit),
+      creditLimitAfter: toNumberOrNull(row.new_data?.credit_limit),
+      outstandingBalanceBefore: toNumberOrNull(row.old_data?.outstanding_balance),
+      outstandingBalanceAfter: toNumberOrNull(row.new_data?.outstanding_balance),
+      statusBefore: (row.old_data?.status as string | undefined) ?? null,
+      statusAfter: (row.new_data?.status as string | undefined) ?? null,
+      createdAt: row.created_at,
+    }));
+
+    return { success: true, data: entries };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "이력 조회 중 오류가 발생했습니다.",
+    };
+  }
+}
+
 interface RetailerJoin {
   restaurant_name: string;
   profile_id: string;

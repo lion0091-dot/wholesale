@@ -86,6 +86,10 @@ export interface Product {
   description: string | null;
   created_at: string;
   updated_at: string;
+  /** 최초 등록한 계정(auth.uid()) — 여러 직원이 쓰는 백오피스의 등록자 추적용 */
+  created_by: string | null;
+  /** 마지막으로 수정한 계정 */
+  updated_by: string | null;
 }
 
 export interface CustomPrice {

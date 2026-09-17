@@ -21,19 +21,30 @@ export default async function DashboardProductsPage() {
 
   let products: Product[] = [];
   let isDemoData = true;
+  let memberNames: Record<string, string> = {};
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
-    const { data } = await supabase
-      .from("products")
-      .select("*")
-      .eq("wholesaler_id", scope.wholesalerId)
-      .order("created_at", { ascending: false });
+    const [{ data }, { data: members }] = await Promise.all([
+      supabase
+        .from("products")
+        .select("*")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .order("created_at", { ascending: false }),
+      supabase.rpc("list_wholesaler_member_names", { p_wholesaler_id: scope.wholesalerId }),
+    ]);
 
     if (data && data.length > 0) {
       products = data as Product[];
       isDemoData = false;
     }
+
+    memberNames = Object.fromEntries(
+      ((members ?? []) as Array<{ user_id: string; name: string | null }>).map((member) => [
+        member.user_id,
+        member.name || "이름 미등록",
+      ])
+    );
   }
 
   if (isDemoData) {
@@ -127,7 +138,7 @@ export default async function DashboardProductsPage() {
         ))}
       </section>
 
-      <ProductTable products={products} readOnly={isDemoData} />
+      <ProductTable products={products} readOnly={isDemoData} memberNames={memberNames} />
     </div>
   );
 }

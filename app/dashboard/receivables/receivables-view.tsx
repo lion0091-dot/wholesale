@@ -2,7 +2,12 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
-import { sendReceivablesReminderAction, settleCreditOrdersAction } from "./actions";
+import {
+  getReceivableAuditLogAction,
+  sendReceivablesReminderAction,
+  settleCreditOrdersAction,
+  type ReceivableAuditEntry,
+} from "./actions";
 import type { ReceivableCustomerGroup } from "./receivable-types";
 
 interface ReceivablesViewProps {
@@ -16,6 +21,13 @@ export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewPro
   const [pendingGroupId, setPendingGroupId] = useState<string | null>(null);
   const [errorByGroup, setErrorByGroup] = useState<Record<string, string>>({});
   const [isPending, startTransition] = useTransition();
+
+  const [openAuditGroupId, setOpenAuditGroupId] = useState<string | null>(null);
+  const [auditEntriesByGroup, setAuditEntriesByGroup] = useState<
+    Record<string, ReceivableAuditEntry[] | undefined>
+  >({});
+  const [auditLoadingGroupId, setAuditLoadingGroupId] = useState<string | null>(null);
+  const [, startAuditTransition] = useTransition();
 
   const [reminderPendingGroupId, setReminderPendingGroupId] = useState<string | null>(null);
   const [reminderStatusByGroup, setReminderStatusByGroup] = useState<
@@ -112,6 +124,25 @@ export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewPro
     });
   };
 
+  const toggleAuditLog = (group: ReceivableCustomerGroup) => {
+    const nextOpen = openAuditGroupId === group.retailerId ? null : group.retailerId;
+    setOpenAuditGroupId(nextOpen);
+
+    if (nextOpen && !auditEntriesByGroup[group.retailerId]) {
+      setAuditLoadingGroupId(group.retailerId);
+
+      startAuditTransition(async () => {
+        const result = await getReceivableAuditLogAction(group.retailerId);
+
+        setAuditEntriesByGroup((prev) => ({
+          ...prev,
+          [group.retailerId]: result.success ? (result.data ?? []) : [],
+        }));
+        setAuditLoadingGroupId(null);
+      });
+    }
+  };
+
   const totalSelected = useMemo(() => selected.size, [selected]);
 
   if (groups.length === 0) {
@@ -194,6 +225,23 @@ export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewPro
               <div style={{ display: "flex", gap: "8px" }}>
                 <button
                   type="button"
+                  onClick={() => toggleAuditLog(group)}
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    padding: "8px 14px",
+                    borderRadius: "7px",
+                    border: "1px solid #cbd5e1",
+                    backgroundColor: "#ffffff",
+                    color: "#334155",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {openAuditGroupId === group.retailerId ? "이력 닫기" : "여신 변경 이력"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleSendReminder(group)}
                   disabled={reminderPending}
                   style={{
@@ -257,6 +305,39 @@ export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewPro
                 }}
               >
                 {reminderStatus.text}
+              </div>
+            )}
+
+            {openAuditGroupId === group.retailerId && (
+              <div style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", backgroundColor: "#f8fafc" }}>
+                {auditLoadingGroupId === group.retailerId ? (
+                  <p style={{ fontSize: "12px", color: "#94a3b8" }}>불러오는 중...</p>
+                ) : (auditEntriesByGroup[group.retailerId]?.length ?? 0) === 0 ? (
+                  <p style={{ fontSize: "12px", color: "#94a3b8" }}>변경 이력이 없습니다.</p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {(auditEntriesByGroup[group.retailerId] ?? []).map((entry) => (
+                      <div key={entry.id} style={{ fontSize: "11px", color: "#475569", lineHeight: 1.6 }}>
+                        <strong>{formatOrderedAt(entry.createdAt)}</strong> · {entry.changedByName}
+                        {entry.creditLimitBefore !== entry.creditLimitAfter &&
+                          entry.creditLimitAfter !== null && (
+                            <> · 한도 {formatWon(entry.creditLimitBefore ?? 0)} → {formatWon(entry.creditLimitAfter)}</>
+                          )}
+                        {entry.outstandingBalanceBefore !== entry.outstandingBalanceAfter &&
+                          entry.outstandingBalanceAfter !== null && (
+                            <>
+                              {" "}
+                              · 미수금 {formatWon(entry.outstandingBalanceBefore ?? 0)} →{" "}
+                              {formatWon(entry.outstandingBalanceAfter)}
+                            </>
+                          )}
+                        {entry.statusBefore !== entry.statusAfter && entry.statusAfter && (
+                          <> · 상태 {entry.statusBefore ?? "-"} → {entry.statusAfter}</>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

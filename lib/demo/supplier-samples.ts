@@ -27,6 +27,8 @@ export const DEMO_PRODUCTS: Product[] = [
     description: "최고급 마블링 냉장 숙성 등심, 진공포장 출고",
     created_at: now(),
     updated_at: now(),
+    created_by: null,
+    updated_by: null,
   },
   {
     id: "sample-2",
@@ -43,6 +45,8 @@ export const DEMO_PRODUCTS: Product[] = [
     description: "미추리 선별 완료, 탕박 A급 규격돈",
     created_at: now(),
     updated_at: now(),
+    created_by: null,
+    updated_by: null,
   },
   {
     id: "sample-3",
@@ -59,6 +63,8 @@ export const DEMO_PRODUCTS: Product[] = [
     description: "국거리 및 육수용 당일 한정 수량 소진 특가 (단골 전용)",
     created_at: now(),
     updated_at: now(),
+    created_by: null,
+    updated_by: null,
   },
 ];
 

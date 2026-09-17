@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Product } from "@/types/database";
+import { AuditLogPanel } from "@/components/audit-log-panel";
 import {
   deleteProductAction,
   toggleProductFlagAction,
@@ -14,6 +15,8 @@ interface ProductTableProps {
   products: Product[];
   /** 데모(샘플) 데이터일 때는 변경 버튼을 비활성화한다. */
   readOnly?: boolean;
+  /** user_id → 표시 이름. 등록자/수정자 표시용 (여러 직원이 쓰는 백오피스) */
+  memberNames?: Record<string, string>;
 }
 
 function stockBadge(quantity: number, unit: string) {
@@ -40,7 +43,7 @@ const chipButtonStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-export function ProductTable({ products, readOnly = false }: ProductTableProps) {
+export function ProductTable({ products, readOnly = false, memberNames = {} }: ProductTableProps) {
   const router = useRouter();
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState("all");
@@ -206,6 +209,17 @@ export function ProductTable({ products, readOnly = false }: ProductTableProps) 
                       <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
                         {product.category} · {product.origin}
                         {product.grade ? ` · ${product.grade}` : ""}
+                      </div>
+                      {(product.created_by || product.updated_by) && (
+                        <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "2px" }}>
+                          등록: {(product.created_by && memberNames[product.created_by]) || "-"}
+                          {product.updated_by && product.updated_by !== product.created_by && (
+                            <> · 최근 수정: {memberNames[product.updated_by] || "-"}</>
+                          )}
+                        </div>
+                      )}
+                      <div style={{ marginTop: "4px" }}>
+                        <AuditLogPanel tableName="products" rowId={product.id} />
                       </div>
                     </td>
 
