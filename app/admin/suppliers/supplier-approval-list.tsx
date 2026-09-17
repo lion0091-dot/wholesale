@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { updateSupplierStatusAction, updateSupplierSubscriptionAction } from "./actions";
+import {
+  updateSupplierStatusAction,
+  updateSupplierSubscriptionAction,
+  verifyBusinessWithNtsAction,
+  getBusinessLicenseUrlAction,
+} from "./actions";
 import {
   formatBusinessNumber,
   resolveDocumentVerification,
@@ -41,6 +46,18 @@ const DOC_BADGES: Record<DocumentVerificationLevel, { bg: string; color: string;
   rejected: { bg: "#f1f5f9", color: "#64748b", icon: "✖" },
 };
 
+/** 국세청 진위확인 상태 배지 색상 */
+const NTS_BADGES: Record<
+  Wholesaler["nts_verification_status"],
+  { bg: string; color: string; icon: string; label: string }
+> = {
+  unchecked: { bg: "#f1f5f9", color: "#64748b", icon: "•", label: "국세청 진위확인 미실행" },
+  match: { bg: "#ecfdf5", color: "#047857", icon: "✔", label: "국세청 진위확인 일치" },
+  mismatch: { bg: "#fef2f2", color: "#b91c1c", icon: "⚠", label: "국세청 진위확인 불일치" },
+  not_found: { bg: "#fef2f2", color: "#b91c1c", icon: "⚠", label: "국세청 미등록 번호" },
+  error: { bg: "#fffbeb", color: "#b45309", icon: "!", label: "국세청 API 호출 실패" },
+};
+
 const SUBSCRIPTION_OPTIONS: Array<{ value: SubscriptionStatus; label: string }> = [
   { value: "trial", label: "무료 체험 (trial)" },
   { value: "active", label: "유료 활성 (active)" },
@@ -60,6 +77,7 @@ export function SupplierApprovalList({ initialSuppliers }: SupplierApprovalListP
   const [suppliers, setSuppliers] = useState<Wholesaler[]>(initialSuppliers);
   const [activeFilter, setActiveFilter] = useState<WholesalerStatus | "all">("all");
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [ntsMessage, setNtsMessage] = useState<Record<string, string>>({});
 
   const filtered = suppliers.filter((s) => activeFilter === "all" || s.status === activeFilter);
 
@@ -77,6 +95,50 @@ export function SupplierApprovalList({ initialSuppliers }: SupplierApprovalListP
         setSuppliers((prev) => prev.map((s) => (s.id === id ? { ...s, status: nextStatus } : s)));
       } else {
         alert(res.error || "상태 변경에 실패했습니다.");
+      }
+    } catch {
+      alert("오류가 발생했습니다.");
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  const handleVerifyNts = async (id: string) => {
+    setLoadingId(id);
+    setNtsMessage((prev) => ({ ...prev, [id]: "" }));
+
+    try {
+      const res = await verifyBusinessWithNtsAction(id);
+
+      if (res.success && res.status) {
+        setSuppliers((prev) =>
+          prev.map((s) =>
+            s.id === id
+              ? { ...s, nts_verification_status: res.status!, nts_verified_at: new Date().toISOString() }
+              : s
+          )
+        );
+        setNtsMessage((prev) => ({ ...prev, [id]: res.message ?? "" }));
+      } else {
+        alert(res.error || "국세청 진위확인에 실패했습니다.");
+      }
+    } catch {
+      alert("오류가 발생했습니다.");
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  const handleViewLicense = async (id: string) => {
+    setLoadingId(id);
+
+    try {
+      const res = await getBusinessLicenseUrlAction(id);
+
+      if (res.success && res.url) {
+        window.open(res.url, "_blank", "noopener,noreferrer");
+      } else {
+        alert(res.error || "사업자등록증을 조회할 수 없습니다.");
       }
     } catch {
       alert("오류가 발생했습니다.");
@@ -257,20 +319,120 @@ export function SupplierApprovalList({ initialSuppliers }: SupplierApprovalListP
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: "6px",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      color: docStyle.color,
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: "8px",
                     }}
                   >
-                    <span>{docStyle.icon}</span>
-                    <span>사업자등록증 {doc.label}</span>
-                    <span style={{ fontWeight: 600, color: "#475569" }}>
-                      {formatBusinessNumber(supplier.business_number)}
-                    </span>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        color: docStyle.color,
+                      }}
+                    >
+                      <span>{docStyle.icon}</span>
+                      <span>사업자등록증 {doc.label}</span>
+                      <span style={{ fontWeight: 600, color: "#475569" }}>
+                        {formatBusinessNumber(supplier.business_number)}
+                      </span>
+                    </div>
+                    {supplier.business_license_path ? (
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => handleViewLicense(supplier.id)}
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#0f172a",
+                          backgroundColor: "#ffffff",
+                          border: "1px solid #cbd5e1",
+                          borderRadius: "6px",
+                          padding: "4px 10px",
+                          cursor: isBusy ? "not-allowed" : "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        📎 등록증 사본 보기
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 600 }}>
+                        등록증 사본 미제출
+                      </span>
+                    )}
                   </div>
                   <p style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>{doc.description}</p>
                 </div>
+
+                {/* 국세청 진위확인 */}
+                {(() => {
+                  const ntsBadge = NTS_BADGES[supplier.nts_verification_status];
+
+                  return (
+                    <div
+                      style={{
+                        marginTop: "8px",
+                        padding: "10px 12px",
+                        borderRadius: "8px",
+                        backgroundColor: ntsBadge.bg,
+                        border: `1px solid ${ntsBadge.color}22`,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            color: ntsBadge.color,
+                          }}
+                        >
+                          <span>{ntsBadge.icon}</span>
+                          <span>{ntsBadge.label}</span>
+                        </div>
+                        <p style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
+                          {ntsMessage[supplier.id] ||
+                            (supplier.nts_verified_at
+                              ? `마지막 확인: ${formatDate(supplier.nts_verified_at)}`
+                              : "사업자번호 · 대표자명 · 개업일자를 국세청 실데이터와 대조합니다.")}
+                        </p>
+                        {!supplier.business_start_date && (
+                          <p style={{ fontSize: "11px", color: "#b45309", marginTop: "4px" }}>
+                            개업일자가 아직 제출되지 않아 실행할 수 없습니다 (공급사 제출 대기).
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        disabled={isBusy || !supplier.business_start_date}
+                        onClick={() => handleVerifyNts(supplier.id)}
+                        style={{
+                          backgroundColor: "#ffffff",
+                          color: "#0f172a",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          padding: "6px 12px",
+                          borderRadius: "6px",
+                          border: "1px solid #cbd5e1",
+                          cursor: isBusy || !supplier.business_start_date ? "not-allowed" : "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        국세청 진위확인 실행
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {/* 승인/거절 및 구독 권한 제어 */}
                 <div
@@ -309,23 +471,40 @@ export function SupplierApprovalList({ initialSuppliers }: SupplierApprovalListP
                   <div style={{ display: "flex", gap: "8px" }}>
                     {supplier.status === "pending" && (
                       <>
-                        <button
-                          disabled={isBusy || !doc.checksumValid}
-                          title={doc.checksumValid ? undefined : "사업자등록번호 체크섬 오류 — 승인할 수 없습니다."}
-                          onClick={() => handleStatusChange(supplier.id, "active")}
-                          style={{
-                            backgroundColor: doc.checksumValid ? "#16a34a" : "#cbd5e1",
-                            color: "#ffffff",
-                            fontSize: "12px",
-                            fontWeight: 700,
-                            padding: "6px 14px",
-                            borderRadius: "6px",
-                            border: "none",
-                            cursor: isBusy || !doc.checksumValid ? "not-allowed" : "pointer",
-                          }}
-                        >
-                          입점 승인
-                        </button>
+                        {(() => {
+                          const canApprove =
+                            doc.checksumValid &&
+                            Boolean(supplier.business_license_path) &&
+                            supplier.nts_verification_status === "match";
+
+                          return (
+                            <button
+                              disabled={isBusy || !canApprove}
+                              title={
+                                canApprove
+                                  ? undefined
+                                  : !doc.checksumValid
+                                    ? "사업자등록번호 체크섬 오류 — 승인할 수 없습니다."
+                                    : !supplier.business_license_path
+                                      ? "사업자등록증 사본이 제출되지 않아 승인할 수 없습니다."
+                                      : "국세청 진위확인이 완료(일치)되지 않아 승인할 수 없습니다."
+                              }
+                              onClick={() => handleStatusChange(supplier.id, "active")}
+                              style={{
+                                backgroundColor: canApprove ? "#16a34a" : "#cbd5e1",
+                                color: "#ffffff",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                padding: "6px 14px",
+                                borderRadius: "6px",
+                                border: "none",
+                                cursor: isBusy || !canApprove ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              입점 승인
+                            </button>
+                          );
+                        })()}
                         <button
                           disabled={isBusy}
                           onClick={() => handleStatusChange(supplier.id, "rejected")}

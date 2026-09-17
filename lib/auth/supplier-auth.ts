@@ -96,6 +96,7 @@ const SIGNUP_ERROR_MESSAGES: Record<string, string> = {
   INVALID_PHONE: "연락처를 숫자 9자리 이상으로 정확히 입력해주세요.",
   INVALID_BUSINESS_ADDRESS: "사업장 주소를 5자 이상 입력해주세요.",
   INVALID_BUSINESS_NUMBER: "사업자등록번호 10자리를 정확히 입력해주세요.",
+  INVALID_BUSINESS_START_DATE: "개업일자를 정확히 입력해주세요. 국세청 진위확인에 필요합니다.",
   DUPLICATE_BUSINESS_NUMBER: "이미 등록된 사업자등록번호입니다. 플랫폼 운영팀에 문의해주세요.",
   SUPPLIER_NOT_FOUND: "공급사 정보가 아직 등록되지 않았습니다. 최소 정보 입력을 먼저 완료해주세요.",
   ALREADY_VERIFIED: "이미 승인이 완료된 업체입니다. 사업자 정보 변경은 운영팀에 문의해주세요.",

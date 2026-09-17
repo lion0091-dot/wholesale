@@ -12,6 +12,7 @@ import {
 } from "@/lib/orders/status";
 import { OrderStatusPanel } from "./order-status-panel";
 import { StatementPreviewButton } from "@/components/statement-preview-button";
+import { TaxInvoiceDraftPanel } from "@/components/tax-invoice-draft-panel";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 export const metadata = {
@@ -209,7 +210,13 @@ export default async function OrderDetailPage({ params }: PageProps) {
           접수 {formatOrderedAt(order.orderedAt)} · 최근 변경 {formatOrderedAt(order.updatedAt)}
         </p>
 
-        <StatementPreviewButton href={`/dashboard/orders/${order.id}/statement`} label="거래명세서" />
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-start" }}>
+          <StatementPreviewButton href={`/dashboard/orders/${order.id}/statement`} label="거래명세서" />
+          <TaxInvoiceDraftPanel
+            baseHref={`/dashboard/orders/${order.id}/tax-invoice`}
+            defaultIssueDate={order.orderedAt.slice(0, 10)}
+          />
+        </div>
       </header>
 
       {isDemoData && (

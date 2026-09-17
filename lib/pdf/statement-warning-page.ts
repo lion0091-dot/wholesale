@@ -21,6 +21,8 @@ export interface MissingFieldsPageOptions {
   actionLabel?: string;
   /** 본인이 고칠 수 없는 경우(예: 바이어) 보여줄 추가 안내 */
   note?: string;
+  /** 문서 명칭 — 거래명세서/계산서 등 호출부가 지정. 기본값 "거래명세서" */
+  documentLabel?: string;
 }
 
 export function renderMissingFieldsHtml({
@@ -28,6 +30,7 @@ export function renderMissingFieldsHtml({
   actionHref,
   actionLabel,
   note,
+  documentLabel = "거래명세서",
 }: MissingFieldsPageOptions): string {
   const items = missingFields.map((field) => `<li>${escapeHtml(field)}</li>`).join("");
 
@@ -46,14 +49,14 @@ export function renderMissingFieldsHtml({
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>거래명세서 발행 불가</title>
+<title>${escapeHtml(documentLabel)} 발행 불가</title>
 </head>
 <body style="margin:0;padding:40px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;color:#0f172a;">
 <div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid #fee2e2;border-radius:12px;padding:28px;">
 <div style="font-size:32px;margin-bottom:10px;">⚠️</div>
-<h1 style="font-size:17px;font-weight:800;margin:0 0 8px;">거래명세서를 발행할 수 없습니다</h1>
+<h1 style="font-size:17px;font-weight:800;margin:0 0 8px;">${escapeHtml(documentLabel)}를 발행할 수 없습니다</h1>
 <p style="font-size:13px;color:#475569;line-height:1.7;margin:0 0 10px;">
-다음 정보가 등록되지 않아 거래명세서 PDF를 만들 수 없습니다. 빈 값을 '-'로 채워 발행하지 않고,
+다음 정보가 등록되지 않아 ${escapeHtml(documentLabel)} PDF를 만들 수 없습니다. 빈 값을 '-'로 채워 발행하지 않고,
 정보가 채워질 때까지 발행을 막고 있습니다.
 </p>
 <ul style="font-size:13px;color:#b91c1c;font-weight:700;line-height:1.9;margin:0 0 4px;padding-left:20px;">

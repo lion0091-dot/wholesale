@@ -26,6 +26,10 @@ export interface ActionResult<T = undefined> {
 const MIN_BUSINESS_ADDRESS_LENGTH = 5;
 const MAX_BUSINESS_ADDRESS_LENGTH = 200;
 
+/** 사업자등록증 사본 업로드 제한 — Storage 버킷 정책(business-licenses)과 별개로 앱 레벨에서도 확인한다. */
+const MAX_BUSINESS_LICENSE_BYTES = 8 * 1024 * 1024;
+const ALLOWED_BUSINESS_LICENSE_TYPES = ["image/jpeg", "image/png", "application/pdf"];
+
 function toResult(error: unknown): ActionResult<never> {
   if (error instanceof SupplierAuthError) {
     return { success: false, error: error.message };
@@ -253,14 +257,96 @@ export async function submitSupplierBusinessAddressAction(
 }
 
 /**
+ * 사업자등록증 사본 업로드 (공급사 본인).
+ *
+ * 파일은 Storage 버킷 business-licenses의 "<auth.uid()>/business-license" 경로에
+ * 저장한다(확장자 없이 고정 — 재업로드 시 이전 파일 형식이 달라도 upsert로 항상
+ * 같은 경로가 덮어써지게 함). wholesalers.business_license_path/uploaded_at는
+ * business_address와 같은 이유로 SECURITY DEFINER RPC 없이 기존 RLS
+ * ("Wholesalers updatable by self or admin")로 직접 UPDATE한다.
+ */
+export async function submitSupplierBusinessLicenseAction(
+  formData: FormData
+): Promise<ActionResult<{ path: string; uploadedAt: string }>> {
+  try {
+    const file = formData.get("business_license");
+
+    if (!(file instanceof File) || file.size === 0) {
+      throw new SupplierAuthError("invalid_input", "사업자등록증 파일을 선택해주세요.");
+    }
+
+    if (file.size > MAX_BUSINESS_LICENSE_BYTES) {
+      throw new SupplierAuthError("invalid_input", "파일 용량은 8MB 이하만 업로드할 수 있습니다.");
+    }
+
+    if (!ALLOWED_BUSINESS_LICENSE_TYPES.includes(file.type)) {
+      throw new SupplierAuthError("invalid_input", "JPG, PNG, PDF 파일만 업로드할 수 있습니다.");
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new SupplierAuthError("auth_required", "로그인이 필요합니다.");
+    }
+
+    const path = `${user.id}/business-license`;
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    const { error: uploadError } = await supabase.storage
+      .from("business-licenses")
+      .upload(path, buffer, { contentType: file.type, upsert: true });
+
+    if (uploadError) {
+      throw new Error("파일 업로드에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    const uploadedAt = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from("wholesalers")
+      .update({ business_license_path: path, business_license_uploaded_at: uploadedAt })
+      .eq("profile_id", user.id)
+      .select("business_license_path, business_license_uploaded_at")
+      .maybeSingle();
+
+    if (error) {
+      throw new Error("업로드 정보를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    if (!data) {
+      throw new SupplierAuthError(
+        "not_a_supplier",
+        "공급사 정보를 찾을 수 없습니다. 온보딩을 먼저 완료해주세요."
+      );
+    }
+
+    revalidatePath("/dashboard", "layout");
+
+    return {
+      success: true,
+      data: {
+        path: data.business_license_path as string,
+        uploadedAt: data.business_license_uploaded_at as string,
+      },
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
  * 승인 심사용 사업자등록번호 제출/수정 (미승인 공급사 본인).
  * 승인 완료 후에는 업체 동일성이 흔들리면 안 되므로 DB 함수가 재제출을 막는다.
  */
 export async function submitSupplierBusinessNumberAction(
   formData: FormData
-): Promise<ActionResult<{ businessNumber: string }>> {
+): Promise<ActionResult<{ businessNumber: string; businessStartDate: string }>> {
   try {
     const businessNumber = normalizeBusinessNumber((formData.get("business_number") as string) || "");
+    const businessStartDate = ((formData.get("business_start_date") as string) || "").trim();
 
     if (!isValidBusinessNumber(businessNumber)) {
       throw new SupplierAuthError(
@@ -269,10 +355,18 @@ export async function submitSupplierBusinessNumberAction(
       );
     }
 
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(businessStartDate) || new Date(businessStartDate) > new Date()) {
+      throw new SupplierAuthError(
+        "invalid_input",
+        "개업일자를 정확히 입력해주세요. 국세청 진위확인에 필요합니다."
+      );
+    }
+
     const supabase = await createClient();
 
     const { data, error } = await supabase.rpc("submit_supplier_business_number", {
       p_business_number: businessNumber,
+      p_business_start_date: businessStartDate,
     });
 
     if (error) {
@@ -282,11 +376,17 @@ export async function submitSupplierBusinessNumberAction(
       );
     }
 
-    const row = data as { business_number: string } | null;
+    const row = data as { business_number: string; business_start_date: string } | null;
 
     revalidatePath("/dashboard", "layout");
 
-    return { success: true, data: { businessNumber: row?.business_number ?? businessNumber } };
+    return {
+      success: true,
+      data: {
+        businessNumber: row?.business_number ?? businessNumber,
+        businessStartDate: row?.business_start_date ?? businessStartDate,
+      },
+    };
   } catch (error) {
     return toResult(error);
   }

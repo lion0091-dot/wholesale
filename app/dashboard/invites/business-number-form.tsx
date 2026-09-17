@@ -8,6 +8,8 @@ import { formatBusinessNumber } from "@/lib/validation/business-number";
 interface BusinessNumberFormProps {
   /** 이미 제출된 번호 (없으면 미제출 상태) */
   currentBusinessNumber?: string | null;
+  /** 이미 제출된 개업일자 (없으면 미제출 상태) — YYYY-MM-DD */
+  currentBusinessStartDate?: string | null;
 }
 
 /**
@@ -16,7 +18,10 @@ interface BusinessNumberFormProps {
  * 가입은 번호 없이도 완료되지만, 행정 승인(= 초대장 발부 활성화)에는 번호가 필요하다.
  * 승인 완료 후에는 업체 동일성이 흔들리면 안 되므로 DB 함수가 재제출을 막는다.
  */
-export function BusinessNumberForm({ currentBusinessNumber }: BusinessNumberFormProps) {
+export function BusinessNumberForm({
+  currentBusinessNumber,
+  currentBusinessStartDate,
+}: BusinessNumberFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -55,6 +60,9 @@ export function BusinessNumberForm({ currentBusinessNumber }: BusinessNumberForm
       >
         사업자등록번호 {currentBusinessNumber ? "(제출 완료 — 수정 가능)" : "(미제출)"}
       </label>
+      <p style={{ fontSize: "12px", color: "#64748b", marginBottom: "8px", lineHeight: 1.5 }}>
+        국세청 진위확인을 위해 개업일자도 함께 제출해야 합니다.
+      </p>
 
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
         <input
@@ -69,6 +77,25 @@ export function BusinessNumberForm({ currentBusinessNumber }: BusinessNumberForm
           disabled={pending}
           style={{
             flex: "1 1 200px",
+            padding: "10px 12px",
+            fontSize: "15px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "8px",
+            backgroundColor: "#ffffff",
+            color: "#0f172a",
+          }}
+        />
+        <input
+          id="business_start_date"
+          name="business_start_date"
+          type="date"
+          required
+          max={new Date().toISOString().slice(0, 10)}
+          defaultValue={currentBusinessStartDate ?? ""}
+          disabled={pending}
+          aria-label="개업일자"
+          style={{
+            flex: "1 1 160px",
             padding: "10px 12px",
             fontSize: "15px",
             border: "1px solid #cbd5e1",

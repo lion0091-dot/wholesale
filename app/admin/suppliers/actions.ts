@@ -5,11 +5,17 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { requireSuperAdmin, RbacError } from "@/lib/auth/rbac";
 import { isValidBusinessNumber } from "@/lib/validation/business-number";
+import { verifyBusinessRegistration, type NtsVerificationStatus } from "@/lib/verification/nts-business";
 import type { WholesalerStatus, SubscriptionStatus } from "@/types/database";
 
 export interface ActionResult {
   success: boolean;
   error?: string;
+}
+
+export interface NtsVerificationActionResult extends ActionResult {
+  status?: NtsVerificationStatus;
+  message?: string;
 }
 
 const ADMIN_PATH = "/admin/suppliers";
@@ -53,11 +59,11 @@ export async function updateSupplierStatusAction(
 
     const supabase = await createClient();
 
-    // 입점 승인은 사업자등록번호 체크섬 통과가 전제 조건이다.
+    // 입점 승인은 체크섬 통과 + 국세청 진위확인(match) + 등록증 사본 제출이 전제 조건이다.
     if (newStatus === "active") {
       const { data: supplier } = await supabase
         .from("wholesalers")
-        .select("business_number")
+        .select("business_number, nts_verification_status, business_license_path")
         .eq("id", supplierId)
         .maybeSingle();
 
@@ -69,6 +75,20 @@ export async function updateSupplierStatusAction(
         return {
           success: false,
           error: "사업자등록번호 체크섬이 유효하지 않아 승인할 수 없습니다.",
+        };
+      }
+
+      if (!supplier.business_license_path) {
+        return {
+          success: false,
+          error: "사업자등록증 사본이 제출되지 않아 승인할 수 없습니다.",
+        };
+      }
+
+      if (supplier.nts_verification_status !== "match") {
+        return {
+          success: false,
+          error: "국세청 진위확인이 완료(일치)되지 않아 승인할 수 없습니다. 먼저 진위확인을 실행하세요.",
         };
       }
     }
@@ -108,6 +128,120 @@ export async function updateSupplierStatusAction(
   } catch (err: unknown) {
     console.error("[Admin Supplier Status ERROR]", err);
     return { success: false, error: "상태 변경 처리 중 오류가 발생했습니다." };
+  }
+}
+
+/**
+ * 국세청 진위확인 API를 호출해 사업자등록번호·대표자명·개업일자가 실제 국세청
+ * 데이터와 일치하는지 확인하고 결과를 wholesalers.nts_verification_status에 저장한다.
+ * 결과가 "match"여야 입점 승인(updateSupplierStatusAction)이 허용된다.
+ */
+export async function verifyBusinessWithNtsAction(
+  supplierId: string
+): Promise<NtsVerificationActionResult> {
+  try {
+    const denied = await assertSuperAdmin();
+
+    if (denied) {
+      return { success: false, error: denied };
+    }
+
+    if (!isSupabaseConfigured()) {
+      return { success: true, status: "match", message: "데모 모드 — 실제 API 호출 없이 통과 처리." };
+    }
+
+    const supabase = await createClient();
+
+    const { data: supplier } = await supabase
+      .from("wholesalers")
+      .select("business_name, business_number, representative_name, business_start_date")
+      .eq("id", supplierId)
+      .maybeSingle();
+
+    if (!supplier) {
+      return { success: false, error: "공급사를 찾을 수 없습니다." };
+    }
+
+    if (!isValidBusinessNumber(supplier.business_number as string | null)) {
+      return { success: false, error: "사업자등록번호 체크섬이 유효하지 않습니다." };
+    }
+
+    if (!supplier.business_start_date) {
+      return {
+        success: false,
+        error: "개업일자가 아직 제출되지 않아 진위확인을 실행할 수 없습니다.",
+      };
+    }
+
+    const result = await verifyBusinessRegistration({
+      businessNumber: supplier.business_number as string,
+      representativeName: supplier.representative_name as string,
+      startDate: supplier.business_start_date as string,
+      businessName: supplier.business_name as string | null,
+    });
+
+    const { error: rpcError } = await supabase.rpc("set_nts_verification_result", {
+      p_wholesaler_id: supplierId,
+      p_status: result.status,
+    });
+
+    if (rpcError) {
+      console.error("[NTS Verification] 결과 저장 오류:", rpcError.message);
+      return { success: false, error: "진위확인 결과 저장에 실패했습니다." };
+    }
+
+    revalidatePath(ADMIN_PATH);
+
+    return { success: true, status: result.status, message: result.message };
+  } catch (err: unknown) {
+    console.error("[NTS Verification ERROR]", err);
+    return { success: false, error: "국세청 진위확인 처리 중 오류가 발생했습니다." };
+  }
+}
+
+/**
+ * 사업자등록증 사본 조회용 서명된 URL 발급 (슈퍼관리자 전용).
+ * business-licenses 버킷은 private이라 signed URL 없이는 접근할 수 없다.
+ */
+export async function getBusinessLicenseUrlAction(
+  supplierId: string
+): Promise<ActionResult & { url?: string }> {
+  try {
+    const denied = await assertSuperAdmin();
+
+    if (denied) {
+      return { success: false, error: denied };
+    }
+
+    if (!isSupabaseConfigured()) {
+      return { success: false, error: "데모 모드에서는 실제 파일을 조회할 수 없습니다." };
+    }
+
+    const supabase = await createClient();
+
+    const { data: supplier } = await supabase
+      .from("wholesalers")
+      .select("business_license_path")
+      .eq("id", supplierId)
+      .maybeSingle();
+
+    if (!supplier?.business_license_path) {
+      return { success: false, error: "아직 제출된 사업자등록증이 없습니다." };
+    }
+
+    const { data, error } = await supabase.storage
+      .from("business-licenses")
+      .createSignedUrl(supplier.business_license_path as string, 300);
+
+    if (error || !data?.signedUrl) {
+      console.error("[Business License Signed URL] 발급 오류:", error?.message);
+      return { success: false, error: "파일 조회 링크를 만들지 못했습니다." };
+    }
+
+    return { success: true, url: data.signedUrl };
+  } catch (err: unknown) {
+    console.error("[Business License Signed URL ERROR]", err);
+    return { success: false, error: "처리 중 오류가 발생했습니다." };
   }
 }
 

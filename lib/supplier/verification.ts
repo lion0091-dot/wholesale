@@ -47,6 +47,11 @@ export interface SupplierAccount {
   businessNumber: string | null;
   /** 사업장 주소 — 거래명세서 PDF 발행에 필수. null이면 발행이 막힌다 */
   businessAddress: string | null;
+  /** 개업일자 — 국세청 진위확인 API 호출에 필수. null이면 미제출 */
+  businessStartDate: string | null;
+  /** 사업자등록증 사본 Storage 경로. null이면 미제출 — 실제 파일은 서명된 URL로만 조회 */
+  businessLicensePath: string | null;
+  businessLicenseUploadedAt: string | null;
   shopToken: string | null;
   supplierStatus: WholesalerStatus | null;
   /** 최소 정보(약관 + 연락처 + 상호) 입력이 남아 있는지 */
@@ -110,12 +115,16 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
   const { data: wholesaler } = linkedWholesalerId
     ? await supabase
         .from("wholesalers")
-        .select("id, business_name, business_number, business_address, shop_token, status")
+        .select(
+          "id, business_name, business_number, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_token, status"
+        )
         .eq("id", linkedWholesalerId)
         .maybeSingle()
     : await supabase
         .from("wholesalers")
-        .select("id, business_name, business_number, business_address, shop_token, status")
+        .select(
+          "id, business_name, business_number, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_token, status"
+        )
         .eq("profile_id", user.id)
         .maybeSingle();
 
@@ -158,6 +167,10 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
     businessName: (wholesaler?.business_name as string | undefined) ?? null,
     businessNumber: (wholesaler?.business_number as string | null | undefined) ?? null,
     businessAddress: (wholesaler?.business_address as string | null | undefined) ?? null,
+    businessStartDate: (wholesaler?.business_start_date as string | null | undefined) ?? null,
+    businessLicensePath: (wholesaler?.business_license_path as string | null | undefined) ?? null,
+    businessLicenseUploadedAt:
+      (wholesaler?.business_license_uploaded_at as string | null | undefined) ?? null,
     shopToken,
     supplierStatus,
     needsMinimumInfo,

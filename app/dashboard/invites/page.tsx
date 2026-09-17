@@ -9,6 +9,7 @@ import {
 } from "@/lib/supplier/verification";
 import { BusinessAddressForm } from "./business-address-form";
 import { BusinessNumberForm } from "./business-number-form";
+import { BusinessLicenseForm } from "./business-license-form";
 
 export const metadata = {
   title: "영업 · 초대장 | 도매업체 통합관리시스템",
@@ -197,7 +198,11 @@ export default async function DashboardInvitesPage() {
             사업자등록번호를 제출하면 플랫폼 운영팀이 등록증을 대조해 승인 여부를 확정합니다.
             승인 전에도 상품 등록·단가·발주 관리는 제한 없이 사용할 수 있습니다.
           </p>
-          <BusinessNumberForm currentBusinessNumber={account.businessNumber} />
+          <BusinessNumberForm
+            currentBusinessNumber={account.businessNumber}
+            currentBusinessStartDate={account.businessStartDate}
+          />
+          <BusinessLicenseForm currentUploadedAt={account.businessLicenseUploadedAt} />
         </section>
       )}
 

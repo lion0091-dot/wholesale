@@ -44,6 +44,14 @@ export interface Wholesaler {
    * 거래명세서 PDF 발행 전 /dashboard/invites에서 직접 등록해야 한다.
    */
   business_address: string | null;
+  /** 개업일자. 국세청 진위확인 API 호출에 필수 — 미제출이면 null. */
+  business_start_date: string | null;
+  /** 국세청 진위확인 API 결과. 입점 승인(status=active)은 'match'일 때만 허용한다. */
+  nts_verification_status: "unchecked" | "match" | "mismatch" | "not_found" | "error";
+  nts_verified_at: string | null;
+  /** 사업자등록증 사본 Storage 경로. null이면 미제출 — 실제 조회는 서명된 URL로만. */
+  business_license_path: string | null;
+  business_license_uploaded_at: string | null;
   shop_token: string;
   status: WholesalerStatus;
   subscription_status: SubscriptionStatus;
