@@ -16,9 +16,14 @@ interface EditProductPageProps {
 export default async function EditProductPage({ params }: EditProductPageProps) {
   const { id } = await params;
   const scope = await getSupplierScope();
+  const supabase = await createClient();
+  const { data: categoryRows } = await supabase
+    .from("product_categories")
+    .select("name")
+    .order("sort_order", { ascending: true });
+  const categories = ((categoryRows ?? []) as Array<{ name: string }>).map((row) => row.name);
 
   if (scope?.wholesalerId) {
-    const supabase = await createClient();
     const { data } = await supabase
       .from("products")
       .select("*")
@@ -27,7 +32,7 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
       .maybeSingle();
 
     if (data) {
-      return <ProductFormView product={data as Product} />;
+      return <ProductFormView product={data as Product} categories={categories} />;
     }
   }
 
@@ -38,5 +43,5 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
     notFound();
   }
 
-  return <ProductFormView product={demoProduct} isDemoMode />;
+  return <ProductFormView product={demoProduct} isDemoMode categories={categories} />;
 }

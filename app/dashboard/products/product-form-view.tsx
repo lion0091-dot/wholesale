@@ -11,9 +11,11 @@ interface ProductFormViewProps {
   product?: Product;
   /** 데모 모드 안내 (저장 불가) */
   isDemoMode?: boolean;
+  /** 플랫폼 공용 카테고리 목록(product_categories 테이블) — 슈퍼관리자가 관리 */
+  categories: string[];
 }
 
-const CATEGORIES = ["소", "돼지", "닭/오리", "양", "가공육"];
+const FALLBACK_CATEGORIES = ["소", "돼지", "닭/오리", "양", "가공육"];
 const UNITS = ["kg", "박스", "마리", "팩"];
 
 const labelStyle: CSSProperties = {
@@ -34,7 +36,12 @@ const fieldStyle: CSSProperties = {
   color: "#0f172a",
 };
 
-export function ProductFormView({ product, isDemoMode = false }: ProductFormViewProps) {
+export function ProductFormView({
+  product,
+  isDemoMode = false,
+  categories,
+}: ProductFormViewProps) {
+  const categoryOptions = categories.length > 0 ? categories : FALLBACK_CATEGORIES;
   const router = useRouter();
   const isEdit = Boolean(product);
 
@@ -139,10 +146,10 @@ export function ProductFormView({ product, isDemoMode = false }: ProductFormView
               id="category"
               name="category"
               required
-              defaultValue={product?.category ?? CATEGORIES[0]}
+              defaultValue={product?.category ?? categoryOptions[0]}
               style={fieldStyle}
             >
-              {CATEGORIES.map((item) => (
+              {categoryOptions.map((item) => (
                 <option key={item} value={item}>
                   {item}
                 </option>
