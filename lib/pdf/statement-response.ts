@@ -10,7 +10,9 @@ import { renderMissingFieldsHtml, type MissingFieldsPageOptions } from "@/lib/pd
 
 export async function buildStatementResponse(
   data: StatementData,
-  warningOptions: Omit<MissingFieldsPageOptions, "missingFields">
+  warningOptions: Omit<MissingFieldsPageOptions, "missingFields">,
+  /** true면 브라우저가 뷰어로 열지 않고 바로 파일로 저장하도록 유도한다 (카카오 인앱 브라우저 등 자체 PDF 뷰어가 없는 환경 대응). */
+  download = false
 ): Promise<NextResponse> {
   const missingFields = findMissingStatementFields(data);
 
@@ -22,11 +24,12 @@ export async function buildStatementResponse(
   }
 
   const pdfBuffer = await renderTransactionStatementPdf(data);
+  const disposition = download ? "attachment" : "inline";
 
   return new NextResponse(new Uint8Array(pdfBuffer), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="statement_${data.orderNumber}.pdf"`,
+      "Content-Disposition": `${disposition}; filename="statement_${data.orderNumber}.pdf"`,
       "Cache-Control": "private, no-store",
     },
   });

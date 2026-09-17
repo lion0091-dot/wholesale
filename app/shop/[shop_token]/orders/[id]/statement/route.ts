@@ -11,9 +11,10 @@ interface RouteParams {
   params: Promise<{ shop_token: string; id: string }>;
 }
 
-export async function GET(_request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   const { shop_token: shopToken, id } = await params;
   const supabase = await createClient();
+  const download = request.nextUrl.searchParams.get("download") === "1";
 
   try {
     // shop_token → 활성 거래 관계 → retailer_id 를 서버에서 재확인한다.
@@ -26,9 +27,13 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "주문을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    return await buildStatementResponse(data, {
-      note: "공급사가 아직 사업장 주소를 등록하지 않았습니다. 공급사에 등록을 요청해주세요.",
-    });
+    return await buildStatementResponse(
+      data,
+      {
+        note: "공급사가 아직 사업장 주소를 등록하지 않았습니다. 공급사에 등록을 요청해주세요.",
+      },
+      download
+    );
   } catch (error) {
     if (error instanceof BuyerAuthError) {
       return NextResponse.json({ error: error.message }, { status: 401 });

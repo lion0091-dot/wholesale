@@ -57,9 +57,10 @@ function buildDemoStatement(orderId: string): StatementData | null {
   };
 }
 
-export async function GET(_request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
   const scope = await getSupplierScope();
+  const download = request.nextUrl.searchParams.get("download") === "1";
 
   // 실계정인데 아직 실주문이 없으면 /dashboard/orders/[id] 페이지와 동일하게
   // 샘플 주문으로 폴백한다 (그렇지 않으면 화면엔 샘플 주문이 보이는데 명세서만 404가 난다).
@@ -72,8 +73,12 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "주문을 찾을 수 없습니다." }, { status: 404 });
   }
 
-  return buildStatementResponse(data, {
-    actionHref: "/dashboard/invites",
-    actionLabel: "사업장 주소 등록하러 가기",
-  });
+  return buildStatementResponse(
+    data,
+    {
+      actionHref: "/dashboard/invites",
+      actionLabel: "사업장 주소 등록하러 가기",
+    },
+    download
+  );
 }

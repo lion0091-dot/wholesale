@@ -59,11 +59,18 @@ export function StatementPreviewButton({ href, label = "거래명세서" }: Stat
             style={{
               display: "flex",
               justifyContent: "flex-end",
+              gap: "14px",
               padding: "6px 10px",
               borderTop: "1px solid #e2e8f0",
               backgroundColor: "#ffffff",
             }}
           >
+            <a
+              href={`${href}?download=1`}
+              style={{ fontSize: "11px", color: "#2563eb", fontWeight: 600, textDecoration: "none" }}
+            >
+              PDF 다운로드 ⬇
+            </a>
             <a
               href={href}
               target="_blank"
