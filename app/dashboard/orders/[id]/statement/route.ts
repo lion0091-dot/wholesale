@@ -58,40 +58,27 @@ function buildDemoStatement(orderId: string): StatementData | null {
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
-  // TODO(temp-debug): 프로덕션 500 원인 파악용 — 원인 확인되면 이 try/catch 제거하고
-  // 원래대로 되돌릴 것 (에러 스택을 응답에 그대로 노출하는 건 임시 진단용).
-  try {
-    const { id } = await params;
-    const scope = await getSupplierScope();
-    const download = request.nextUrl.searchParams.get("download") === "1";
+  const { id } = await params;
+  const scope = await getSupplierScope();
+  const download = request.nextUrl.searchParams.get("download") === "1";
 
-    // 실계정인데 아직 실주문이 없으면 /dashboard/orders/[id] 페이지와 동일하게
-    // 샘플 주문으로 폴백한다 (그렇지 않으면 화면엔 샘플 주문이 보이는데 명세서만 404가 난다).
-    const data =
-      (scope?.wholesalerId
-        ? await loadStatementDataForSupplier(await createClient(), id, scope.wholesalerId)
-        : null) ?? buildDemoStatement(id);
+  // 실계정인데 아직 실주문이 없으면 /dashboard/orders/[id] 페이지와 동일하게
+  // 샘플 주문으로 폴백한다 (그렇지 않으면 화면엔 샘플 주문이 보이는데 명세서만 404가 난다).
+  const data =
+    (scope?.wholesalerId
+      ? await loadStatementDataForSupplier(await createClient(), id, scope.wholesalerId)
+      : null) ?? buildDemoStatement(id);
 
-    if (!data) {
-      return NextResponse.json({ error: "주문을 찾을 수 없습니다." }, { status: 404 });
-    }
-
-    return await buildStatementResponse(
-      data,
-      {
-        actionHref: "/dashboard/invites",
-        actionLabel: "사업장 주소 등록하러 가기",
-      },
-      download
-    );
-  } catch (error) {
-    return NextResponse.json(
-      {
-        debug: true,
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : null,
-      },
-      { status: 500 }
-    );
+  if (!data) {
+    return NextResponse.json({ error: "주문을 찾을 수 없습니다." }, { status: 404 });
   }
+
+  return buildStatementResponse(
+    data,
+    {
+      actionHref: "/dashboard/invites",
+      actionLabel: "사업장 주소 등록하러 가기",
+    },
+    download
+  );
 }
