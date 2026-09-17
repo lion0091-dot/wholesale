@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 
 /**
@@ -22,6 +25,8 @@ const PLATFORM = {
 const linkStyle = { color: "#f8fafc", textDecoration: "none" as const };
 
 export function LegalFooter() {
+  const [showDetails, setShowDetails] = useState(false);
+
   return (
     <footer
       style={{
@@ -79,36 +84,62 @@ export function LegalFooter() {
           </p>
         </div>
 
-        {/* 통신판매중개자 면책 + 에스크로/SSL 결제 안전 고지 */}
-        <div
-          style={{
-            backgroundColor: "#1e293b",
-            padding: "12px 16px",
-            borderRadius: "8px",
-            fontSize: "11px",
-            color: "#64748b",
-            lineHeight: "1.6",
-            marginBottom: "16px",
-          }}
-        >
-          <p style={{ color: "#94a3b8", fontWeight: 600, marginBottom: "4px" }}>
-            🛡️ 통신판매중개자 고지 및 구매안전 서비스
-          </p>
-          <p>
-            {PLATFORM.companyName}은(는) 통신판매중개자로서 개별 육류 공급사와 바이어(구매 회원) 간의 주문
-            중개 시스템만을 제공하며, 통신판매의 당사자가 아닙니다. 상품의 등록, 재고, 단가, 품질 및 배송에
-            대한 일체의 법적 책임은 해당 공급사에 있습니다.
-          </p>
-          <p style={{ marginTop: "6px" }}>
-            <strong style={{ color: "#94a3b8" }}>에스크로(구매안전) 서비스:</strong> 본 플랫폼의 전자결제는
-            전자금융거래법에 따라 등록된 PG사를 통해 처리되며, 구매자의 결제 대금은 거래 완료 시점까지
-            예치(에스크로)되어 보호됩니다.
-          </p>
-          <p style={{ marginTop: "6px" }}>
-            <strong style={{ color: "#94a3b8" }}>SSL 보안 통신:</strong> 결제 및 개인정보 입력 구간을 포함한
-            모든 페이지는 SSL/TLS 암호화(HTTPS) 통신으로 전송되며, 카드 정보는 당사 서버에 저장되지 않고 PG사로
-            직접 전달됩니다.
-          </p>
+        {/* 통신판매중개자 면책 + 에스크로/SSL 결제 안전 고지 — 핵심 사업자 정보는 위에 항상 노출하고,
+            상세 고지는 아코디언으로 접어 모바일 스크롤 부담을 줄인다. */}
+        <div style={{ marginBottom: "16px" }}>
+          <button
+            type="button"
+            onClick={() => setShowDetails((prev) => !prev)}
+            aria-expanded={showDetails}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              width: "100%",
+              padding: "10px 16px",
+              borderRadius: "8px",
+              border: "1px solid #1e293b",
+              backgroundColor: "#1e293b",
+              color: "#94a3b8",
+              fontSize: "11px",
+              fontWeight: 600,
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <span aria-hidden>{showDetails ? "▾" : "▸"}</span>
+            🛡️ 통신판매중개자 고지 및 구매안전 서비스 {showDetails ? "접기" : "보기"}
+          </button>
+
+          {showDetails && (
+            <div
+              style={{
+                backgroundColor: "#1e293b",
+                padding: "12px 16px",
+                borderRadius: "0 0 8px 8px",
+                fontSize: "11px",
+                color: "#64748b",
+                lineHeight: "1.6",
+                marginTop: "1px",
+              }}
+            >
+              <p>
+                {PLATFORM.companyName}은(는) 통신판매중개자로서 개별 육류 공급사와 바이어(구매 회원) 간의 주문
+                중개 시스템만을 제공하며, 통신판매의 당사자가 아닙니다. 상품의 등록, 재고, 단가, 품질 및 배송에
+                대한 일체의 법적 책임은 해당 공급사에 있습니다.
+              </p>
+              <p style={{ marginTop: "6px" }}>
+                <strong style={{ color: "#94a3b8" }}>에스크로(구매안전) 서비스:</strong> 본 플랫폼의 전자결제는
+                전자금융거래법에 따라 등록된 PG사를 통해 처리되며, 구매자의 결제 대금은 거래 완료 시점까지
+                예치(에스크로)되어 보호됩니다.
+              </p>
+              <p style={{ marginTop: "6px" }}>
+                <strong style={{ color: "#94a3b8" }}>SSL 보안 통신:</strong> 결제 및 개인정보 입력 구간을 포함한
+                모든 페이지는 SSL/TLS 암호화(HTTPS) 통신으로 전송되며, 카드 정보는 당사 서버에 저장되지 않고 PG사로
+                직접 전달됩니다.
+              </p>
+            </div>
+          )}
         </div>
 
         <p style={{ fontSize: "11px", color: "#475569", textAlign: "center" }}>

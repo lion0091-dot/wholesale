@@ -16,13 +16,16 @@ export function StagingBanner() {
         backgroundColor: "#fde047",
         color: "#713f12",
         textAlign: "center",
-        padding: "8px 12px",
-        fontSize: "13px",
+        padding: "6px 12px",
+        fontSize: "12px",
         fontWeight: 700,
         lineHeight: 1.4,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
       }}
     >
-      ⚠️ 테스트 환경입니다 — 실제 서비스가 아니며, 데이터는 예고 없이 초기화될 수 있습니다.
+      ⚠️ 테스트 환경 — 데이터가 예고 없이 초기화될 수 있습니다.
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ORDER_STATUS_BADGES,
@@ -35,6 +35,20 @@ interface OrderBoardProps {
 export function OrderBoard({ orders, isLiveChannel, readOnly = false }: OrderBoardProps) {
   const [activeFilter, setActiveFilter] = useState<OrderStatus | "all">("all");
   const [keyword, setKeyword] = useState("");
+  const filterScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateFilterScrollFade = () => {
+    const el = filterScrollRef.current;
+    if (!el) return;
+    setCanScrollRight(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
+  };
+
+  useEffect(() => {
+    updateFilterScrollFade();
+    window.addEventListener("resize", updateFilterScrollFade);
+    return () => window.removeEventListener("resize", updateFilterScrollFade);
+  }, [orders]);
 
   const normalizedKeyword = keyword.trim().toLowerCase();
 
@@ -60,16 +74,18 @@ export function OrderBoard({ orders, isLiveChannel, readOnly = false }: OrderBoa
         overflow: "hidden",
       }}
     >
-      {/* 상태 필터 탭 */}
-      <div
-        style={{
-          display: "flex",
-          gap: "6px",
-          padding: "12px",
-          overflowX: "auto",
-          borderBottom: "1px solid #e2e8f0",
-        }}
-      >
+      {/* 상태 필터 탭 — 오른쪽에 더 있으면 흐릿한 그라데이션으로 가로 스크롤 가능함을 알려준다 */}
+      <div style={{ position: "relative", borderBottom: "1px solid #e2e8f0" }}>
+        <div
+          ref={filterScrollRef}
+          onScroll={updateFilterScrollFade}
+          style={{
+            display: "flex",
+            gap: "6px",
+            padding: "12px",
+            overflowX: "auto",
+          }}
+        >
         {ORDER_STATUS_FILTERS.map((filter) => {
           const isSelected = activeFilter === filter;
           const label = filter === "all" ? "전체" : ORDER_STATUS_BADGES[filter].label;
@@ -109,6 +125,22 @@ export function OrderBoard({ orders, isLiveChannel, readOnly = false }: OrderBoa
             </button>
           );
         })}
+        </div>
+
+        {canScrollRight && (
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              right: 0,
+              width: "36px",
+              background: "linear-gradient(to right, rgba(255,255,255,0), #ffffff)",
+              pointerEvents: "none",
+            }}
+          />
+        )}
       </div>
 
       <div style={{ padding: "12px", borderBottom: "1px solid #e2e8f0" }}>
@@ -132,7 +164,8 @@ export function OrderBoard({ orders, isLiveChannel, readOnly = false }: OrderBoa
           조건에 맞는 발주서가 없습니다.
         </p>
       ) : (
-        <div className="dash-table-wrap">
+        <>
+        <div className="dash-table-wrap dash-desktop-only">
           <table className="dash-table">
             <thead>
               <tr>
@@ -238,6 +271,126 @@ export function OrderBoard({ orders, isLiveChannel, readOnly = false }: OrderBoa
             </tbody>
           </table>
         </div>
+
+        <div className="dash-mobile-only" style={{ flexDirection: "column", gap: "10px", padding: "12px" }}>
+          {visibleOrders.map((order) => {
+            const badge = ORDER_STATUS_BADGES[order.status];
+            const alimtalk = resolveAlimtalkStatus(order.status);
+
+            return (
+              <div
+                key={order.id}
+                style={{
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "10px",
+                  padding: "12px",
+                  opacity: order.status === "cancelled" ? 0.6 : 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#64748b",
+                      backgroundColor: "#f1f5f9",
+                      borderRadius: "4px",
+                      padding: "3px 7px",
+                    }}
+                  >
+                    {order.orderNumber}
+                  </span>
+                  <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                    {formatOrderedAt(order.orderedAt)}
+                  </span>
+                </div>
+
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>
+                    {order.retailerName}
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
+                    {order.deliveryAddress}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: "13px", color: "#334155" }}>
+                  {order.itemSummary}
+                  <span style={{ color: "#94a3b8" }}> ({order.itemCount}개 품목)</span>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>
+                    {formatWon(order.totalAmount)}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      backgroundColor: badge.bg,
+                      color: badge.color,
+                      borderRadius: "4px",
+                      padding: "4px 8px",
+                    }}
+                  >
+                    {badge.label}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    borderTop: "1px solid #f1f5f9",
+                    paddingTop: "8px",
+                  }}
+                >
+                  <div>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        backgroundColor: alimtalk.bg,
+                        color: alimtalk.color,
+                        borderRadius: "4px",
+                        padding: "4px 8px",
+                      }}
+                    >
+                      💬 {alimtalk.label}
+                    </span>
+                    <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "3px" }}>
+                      {alimtalk.target} · {isLiveChannel ? "실발송" : "테스트 발송"}
+                    </div>
+                  </div>
+
+                  {readOnly ? (
+                    <span style={{ fontSize: "11px", color: "#94a3b8" }}>샘플</span>
+                  ) : (
+                    <Link
+                      href={`/dashboard/orders/${order.id}`}
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        padding: "6px 12px",
+                        borderRadius: "6px",
+                        border: "1px solid #cbd5e1",
+                        color: "#334155",
+                      }}
+                    >
+                      상세 보기
+                    </Link>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        </>
       )}
     </section>
   );
