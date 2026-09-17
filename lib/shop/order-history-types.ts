@@ -31,6 +31,8 @@ export interface ShopOrder {
   cancelReason: string | null;
   cancelRequestedAt: string | null;
   cancelResolvedAt: string | null;
+  courierCode: string | null;
+  trackingNumber: string | null;
   lines: ShopOrderLine[];
 }
 

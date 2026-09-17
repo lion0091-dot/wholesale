@@ -21,12 +21,71 @@ import {
   labelStyle,
   shopPageStyle,
 } from "../shop-chrome";
-import { requestOrderCancelAction } from "../actions";
+import { fetchBuyerTrackingStatusAction, requestOrderCancelAction } from "../actions";
 import { StatementPreviewButton } from "@/components/statement-preview-button";
+import { courierLabel, type TrackingResult } from "@/lib/verification/sweettracker";
 
 interface OrderHistoryViewProps {
   catalog: ShopCatalog;
   history: ShopOrderHistory;
+  /** 스위트트래커 API 키 미설정 시 배송 조회 버튼 자체를 숨긴다. */
+  sweetTrackerConfigured: boolean;
+}
+
+/** 자체 열림/조회 상태를 갖는 배송 조회 버튼 — StatementPreviewButton과 동일한 패턴. */
+function TrackingLookupButton({ shopToken, order }: { shopToken: string; order: ShopOrder }) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [result, setResult] = useState<TrackingResult | null>(null);
+
+  const handleToggle = async () => {
+    const nextOpen = !open;
+    setOpen(nextOpen);
+
+    if (nextOpen && !result) {
+      setPending(true);
+      const response = await fetchBuyerTrackingStatusAction(shopToken, order.id);
+      setPending(false);
+      setResult(
+        response.success && response.data
+          ? response.data
+          : { status: "error", message: response.error ?? "조회에 실패했습니다." }
+      );
+    }
+  };
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => void handleToggle()}
+        style={{
+          fontSize: "12px",
+          fontWeight: 700,
+          color: "#2563eb",
+          border: "1px solid #bfdbfe",
+          backgroundColor: "#eff6ff",
+          borderRadius: "6px",
+          padding: "6px 10px",
+          cursor: "pointer",
+        }}
+      >
+        📦 {courierLabel(order.courierCode)} {order.trackingNumber} 배송 조회 {open ? "▲" : "▼"}
+      </button>
+
+      {open && (
+        <div style={{ marginTop: "8px", fontSize: "12px" }}>
+          {pending ? (
+            <p style={{ color: "#64748b" }}>조회 중...</p>
+          ) : result ? (
+            <p style={{ fontWeight: 700, color: result.status === "ok" ? "#166534" : "#b91c1c" }}>
+              {result.message}
+            </p>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** 취소 사유 예시 — 모바일에서 장문 입력이 번거로운 바이어를 위한 빠른 선택 */
@@ -37,7 +96,7 @@ const REASON_PRESETS = [
   "납품 일정이 변경되었습니다.",
 ];
 
-export function OrderHistoryView({ catalog, history }: OrderHistoryViewProps) {
+export function OrderHistoryView({ catalog, history, sweetTrackerConfigured }: OrderHistoryViewProps) {
   const router = useRouter();
   const { wholesaler, customer, shopToken } = catalog;
 
@@ -222,11 +281,14 @@ export function OrderHistoryView({ catalog, history }: OrderHistoryViewProps) {
                 </strong>
               </div>
 
-              <div style={{ marginTop: "10px" }}>
+              <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-start" }}>
                 <StatementPreviewButton
                   href={`/shop/${shopToken}/orders/${order.id}/statement`}
                   label="거래명세서"
                 />
+                {sweetTrackerConfigured && order.courierCode && order.trackingNumber && (
+                  <TrackingLookupButton shopToken={shopToken} order={order} />
+                )}
               </div>
 
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "8px", lineHeight: 1.6 }}>

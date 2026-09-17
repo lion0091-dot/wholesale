@@ -11,9 +11,11 @@ import {
   resolveAlimtalkStatus,
 } from "@/lib/orders/status";
 import { OrderStatusPanel } from "./order-status-panel";
+import { TrackingPanel } from "./tracking-panel";
 import { StatementPreviewButton } from "@/components/statement-preview-button";
 import { TaxInvoiceDraftPanel } from "@/components/tax-invoice-draft-panel";
 import { AuditLogPanel } from "@/components/audit-log-panel";
+import { isSweetTrackerConfigured } from "@/lib/verification/sweettracker";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 export const metadata = {
@@ -43,6 +45,8 @@ interface OrderDetail {
   updatedAt: string;
   items: OrderItem[];
   retailer: RetailerInfo;
+  courierCode: string | null;
+  trackingNumber: string | null;
 }
 
 /** 알림톡 발송 이력은 별도 적재 테이블이 없어 상태 진행 순서로 역산해 표시한다. */
@@ -118,6 +122,8 @@ async function loadOrder(orderId: string): Promise<{ order: OrderDetail; isDemoD
             delivery_address: retailer?.delivery_address ?? null,
             delivery_address_detail: retailer?.delivery_address_detail ?? null,
           },
+          courierCode: (row.courier_code as string | null) ?? null,
+          trackingNumber: (row.tracking_number as string | null) ?? null,
         },
       };
     }
@@ -151,6 +157,8 @@ async function loadOrder(orderId: string): Promise<{ order: OrderDetail; isDemoD
         delivery_address: demoRetailer?.delivery_address ?? null,
         delivery_address_detail: demoRetailer?.delivery_address_detail ?? null,
       },
+      courierCode: null,
+      trackingNumber: null,
     },
   };
 }
@@ -359,6 +367,14 @@ export default async function OrderDetailPage({ params }: PageProps) {
             </div>
           )}
         </section>
+
+        <TrackingPanel
+          orderId={order.id}
+          courierCode={order.courierCode}
+          trackingNumber={order.trackingNumber}
+          sweetTrackerConfigured={isSweetTrackerConfigured()}
+          readOnly={isDemoData}
+        />
 
         {/* 알림톡 발송 상태 */}
         <section style={cardStyle}>

@@ -1,6 +1,7 @@
 import { loadShopCatalog } from "@/lib/shop/catalog";
 import { loadShopOrderHistory } from "@/lib/shop/order-history";
 import { requireBuyerConsent } from "@/lib/auth/buyer-auth";
+import { isSweetTrackerConfigured } from "@/lib/verification/sweettracker";
 import { OrderHistoryView } from "./order-history-view";
 
 interface PageProps {
@@ -17,5 +18,11 @@ export default async function ShopOrderHistoryPage({ params }: PageProps) {
   const catalog = await loadShopCatalog(shop_token);
   const history = await loadShopOrderHistory(catalog);
 
-  return <OrderHistoryView catalog={catalog} history={history} />;
+  return (
+    <OrderHistoryView
+      catalog={catalog}
+      history={history}
+      sweetTrackerConfigured={isSweetTrackerConfigured()}
+    />
+  );
 }

@@ -128,6 +128,12 @@ export interface Order {
    * NULL이면 미정산. prepaid 주문에는 의미가 없다.
    */
   settled_at?: string | null;
+  /**
+   * 배송 조회(스위트트래커 연동) — 택배사 코드/운송장번호 (마이그레이션
+   * 20260930000030에서 추가). 둘 다 NULL이면 아직 미입력.
+   */
+  courier_code?: string | null;
+  tracking_number?: string | null;
 }
 
 /** 플랫폼 관리자 allowlist 항목 (public.platform_admin_allowlist 행 그대로). */

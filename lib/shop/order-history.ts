@@ -41,6 +41,8 @@ type OrderRow = {
   cancel_reason: string | null;
   cancel_requested_at: string | null;
   cancel_resolved_at: string | null;
+  courier_code: string | null;
+  tracking_number: string | null;
 };
 
 type OrderItemRow = {
@@ -77,7 +79,7 @@ export async function loadShopOrderHistory(catalog: ShopCatalog): Promise<ShopOr
   const { data: orderRows, error } = await supabase
     .from("orders")
     .select(
-      "id, order_number, status, total_amount, delivery_address, delivery_notes, ordered_at, cancel_reason, cancel_requested_at, cancel_resolved_at"
+      "id, order_number, status, total_amount, delivery_address, delivery_notes, ordered_at, cancel_reason, cancel_requested_at, cancel_resolved_at, courier_code, tracking_number"
     )
     .eq("wholesaler_id", catalog.wholesaler.id)
     .eq("retailer_id", catalog.customer.retailerId)
@@ -134,6 +136,8 @@ export async function loadShopOrderHistory(catalog: ShopCatalog): Promise<ShopOr
     cancelReason: row.cancel_reason,
     cancelRequestedAt: row.cancel_requested_at,
     cancelResolvedAt: row.cancel_resolved_at,
+    courierCode: row.courier_code,
+    trackingNumber: row.tracking_number,
     lines: linesByOrder.get(row.id) ?? [],
   }));
 

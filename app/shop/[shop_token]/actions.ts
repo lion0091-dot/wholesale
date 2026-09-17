@@ -12,6 +12,7 @@ import { canRequestCancel } from "@/lib/orders/status";
 import { loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
 import { validateCancelReason } from "@/lib/shop/order-history-types";
 import { lineSubtotal, validateCart } from "@/lib/shop/order-policy";
+import { fetchTrackingStatus, type TrackingResult } from "@/lib/verification/sweettracker";
 import type { OrderStatus, PaymentMethod } from "@/types/database";
 
 export interface SubmitOrderInput {
@@ -495,6 +496,63 @@ export async function requestOrderCancelAction(
         error instanceof Error
           ? error.message
           : "취소 요청 처리 중 알 수 없는 오류가 발생했습니다.",
+    };
+  }
+}
+
+// ====================================================================
+// 배송 조회 (스위트트래커) — 바이어
+// ====================================================================
+
+export interface FetchBuyerTrackingStatusResult {
+  success: boolean;
+  error?: string;
+  data?: TrackingResult;
+}
+
+/** 바이어 본인 주문의 저장된 운송장번호로 배송 상태를 라이브 조회한다. */
+export async function fetchBuyerTrackingStatusAction(
+  shopToken: string,
+  orderId: string
+): Promise<FetchBuyerTrackingStatusResult> {
+  try {
+    if (!UUID_PATTERN.test(shopToken ?? "") || !UUID_PATTERN.test(orderId ?? "")) {
+      return { success: false, error: "올바른 요청이 아닙니다." };
+    }
+
+    const supabase = await createClient();
+    const buyer = await requireLinkedBuyer(supabase, shopToken);
+
+    const { data: order } = await supabase
+      .from("orders")
+      .select("courier_code, tracking_number")
+      .eq("id", orderId)
+      .eq("wholesaler_id", buyer.wholesalerId)
+      .eq("retailer_id", buyer.retailerId)
+      .maybeSingle();
+
+    if (!order) {
+      return { success: false, error: "해당 발주서를 찾을 수 없습니다." };
+    }
+
+    if (!order.courier_code || !order.tracking_number) {
+      return { success: false, error: "아직 등록된 운송장번호가 없습니다." };
+    }
+
+    const result = await fetchTrackingStatus(
+      order.courier_code as string,
+      order.tracking_number as string
+    );
+
+    return { success: true, data: result };
+  } catch (error: unknown) {
+    if (error instanceof BuyerAuthError) {
+      return { success: false, error: error.message };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "배송 조회 중 오류가 발생했습니다.",
     };
   }
 }

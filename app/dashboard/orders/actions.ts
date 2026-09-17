@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
 import { ORDER_STATUS_TRANSITIONS, isSupplierAssignableStatus } from "@/lib/orders/status";
+import {
+  KOREAN_COURIERS,
+  fetchTrackingStatus,
+  type TrackingResult,
+} from "@/lib/verification/sweettracker";
 import type { OrderStatus } from "@/types/database";
 
 export interface ActionResult<T = undefined> {
@@ -134,6 +139,89 @@ export async function updateOrderStatusAction(
     revalidatePath(`${REVALIDATE_PATH}/${orderId}`);
 
     return { success: true, data: { status: nextStatus } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** 주문 소유권만 확인하고 반환한다 — 상태 전이 검증이 필요 없는 부가 필드용. */
+async function loadOwnedOrder(orderId: string, wholesalerId: string, isSuperAdmin: boolean) {
+  const supabase = await createClient();
+
+  if (!UUID_PATTERN.test(orderId)) {
+    throw new RbacError("올바른 주문 식별자가 아닙니다.");
+  }
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, wholesaler_id, courier_code, tracking_number")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (!order) {
+    throw new RbacError("해당 발주서를 찾을 수 없습니다.");
+  }
+
+  if (!isSuperAdmin && order.wholesaler_id !== wholesalerId) {
+    throw new RbacError("다른 공급사의 발주서는 처리할 수 없습니다.");
+  }
+
+  return { supabase, order };
+}
+
+/** 배송 조회 정보(택배사/운송장번호) 저장 — 정산은 관여하지 않는 순수 조회용 메타데이터다. */
+export async function updateOrderTrackingAction(
+  orderId: string,
+  courierCode: string,
+  trackingNumber: string
+): Promise<ActionResult<{ courierCode: string; trackingNumber: string }>> {
+  try {
+    const { context, wholesalerId } = await resolveOrderScope();
+
+    if (!KOREAN_COURIERS.some((courier) => courier.code === courierCode)) {
+      throw new RbacError("지원하지 않는 택배사입니다.");
+    }
+
+    const trimmedNumber = trackingNumber.trim();
+
+    if (!trimmedNumber) {
+      throw new RbacError("운송장번호를 입력해주세요.");
+    }
+
+    const { supabase } = await loadOwnedOrder(orderId, wholesalerId, context.isSuperAdmin);
+
+    const { error } = await supabase
+      .from("orders")
+      .update({ courier_code: courierCode, tracking_number: trimmedNumber })
+      .eq("id", orderId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    revalidatePath(`${REVALIDATE_PATH}/${orderId}`);
+
+    return { success: true, data: { courierCode, trackingNumber: trimmedNumber } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** 저장된 택배사/운송장번호로 스위트트래커 배송 상태를 라이브 조회한다. */
+export async function fetchOrderTrackingStatusAction(
+  orderId: string
+): Promise<ActionResult<TrackingResult>> {
+  try {
+    const { context, wholesalerId } = await resolveOrderScope();
+    const { order } = await loadOwnedOrder(orderId, wholesalerId, context.isSuperAdmin);
+
+    if (!order.courier_code || !order.tracking_number) {
+      throw new RbacError("아직 등록된 운송장번호가 없습니다.");
+    }
+
+    const result = await fetchTrackingStatus(order.courier_code, order.tracking_number);
+
+    return { success: true, data: result };
   } catch (error) {
     return toResult(error);
   }

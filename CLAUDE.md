@@ -13,7 +13,7 @@
 
 ## 거래명세서 PDF 생성 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
 
-- [docs/transaction-statement-pdf.md](docs/transaction-statement-pdf.md) — 세금계산서와는 별개인 거래명세서(법정 증빙서류 아님) 서버사이드 PDF 생성. 아키텍처, 잠긴 설계 결정(주소 미등록 시 발행 차단, 한글 폰트 Git LFS 추적 등), 검증 상태(실계정 라이브 미검증), 남은 과제.
+- [docs/transaction-statement-pdf.md](docs/transaction-statement-pdf.md) — 세금계산서와는 별개인 거래명세서(법정 증빙서류 아님) 서버사이드 PDF 생성. 아키텍처, 잠긴 설계 결정(주소 미등록 시 발행 차단, 한글 폰트는 Git LFS가 아닌 일반 git blob으로 커밋 — Vercel 500 버그로 뒤집음), 검증 상태(실계정 라이브 미검증), 남은 과제.
 
 ## 국세청 사업자등록정보 진위확인 API 연동 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
 
@@ -22,6 +22,10 @@
 ## 계산서(면세) 작성 도우미 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
 
 - [docs/tax-invoice-draft.md](docs/tax-invoice-draft.md) — 세금계산서 자동발행(Post-MVP, 미착수)과는 별개로, 홈택스 수동 입력을 돕는 계산서(면세) 작성 초안 PDF 도우미. 과세/면세 판단 근거(잠긴 결정), 아키텍처, 남은 과제.
+
+## 배송 조회 스위트트래커 연동 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
+
+- [docs/delivery-tracking.md](docs/delivery-tracking.md) — 운송장 발급/배송비 정산은 대행하지 않고 스위트트래커 API로 조회만 대행. 잠긴 설계 결정(정산 비관여, 상태 캐싱 안 함, Server Action 패턴), 아키텍처. API 키 미발급(2026-09-17 기준)이라 실조회 미검증 — 문서·코드 준비만 완료.
 
 ## Downloads 폴더 패치 3개 보류 (2026-09-16, Vercel 배포 우선 진행 중)
 
