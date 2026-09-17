@@ -44,13 +44,14 @@ export function AuditLogPanel({ tableName, rowId }: AuditLogPanelProps) {
         type="button"
         onClick={handleToggle}
         style={{
-          fontSize: "11px",
+          fontSize: "12px",
           fontWeight: 700,
           color: "#334155",
           backgroundColor: "#ffffff",
           border: "1px solid #cbd5e1",
           borderRadius: "6px",
-          padding: "4px 10px",
+          padding: "10px 14px",
+          minHeight: "40px",
           cursor: "pointer",
         }}
       >
