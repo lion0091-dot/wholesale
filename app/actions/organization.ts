@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import {
   RbacError,
@@ -19,8 +18,8 @@ export interface ActionResult<T = undefined> {
 
 const ORG_ROLES: OrgRole[] = ["owner", "manager", "staff"];
 const SUBSCRIPTION_TIERS = ["lite", "pro", "enterprise"] as const;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const REVALIDATE_PATH = "/wholesaler/staff";
+/** 직원 관리 화면 — 카카오 초대 링크 기반으로 재구축(app/dashboard/team) */
+const REVALIDATE_PATH = "/dashboard/team";
 
 function toResult(error: unknown): ActionResult<never> {
   if (error instanceof RbacError) {
@@ -31,49 +30,6 @@ function toResult(error: unknown): ActionResult<never> {
     success: false,
     error: error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.",
   };
-}
-
-/**
- * Service Role 클라이언트. auth.admin API(사용자 초대/조회)에만 사용하며
- * 절대 브라우저로 노출되지 않는다. 호출 전 반드시 RBAC 검증을 통과해야 한다.
- */
-function createAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceRoleKey || serviceRoleKey.includes("your-supabase")) {
-    throw new RbacError("서버에 SUPABASE_SERVICE_ROLE_KEY가 설정되지 않아 초대를 보낼 수 없습니다.");
-  }
-
-  return createSupabaseAdminClient(url, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
-
-/** 이메일로 기존 auth 사용자 조회 (없으면 null) */
-async function findUserIdByEmail(
-  admin: ReturnType<typeof createAdminClient>,
-  email: string
-): Promise<string | null> {
-  for (let page = 1; page <= 10; page += 1) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
-
-    if (error) {
-      throw new Error(`사용자 조회 실패: ${error.message}`);
-    }
-
-    const match = data.users.find((user) => user.email?.toLowerCase() === email);
-
-    if (match) {
-      return match.id;
-    }
-
-    if (data.users.length < 200) {
-      break;
-    }
-  }
-
-  return null;
 }
 
 // ====================================================================
@@ -159,70 +115,127 @@ export async function createOrganization(
 }
 
 // ====================================================================
-// 2. 직원 초대 (owner / manager)
+// 2. 직원 초대 링크 — 카카오 OAuth 전용 구조라 이메일 초대 대신 바이어
+//    shop_token과 같은 패턴(토큰 링크 → 카카오 로그인 → 자동 연결)을 쓴다.
+//    실제 연결은 claim_organization_staff_invite() RPC(app/auth/callback)가 수행한다.
 // ====================================================================
-export async function inviteStaff(formData: FormData): Promise<ActionResult> {
+export interface StaffInvite {
+  id: string;
+  role: OrgRole;
+  token: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  usedCount: number;
+  createdAt: string;
+}
+
+interface StaffInviteRow {
+  id: string;
+  role: OrgRole;
+  token: string;
+  expires_at: string;
+  revoked_at: string | null;
+  used_count: number;
+  created_at: string;
+}
+
+function toStaffInvite(row: StaffInviteRow): StaffInvite {
+  return {
+    id: row.id,
+    role: row.role,
+    token: row.token,
+    expiresAt: row.expires_at,
+    revokedAt: row.revoked_at,
+    usedCount: row.used_count,
+    createdAt: row.created_at,
+  };
+}
+
+export async function createStaffInviteAction(role: OrgRole): Promise<ActionResult<StaffInvite>> {
   try {
     const context = await requireOrgRole(["owner", "manager"]);
 
-    const email = ((formData.get("email") as string) || "").trim().toLowerCase();
-    const roleInput = ((formData.get("role") as string) || "staff").trim();
-    const organizationId =
-      ((formData.get("organization_id") as string) || "").trim() || context.organizationId;
-
-    if (!EMAIL_PATTERN.test(email)) {
-      throw new RbacError("올바른 이메일 주소를 입력해주세요.");
-    }
-
-    if (!organizationId) {
-      throw new RbacError("대상 조직을 특정할 수 없습니다.");
-    }
-
-    if (!context.isSuperAdmin && organizationId !== context.organizationId) {
-      throw new RbacError("다른 조직의 직원을 초대할 수 없습니다.");
-    }
-
-    if (!ORG_ROLES.includes(roleInput as OrgRole)) {
+    if (!ORG_ROLES.includes(role)) {
       throw new RbacError("유효하지 않은 역할입니다.");
     }
 
-    const role = roleInput as OrgRole;
+    if (!context.organizationId) {
+      throw new RbacError("소속된 공급사 조직이 없습니다.");
+    }
 
     if (!context.isSuperAdmin && (!context.orgRole || !canAssignRole(context.orgRole, role))) {
-      throw new RbacError("해당 역할을 부여할 권한이 없습니다.");
-    }
-
-    if (email === context.email) {
-      throw new RbacError("본인은 초대할 수 없습니다.");
-    }
-
-    const admin = createAdminClient();
-
-    let userId = await findUserIdByEmail(admin, email);
-
-    if (!userId) {
-      const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email);
-
-      if (inviteError || !invited.user) {
-        throw new Error(`초대 메일 발송 실패: ${inviteError?.message ?? "사용자 생성 실패"}`);
-      }
-
-      userId = invited.user.id;
+      throw new RbacError("해당 역할의 초대 링크를 만들 권한이 없습니다.");
     }
 
     const supabase = await createClient();
-    const { error: staffError } = await supabase.from("organization_staff").insert({
-      organization_id: organizationId,
-      user_id: userId,
-      role,
-      invited_by: context.userId,
-    });
+    const { data, error } = await supabase
+      .from("organization_staff_invites")
+      .insert({ organization_id: context.organizationId, role, created_by: context.userId })
+      .select("id, role, token, expires_at, revoked_at, used_count, created_at")
+      .single();
 
-    if (staffError) {
-      if (staffError.code === "23505") {
-        throw new RbacError("이미 조직에 소속된 사용자입니다.");
-      }
-      throw new Error(staffError.message);
+    if (error || !data) {
+      throw new Error(error?.message ?? "초대 링크 생성에 실패했습니다.");
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+    return { success: true, data: toStaffInvite(data as StaffInviteRow) };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export async function listStaffInvitesAction(): Promise<ActionResult<StaffInvite[]>> {
+  try {
+    const context = await requireOrgRole(["owner", "manager"]);
+
+    if (!context.organizationId) {
+      return { success: true, data: [] };
+    }
+
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("organization_staff_invites")
+      .select("id, role, token, expires_at, revoked_at, used_count, created_at")
+      .eq("organization_id", context.organizationId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return { success: true, data: ((data ?? []) as StaffInviteRow[]).map(toStaffInvite) };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export async function revokeStaffInviteAction(inviteId: string): Promise<ActionResult> {
+  try {
+    const context = await requireOrgRole(["owner", "manager"]);
+
+    const supabase = await createClient();
+    const { data: target, error: targetError } = await supabase
+      .from("organization_staff_invites")
+      .select("id, organization_id")
+      .eq("id", inviteId)
+      .maybeSingle();
+
+    if (targetError || !target) {
+      throw new RbacError("초대 링크를 찾을 수 없습니다.");
+    }
+
+    if (!context.isSuperAdmin && target.organization_id !== context.organizationId) {
+      throw new RbacError("다른 조직의 초대 링크는 취소할 수 없습니다.");
+    }
+
+    const { error } = await supabase
+      .from("organization_staff_invites")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("id", inviteId);
+
+    if (error) {
+      throw new Error(error.message);
     }
 
     revalidatePath(REVALIDATE_PATH);
@@ -329,10 +342,28 @@ export async function removeStaff(staffId: string): Promise<ActionResult> {
 
 // ====================================================================
 // 5. 조직 직원 목록 조회 (같은 조직 구성원만 — RLS로 이중 차단)
+//    profiles SELECT RLS는 본인 것만 허용하므로 이름/연락처는
+//    list_organization_staff_with_profiles() RPC로 조회한다.
 // ====================================================================
-export async function listOrganizationStaff(): Promise<
-  ActionResult<Array<{ id: string; user_id: string; role: OrgRole; created_at: string }>>
-> {
+export interface OrganizationStaffMember {
+  id: string;
+  userId: string;
+  role: OrgRole;
+  name: string | null;
+  phone: string | null;
+  createdAt: string;
+}
+
+interface OrganizationStaffMemberRow {
+  id: string;
+  user_id: string;
+  role: OrgRole;
+  name: string | null;
+  phone: string | null;
+  created_at: string;
+}
+
+export async function listOrganizationStaff(): Promise<ActionResult<OrganizationStaffMember[]>> {
   try {
     const context = await requireOrgRole(["owner", "manager", "staff"]);
 
@@ -341,11 +372,9 @@ export async function listOrganizationStaff(): Promise<
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("organization_staff")
-      .select("id, user_id, role, created_at")
-      .eq("organization_id", context.organizationId)
-      .order("created_at", { ascending: true });
+    const { data, error } = await supabase.rpc("list_organization_staff_with_profiles", {
+      p_organization_id: context.organizationId,
+    });
 
     if (error) {
       throw new Error(error.message);
@@ -353,12 +382,14 @@ export async function listOrganizationStaff(): Promise<
 
     return {
       success: true,
-      data: (data ?? []) as Array<{
-        id: string;
-        user_id: string;
-        role: OrgRole;
-        created_at: string;
-      }>,
+      data: ((data ?? []) as OrganizationStaffMemberRow[]).map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        role: row.role,
+        name: row.name,
+        phone: row.phone,
+        createdAt: row.created_at,
+      })),
     };
   } catch (error) {
     return toResult(error);

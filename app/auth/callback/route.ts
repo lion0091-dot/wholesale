@@ -34,6 +34,7 @@ import {
   sanitizeSupplierReturnPath,
 } from "@/lib/auth/supplier-auth";
 import { STAFF_INTENT, STAFF_PENDING_PATH } from "@/lib/auth/staff-auth";
+import { TEAM_INVITE_INTENT, TEAM_INVITE_LANDING_PATH, toTeamInviteError } from "@/lib/auth/team-invite";
 import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import { getSupplierAccount } from "@/lib/supplier/verification";
 import { ensureSuperAdminBootstrap } from "@/lib/auth/super-admin-bootstrap";
@@ -65,6 +66,8 @@ export async function GET(request: NextRequest) {
   const shopToken = searchParams.get("shop_token");
   const isSupplierFlow = searchParams.get("intent") === SUPPLIER_INTENT;
   const isStaffFlow = searchParams.get("intent") === STAFF_INTENT;
+  const isTeamInviteFlow = searchParams.get("intent") === TEAM_INVITE_INTENT;
+  const teamInviteToken = searchParams.get("invite_token");
 
   // 오픈 리다이렉트 방지: 바이어는 /shop/<uuid> 하위, 공급사는 내부 절대 경로만 허용한다.
   // 검증을 통과한 '명시적' 목적지는 따로 들고 있는다 — 슈퍼관리자 도착지를 정할 때
@@ -77,11 +80,19 @@ export async function GET(request: NextRequest) {
     ? (requestedNext ?? SUPPLIER_LANDING_PATH)
     : isStaffFlow
       ? STAFF_PENDING_PATH
-      : (sanitizeShopReturnPath(searchParams.get("next")) ??
-        (isValidShopToken(shopToken) ? `/shop/${shopToken}` : "/"));
+      : isTeamInviteFlow
+        ? TEAM_INVITE_LANDING_PATH
+        : (sanitizeShopReturnPath(searchParams.get("next")) ??
+          (isValidShopToken(shopToken) ? `/shop/${shopToken}` : "/"));
 
-  // 실패 시 되돌아갈 화면 (공급사는 로그인 게이트, 스태프는 스태프 게이트, 바이어는 미니샵 게이트)
-  const errorPath = isSupplierFlow ? "/login" : isStaffFlow ? "/staff-login" : nextPath;
+  // 실패 시 되돌아갈 화면 (공급사는 로그인 게이트, 스태프는 스태프 게이트, 직원초대는 초대 링크 자체, 바이어는 미니샵 게이트)
+  const errorPath = isSupplierFlow
+    ? "/login"
+    : isStaffFlow
+      ? "/staff-login"
+      : isTeamInviteFlow && teamInviteToken
+        ? `/join-team/${teamInviteToken}`
+        : nextPath;
 
   // 사용자가 카카오 동의 화면에서 취소한 경우
   if (searchParams.get("error") || !code) {
@@ -166,6 +177,32 @@ export async function GET(request: NextRequest) {
         request.url
       )
     );
+  }
+
+  // ------------------------------------------------------------------
+  // 공급사 자체 직원 초대 수락 — /join-team/<token>에서 시작된 흐름.
+  //   claim_organization_staff_invite()가 이미 다른 조직 직원/바이어/본인 명의
+  //   업체 대표인 계정을 거절한다. 실패하면 초대 링크 화면으로 돌려보낸다.
+  // ------------------------------------------------------------------
+  if (isTeamInviteFlow) {
+    if (!teamInviteToken) {
+      return redirectWithError(request, "/", "claim_failed", "유효하지 않은 초대 링크입니다.");
+    }
+
+    const { error: claimError } = await supabase.rpc("claim_organization_staff_invite", {
+      p_token: teamInviteToken,
+    });
+
+    if (claimError) {
+      const teamError = toTeamInviteError(
+        claimError.message,
+        "초대 수락에 실패했습니다. 잠시 후 다시 시도해주세요."
+      );
+
+      return redirectWithError(request, errorPath, "claim_failed", teamError.message);
+    }
+
+    return NextResponse.redirect(new URL(nextPath, request.url));
   }
 
   // ------------------------------------------------------------------
