@@ -4,10 +4,60 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
 import { requireOrgRole, RbacError } from "@/lib/auth/rbac";
-import { sendCreditLimitIncreasedNotificationToRetailer } from "@/lib/notifications/alimtalk";
+import {
+  sendCreditLimitChangedNotificationToWholesaler,
+  sendCreditLimitIncreasedNotificationToRetailer,
+  sendRetailerBlockedNotificationToRetailer,
+  sendRetailerBlockedNotificationToWholesaler,
+  sendRetailerResumedNotificationToRetailer,
+  sendRetailerResumedNotificationToWholesaler,
+} from "@/lib/notifications/alimtalk";
 import type { ActionResult } from "@/app/actions/invite";
 
 const VALID_PAYMENT_METHODS = ["prepaid", "on_credit", "pg"];
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+/** 여신 한도/거래상태 변경 내부 알림에 공통으로 쓰는 "처리자 이름" 조회. */
+async function resolveActorName(
+  supabase: SupabaseServerClient,
+  wholesalerId: string,
+  actorUserId: string
+): Promise<string> {
+  const { data: members } = await supabase.rpc("list_wholesaler_member_names", {
+    p_wholesaler_id: wholesalerId,
+  });
+
+  return (
+    ((members ?? []) as Array<{ user_id: string; name: string | null }>).find(
+      (member) => member.user_id === actorUserId
+    )?.name || "담당자"
+  );
+}
+
+/** 공급사 대표(wholesalers.profile_id)의 연락처 — 내부 알림톡 수신 번호. */
+async function resolveWholesalerPhone(
+  supabase: SupabaseServerClient,
+  wholesalerId: string
+): Promise<string | undefined> {
+  const { data: wholesalerRow } = await supabase
+    .from("wholesalers")
+    .select("profile_id")
+    .eq("id", wholesalerId)
+    .maybeSingle();
+
+  if (!wholesalerRow) {
+    return undefined;
+  }
+
+  const { data: ownerProfile } = await supabase
+    .from("profiles")
+    .select("phone")
+    .eq("id", wholesalerRow.profile_id as string)
+    .maybeSingle();
+
+  return (ownerProfile?.phone as string | undefined) ?? undefined;
+}
 
 /**
  * 거래처(바이어)의 여신 한도 / 연체 기준일 / 허용 결제수단 수정. 돈과 직결되는
@@ -38,8 +88,10 @@ export async function updateCreditLimitAction(
       return { success: false, error: "허용할 결제수단을 하나 이상 선택해주세요." };
     }
 
+    let actorUserId: string;
+
     try {
-      await requireOrgRole(["owner", "manager"]);
+      actorUserId = (await requireOrgRole(["owner", "manager"])).userId;
     } catch (err) {
       return { success: false, error: err instanceof RbacError ? err.message : "권한이 없습니다." };
     }
@@ -85,18 +137,20 @@ export async function updateCreditLimitAction(
     revalidatePath("/dashboard/customers");
     revalidatePath("/dashboard/receivables");
 
-    // 한도를 "올려준" 경우에만 거래처에 알림톡 발송 — 하향은 알림 대상이 아니다
-    // (사용자 결정: 상향만 "주문 가능" 소식으로 통지, 정확한 금액은 넣지 않는다).
     // 미설정/발송 실패는 저장 자체를 막지 않는다(알림톡은 부가 기능).
-    if (previousLimit !== null && creditLimit > previousLimit) {
+    if (previousLimit !== null && creditLimit !== previousLimit) {
       const { data: retailer } = await supabase
         .from("retailers")
         .select("restaurant_name, profile_id")
         .eq("id", retailerId)
         .maybeSingle();
 
-      if (retailer) {
-        const { data: profile } = await supabase
+      const retailerName = (retailer?.restaurant_name as string | undefined) ?? "거래처";
+
+      // 한도를 "올려준" 경우에만 거래처 본인에게도 알림톡 발송 — 하향은 알림 대상이
+      // 아니다(사용자 결정: 상향만 "주문 가능" 소식으로 통지, 정확한 금액은 넣지 않는다).
+      if (retailer && creditLimit > previousLimit) {
+        const { data: retailerProfile } = await supabase
           .from("profiles")
           .select("phone")
           .eq("id", retailer.profile_id as string)
@@ -105,10 +159,27 @@ export async function updateCreditLimitAction(
         await sendCreditLimitIncreasedNotificationToRetailer({
           wholesalerId: scope.wholesalerId,
           wholesalerName: scope.businessName,
-          retailerName: (retailer.restaurant_name as string) ?? "거래처",
-          retailerPhone: (profile?.phone as string | undefined) ?? undefined,
+          retailerName,
+          retailerPhone: (retailerProfile?.phone as string | undefined) ?? undefined,
         });
       }
+
+      // 상향/하향 모두 "누가 바꿨는지" 공급사 대표에게 통지 — 감사 목적이라 방향과
+      // 무관하게 발송한다.
+      const [actorName, wholesalerPhone] = await Promise.all([
+        resolveActorName(supabase, scope.wholesalerId, actorUserId),
+        resolveWholesalerPhone(supabase, scope.wholesalerId),
+      ]);
+
+      await sendCreditLimitChangedNotificationToWholesaler({
+        wholesalerId: scope.wholesalerId,
+        wholesalerName: scope.businessName,
+        wholesalerPhone,
+        actorName,
+        retailerName,
+        previousLimit,
+        newLimit: creditLimit,
+      });
     }
 
     return { success: true };
@@ -140,10 +211,18 @@ export async function updateRetailerStatusAction(
   reason?: string
 ): Promise<ActionResult> {
   try {
+    let actorUserId: string;
+
     try {
-      await requireOrgRole(["owner", "manager"]);
+      actorUserId = (await requireOrgRole(["owner", "manager"])).userId;
     } catch (err) {
       return { success: false, error: err instanceof RbacError ? err.message : "권한이 없습니다." };
+    }
+
+    const scope = await getSupplierScope();
+
+    if (!scope?.wholesalerId) {
+      return { success: false, error: "로그인이 필요합니다. 다시 로그인 후 시도해주세요." };
     }
 
     const supabase = await createClient();
@@ -162,6 +241,60 @@ export async function updateRetailerStatusAction(
     }
 
     revalidatePath("/dashboard/customers");
+
+    // 미설정/발송 실패는 상태 변경 자체를 막지 않는다(알림톡은 부가 기능).
+    const { data: retailer } = await supabase
+      .from("retailers")
+      .select("restaurant_name, profile_id")
+      .eq("id", retailerId)
+      .maybeSingle();
+
+    const retailerName = (retailer?.restaurant_name as string | undefined) ?? "거래처";
+
+    const [retailerProfile, actorName, wholesalerPhone] = await Promise.all([
+      retailer
+        ? supabase.from("profiles").select("phone").eq("id", retailer.profile_id as string).maybeSingle()
+        : Promise.resolve({ data: null }),
+      resolveActorName(supabase, scope.wholesalerId, actorUserId),
+      resolveWholesalerPhone(supabase, scope.wholesalerId),
+    ]);
+
+    const retailerPhone = (retailerProfile.data?.phone as string | undefined) ?? undefined;
+
+    if (status === "blocked") {
+      await Promise.all([
+        sendRetailerBlockedNotificationToWholesaler({
+          wholesalerId: scope.wholesalerId,
+          wholesalerName: scope.businessName,
+          wholesalerPhone,
+          actorName,
+          retailerName,
+          reason: reason?.trim() ?? "",
+        }),
+        sendRetailerBlockedNotificationToRetailer({
+          wholesalerId: scope.wholesalerId,
+          wholesalerName: scope.businessName,
+          retailerName,
+          retailerPhone,
+        }),
+      ]);
+    } else {
+      await Promise.all([
+        sendRetailerResumedNotificationToWholesaler({
+          wholesalerId: scope.wholesalerId,
+          wholesalerName: scope.businessName,
+          wholesalerPhone,
+          actorName,
+          retailerName,
+        }),
+        sendRetailerResumedNotificationToRetailer({
+          wholesalerId: scope.wholesalerId,
+          wholesalerName: scope.businessName,
+          retailerName,
+          retailerPhone,
+        }),
+      ]);
+    }
 
     return { success: true };
   } catch (error) {

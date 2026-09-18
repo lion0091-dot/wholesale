@@ -113,6 +113,43 @@ export interface CreditLimitExceededRetailerNotificationPayload {
   retailerPhone?: string;
 }
 
+export interface CreditLimitChangedNotificationPayload {
+  wholesalerId: string;
+  wholesalerName: string;
+  wholesalerPhone?: string;
+  /** 실제로 한도를 변경한 직원/대표 이름 ("님"은 메시지에서 붙인다) */
+  actorName: string;
+  retailerName: string;
+  previousLimit: number;
+  newLimit: number;
+}
+
+export interface RetailerBlockedNotificationPayload {
+  wholesalerId: string;
+  wholesalerName: string;
+  wholesalerPhone?: string;
+  /** 실제로 정지 처리한 직원/대표 이름 ("님"은 메시지에서 붙인다) */
+  actorName: string;
+  retailerName: string;
+  reason: string;
+}
+
+export interface RetailerResumedNotificationPayload {
+  wholesalerId: string;
+  wholesalerName: string;
+  wholesalerPhone?: string;
+  /** 실제로 재개 처리한 직원/대표 이름 ("님"은 메시지에서 붙인다) */
+  actorName: string;
+  retailerName: string;
+}
+
+export interface RetailerStatusRetailerNotificationPayload {
+  wholesalerId: string;
+  wholesalerName: string;
+  retailerName: string;
+  retailerPhone?: string;
+}
+
 export interface NotificationResult {
   success: boolean;
   /** sent: 실제 발송 시도까지 감. not_configured: 정상적인 미설정 상태. error: 설정은 있는데 실패. */
@@ -438,6 +475,125 @@ ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
     wholesalerId: payload.wholesalerId,
     templateKey: "creditLimitExceededRetailer",
     templateTitle: "외상 거래 제한 안내(고객)",
+    formattedMessage,
+    targetPhone: payload.retailerPhone,
+  });
+}
+
+/**
+ * 공급사(대표) 대상 '여신 한도 변경' 내부 알림톡.
+ *
+ * 거래처(식당)에게 가는 sendCreditLimitIncreasedNotificationToRetailer와는 별개의
+ * 이벤트다 — 저건 상향일 때만, 이건 상향/하향 모두 "누가" 바꿨는지 대표에게
+ * 통지하는 내부 감사용 알림이라 정확한 금액과 담당자 이름을 그대로 노출한다.
+ */
+export async function sendCreditLimitChangedNotificationToWholesaler(
+  payload: CreditLimitChangedNotificationPayload
+): Promise<NotificationResult> {
+  const formattedMessage = `[여신 한도 변경 알림]
+
+${payload.wholesalerName} 대표님, ${payload.actorName}님이 ${payload.retailerName}의 여신 한도를
+${formatWon(payload.previousLimit)}에서 ${formatWon(payload.newLimit)}으로 변경하였습니다.`;
+
+  return dispatchAlimtalk({
+    wholesalerId: payload.wholesalerId,
+    templateKey: "creditLimitChangedWholesaler",
+    templateTitle: "여신 한도 변경 알림",
+    formattedMessage,
+    targetPhone: payload.wholesalerPhone,
+  });
+}
+
+/**
+ * 공급사(대표) 대상 '거래처 정지 처리' 내부 알림톡.
+ *
+ * 누가/왜 정지시켰는지 대표에게 통지하는 내부 감사용 알림이라 정지 사유를
+ * 그대로 노출한다. 거래처(고객) 본인에게 가는 sendRetailerBlockedNotificationToRetailer와는
+ * 별개 이벤트/수신자다.
+ */
+export async function sendRetailerBlockedNotificationToWholesaler(
+  payload: RetailerBlockedNotificationPayload
+): Promise<NotificationResult> {
+  const formattedMessage = `[거래처 정지 처리 알림]
+
+${payload.wholesalerName} 대표님, ${payload.actorName}님이 ${payload.retailerName}와의 거래를 정지하였습니다.
+
+■ 정지 사유: ${payload.reason}
+
+거래처 관리 화면에서 상태를 확인하실 수 있습니다.`;
+
+  return dispatchAlimtalk({
+    wholesalerId: payload.wholesalerId,
+    templateKey: "retailerBlocked",
+    templateTitle: "거래처 정지 처리 알림",
+    formattedMessage,
+    targetPhone: payload.wholesalerPhone,
+  });
+}
+
+/**
+ * 거래처(식당) 대상 '거래 제한' 알림톡.
+ *
+ * "여신 한도" 알림과 같은 원칙 — 정지 사유는 내부 사정(대금 미납 등)일 수 있어
+ * 고객에게는 노출하지 않고, 발주가 제한됐다는 결과와 문의 유도만 담는다.
+ */
+export async function sendRetailerBlockedNotificationToRetailer(
+  payload: RetailerStatusRetailerNotificationPayload
+): Promise<NotificationResult> {
+  const formattedMessage = `[거래 제한 안내]
+
+${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
+
+현재 거래가 일시 제한되어 발주가 어렵습니다.
+자세한 사항은 공급사에 직접 문의해주세요.`;
+
+  return dispatchAlimtalk({
+    wholesalerId: payload.wholesalerId,
+    templateKey: "retailerBlockedRetailer",
+    templateTitle: "거래 제한 안내",
+    formattedMessage,
+    targetPhone: payload.retailerPhone,
+  });
+}
+
+/**
+ * 공급사(대표) 대상 '거래처 재개 처리' 내부 알림톡. 정지 해제 시 누가 처리했는지 통지한다.
+ */
+export async function sendRetailerResumedNotificationToWholesaler(
+  payload: RetailerResumedNotificationPayload
+): Promise<NotificationResult> {
+  const formattedMessage = `[거래처 재개 처리 알림]
+
+${payload.wholesalerName} 대표님, ${payload.actorName}님이 ${payload.retailerName}와의 거래를 재개하였습니다.
+
+다시 발주가 가능한 상태입니다.`;
+
+  return dispatchAlimtalk({
+    wholesalerId: payload.wholesalerId,
+    templateKey: "retailerResumed",
+    templateTitle: "거래처 재개 처리 알림",
+    formattedMessage,
+    targetPhone: payload.wholesalerPhone,
+  });
+}
+
+/**
+ * 거래처(식당) 대상 '거래 재개' 알림톡. 다시 발주 가능해졌다는 좋은 소식이라
+ * 여신 한도 상향 안내와 같은 톤으로 별도 사유 없이 결과만 전달한다.
+ */
+export async function sendRetailerResumedNotificationToRetailer(
+  payload: RetailerStatusRetailerNotificationPayload
+): Promise<NotificationResult> {
+  const formattedMessage = `[거래 재개 안내]
+
+${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
+
+거래가 재개되어 다시 발주하실 수 있습니다.`;
+
+  return dispatchAlimtalk({
+    wholesalerId: payload.wholesalerId,
+    templateKey: "retailerResumedRetailer",
+    templateTitle: "거래 재개 안내",
     formattedMessage,
     targetPhone: payload.retailerPhone,
   });

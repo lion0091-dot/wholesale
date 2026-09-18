@@ -41,6 +41,11 @@ const TEMPLATE_KEYS: AlimtalkTemplateKey[] = [
   "receivablesReminder",
   "creditLimitIncreased",
   "creditLimitExceededRetailer",
+  "creditLimitChangedWholesaler",
+  "retailerBlocked",
+  "retailerBlockedRetailer",
+  "retailerResumed",
+  "retailerResumedRetailer",
 ];
 
 async function copyText(text: string) {
@@ -137,11 +142,48 @@ export function AlimtalkSettingsForm({ initial }: AlimtalkSettingsFormProps) {
           <ol style={{ margin: "6px 0 0", paddingLeft: "18px" }}>
             <li>
               <strong>카카오 비즈니스 채널 관리자센터</strong>(center-pf.kakao.com)에서 카카오톡 채널을
-              먼저 개설 — 이건 비즈뿌리오 가입과 무관하게 카카오 사이트에서 직접 합니다.
+              먼저 개설 — 이건 비즈뿌리오 가입과 무관하게 카카오 사이트에서 직접 합니다. 채널 개설/
+              비즈니스 인증 과정에서 발송할 메시지 내용을 요구하면 아래 {TEMPLATE_KEYS.length}개
+              문구를 복사해서 제출하세요.
+              <ul style={{ margin: "6px 0 0", paddingLeft: "16px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                {TEMPLATE_KEYS.map((key) => {
+                  const reference = ALIMTALK_TEMPLATE_REFERENCE_TEXT[key];
+
+                  return (
+                    <li key={key} style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                      <span>{reference.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void copyText(reference.text).then(() => {
+                            setCopiedTemplateKey(key);
+                            setTimeout(
+                              () => setCopiedTemplateKey((current) => (current === key ? null : current)),
+                              2500
+                            );
+                          });
+                        }}
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: copiedTemplateKey === key ? "#166534" : "#2563eb",
+                          background: "none",
+                          border: "1px solid #bfdbfe",
+                          borderRadius: "6px",
+                          padding: "2px 8px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {copiedTemplateKey === key ? "✓ 복사됨" : "문구 복사"}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             </li>
             <li>
               <strong>비즈뿌리오(bizppurio.com)</strong>에 가입해서, 위에서 만든 채널로 발신프로필을
-              등록하고 아래 템플릿 4개를 심사 신청합니다.
+              등록하고 위 템플릿 {TEMPLATE_KEYS.length}개를 심사 신청합니다.
             </li>
             <li>승인이 끝나면 아래 계정 정보와 템플릿 코드를 여기에 입력하시면 됩니다.</li>
           </ol>

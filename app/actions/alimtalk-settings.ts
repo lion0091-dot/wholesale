@@ -23,6 +23,11 @@ export interface AlimtalkTemplateCodes {
   receivablesReminder?: string;
   creditLimitIncreased?: string;
   creditLimitExceededRetailer?: string;
+  creditLimitChangedWholesaler?: string;
+  retailerBlocked?: string;
+  retailerBlockedRetailer?: string;
+  retailerResumed?: string;
+  retailerResumedRetailer?: string;
 }
 
 export interface AlimtalkSettingsStatus {
@@ -62,6 +67,16 @@ function toTemplateCodes(value: unknown): AlimtalkTemplateCodes {
       typeof raw.creditLimitExceededRetailer === "string"
         ? raw.creditLimitExceededRetailer
         : undefined,
+    creditLimitChangedWholesaler:
+      typeof raw.creditLimitChangedWholesaler === "string"
+        ? raw.creditLimitChangedWholesaler
+        : undefined,
+    retailerBlocked: typeof raw.retailerBlocked === "string" ? raw.retailerBlocked : undefined,
+    retailerBlockedRetailer:
+      typeof raw.retailerBlockedRetailer === "string" ? raw.retailerBlockedRetailer : undefined,
+    retailerResumed: typeof raw.retailerResumed === "string" ? raw.retailerResumed : undefined,
+    retailerResumedRetailer:
+      typeof raw.retailerResumedRetailer === "string" ? raw.retailerResumedRetailer : undefined,
   };
 }
 

@@ -14,7 +14,12 @@ export type AlimtalkTemplateKey =
   | "creditExceeded"
   | "receivablesReminder"
   | "creditLimitIncreased"
-  | "creditLimitExceededRetailer";
+  | "creditLimitExceededRetailer"
+  | "creditLimitChangedWholesaler"
+  | "retailerBlocked"
+  | "retailerBlockedRetailer"
+  | "retailerResumed"
+  | "retailerResumedRetailer";
 
 /**
  * 공급사가 비즈뿌리오/카카오에 템플릿 심사를 신청할 때 그대로 제출해야 하는 기준 문구.
@@ -97,5 +102,47 @@ export const ALIMTALK_TEMPLATE_REFERENCE_TEXT: Record<
 미수금이 있어 외상 주문이 접수되지 않았습니다.
 미수금을 빠르게 정산해 주지 않으시면 앞으로도 발주가 계속 제한됩니다.
 정산 후 다시 이용해주시기 바랍니다.`,
+  },
+  creditLimitChangedWholesaler: {
+    title: "여신 한도 변경 알림(내부용 — 누가 변경했는지 공급사 대표에게 통지)",
+    text: `[여신 한도 변경 알림]
+
+#{공급사명} 대표님, #{처리자}님이 #{바이어상호}의 여신 한도를
+#{이전한도}원에서 #{변경한도}원으로 변경하였습니다.`,
+  },
+  retailerBlocked: {
+    title: "거래처 정지 처리 알림(내부용 — 누가/왜 정지했는지 공급사 대표에게 통지)",
+    text: `[거래처 정지 처리 알림]
+
+#{공급사명} 대표님, #{처리자}님이 #{바이어상호}와의 거래를 정지하였습니다.
+
+■ 정지 사유: #{정지사유}
+
+거래처 관리 화면에서 상태를 확인하실 수 있습니다.`,
+  },
+  retailerBlockedRetailer: {
+    title: "거래 제한 안내(고객(소매)에게는 사유 미노출)",
+    text: `[거래 제한 안내]
+
+#{바이어상호} 담당자님, #{공급사명}입니다.
+
+현재 거래가 일시 제한되어 발주가 어렵습니다.
+자세한 사항은 공급사에 직접 문의해주세요.`,
+  },
+  retailerResumed: {
+    title: "거래처 재개 처리 알림(내부용 — 누가 재개했는지 공급사 대표에게 통지)",
+    text: `[거래처 재개 처리 알림]
+
+#{공급사명} 대표님, #{처리자}님이 #{바이어상호}와의 거래를 재개하였습니다.
+
+다시 발주가 가능한 상태입니다.`,
+  },
+  retailerResumedRetailer: {
+    title: "거래 재개 안내",
+    text: `[거래 재개 안내]
+
+#{바이어상호} 담당자님, #{공급사명}입니다.
+
+거래가 재개되어 다시 발주하실 수 있습니다.`,
   },
 };
