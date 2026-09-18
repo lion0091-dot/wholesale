@@ -203,6 +203,7 @@ export async function sendReceivablesReminderAction(retailerId: string): Promise
     const nearestDueAt = computeDueAt(nearestOrder.ordered_at, relation.settlement_due_days);
 
     const result = await sendReceivablesReminderToRetailer({
+      wholesalerId: scope.wholesalerId,
       wholesalerName: scope.businessName,
       retailerName: retailer.restaurant_name,
       retailerPhone: (profile?.phone as string | undefined) ?? undefined,
@@ -211,10 +212,17 @@ export async function sendReceivablesReminderAction(retailerId: string): Promise
       isOverdue: isOverdue(nearestDueAt),
     });
 
+    if (result.status === "not_configured") {
+      return {
+        success: false,
+        error: result.error ?? "알림톡 연동이 설정되지 않았습니다. 설정 화면에서 먼저 등록해주세요.",
+      };
+    }
+
     return {
       success: result.success,
-      error: result.success ? undefined : "알림톡 발송에 실패했습니다.",
-      data: result.channel === "mock_log" ? "테스트 모드로 발송됐습니다." : "알림톡이 발송됐습니다.",
+      error: result.success ? undefined : result.error ?? "알림톡 발송에 실패했습니다.",
+      data: result.success ? "알림톡이 발송됐습니다." : undefined,
     };
   } catch (error) {
     return {

@@ -15,9 +15,11 @@ interface ReceivablesViewProps {
   groups: ReceivableCustomerGroup[];
   /** 데모(샘플) 데이터 여부 — 정산 처리를 막는다 */
   readOnly?: boolean;
+  /** 알림톡 연동(계정/발신정보/이 템플릿 코드)이 전부 준비됐는지 — false면 리마인드 버튼을 숨긴다 */
+  alimtalkReady?: boolean;
 }
 
-export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewProps) {
+export function ReceivablesView({ groups, readOnly = false, alimtalkReady = false }: ReceivablesViewProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pendingGroupId, setPendingGroupId] = useState<string | null>(null);
   const [errorByGroup, setErrorByGroup] = useState<Record<string, string>>({});
@@ -246,24 +248,42 @@ export function ReceivablesView({ groups, readOnly = false }: ReceivablesViewPro
                 >
                   {openAuditGroupId === group.retailerId ? "이력 닫기" : "여신 변경 이력"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleSendReminder(group)}
-                  disabled={reminderPending}
-                  style={{
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    padding: "8px 14px",
-                    borderRadius: "7px",
-                    border: "1px solid #cbd5e1",
-                    backgroundColor: reminderPending ? "#f1f5f9" : "#ffffff",
-                    color: "#334155",
-                    cursor: reminderPending ? "not-allowed" : "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {reminderPending ? "발송 중..." : "리마인드 발송"}
-                </button>
+                {alimtalkReady ? (
+                  <button
+                    type="button"
+                    onClick={() => handleSendReminder(group)}
+                    disabled={reminderPending}
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      padding: "8px 14px",
+                      borderRadius: "7px",
+                      border: "1px solid #cbd5e1",
+                      backgroundColor: reminderPending ? "#f1f5f9" : "#ffffff",
+                      color: "#334155",
+                      cursor: reminderPending ? "not-allowed" : "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {reminderPending ? "발송 중..." : "리마인드 발송"}
+                  </button>
+                ) : (
+                  <a
+                    href="/dashboard/invites"
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      padding: "8px 14px",
+                      borderRadius: "7px",
+                      border: "1px dashed #cbd5e1",
+                      color: "#64748b",
+                      textDecoration: "none",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    알림톡 연동을 설정하면 리마인드를 보낼 수 있어요 →
+                  </a>
+                )}
 
                 <button
                   type="button"

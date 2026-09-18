@@ -12,6 +12,8 @@ import { BusinessNumberForm } from "./business-number-form";
 import { BusinessLicenseForm } from "./business-license-form";
 import { ShopThumbnailForm } from "./shop-thumbnail-form";
 import { WithdrawWholesalerButton } from "./withdraw-wholesaler-button";
+import { AlimtalkSettingsForm } from "./alimtalk-settings-form";
+import { getAlimtalkSettingsAction } from "@/app/actions/alimtalk-settings";
 
 export const metadata = {
   title: "영업 · 초대장 | 도매업체 통합관리시스템",
@@ -101,6 +103,12 @@ export default async function DashboardInvitesPage() {
   const restriction = describeInviteRestriction(account);
   const canIssue = account.canIssueInvite;
   const statusBadge = STATUS_LABELS[account.supplierStatus ?? "pending"] ?? STATUS_LABELS.pending;
+
+  const alimtalkSettingsResult = account.wholesalerId ? await getAlimtalkSettingsAction() : null;
+  const alimtalkSettings =
+    alimtalkSettingsResult?.success && alimtalkSettingsResult.data
+      ? alimtalkSettingsResult.data
+      : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -230,6 +238,15 @@ export default async function DashboardInvitesPage() {
             바이어의 &quot;내 거래처&quot; 목록에서 상호명 옆에 표시되는 업체 대표 사진/로고입니다.
           </p>
           <ShopThumbnailForm currentThumbnailUrl={account.shopThumbnailUrl} />
+        </section>
+      )}
+
+      {account.wholesalerId && alimtalkSettings && (
+        <section style={cardStyle}>
+          <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>
+            알림톡 연동 설정
+          </div>
+          <AlimtalkSettingsForm initial={alimtalkSettings} />
         </section>
       )}
 

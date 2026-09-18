@@ -105,6 +105,7 @@ async function notifyCreditLimitExceeded(
     .maybeSingle();
 
   await sendCreditLimitExceededNotificationToWholesaler({
+    wholesalerId: buyer.wholesalerId,
     wholesalerName: buyer.wholesalerName,
     wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,
     restaurantName,
@@ -284,6 +285,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
     }
 
     const notification = await sendOrderNotificationToWholesaler({
+      wholesalerId: buyer?.wholesalerId ?? null,
       wholesalerName: buyer?.wholesalerName ?? catalog.wholesaler.business_name,
       wholesalerPhone,
       restaurantName,
@@ -461,6 +463,7 @@ export async function requestOrderCancelAction(
       .maybeSingle();
 
     const notification = await sendCancelRequestNotificationToWholesaler({
+      wholesalerId: buyer.wholesalerId,
       wholesalerName: buyer.wholesalerName,
       wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,
       restaurantName: buyer.restaurantName,

@@ -4,6 +4,7 @@ import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { computeDueAt, isOverdue } from "@/lib/orders/receivables";
 import { formatWon } from "@/lib/orders/status";
 import { DEMO_ORDERS, DEMO_RETAILERS } from "@/lib/demo/supplier-samples";
+import { getAlimtalkSettingsAction } from "@/app/actions/alimtalk-settings";
 import { ReceivablesView } from "./receivables-view";
 import type { ReceivableCustomerGroup, ReceivableOrderRow } from "./receivable-types";
 
@@ -149,6 +150,18 @@ export default async function DashboardReceivablesPage() {
     groups = demoGroups();
   }
 
+  // 리마인드 발송 버튼은 실제로 보낼 수 있는 상태(계정/비밀번호/발신정보/이 템플릿 코드까지
+  // 전부 등록됨)일 때만 보여준다 — 절반만 설정된 상태에서 눌렀다가 실패하는 걸 막는다.
+  const alimtalkSettingsResult = !isDemoData && scope?.wholesalerId ? await getAlimtalkSettingsAction() : null;
+  const alimtalkSettings =
+    alimtalkSettingsResult?.success && alimtalkSettingsResult.data ? alimtalkSettingsResult.data : null;
+  const alimtalkReady = Boolean(
+    alimtalkSettings?.configured &&
+      alimtalkSettings.senderKey &&
+      alimtalkSettings.senderPhone &&
+      alimtalkSettings.templateCodes.receivablesReminder
+  );
+
   const totalOutstanding = groups.reduce((sum, group) => sum + group.outstandingBalance, 0);
   const overdueCustomerCount = groups.filter((group) =>
     group.orders.some((order) => order.isOverdue)
@@ -202,7 +215,7 @@ export default async function DashboardReceivablesPage() {
         ))}
       </section>
 
-      <ReceivablesView groups={groups} readOnly={isDemoData} />
+      <ReceivablesView groups={groups} readOnly={isDemoData} alimtalkReady={alimtalkReady} />
     </div>
   );
 }

@@ -1,15 +1,27 @@
 /**
  * B2B 육류 도매 발주 SaaS - 카카오 알림톡(AlimTalk) 알림 발송 서비스 모듈
- * 
- * PRD Section 3 준수:
- * - 바이어(식당)의 발주서 제출 시 도매업자에게 즉시 카카오 알림톡 트리거 발생
- * - 바이어의 주문 취소 요청 접수 시에도 동일 채널로 도매업자에게 즉시 알림
- * - 개발 및 테스트 환경에서는 카카오 알림톡 규격 템플릿 포맷팅과 구조화된 mock 발송 영수증을 반환
+ *
+ * 플랫폼은 알림톡 발송대행사(현재 비즈뿌리오 고정)와 계약을 대신 해주지 않는다 —
+ * 공급사가 각자 자기 명의로 대행사와 1:1 계약하고, 그 계정 정보를 대시보드
+ * (/dashboard/invites, app/actions/alimtalk-settings.ts)에 직접 입력한다. 그래서
+ * 이 모듈은 플랫폼 전체가 공유하는 API 키가 아니라 매 호출마다 wholesalerId로
+ * 그 공급사의 자격정보를 DB에서 찾아 쓴다.
+ *
+ * 미설정(아직 등록 안 함) / 인증정보 오류(복호화 실패 등) / 실제 API 오류 세 가지를
+ * 구분해서 반환한다 — 미설정은 정상적인 상태(알림톡을 아직 안 쓰는 공급사)라 조용히
+ * 넘어가고, 나머지 둘은 콘솔에 로그를 남긴다.
  */
 
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
+import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
+import { decryptCredential } from "@/lib/security/credential-crypto";
+import { sendAlimtalk, BizppurioError } from "@/lib/notifications/bizppurio-client";
+
+type AlimtalkTemplateKey = "orderNew" | "cancelRequest" | "creditExceeded" | "receivablesReminder";
 
 export interface OrderNotificationPayload {
+  /** 데모/미연결 주문이면 null — 이 경우 발송 자체를 스킵한다 */
+  wholesalerId: string | null;
   wholesalerName: string;
   wholesalerPhone?: string;
   restaurantName: string;
@@ -21,6 +33,7 @@ export interface OrderNotificationPayload {
 }
 
 export interface CancelRequestNotificationPayload {
+  wholesalerId: string;
   wholesalerName: string;
   wholesalerPhone?: string;
   restaurantName: string;
@@ -31,6 +44,7 @@ export interface CancelRequestNotificationPayload {
 }
 
 export interface CreditLimitExceededNotificationPayload {
+  wholesalerId: string;
   wholesalerName: string;
   wholesalerPhone?: string;
   restaurantName: string;
@@ -41,6 +55,7 @@ export interface CreditLimitExceededNotificationPayload {
 }
 
 export interface ReceivablesReminderPayload {
+  wholesalerId: string;
   wholesalerName: string;
   retailerName: string;
   retailerPhone?: string;
@@ -53,67 +68,156 @@ export interface ReceivablesReminderPayload {
 
 export interface NotificationResult {
   success: boolean;
+  /** sent: 실제 발송 시도까지 감. not_configured: 정상적인 미설정 상태. error: 설정은 있는데 실패. */
+  status: "sent" | "not_configured" | "error";
   messageId: string;
   sentAt: string;
-  channel: "kakao_alimtalk" | "mock_log";
   templateTitle: string;
   formattedMessage: string;
+  error?: string;
+}
+
+interface WholesalerAlimtalkCredentials {
+  account: string;
+  /** 복호화된 원문 — 이 함수 밖으로 절대 리턴/로그하지 않는다 */
+  password: string;
+  senderKey: string;
+  senderPhone: string;
+  templateCodes: Partial<Record<AlimtalkTemplateKey, string>>;
+}
+
+type CredentialLoadResult =
+  | { state: "ready"; creds: WholesalerAlimtalkCredentials }
+  | { state: "not_configured" }
+  | { state: "invalid" };
+
+/** 공급사의 알림톡 자격정보를 service_role로 조회하고 비밀번호를 복호화한다. */
+async function loadCredentials(wholesalerId: string): Promise<CredentialLoadResult> {
+  const supabase = createServiceRoleClient();
+
+  if (!supabase) {
+    return { state: "not_configured" };
+  }
+
+  const { data } = await supabase
+    .from("wholesalers")
+    .select(
+      "alimtalk_account, alimtalk_password_encrypted, alimtalk_sender_key, alimtalk_sender_phone, alimtalk_template_codes"
+    )
+    .eq("id", wholesalerId)
+    .maybeSingle();
+
+  if (
+    !data ||
+    !data.alimtalk_account ||
+    !data.alimtalk_password_encrypted ||
+    !data.alimtalk_sender_key ||
+    !data.alimtalk_sender_phone
+  ) {
+    return { state: "not_configured" };
+  }
+
+  let password: string;
+
+  try {
+    password = decryptCredential(data.alimtalk_password_encrypted as string);
+  } catch {
+    return { state: "invalid" };
+  }
+
+  return {
+    state: "ready",
+    creds: {
+      account: data.alimtalk_account as string,
+      password,
+      senderKey: data.alimtalk_sender_key as string,
+      senderPhone: data.alimtalk_sender_phone as string,
+      templateCodes:
+        (data.alimtalk_template_codes as Partial<Record<AlimtalkTemplateKey, string>> | null) ?? {},
+    },
+  };
 }
 
 interface DispatchInput {
+  wholesalerId: string | null;
+  templateKey: AlimtalkTemplateKey;
   templateTitle: string;
   formattedMessage: string;
   targetPhone?: string;
 }
 
-/**
- * 알림톡 발송 분기 (실발송 / 시연 로그).
- * 템플릿 종류에 관계없이 발송 경로와 영수증 포맷을 한 곳에서 관리한다.
- */
 async function dispatchAlimtalk({
+  wholesalerId,
+  templateKey,
   templateTitle,
   formattedMessage,
   targetPhone,
 }: DispatchInput): Promise<NotificationResult> {
   const sentAt = new Date().toISOString();
   const messageId = `ALIM-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+  const base = { messageId, sentAt, templateTitle, formattedMessage };
 
-  // 실제 카카오 알림톡 API 연동 키(예: SOLAPI, ALIGO 등)가 환경변수에 있을 경우 연동
-  const apiKey = process.env.ALIMTALK_API_KEY;
-  const senderPhone = process.env.ALIMTALK_SENDER_PHONE;
-
-  if (apiKey && senderPhone && targetPhone) {
-    try {
-      // 실 API 전송 로직 위치 (실제 환경 변수 등록 시 활성화)
-      console.log(`[AlimTalk LIVE] 알림톡 실발송 처리: ${messageId} -> ${targetPhone}`);
-
-      return {
-        success: true,
-        messageId,
-        sentAt,
-        channel: "kakao_alimtalk",
-        templateTitle,
-        formattedMessage,
-      };
-    } catch (err) {
-      console.error("[AlimTalk ERROR] 실발송 실패, Fallback 처리:", err);
-    }
+  if (!wholesalerId || !targetPhone) {
+    return { ...base, success: false, status: "not_configured" };
   }
 
-  // 개발 및 시연 환경: 표준 포맷 로깅 및 성공 영수증 반환
-  console.log("=================================================");
-  console.log(`[카카오 알림톡 발송 트리거 시뮬레이션] (ID: ${messageId})`);
-  console.log(formattedMessage);
-  console.log("=================================================");
+  const credentialState = await loadCredentials(wholesalerId);
 
-  return {
-    success: true,
-    messageId,
-    sentAt,
-    channel: "mock_log",
-    templateTitle: `${templateTitle} (테스트 모드)`,
-    formattedMessage,
-  };
+  if (credentialState.state === "not_configured") {
+    return { ...base, success: false, status: "not_configured" };
+  }
+
+  if (credentialState.state === "invalid") {
+    console.error(`[AlimTalk] 공급사(${wholesalerId}) 인증정보 복호화 실패 — 설정 재입력 필요`);
+    return {
+      ...base,
+      success: false,
+      status: "error",
+      error: "알림톡 연동 정보가 유효하지 않습니다. 설정 화면에서 다시 등록해주세요.",
+    };
+  }
+
+  const { creds } = credentialState;
+  const templateCode = creds.templateCodes[templateKey];
+
+  if (!templateCode) {
+    return {
+      ...base,
+      success: false,
+      status: "not_configured",
+      error: `"${templateTitle}" 템플릿 코드가 아직 등록되지 않았습니다.`,
+    };
+  }
+
+  try {
+    const result = await sendAlimtalk({
+      account: creds.account,
+      password: creds.password,
+      senderKey: creds.senderKey,
+      from: creds.senderPhone,
+      to: targetPhone,
+      templateCode,
+      message: formattedMessage,
+      refkey: messageId,
+    });
+
+    if (!result.accepted) {
+      return {
+        ...base,
+        success: false,
+        status: "error",
+        error: result.description || `비즈뿌리오가 발송을 거부했습니다 (코드 ${result.code}).`,
+      };
+    }
+
+    return { ...base, success: true, status: "sent" };
+  } catch (error) {
+    const message =
+      error instanceof BizppurioError ? error.message : "알림톡 발송 중 오류가 발생했습니다.";
+    console.error(`[AlimTalk] 발송 실패 (${templateTitle}):`, message);
+
+    return { ...base, success: false, status: "error", error: message };
+  }
 }
 
 /**
@@ -122,7 +226,7 @@ async function dispatchAlimtalk({
 export async function sendOrderNotificationToWholesaler(
   payload: OrderNotificationPayload
 ): Promise<NotificationResult> {
-  // 카카오 알림톡 공식 승인 규격 템플릿 포맷
+  // 카카오 알림톡 승인 템플릿으로 등록해야 하는 기준 문구
   const formattedMessage = `[신규 B2B 육류 발주 접수 알림]
 
 ${payload.wholesalerName} 대표님, 바이어(구매 회원)로부터 새로운 발주서가 접수되었습니다.
@@ -137,6 +241,8 @@ ${payload.deliveryNotes ? `■ 배송 요청사항: ${payload.deliveryNotes}
 도매업자 관리 대시보드에서 발주 상세 내역을 확인하시고 출고 준비를 진행해 주시기 바랍니다.`;
 
   return dispatchAlimtalk({
+    wholesalerId: payload.wholesalerId,
+    templateKey: "orderNew",
     templateTitle: "신규 발주 접수 알림",
     formattedMessage,
     targetPhone: payload.wholesalerPhone,
@@ -165,6 +271,8 @@ ${payload.wholesalerName} 대표님, 바이어(구매 회원)가 접수된 발�
 도매업자 관리 대시보드에서 출고 진행 상황을 확인하신 후 취소 승인 또는 반려를 처리해 주시기 바랍니다.`;
 
   return dispatchAlimtalk({
+    wholesalerId: payload.wholesalerId,
+    templateKey: "cancelRequest",
     templateTitle: "주문 취소 요청 접수 알림",
     formattedMessage,
     targetPhone: payload.wholesalerPhone,
@@ -192,6 +300,8 @@ ${payload.wholesalerName} 대표님, ${payload.restaurantName}에서 외상 주�
 미수금 정산 화면에서 정산 처리하거나 거래처 한도를 조정하시면 재주문이 가능합니다.`;
 
   return dispatchAlimtalk({
+    wholesalerId: payload.wholesalerId,
+    templateKey: "creditExceeded",
     templateTitle: "여신 한도 초과 주문 거절 안내",
     formattedMessage,
     targetPhone: payload.wholesalerPhone,
@@ -221,6 +331,8 @@ ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
 빠른 시일 내 정산 부탁드립니다. 이미 정산을 완료하셨다면 안내를 확인해 주시기 바랍니다.`;
 
   return dispatchAlimtalk({
+    wholesalerId: payload.wholesalerId,
+    templateKey: "receivablesReminder",
     templateTitle: payload.isOverdue ? "미수금 정산 경과 리마인드" : "미수금 정산 기한 임박 리마인드",
     formattedMessage,
     targetPhone: payload.retailerPhone,
