@@ -2,6 +2,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { isSuperAdminSession } from "@/lib/auth/rbac";
 import { RetailerLeadSection } from "@/components/retailer-lead-section";
 import { HomeExploreLinks } from "@/components/home-explore-links";
+import { HomeKakaoCta } from "@/components/home-kakao-cta";
 
 const cardStyle: React.CSSProperties = {
   background: "#ffffff",
@@ -12,10 +13,12 @@ const cardStyle: React.CSSProperties = {
 };
 
 export default async function Home() {
+  const authEnabled = isSupabaseConfigured();
+
   // 슈퍼관리자 콘솔 링크는 DB 권한(profiles.role)이 있을 때만 노출한다.
   // 라우트 자체는 미들웨어와 라우트 가드가 이중으로 막지만, 일반 방문자에게는
   // 관리자 콘솔의 존재를 알리지 않는다. 데모 모드(Supabase 미설정)에서는 시연을 위해 노출.
-  const showAdminEntry = !isSupabaseConfigured() || (await isSuperAdminSession());
+  const showAdminEntry = !authEnabled || (await isSuperAdminSession());
 
   return (
     <main style={{ padding: "40px 20px", maxWidth: "600px", margin: "0 auto" }}>
@@ -98,21 +101,7 @@ export default async function Home() {
           카카오 계정으로 3초 만에 가입하고, 거래처(고객)에 미니샵 링크를 발급해
           모바일로 발주를 받아보세요.
         </p>
-        <a
-          href="/login"
-          style={{
-            display: "block",
-            backgroundColor: "#fee500",
-            color: "#181600",
-            padding: "13px 16px",
-            borderRadius: "8px",
-            fontWeight: 800,
-            fontSize: "14px",
-            textAlign: "center",
-          }}
-        >
-          카카오로 3초 가입 / 로그인 →
-        </a>
+        <HomeKakaoCta authDisabled={!authEnabled} />
       </section>
 
       {/* 고객(소매) */}
