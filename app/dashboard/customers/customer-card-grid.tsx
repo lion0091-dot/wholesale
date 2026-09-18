@@ -24,6 +24,8 @@ interface CustomerCardGridProps {
   onOpenInvite: (customer: CustomerRow) => void;
   /** 여신 한도 수정 모달 열기 */
   onOpenCredit: (customer: CustomerRow) => void;
+  /** 거래중지 / 거래 재개 모달 열기 */
+  onOpenStatus: (customer: CustomerRow) => void;
   /** 샘플(데모) 고객 목록 여부 — 카드마다 "샘플" 배지를 붙인다. */
   isDemo?: boolean;
 }
@@ -106,6 +108,7 @@ export function CustomerCardGrid({
   canIssueInvite,
   onOpenInvite,
   onOpenCredit,
+  onOpenStatus,
   isDemo = false,
 }: CustomerCardGridProps) {
   return (
@@ -260,22 +263,40 @@ export function CustomerCardGrid({
               </Link>
             </div>
 
-            <button
-              type="button"
-              onClick={() => onOpenCredit(customer)}
-              style={{
-                fontSize: "11px",
-                fontWeight: 600,
-                color: "#2563eb",
-                background: "none",
-                border: "none",
-                padding: 0,
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              여신 한도 수정 →
-            </button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <button
+                type="button"
+                onClick={() => onOpenCredit(customer)}
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  color: "#2563eb",
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                여신 한도 수정 →
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenStatus(customer)}
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  color: customer.relationStatus === "blocked" ? "#166534" : "#991b1b",
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  textAlign: "right",
+                }}
+              >
+                {customer.relationStatus === "blocked" ? "거래 재개 →" : "거래중지 →"}
+              </button>
+            </div>
           </article>
         );
       })}

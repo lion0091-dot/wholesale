@@ -7,8 +7,22 @@ import { formatOrderedAt, formatWon } from "@/lib/orders/status";
 import { SampleBadge } from "@/components/sample-badge";
 import type { RelationshipStatus } from "@/types/database";
 import { CustomerCardGrid } from "./customer-card-grid";
-import { updateCreditLimitAction } from "./actions";
+import { updateCreditLimitAction, updateRetailerStatusAction } from "./actions";
 import type { CustomerRow } from "./customer-types";
+
+const REACTIVATION_COOLDOWN_DAYS = 7;
+
+/** blocked 상태에서 재개까지 남은 일수 (0이면 지금 재개 가능). active면 null. */
+function reactivationCooldownRemaining(customer: CustomerRow): number | null {
+  if (customer.relationStatus !== "blocked") {
+    return null;
+  }
+
+  const elapsedMs = Date.now() - new Date(customer.statusChangedAt).getTime();
+  const remainingDays = REACTIVATION_COOLDOWN_DAYS - Math.floor(elapsedMs / (24 * 60 * 60 * 1000));
+
+  return Math.max(0, remainingDays);
+}
 
 export type { CustomerRow } from "./customer-types";
 
@@ -108,6 +122,11 @@ export function CustomerTable({
   const [creditError, setCreditError] = useState<string | null>(null);
   const [creditPending, startCreditTransition] = useTransition();
 
+  const [statusTarget, setStatusTarget] = useState<CustomerRow | null>(null);
+  const [blockReasonValue, setBlockReasonValue] = useState("");
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusPending, startStatusTransition] = useTransition();
+
   // 모달을 열 때마다 해당 바이어 전용 문구를 서버에서 새로 발부받는다.
   // (shop_token 은 미승인 상태에서 클라이언트로 내려오지 않으므로 문구를 조립할 수 없다)
   useEffect(() => {
@@ -193,6 +212,57 @@ export function CustomerTable({
       customer.allowedPaymentMethods.length > 0 ? customer.allowedPaymentMethods : ["prepaid"]
     );
     setCreditTarget(customer);
+  };
+
+  const handleOpenStatus = (customer: CustomerRow) => {
+    setStatusError(null);
+    setBlockReasonValue("");
+    setStatusTarget(customer);
+  };
+
+  const handleBlockRetailer = () => {
+    if (!statusTarget || readOnly) {
+      return;
+    }
+
+    if (blockReasonValue.trim() === "") {
+      setStatusError("거래중지 사유를 입력해주세요.");
+      return;
+    }
+
+    setStatusError(null);
+
+    startStatusTransition(async () => {
+      const result = await updateRetailerStatusAction(
+        statusTarget.id,
+        "blocked",
+        blockReasonValue.trim()
+      );
+
+      if (result.success) {
+        setStatusTarget(null);
+      } else {
+        setStatusError(result.error ?? "거래중지 처리에 실패했습니다.");
+      }
+    });
+  };
+
+  const handleReactivateRetailer = () => {
+    if (!statusTarget || readOnly) {
+      return;
+    }
+
+    setStatusError(null);
+
+    startStatusTransition(async () => {
+      const result = await updateRetailerStatusAction(statusTarget.id, "active");
+
+      if (result.success) {
+        setStatusTarget(null);
+      } else {
+        setStatusError(result.error ?? "거래 재개 처리에 실패했습니다.");
+      }
+    });
   };
 
   const togglePaymentMethod = (method: string) => {
@@ -347,6 +417,7 @@ export function CustomerTable({
             canIssueInvite={canIssueInvite}
             onOpenInvite={handleOpenInvite}
             onOpenCredit={handleOpenCredit}
+            onOpenStatus={handleOpenStatus}
             isDemo={readOnly}
           />
         ) : (
@@ -489,6 +560,17 @@ export function CustomerTable({
                           >
                             단가 설정
                           </Link>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenStatus(customer)}
+                            style={{
+                              ...chipButtonStyle,
+                              color: customer.relationStatus === "blocked" ? "#166534" : "#991b1b",
+                              borderColor: customer.relationStatus === "blocked" ? "#bbf7d0" : "#fecaca",
+                            }}
+                          >
+                            {customer.relationStatus === "blocked" ? "거래 재개" : "거래중지"}
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -940,6 +1022,213 @@ export function CustomerTable({
               >
                 {creditPending ? "저장 중..." : "저장"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 거래중지 / 거래 재개 모달 */}
+      {statusTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="거래 상태 변경"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 60,
+            backgroundColor: "rgba(15, 23, 42, 0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "16px",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "14px",
+              padding: "20px",
+              width: "100%",
+              maxWidth: "400px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "14px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+              <div style={{ flex: 1 }}>
+                <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
+                  {statusTarget.relationStatus === "blocked" ? "거래 재개" : "거래중지"}
+                </h2>
+                <p style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
+                  {statusTarget.restaurantName}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="닫기"
+                onClick={() => setStatusTarget(null)}
+                style={{
+                  ...chipButtonStyle,
+                  border: "none",
+                  background: "none",
+                  fontSize: "18px",
+                  padding: "0 4px",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {readOnly && (
+              <div
+                style={{
+                  backgroundColor: "#fef3c7",
+                  border: "1px solid #fde68a",
+                  color: "#92400e",
+                  fontSize: "12px",
+                  padding: "9px 11px",
+                  borderRadius: "8px",
+                }}
+              >
+                샘플 데이터입니다. 로그인 후 실제 거래처에서 이용해주세요.
+              </div>
+            )}
+
+            {statusTarget.relationStatus === "blocked" ? (
+              <>
+                {statusTarget.blockReason && (
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "#334155",
+                      backgroundColor: "#f8fafc",
+                      borderRadius: "8px",
+                      padding: "9px 11px",
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    거래중지 사유: {statusTarget.blockReason}
+                  </div>
+                )}
+                {(() => {
+                  const remaining = reactivationCooldownRemaining(statusTarget);
+                  const canReactivate = remaining === 0;
+
+                  return (
+                    <p style={{ fontSize: "12px", color: canReactivate ? "#166534" : "#b45309" }}>
+                      {canReactivate
+                        ? "지금 거래를 재개할 수 있습니다."
+                        : `과금 회피 방지를 위해 거래중지 후 ${REACTIVATION_COOLDOWN_DAYS}일이 지나야 재개할 수 있습니다. (${remaining}일 남음)`}
+                    </p>
+                  );
+                })()}
+              </>
+            ) : (
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: "#475569",
+                    marginBottom: "5px",
+                  }}
+                >
+                  거래중지 사유 (필수)
+                </label>
+                <textarea
+                  value={blockReasonValue}
+                  onChange={(event) => setBlockReasonValue(event.target.value)}
+                  placeholder="예: 3개월째 대금 미납, 반복 발주 취소 등"
+                  rows={3}
+                  style={{
+                    width: "100%",
+                    padding: "9px 11px",
+                    fontSize: "13px",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "6px",
+                    resize: "vertical",
+                  }}
+                />
+                <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+                  거래중지 중에는 이 거래처가 발주할 수 없습니다. 재개는 최소{" "}
+                  {REACTIVATION_COOLDOWN_DAYS}일 후부터 가능합니다.
+                </p>
+              </div>
+            )}
+
+            {statusError && (
+              <div
+                role="alert"
+                style={{
+                  backgroundColor: "#fee2e2",
+                  border: "1px solid #fecaca",
+                  color: "#991b1b",
+                  fontSize: "12px",
+                  padding: "9px 11px",
+                  borderRadius: "8px",
+                  lineHeight: 1.6,
+                }}
+              >
+                {statusError}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setStatusTarget(null)}
+                disabled={statusPending}
+                style={{ ...chipButtonStyle, padding: "9px 13px" }}
+              >
+                취소
+              </button>
+              {statusTarget.relationStatus === "blocked" ? (
+                <button
+                  type="button"
+                  onClick={handleReactivateRetailer}
+                  disabled={
+                    statusPending || readOnly || reactivationCooldownRemaining(statusTarget) !== 0
+                  }
+                  style={{
+                    ...chipButtonStyle,
+                    backgroundColor:
+                      statusPending || readOnly || reactivationCooldownRemaining(statusTarget) !== 0
+                        ? "#94a3b8"
+                        : "#16a34a",
+                    borderColor:
+                      statusPending || readOnly || reactivationCooldownRemaining(statusTarget) !== 0
+                        ? "#94a3b8"
+                        : "#16a34a",
+                    color: "#ffffff",
+                    padding: "9px 13px",
+                    cursor:
+                      statusPending || readOnly || reactivationCooldownRemaining(statusTarget) !== 0
+                        ? "not-allowed"
+                        : "pointer",
+                  }}
+                >
+                  {statusPending ? "처리 중..." : "거래 재개"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleBlockRetailer}
+                  disabled={statusPending || readOnly}
+                  style={{
+                    ...chipButtonStyle,
+                    backgroundColor: statusPending || readOnly ? "#94a3b8" : "#dc2626",
+                    borderColor: statusPending || readOnly ? "#94a3b8" : "#dc2626",
+                    color: "#ffffff",
+                    padding: "9px 13px",
+                    cursor: statusPending || readOnly ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {statusPending ? "처리 중..." : "거래중지"}
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -26,6 +26,8 @@ const DEMO_SHOP_TOKEN = "demo-token-12345";
 interface RelationJoinRow {
   retailer_id: string;
   status: RelationshipStatus;
+  status_changed_at: string;
+  block_reason: string | null;
   memo: string | null;
   created_at: string;
   credit_limit: number;
@@ -140,7 +142,7 @@ export default async function DashboardCustomersPage() {
       supabase
         .from("wholesaler_retailers")
         .select(
-          "retailer_id, status, memo, created_at, credit_limit, outstanding_balance, settlement_due_days, allowed_payment_methods, retailers ( restaurant_name, business_number, representative_name, delivery_address, delivery_address_detail )"
+          "retailer_id, status, status_changed_at, block_reason, memo, created_at, credit_limit, outstanding_balance, settlement_due_days, allowed_payment_methods, retailers ( restaurant_name, business_number, representative_name, delivery_address, delivery_address_detail )"
         )
         .eq("wholesaler_id", scope.wholesalerId)
         .order("created_at", { ascending: false }),
@@ -186,6 +188,8 @@ export default async function DashboardCustomersPage() {
             retailer?.delivery_address_detail
           ),
           relationStatus: row.status,
+          statusChangedAt: row.status_changed_at,
+          blockReason: row.block_reason,
           memo: row.memo,
           joinedAt: row.created_at,
           customPriceCount: customPriceCounts.get(row.retailer_id) ?? 0,
@@ -229,6 +233,8 @@ export default async function DashboardCustomersPage() {
           retailer.delivery_address_detail
         ),
         relationStatus: retailer.status,
+        statusChangedAt: retailer.created_at,
+        blockReason: retailer.status === "blocked" ? "미수금 정산 지연" : null,
         memo: retailer.memo,
         joinedAt: retailer.created_at,
         customPriceCount: customPriceCounts.get(retailer.id) ?? 0,

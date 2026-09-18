@@ -8,6 +8,10 @@ export interface CustomerRow {
   businessNumber: string | null;
   deliveryAddress: string;
   relationStatus: RelationshipStatus;
+  /** relationStatus가 마지막으로 바뀐 시각 — 재개(blocked→active) 냉각기간 표시용 */
+  statusChangedAt: string;
+  /** 거래중지 사유 (blocked 상태일 때만 값 있음) */
+  blockReason: string | null;
   memo: string | null;
   joinedAt: string;
   /** 맞춤 단가가 지정된 상품 수 (0이면 기본 단가 적용) */

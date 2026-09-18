@@ -120,3 +120,56 @@ export async function updateCreditLimitAction(
     };
   }
 }
+
+const RETAILER_STATUS_ERROR_MESSAGES: Record<string, string> = {
+  NOT_A_WHOLESALER: "공급사 계정에서만 사용할 수 있습니다.",
+  INVALID_STATUS: "잘못된 상태 값입니다.",
+  BLOCK_REASON_REQUIRED: "거래중지 사유를 입력해주세요.",
+  RETAILER_NOT_FOUND: "해당 거래처를 찾을 수 없습니다.",
+  STATUS_UNCHANGED: "이미 해당 상태입니다.",
+  REACTIVATION_COOLDOWN: "거래중지 후 7일이 지나야 거래를 재개할 수 있습니다.",
+};
+
+/**
+ * 거래처 거래중지/재개. 정지 남용(과금 회피용 토글) 방지를 위해 실제 검증(사유 필수,
+ * 재개 냉각기간)은 DB 함수(set_wholesaler_retailer_status)에서 수행한다 — 자세한
+ * 내용은 해당 마이그레이션 주석 참고. 돈과 직결되는 조작이라 여신 한도와 동일하게
+ * owner/manager만 허용.
+ */
+export async function updateRetailerStatusAction(
+  retailerId: string,
+  status: "active" | "blocked",
+  reason?: string
+): Promise<ActionResult> {
+  try {
+    try {
+      await requireOrgRole(["owner", "manager"]);
+    } catch (err) {
+      return { success: false, error: err instanceof RbacError ? err.message : "권한이 없습니다." };
+    }
+
+    const supabase = await createClient();
+
+    const { error } = await supabase.rpc("set_wholesaler_retailer_status", {
+      p_retailer_id: retailerId,
+      p_status: status,
+      p_reason: reason ?? null,
+    });
+
+    if (error) {
+      return {
+        success: false,
+        error: RETAILER_STATUS_ERROR_MESSAGES[error.message] ?? "상태 변경에 실패했습니다.",
+      };
+    }
+
+    revalidatePath("/dashboard/customers");
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "상태 변경 중 오류가 발생했습니다.",
+    };
+  }
+}
