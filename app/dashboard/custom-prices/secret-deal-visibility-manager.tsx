@@ -109,6 +109,10 @@ export function SecretDealVisibilityManager({
     );
   }
 
+  const isAlreadyAssigned = assignments.some(
+    (row) => row.productId === productId && row.retailerId === retailerId
+  );
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -120,7 +124,7 @@ export function SecretDealVisibilityManager({
       return;
     }
 
-    if (!productId || !retailerId) {
+    if (!productId || !retailerId || isAlreadyAssigned) {
       return;
     }
 
@@ -217,7 +221,7 @@ export function SecretDealVisibilityManager({
           <div style={{ display: "flex", alignItems: "flex-end" }}>
             <button
               type="submit"
-              disabled={pending || !retailerId || !productId}
+              disabled={pending || !retailerId || !productId || isAlreadyAssigned}
               style={{
                 width: "100%",
                 padding: "10px 20px",
@@ -225,15 +229,31 @@ export function SecretDealVisibilityManager({
                 fontWeight: 700,
                 borderRadius: "8px",
                 border: "none",
-                backgroundColor: pending ? "#f87171" : "#dc2626",
+                backgroundColor: pending || isAlreadyAssigned ? "#f87171" : "#dc2626",
                 color: "#ffffff",
-                cursor: pending ? "wait" : "pointer",
+                cursor: pending || isAlreadyAssigned ? "not-allowed" : "pointer",
               }}
             >
-              {pending ? "지정 중..." : "노출 대상 추가"}
+              {pending ? "지정 중..." : isAlreadyAssigned ? "이미 지정됨" : "노출 대상 추가"}
             </button>
           </div>
         </div>
+
+        {isAlreadyAssigned && !message && (
+          <div
+            style={{
+              backgroundColor: "#ffedd5",
+              border: "1px solid #fdba74",
+              borderRadius: "8px",
+              padding: "10px 12px",
+              fontSize: "13px",
+              fontWeight: 700,
+              color: "#9a3412",
+            }}
+          >
+            ⚠️ 이미 지정된 조합입니다 — 아래 "상품별 노출 현황"에서 해제할 수 있습니다.
+          </div>
+        )}
 
         {message && (
           <div
