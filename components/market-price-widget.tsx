@@ -10,6 +10,37 @@ const CATEGORY_TO_SPECIES: Record<string, MarketPriceSpecies> = {
   돼지: "pig",
 };
 
+/**
+ * KAPE 응답은 등급을 한 리스트에 다 섞어서 준다. 소는 서로 다른 두 기준(육질/육량)이
+ * 같은 필드에 같이 나와서(예: "1++"와 "A"가 나란히) 그대로 나열하면 뭐가 뭔지 헷갈린다.
+ * 여기서 그룹을 나눠 라벨을 붙인다.
+ */
+type GradeGroup = "quality" | "yield" | "other" | "aggregate";
+
+const GROUP_LABEL: Record<MarketPriceSpecies, Partial<Record<GradeGroup, string>>> = {
+  cattle: { quality: "육질등급", yield: "육량등급", other: "기타", aggregate: "집계" },
+  pig: { quality: "등급", other: "기타", aggregate: "집계" },
+};
+
+const GROUP_ORDER: GradeGroup[] = ["quality", "yield", "other", "aggregate"];
+
+const CATTLE_QUALITY_GRADES = new Set(["1++", "1+", "1", "2", "3"]);
+const CATTLE_YIELD_GRADES = new Set(["A", "B", "C", "D"]);
+const AGGREGATE_GRADES = new Set(["평균", "등외제외"]);
+
+function classifyGrade(species: MarketPriceSpecies, grade: string): GradeGroup {
+  if (AGGREGATE_GRADES.has(grade)) return "aggregate";
+
+  if (species === "cattle") {
+    if (CATTLE_QUALITY_GRADES.has(grade)) return "quality";
+    if (CATTLE_YIELD_GRADES.has(grade)) return "yield";
+    return "other";
+  }
+
+  // 돼지는 이중 체계가 없다 — 1+/1/2/등외는 그대로 "등급", 모돈만 별도.
+  return grade === "모돈" ? "other" : "quality";
+}
+
 function formatWon(amount: number): string {
   return `${Math.round(amount).toLocaleString("ko-KR")}원`;
 }
@@ -92,34 +123,46 @@ export function MarketPriceWidget({ category }: MarketPriceWidgetProps) {
 
       {speciesRows.length > 0 && (
         <>
-          <ul
-            style={{
-              listStyle: "none",
-              margin: "8px 0 0",
-              padding: 0,
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "6px",
-            }}
-          >
-            {speciesRows.map((row) => (
-              <li
-                key={row.grade}
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  color: "#1e3a8a",
-                  backgroundColor: "#dbeafe",
-                  borderRadius: "6px",
-                  padding: "4px 8px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {row.grade} {formatWon(row.pricePerKg)}/kg
-              </li>
-            ))}
-          </ul>
-          <p style={{ fontSize: "11px", color: "#64748b", marginTop: "6px" }}>
+          {GROUP_ORDER.map((group) => {
+            const groupLabel = GROUP_LABEL[species][group];
+            const groupRows = speciesRows.filter((row) => classifyGrade(species, row.grade) === group);
+
+            if (!groupLabel || groupRows.length === 0) return null;
+
+            return (
+              <div key={group} style={{ marginTop: "8px" }}>
+                <div style={{ fontSize: "10px", fontWeight: 700, color: "#3b82f6" }}>{groupLabel}</div>
+                <ul
+                  style={{
+                    listStyle: "none",
+                    margin: "4px 0 0",
+                    padding: 0,
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "6px",
+                  }}
+                >
+                  {groupRows.map((row) => (
+                    <li
+                      key={row.grade}
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        color: "#1e3a8a",
+                        backgroundColor: "#dbeafe",
+                        borderRadius: "6px",
+                        padding: "4px 8px",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {row.grade} {formatWon(row.pricePerKg)}/kg
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+          <p style={{ fontSize: "11px", color: "#64748b", marginTop: "8px" }}>
             {formatSnapshotDate(speciesRows[0].snapshotDate)} 기준 · 축산물품질평가원 공공데이터
           </p>
         </>
