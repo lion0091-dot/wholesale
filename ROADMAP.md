@@ -60,13 +60,15 @@
 - [x] 마감일 임박/경과 시 알림톡 리마인드 연동 (미수금 정산 화면에서 거래처별 수동 발송 버튼)
 - [ ] (선택) 위 리마인드 자동 스케줄링 — Vercel Cron/Supabase pg_cron 등으로 매일 자동 스캔·발송 (현재는 수동 발송만 지원, 인프라 미구축)
 
-### 7. 계산서(면세) 작성 도우미 (1~3 구현 완료 · 실제 API 연동 제외)
+### 7. 계산서(면세) 작성 도우미 + 국세청 실제 발행/정정 (코드 완료 · 팝빌 파트너 계약만 남음)
 - [x] `orders` 데이터(공급가액, 거래일자, 공급자/공급받는자 정보) → 계산서 표준 항목 매핑 (`lib/orders/statement.ts` 재사용)
   - 축산 도소매는 대부분 미가공 축산물(단순 절단·냉동·포장)이라 부가가치세법 시행령 제34조상 **면세** 대상으로 판단해 세액 없는 "계산서" 양식으로 만듦(세금계산서 아님).
 - [x] 화면에서 수정 가능한 미리보기(초안) 폼 구현 (`components/tax-invoice-draft-panel.tsx` — 작성일자/업태/종목/비고는 DB에 없어 그때그때 입력)
 - [x] 출력/PDF 등 내보내기 → 홈택스 등에는 사용자가 수동 입력(자동 발행 아님) (`app/dashboard/orders/[id]/tax-invoice/route.ts`)
 - [ ] (향후) 가공육 등 과세 품목 취급 시 세액 10% 포함하는 "세금계산서" 양식 별도 추가
-- [ ] (Post-MVP) 국세청 API 연동한 자동 발행으로 고도화
+- [x] 국세청 API(팝빌 ASP) 연동한 실제 발행 + 정정신고(수정사유 6종) — 코드/DB/배포 완료, [docs/tax-invoice-nts-filing.md](docs/tax-invoice-nts-filing.md) 참고
+  - [ ] **사장님 할 일**: 팝빌 파트너 신청(popbill.com/PartnerRequest) → LinkID/SecretKey 발급 → Vercel 환경변수(`POPBILL_LINK_ID`/`POPBILL_SECRET_KEY`/`POPBILL_IS_TEST`) 등록. 이것만 하면 바로 사용 가능.
+  - [ ] 위 등록 후 실계정 테스트 모드로 발행 1건 실제 확인 (Claude와 함께)
 
 ---
 
