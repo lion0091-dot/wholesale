@@ -84,7 +84,9 @@ export function MarketPriceWidget({ category }: MarketPriceWidgetProps) {
 
       {!error && rows !== null && speciesRows.length === 0 && (
         <p style={{ fontSize: "12px", color: "#64748b", marginTop: "6px" }}>
-          아직 시세 데이터가 없습니다. (API 키 미설정이거나 오늘 자료가 아직 안 올라왔을 수 있습니다)
+          아직 시세 데이터가 없습니다. 축산물품질평가원 경락가격 API 키(KAPE_MARKET_PRICE_API_KEY)를
+          서버 환경변수에 등록하면 표시됩니다(플랫폼 운영자 설정 필요). 이미 등록돼 있다면 오늘 자료가
+          아직 안 올라왔을 수 있습니다.
         </p>
       )}
 

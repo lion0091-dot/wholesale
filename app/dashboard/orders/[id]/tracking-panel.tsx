@@ -202,7 +202,8 @@ export function TrackingPanel({
           </div>
         ) : (
           <p style={{ fontSize: "11px", color: "#94a3b8" }}>
-            배송 조회 기능이 아직 설정되지 않았습니다(관리자 설정 필요).
+            배송 조회는 스위트트래커 API 키(SWEETTRACKER_API_KEY)를 서버 환경변수에
+            등록해야 사용할 수 있습니다. (플랫폼 운영자 설정 필요)
           </p>
         ))}
     </section>

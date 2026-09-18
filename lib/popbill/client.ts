@@ -38,6 +38,11 @@ export class PopbillNotConfiguredError extends Error {
   }
 }
 
+/** POPBILL_LINK_ID/POPBILL_SECRET_KEY 설정 여부 — 미설정이면 UI에서 발행 버튼을 잠근다. */
+export function isPopbillConfigured(): boolean {
+  return Boolean(process.env.POPBILL_LINK_ID && process.env.POPBILL_SECRET_KEY);
+}
+
 export class PopbillApiError extends Error {
   code: number;
 

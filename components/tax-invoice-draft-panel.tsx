@@ -10,6 +10,9 @@ import {
 import { MODIFY_CODE_LABELS, type ModifyCode } from "@/lib/popbill/modify-codes";
 import type { TaxInvoiceIssuanceRow } from "@/lib/popbill/taxinvoice";
 
+const POPBILL_NOT_CONFIGURED_HINT =
+  "팝빌 파트너 계약 후 LinkID·SecretKey를 등록하면 사용할 수 있습니다. (/dashboard/invites에서 설정 예정)";
+
 interface TaxInvoiceDraftPanelProps {
   /** PDF(또는 발행 불가 경고 HTML)를 돌려주는 라우트 — /dashboard/orders/[id]/tax-invoice */
   baseHref: string;
@@ -23,6 +26,8 @@ interface TaxInvoiceDraftPanelProps {
    * 이 경우 외부 브라우저에서는 로그인 화면으로 튕길 수 있다.
    */
   externalOpenBaseHref?: string | null;
+  /** POPBILL_LINK_ID/POPBILL_SECRET_KEY 미설정이면 발행/정정 버튼을 잠그고 말풍선을 보여준다. */
+  popbillConfigured: boolean;
 }
 
 const fieldStyle: React.CSSProperties = {
@@ -55,6 +60,7 @@ export function TaxInvoiceDraftPanel({
   orderId,
   defaultIssueDate,
   externalOpenBaseHref,
+  popbillConfigured,
 }: TaxInvoiceDraftPanelProps) {
   const [open, setOpen] = useState(false);
   const [issueDate, setIssueDate] = useState(defaultIssueDate);
@@ -359,24 +365,28 @@ export function TaxInvoiceDraftPanel({
               </div>
             ))}
 
-            <button
-              type="button"
-              disabled={issuing}
-              onClick={handleIssue}
-              style={{
-                fontSize: "12px",
-                fontWeight: 700,
-                color: "#ffffff",
-                backgroundColor: "#b91c1c",
-                border: "none",
-                borderRadius: "6px",
-                padding: "8px 14px",
-                cursor: issuing ? "default" : "pointer",
-                opacity: issuing ? 0.6 : 1,
-              }}
-            >
-              {issuing ? "발행 중…" : "🚨 국세청에 실제 발행"}
-            </button>
+            {popbillConfigured ? (
+              <button
+                type="button"
+                disabled={issuing}
+                onClick={handleIssue}
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  backgroundColor: "#b91c1c",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "8px 14px",
+                  cursor: issuing ? "default" : "pointer",
+                  opacity: issuing ? 0.6 : 1,
+                }}
+              >
+                {issuing ? "발행 중…" : "🚨 국세청에 실제 발행"}
+              </button>
+            ) : (
+              <p style={{ fontSize: "11px", color: "#94a3b8" }}>{POPBILL_NOT_CONFIGURED_HINT}</p>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>

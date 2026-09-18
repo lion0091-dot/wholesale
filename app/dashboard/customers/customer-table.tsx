@@ -28,6 +28,8 @@ interface CustomerTableProps {
   inviteRestriction?: string | null;
   /** 데모(샘플) 데이터 여부 — 실제 초대 링크가 아님을 안내한다. */
   readOnly?: boolean;
+  /** 공급사 자신의 PG(토스페이먼츠) 연동 설정 여부 — 미설정이면 PG 체크박스를 잠근다. */
+  pgConfigured?: boolean;
 }
 
 const RELATION_BADGES: Record<RelationshipStatus, { label: string; bg: string; color: string }> = {
@@ -67,6 +69,7 @@ export function CustomerTable({
   canIssueInvite,
   inviteRestriction,
   readOnly = false,
+  pgConfigured = false,
 }: CustomerTableProps) {
   const [keyword, setKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<RelationshipStatus | "all">("all");
@@ -851,7 +854,7 @@ export function CustomerTable({
                   [
                     { value: "prepaid", label: "직접 정산 (계좌이체 등)" },
                     { value: "on_credit", label: "외상 거래" },
-                    { value: "pg", label: "PG(카드) 결제" },
+                    ...(pgConfigured ? [{ value: "pg", label: "PG(카드) 결제" } as const] : []),
                   ] as const
                 ).map((option) => (
                   <label
@@ -874,9 +877,14 @@ export function CustomerTable({
                   </label>
                 ))}
               </div>
+              {!pgConfigured && (
+                <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+                  PG(카드) 결제는 이 공급사의 PG 연동(토스페이먼츠)을 먼저 설정해야 이 목록에
+                  나타납니다. /dashboard/invites에서 설정할 수 있습니다.
+                </p>
+              )}
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                외상은 여신 한도가 0보다 커야, PG는 결제 연동(팝빌 아님, 별도 PG 설정)이
-                끝나 있어야 실제로 체크아웃에 노출됩니다.
+                외상은 여신 한도가 0보다 커야 실제로 체크아웃에 노출됩니다.
               </p>
             </div>
 

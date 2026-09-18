@@ -125,27 +125,36 @@ export default async function DashboardCustomersPage() {
   let customers: CustomerRow[] = [];
   let shopToken: string | null = DEMO_SHOP_TOKEN;
   let isDemoData = true;
+  let pgConfigured = false;
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
 
-    const [{ data: relations }, { data: customPriceRows }, { data: orderRows }] = await Promise.all([
-      supabase
-        .from("wholesaler_retailers")
-        .select(
-          "retailer_id, status, memo, created_at, credit_limit, outstanding_balance, settlement_due_days, allowed_payment_methods, retailers ( restaurant_name, business_number, representative_name, delivery_address, delivery_address_detail )"
-        )
-        .eq("wholesaler_id", scope.wholesalerId)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("custom_prices")
-        .select("retailer_id")
-        .eq("wholesaler_id", scope.wholesalerId),
-      supabase
-        .from("orders")
-        .select("retailer_id, total_amount, status, ordered_at")
-        .eq("wholesaler_id", scope.wholesalerId),
-    ]);
+    const [{ data: relations }, { data: customPriceRows }, { data: orderRows }, { data: wholesalerRow }] =
+      await Promise.all([
+        supabase
+          .from("wholesaler_retailers")
+          .select(
+            "retailer_id, status, memo, created_at, credit_limit, outstanding_balance, settlement_due_days, allowed_payment_methods, retailers ( restaurant_name, business_number, representative_name, delivery_address, delivery_address_detail )"
+          )
+          .eq("wholesaler_id", scope.wholesalerId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("custom_prices")
+          .select("retailer_id")
+          .eq("wholesaler_id", scope.wholesalerId),
+        supabase
+          .from("orders")
+          .select("retailer_id, total_amount, status, ordered_at")
+          .eq("wholesaler_id", scope.wholesalerId),
+        supabase
+          .from("wholesalers")
+          .select("pg_client_key")
+          .eq("id", scope.wholesalerId)
+          .maybeSingle(),
+      ]);
+
+    pgConfigured = Boolean(wholesalerRow?.pg_client_key);
 
     if (relations && relations.length > 0) {
       const customPriceCounts = countByRetailer((customPriceRows ?? []) as Array<{ retailer_id: string }>);
@@ -283,6 +292,7 @@ export default async function DashboardCustomersPage() {
         canIssueInvite={canIssueInvite}
         inviteRestriction={inviteRestriction}
         readOnly={isDemoData}
+        pgConfigured={pgConfigured}
       />
     </div>
   );
