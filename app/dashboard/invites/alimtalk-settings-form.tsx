@@ -120,32 +120,34 @@ export function AlimtalkSettingsForm({ initial }: AlimtalkSettingsFormProps) {
         {initial.configured ? "✓ 연동 설정됨" : "미설정 — 알림톡이 발송되지 않습니다"}
       </div>
 
-      <div
-        style={{
-          backgroundColor: "#f8fafc",
-          border: "1px solid #e2e8f0",
-          borderRadius: "8px",
-          padding: "12px 14px",
-          fontSize: "12px",
-          color: "#475569",
-          lineHeight: 1.8,
-        }}
-      >
-        <strong style={{ color: "#0f172a" }}>사이트 두 곳을 순서대로 거쳐야 합니다</strong> (비즈뿌리오
-        한 곳에서 전부 되는 게 아닙니다):
-        <ol style={{ margin: "6px 0 0", paddingLeft: "18px" }}>
-          <li>
-            <strong>카카오 비즈니스 채널 관리자센터</strong>(center-pf.kakao.com)에서 카카오톡 채널을
-            먼저 개설 — 이건 비즈뿌리오 가입과 무관하게 카카오 사이트에서 직접 합니다.
-          </li>
-          <li>
-            <strong>비즈뿌리오(bizppurio.com)</strong>에 가입해서, 위에서 만든 채널로 발신프로필을
-            등록하고 아래 템플릿 4개를 심사 신청합니다.
-          </li>
-          <li>승인이 끝나면 아래 계정 정보와 템플릿 코드를 여기에 입력하시면 됩니다.</li>
-        </ol>
-        계약과 요금은 비즈뿌리오와 공급사님 사이의 별도 계약이며, 플랫폼은 발송 연동만 대행합니다.
-      </div>
+      {!initial.configured && (
+        <div
+          style={{
+            backgroundColor: "#f8fafc",
+            border: "1px solid #e2e8f0",
+            borderRadius: "8px",
+            padding: "12px 14px",
+            fontSize: "12px",
+            color: "#475569",
+            lineHeight: 1.8,
+          }}
+        >
+          <strong style={{ color: "#0f172a" }}>사이트 두 곳을 순서대로 거쳐야 합니다</strong> (비즈뿌리오
+          한 곳에서 전부 되는 게 아닙니다):
+          <ol style={{ margin: "6px 0 0", paddingLeft: "18px" }}>
+            <li>
+              <strong>카카오 비즈니스 채널 관리자센터</strong>(center-pf.kakao.com)에서 카카오톡 채널을
+              먼저 개설 — 이건 비즈뿌리오 가입과 무관하게 카카오 사이트에서 직접 합니다.
+            </li>
+            <li>
+              <strong>비즈뿌리오(bizppurio.com)</strong>에 가입해서, 위에서 만든 채널로 발신프로필을
+              등록하고 아래 템플릿 4개를 심사 신청합니다.
+            </li>
+            <li>승인이 끝나면 아래 계정 정보와 템플릿 코드를 여기에 입력하시면 됩니다.</li>
+          </ol>
+          계약과 요금은 비즈뿌리오와 공급사님 사이의 별도 계약이며, 플랫폼은 발송 연동만 대행합니다.
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }}>
         <div>
