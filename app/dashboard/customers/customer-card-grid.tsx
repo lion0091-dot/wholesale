@@ -5,7 +5,7 @@
  *
  * 도매 사장님이 거래처를 한눈에 훑을 수 있도록 섬네일(이니셜 아바타) + 핵심 정보를
  * 카드로 묶어 보여준다. 카드마다 다음 액션을 1클릭으로 제공한다.
- * - 전용 미니샵 초대 링크 복사
+ * - 전용 미니샵 초대장(링크 + 카톡 문구 + 미리보기) 모달 열기
  * - 해당 바이어가 선택된 상태로 맞춤 단가 설정 화면 이동
  */
 
@@ -18,14 +18,9 @@ import type { CustomerRow } from "./customer-types";
 
 interface CustomerCardGridProps {
   customers: CustomerRow[];
-  /** 링크 복사 완료 표시 대상 (바이어 id) */
-  copiedLinkId: string | null;
   /** 초대장 발부 권한 — 미승인 공급사는 버튼이 잠긴다. */
   canIssueInvite: boolean;
-  /** 초대장 발부 요청 진행 중 */
-  issuePending?: boolean;
-  onCopyLink: (customer: CustomerRow) => void;
-  /** 카톡 문구 / 미니샵 미리보기가 담긴 초대 모달 열기 */
+  /** 링크 / 카톡 문구 / 미니샵 미리보기가 담긴 초대 모달 열기 */
   onOpenInvite: (customer: CustomerRow) => void;
   /** 여신 한도 수정 모달 열기 */
   onOpenCredit: (customer: CustomerRow) => void;
@@ -108,10 +103,7 @@ function StatCell({ label, value }: { label: string; value: string }) {
 
 export function CustomerCardGrid({
   customers,
-  copiedLinkId,
   canIssueInvite,
-  issuePending = false,
-  onCopyLink,
   onOpenInvite,
   onOpenCredit,
   isDemo = false,
@@ -122,7 +114,6 @@ export function CustomerCardGrid({
         const relation = RELATION_BADGES[customer.relationStatus];
         const hasCustomPrice = customer.customPriceCount > 0;
         const palette = avatarPalette(customer.restaurantName);
-        const isCopied = copiedLinkId === customer.id;
 
         return (
           <article
@@ -237,32 +228,22 @@ export function CustomerCardGrid({
               />
             </div>
 
-            {/* 카드 액션 — 초대 링크 복사 / 맞춤 단가 설정 */}
+            {/* 카드 액션 — 초대장 보기 / 맞춤 단가 설정 */}
             <div style={{ display: "flex", gap: "6px", marginTop: "auto" }}>
               <button
                 type="button"
-                onClick={() => onCopyLink(customer)}
-                disabled={!canIssueInvite || issuePending}
+                onClick={() => onOpenInvite(customer)}
+                disabled={!canIssueInvite}
                 title={canIssueInvite ? undefined : "승인 완료 후 초대장 발부가 활성화됩니다."}
                 style={{
                   ...actionStyle,
-                  backgroundColor: !canIssueInvite
-                    ? "#f1f5f9"
-                    : isCopied
-                      ? "#16a34a"
-                      : "#fee500",
-                  borderColor: !canIssueInvite ? "#e2e8f0" : isCopied ? "#16a34a" : "#fde047",
-                  color: !canIssueInvite ? "#94a3b8" : isCopied ? "#ffffff" : "#181600",
-                  cursor: canIssueInvite && !issuePending ? "pointer" : "not-allowed",
+                  backgroundColor: !canIssueInvite ? "#f1f5f9" : "#fee500",
+                  borderColor: !canIssueInvite ? "#e2e8f0" : "#fde047",
+                  color: !canIssueInvite ? "#94a3b8" : "#181600",
+                  cursor: canIssueInvite ? "pointer" : "not-allowed",
                 }}
               >
-                {!canIssueInvite
-                  ? "🔒 승인 후 발부"
-                  : isCopied
-                    ? "✓ 링크 복사됨"
-                    : issuePending
-                      ? "발부 중..."
-                      : "🔗 초대 링크 복사"}
+                {!canIssueInvite ? "🔒 승인 후 발부" : "🗂️ 초대장 보기"}
               </button>
 
               <Link
@@ -278,24 +259,6 @@ export function CustomerCardGrid({
                 🏷️ 맞춤 단가 설정
               </Link>
             </div>
-
-            <button
-              type="button"
-              onClick={() => onOpenInvite(customer)}
-              disabled={!canIssueInvite}
-              style={{
-                fontSize: "11px",
-                fontWeight: 600,
-                color: canIssueInvite ? "#2563eb" : "#94a3b8",
-                background: "none",
-                border: "none",
-                padding: 0,
-                cursor: canIssueInvite ? "pointer" : "not-allowed",
-                textAlign: "left",
-              }}
-            >
-              카톡 문구 · 미니샵 미리보기 →
-            </button>
 
             <button
               type="button"

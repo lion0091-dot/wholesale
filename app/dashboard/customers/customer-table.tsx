@@ -97,12 +97,9 @@ export function CustomerTable({
   }, []);
   const [inviteTarget, setInviteTarget] = useState<CustomerRow | null>(null);
   const [copied, setCopied] = useState<"link" | "message" | null>(null);
-  /** 카드 그리드에서 링크를 복사한 바이어 id (카드별 '복사됨' 표시) */
-  const [copiedCardId, setCopiedCardId] = useState<string | null>(null);
   /** 서버에서 발부받은 초대장 (링크 + 카톡 문구) */
   const [invite, setInvite] = useState<IssuedInvite | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [invitePending, startInviteTransition] = useTransition();
 
   const [creditTarget, setCreditTarget] = useState<CustomerRow | null>(null);
   const [creditValue, setCreditValue] = useState("");
@@ -165,31 +162,6 @@ export function CustomerTable({
     }
   };
 
-  /** 카드에서 모달을 열지 않고 바로 전용 미니샵 링크만 복사한다. */
-  const handleCopyCardLink = (customer: CustomerRow) => {
-    if (!canIssueInvite) {
-      window.alert(inviteRestriction ?? "승인 완료 후 초대장 발부가 활성화됩니다.");
-      return;
-    }
-
-    startInviteTransition(async () => {
-      const result = await issueInviteAction(customer.restaurantName);
-
-      if (!result.success || !result.data) {
-        window.alert(result.error ?? "초대장을 생성할 수 없습니다.");
-        return;
-      }
-
-      try {
-        await copyText(result.data.shopUrl);
-        setCopiedCardId(customer.id);
-        setTimeout(() => setCopiedCardId(null), 3000);
-      } catch {
-        window.alert("복사에 실패했습니다. 브라우저 권한을 확인해 주세요.");
-      }
-    });
-  };
-
   /** 미승인 상태에서는 모달을 열지 않고 사유만 알린다. */
   const handleOpenInvite = (customer: CustomerRow) => {
     if (!canIssueInvite) {
@@ -201,11 +173,6 @@ export function CustomerTable({
   };
 
   const handleOpenCredit = (customer: CustomerRow) => {
-    if (readOnly) {
-      window.alert("샘플 데이터입니다. 로그인 후 실제 거래처에서 이용해주세요.");
-      return;
-    }
-
     setCreditError(null);
     setCreditValue(String(customer.creditLimit));
     setDueDaysValue(String(customer.settlementDueDays));
@@ -222,7 +189,7 @@ export function CustomerTable({
   };
 
   const handleSaveCredit = () => {
-    if (!creditTarget) {
+    if (!creditTarget || readOnly) {
       return;
     }
 
@@ -364,10 +331,7 @@ export function CustomerTable({
         ) : viewMode === "card" ? (
           <CustomerCardGrid
             customers={visibleCustomers}
-            copiedLinkId={copiedCardId}
             canIssueInvite={canIssueInvite}
-            issuePending={invitePending}
-            onCopyLink={handleCopyCardLink}
             onOpenInvite={handleOpenInvite}
             onOpenCredit={handleOpenCredit}
             isDemo={readOnly}
@@ -775,6 +739,21 @@ export function CustomerTable({
               </button>
             </div>
 
+            {readOnly && (
+              <div
+                style={{
+                  backgroundColor: "#fef3c7",
+                  border: "1px solid #fde68a",
+                  color: "#92400e",
+                  fontSize: "12px",
+                  padding: "9px 11px",
+                  borderRadius: "8px",
+                }}
+              >
+                샘플 데이터입니다. 로그인 후 실제 거래처에서 이용해주세요.
+              </div>
+            )}
+
             <div>
               <label
                 style={{
@@ -917,14 +896,14 @@ export function CustomerTable({
               <button
                 type="button"
                 onClick={handleSaveCredit}
-                disabled={creditPending}
+                disabled={creditPending || readOnly}
                 style={{
                   ...chipButtonStyle,
-                  backgroundColor: creditPending ? "#94a3b8" : "#0f172a",
-                  borderColor: creditPending ? "#94a3b8" : "#0f172a",
+                  backgroundColor: creditPending || readOnly ? "#94a3b8" : "#0f172a",
+                  borderColor: creditPending || readOnly ? "#94a3b8" : "#0f172a",
                   color: "#ffffff",
                   padding: "9px 13px",
-                  cursor: creditPending ? "not-allowed" : "pointer",
+                  cursor: creditPending || readOnly ? "not-allowed" : "pointer",
                 }}
               >
                 {creditPending ? "저장 중..." : "저장"}
