@@ -154,7 +154,7 @@ async function loadOwnedOrder(orderId: string, wholesalerId: string, isSuperAdmi
 
   const { data: order } = await supabase
     .from("orders")
-    .select("id, wholesaler_id, courier_code, tracking_number")
+    .select("id, wholesaler_id, courier_code, tracking_number, status")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -169,12 +169,19 @@ async function loadOwnedOrder(orderId: string, wholesalerId: string, isSuperAdmi
   return { supabase, order };
 }
 
-/** 배송 조회 정보(택배사/운송장번호) 저장 — 정산은 관여하지 않는 순수 조회용 메타데이터다. */
+/**
+ * 배송 조회 정보(택배사/운송장번호) 저장 — 정산은 관여하지 않는 순수 조회용 메타데이터다.
+ *
+ * 운송장번호를 입력한다는 건 실질적으로 이미 상차/출고했다는 뜻이라, 현재 상태가
+ * `confirmed`(확정)일 때는 저장과 동시에 `shipping`으로 자동 전환한다. ORDER_STATUS_TRANSITIONS
+ * 가드를 그대로 재사용해서 confirmed가 아닌 상태(예: pending, 이미 shipping/delivered)에서는
+ * 건드리지 않는다 — "출고/배송 시작" 수동 버튼(updateOrderStatusAction)은 그대로 남겨둔다.
+ */
 export async function updateOrderTrackingAction(
   orderId: string,
   courierCode: string,
   trackingNumber: string
-): Promise<ActionResult<{ courierCode: string; trackingNumber: string }>> {
+): Promise<ActionResult<{ courierCode: string; trackingNumber: string; status: OrderStatus }>> {
   try {
     const { context, wholesalerId } = await resolveOrderScope();
 
@@ -188,20 +195,30 @@ export async function updateOrderTrackingAction(
       throw new RbacError("운송장번호를 입력해주세요.");
     }
 
-    const { supabase } = await loadOwnedOrder(orderId, wholesalerId, context.isSuperAdmin);
+    const { supabase, order } = await loadOwnedOrder(orderId, wholesalerId, context.isSuperAdmin);
+
+    const currentStatus = order.status as OrderStatus;
+    const shouldAutoShip =
+      currentStatus === "confirmed" && ORDER_STATUS_TRANSITIONS.confirmed.includes("shipping");
+    const nextStatus: OrderStatus = shouldAutoShip ? "shipping" : currentStatus;
 
     const { error } = await supabase
       .from("orders")
-      .update({ courier_code: courierCode, tracking_number: trimmedNumber })
+      .update({
+        courier_code: courierCode,
+        tracking_number: trimmedNumber,
+        ...(shouldAutoShip ? { status: "shipping", updated_at: new Date().toISOString() } : {}),
+      })
       .eq("id", orderId);
 
     if (error) {
       throw new Error(error.message);
     }
 
+    revalidatePath(REVALIDATE_PATH);
     revalidatePath(`${REVALIDATE_PATH}/${orderId}`);
 
-    return { success: true, data: { courierCode, trackingNumber: trimmedNumber } };
+    return { success: true, data: { courierCode, trackingNumber: trimmedNumber, status: nextStatus } };
   } catch (error) {
     return toResult(error);
   }

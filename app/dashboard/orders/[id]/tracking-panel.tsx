@@ -59,7 +59,13 @@ export function TrackingPanel({
       return;
     }
 
-    setMessage({ type: "success", text: "운송장 정보가 저장되었습니다." });
+    setMessage({
+      type: "success",
+      text:
+        result.data?.status === "shipping"
+          ? "운송장 정보가 저장되었습니다. 주문 상태가 '배송중'으로 자동 전환됩니다."
+          : "운송장 정보가 저장되었습니다.",
+    });
     router.refresh();
   };
 
