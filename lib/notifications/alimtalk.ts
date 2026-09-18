@@ -99,13 +99,18 @@ export interface ReceivablesReminderPayload {
   isOverdue: boolean;
 }
 
-export interface CreditLimitChangedNotificationPayload {
+export interface CreditLimitIncreasedNotificationPayload {
   wholesalerId: string;
   wholesalerName: string;
   retailerName: string;
   retailerPhone?: string;
-  previousLimit: number;
-  newLimit: number;
+}
+
+export interface CreditLimitExceededRetailerNotificationPayload {
+  wholesalerId: string;
+  wholesalerName: string;
+  retailerName: string;
+  retailerPhone?: string;
 }
 
 export interface NotificationResult {
@@ -382,29 +387,57 @@ ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
 }
 
 /**
- * 거래처(식당) 대상 여신 한도 변경 알림톡.
+ * 거래처(식당) 대상 여신 한도 상향 알림톡.
  *
- * 공급사가 /dashboard/customers "결제 설정" 모달에서 한도를 바꿀 때마다 트리거된다.
- * 한도 상향은 바이어 입장에서 "이제 주문 가능"이라는 의미가 커서 상향/하향 구분 없이
- * 값이 실제로 바뀔 때마다 보낸다(변경 이력을 바이어도 알게 하려는 목적 — 공급사가
- * 예외로 올려준 뒤 되돌리는 걸 깜빡해도 최소한 변경 시점은 양쪽 다 인지하게 된다).
+ * 공급사가 /dashboard/customers "결제 설정" 모달에서 한도를 올려줄 때만 트리거된다
+ * (하향은 발송하지 않음 — 통지할 만한 "좋은 소식"이 아니고, 공급사가 직접 안내하는
+ * 게 자연스럽다고 판단). "여신 한도"라는 개념/용어 자체를 바이어는 모른다고 가정하고
+ * 메시지에 쓰지 않는다 — 정확한 금액은 물론 "한도"라는 단어조차 노출하지 않고,
+ * "외상 거래가 가능해졌다"는 결과와 미수금 정산 촉구만 안내한다.
  */
-export async function sendCreditLimitChangedNotificationToRetailer(
-  payload: CreditLimitChangedNotificationPayload
+export async function sendCreditLimitIncreasedNotificationToRetailer(
+  payload: CreditLimitIncreasedNotificationPayload
 ): Promise<NotificationResult> {
-  const formattedMessage = `[여신 한도 변경 안내]
+  const formattedMessage = `[외상 거래 안내]
 
 ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
 
-■ 변경 전 한도: ${formatWon(payload.previousLimit)}
-■ 변경 후 한도: ${formatWon(payload.newLimit)}
-
-여신 한도가 변경되었습니다. 확인 부탁드립니다.`;
+지금 바로 외상 주문이 가능합니다.
+미수금이 있으시면 빠른 정산 부탁드립니다.`;
 
   return dispatchAlimtalk({
     wholesalerId: payload.wholesalerId,
-    templateKey: "creditLimitChanged",
-    templateTitle: "여신 한도 변경 안내",
+    templateKey: "creditLimitIncreased",
+    templateTitle: "외상 거래 가능 안내",
+    formattedMessage,
+    targetPhone: payload.retailerPhone,
+  });
+}
+
+/**
+ * 거래처(식당) 대상 '여신 한도 초과로 외상 주문 거절' 알림톡.
+ *
+ * sendCreditLimitExceededNotificationToWholesaler와 같은 이벤트에서 함께 트리거되지만
+ * 수신자가 다르다(공급사 vs 바이어). 바이어 화면에서는 체크아웃 시도 중에만 에러
+ * 문구가 보이고 그 외엔 알 방법이 없었던 문제를 보완한다. "여신 한도"라는 용어와
+ * 정확한 한도/미수금 금액은 넣지 않고, 정산을 서두르지 않으면 발주가 계속 막힌다는
+ * 행동 유도만 담는다.
+ */
+export async function sendCreditLimitExceededNotificationToRetailer(
+  payload: CreditLimitExceededRetailerNotificationPayload
+): Promise<NotificationResult> {
+  const formattedMessage = `[외상 거래 제한 안내]
+
+${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
+
+미수금이 있어 외상 주문이 접수되지 않았습니다.
+미수금을 빠르게 정산해 주지 않으시면 앞으로도 발주가 계속 제한됩니다.
+정산 후 다시 이용해주시기 바랍니다.`;
+
+  return dispatchAlimtalk({
+    wholesalerId: payload.wholesalerId,
+    templateKey: "creditLimitExceededRetailer",
+    templateTitle: "외상 거래 제한 안내(바이어)",
     formattedMessage,
     targetPhone: payload.retailerPhone,
   });

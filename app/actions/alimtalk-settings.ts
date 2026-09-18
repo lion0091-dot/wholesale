@@ -21,7 +21,8 @@ export interface AlimtalkTemplateCodes {
   cancelRequest?: string;
   creditExceeded?: string;
   receivablesReminder?: string;
-  creditLimitChanged?: string;
+  creditLimitIncreased?: string;
+  creditLimitExceededRetailer?: string;
 }
 
 export interface AlimtalkSettingsStatus {
@@ -55,8 +56,12 @@ function toTemplateCodes(value: unknown): AlimtalkTemplateCodes {
     creditExceeded: typeof raw.creditExceeded === "string" ? raw.creditExceeded : undefined,
     receivablesReminder:
       typeof raw.receivablesReminder === "string" ? raw.receivablesReminder : undefined,
-    creditLimitChanged:
-      typeof raw.creditLimitChanged === "string" ? raw.creditLimitChanged : undefined,
+    creditLimitIncreased:
+      typeof raw.creditLimitIncreased === "string" ? raw.creditLimitIncreased : undefined,
+    creditLimitExceededRetailer:
+      typeof raw.creditLimitExceededRetailer === "string"
+        ? raw.creditLimitExceededRetailer
+        : undefined,
   };
 }
 

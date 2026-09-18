@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
 import { requireOrgRole, RbacError } from "@/lib/auth/rbac";
-import { sendCreditLimitChangedNotificationToRetailer } from "@/lib/notifications/alimtalk";
+import { sendCreditLimitIncreasedNotificationToRetailer } from "@/lib/notifications/alimtalk";
 import type { ActionResult } from "@/app/actions/invite";
 
 const VALID_PAYMENT_METHODS = ["prepaid", "on_credit", "pg"];
@@ -85,9 +85,10 @@ export async function updateCreditLimitAction(
     revalidatePath("/dashboard/customers");
     revalidatePath("/dashboard/receivables");
 
-    // 한도가 실제로 바뀐 경우에만 거래처에 알림톡 발송. 미설정/발송 실패는 저장 자체를
-    // 막지 않는다(알림톡은 부가 기능 — dispatchAlimtalk가 이미 조용히 처리).
-    if (previousLimit !== null && previousLimit !== creditLimit) {
+    // 한도를 "올려준" 경우에만 거래처에 알림톡 발송 — 하향은 알림 대상이 아니다
+    // (사용자 결정: 상향만 "주문 가능" 소식으로 통지, 정확한 금액은 넣지 않는다).
+    // 미설정/발송 실패는 저장 자체를 막지 않는다(알림톡은 부가 기능).
+    if (previousLimit !== null && creditLimit > previousLimit) {
       const { data: retailer } = await supabase
         .from("retailers")
         .select("restaurant_name, profile_id")
@@ -101,13 +102,11 @@ export async function updateCreditLimitAction(
           .eq("id", retailer.profile_id as string)
           .maybeSingle();
 
-        await sendCreditLimitChangedNotificationToRetailer({
+        await sendCreditLimitIncreasedNotificationToRetailer({
           wholesalerId: scope.wholesalerId,
           wholesalerName: scope.businessName,
           retailerName: (retailer.restaurant_name as string) ?? "거래처",
           retailerPhone: (profile?.phone as string | undefined) ?? undefined,
-          previousLimit,
-          newLimit: creditLimit,
         });
       }
     }

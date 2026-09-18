@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { BuyerAuthError, requireLinkedBuyer, type LinkedBuyer } from "@/lib/auth/buyer-auth";
 import {
   sendCancelRequestNotificationToWholesaler,
+  sendCreditLimitExceededNotificationToRetailer,
   sendCreditLimitExceededNotificationToWholesaler,
   sendOrderNotificationToWholesaler,
 } from "@/lib/notifications/alimtalk";
@@ -83,8 +84,9 @@ async function backfillRetailerProfile(
 }
 
 /**
- * 여신 한도 초과로 외상 주문이 거절됐을 때 도매업자에게 알림톡을 보낸다.
+ * 여신 한도 초과로 외상 주문이 거절됐을 때 도매업자 + 바이어 양쪽에 알림톡을 보낸다.
  * 사전 체크(빠른 실패)와 apply_credit_order RPC 백스톱 두 경로 모두에서 호출된다.
+ * 바이어에게는 "여신 한도"라는 용어/금액을 노출하지 않는다(정책 결정).
  */
 async function notifyCreditLimitExceeded(
   supabase: SupabaseServerClient,
@@ -98,15 +100,23 @@ async function notifyCreditLimitExceeded(
     .eq("id", buyer.wholesalerProfileId)
     .maybeSingle();
 
-  await sendCreditLimitExceededNotificationToWholesaler({
-    wholesalerId: buyer.wholesalerId,
-    wholesalerName: buyer.wholesalerName,
-    wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,
-    restaurantName,
-    creditLimit: buyer.creditLimit,
-    outstandingBalance: buyer.outstandingBalance,
-    attemptedAmount,
-  });
+  await Promise.all([
+    sendCreditLimitExceededNotificationToWholesaler({
+      wholesalerId: buyer.wholesalerId,
+      wholesalerName: buyer.wholesalerName,
+      wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,
+      restaurantName,
+      creditLimit: buyer.creditLimit,
+      outstandingBalance: buyer.outstandingBalance,
+      attemptedAmount,
+    }),
+    sendCreditLimitExceededNotificationToRetailer({
+      wholesalerId: buyer.wholesalerId,
+      wholesalerName: buyer.wholesalerName,
+      retailerName: restaurantName,
+      retailerPhone: buyer.contactPhone ?? undefined,
+    }),
+  ]);
 }
 
 /**

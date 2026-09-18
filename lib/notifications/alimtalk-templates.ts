@@ -13,7 +13,8 @@ export type AlimtalkTemplateKey =
   | "cancelRequest"
   | "creditExceeded"
   | "receivablesReminder"
-  | "creditLimitChanged";
+  | "creditLimitIncreased"
+  | "creditLimitExceededRetailer";
 
 /**
  * 공급사가 비즈뿌리오/카카오에 템플릿 심사를 신청할 때 그대로 제출해야 하는 기준 문구.
@@ -78,15 +79,23 @@ export const ALIMTALK_TEMPLATE_REFERENCE_TEXT: Record<
 
 빠른 시일 내 정산 부탁드립니다. 이미 정산을 완료하셨다면 안내를 확인해 주시기 바랍니다.`,
   },
-  creditLimitChanged: {
-    title: "여신 한도 변경 안내",
-    text: `[여신 한도 변경 안내]
+  creditLimitIncreased: {
+    title: "여신 한도 상향 - 주문 가능 안내(바이어에게는 '한도' 미노출)",
+    text: `[외상 거래 안내]
 
 #{바이어상호} 담당자님, #{공급사명}입니다.
 
-■ 변경 전 한도: #{이전한도}원
-■ 변경 후 한도: #{변경한도}원
+지금 바로 외상 주문이 가능합니다.
+미수금이 있으시면 빠른 정산 부탁드립니다.`,
+  },
+  creditLimitExceededRetailer: {
+    title: "여신 한도 초과 - 외상 주문 거절 안내(바이어에게는 '한도' 미노출)",
+    text: `[외상 거래 제한 안내]
 
-여신 한도가 변경되었습니다. 확인 부탁드립니다.`,
+#{바이어상호} 담당자님, #{공급사명}입니다.
+
+미수금이 있어 외상 주문이 접수되지 않았습니다.
+미수금을 빠르게 정산해 주지 않으시면 앞으로도 발주가 계속 제한됩니다.
+정산 후 다시 이용해주시기 바랍니다.`,
   },
 };
