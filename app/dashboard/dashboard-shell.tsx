@@ -213,8 +213,9 @@ export function DashboardShell({
 
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
             {subscriptionStatus && (
-              <span
-                title="구독 상태는 플랫폼 운영팀이 결제 확인 후 반영합니다. 문의사항은 운영팀에 연락해주세요."
+              <Link
+                href="/dashboard/billing"
+                title="청구서 보기"
                 style={{
                   fontSize: "11px",
                   fontWeight: 700,
@@ -222,10 +223,11 @@ export function DashboardShell({
                   backgroundColor: SUBSCRIPTION_BADGES[subscriptionStatus].bg,
                   borderRadius: "6px",
                   padding: "5px 8px",
+                  textDecoration: "none",
                 }}
               >
                 {SUBSCRIPTION_BADGES[subscriptionStatus].label}
-              </span>
+              </Link>
             )}
             {isDemoMode && (
               <span

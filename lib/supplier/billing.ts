@@ -29,10 +29,20 @@ export const TRIAL_DAYS = 30;
 
 const TRIAL_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
 
-export function computeMonthlyFee(activeRetailerCount: number): number {
+export interface FeeTierBreakdown {
+  /** "1~50곳" 또는 마지막 구간이면 "101곳~" */
+  rangeLabel: string;
+  /** 이 구간에 걸린 거래처 수 */
+  count: number;
+  rate: number;
+  subtotal: number;
+}
+
+/** 구간별 적용 내역 (청구서 화면에서 "50곳 × 5,000원 + 10곳 × 7,000원" 식으로 보여주는 용도) */
+export function computeFeeBreakdown(activeRetailerCount: number): FeeTierBreakdown[] {
   let remaining = activeRetailerCount;
   let previousThreshold = 0;
-  let fee = 0;
+  const breakdown: FeeTierBreakdown[] = [];
 
   for (const tier of FEE_TIERS) {
     if (remaining <= 0) {
@@ -41,12 +51,24 @@ export function computeMonthlyFee(activeRetailerCount: number): number {
 
     const countInTier = Math.min(remaining, tier.threshold - previousThreshold);
 
-    fee += countInTier * tier.rate;
+    if (countInTier > 0) {
+      const rangeLabel =
+        tier.threshold === Infinity
+          ? `${previousThreshold + 1}곳~`
+          : `${previousThreshold + 1}~${tier.threshold}곳`;
+
+      breakdown.push({ rangeLabel, count: countInTier, rate: tier.rate, subtotal: countInTier * tier.rate });
+    }
+
     remaining -= countInTier;
     previousThreshold = tier.threshold;
   }
 
-  return fee;
+  return breakdown;
+}
+
+export function computeMonthlyFee(activeRetailerCount: number): number {
+  return computeFeeBreakdown(activeRetailerCount).reduce((sum, tier) => sum + tier.subtotal, 0);
 }
 
 export function isTrialExpired(subscriptionStatus: string, trialStartedAt: string): boolean {
