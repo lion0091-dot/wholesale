@@ -126,7 +126,7 @@ export default async function AdminSuppliersPage() {
             상품 카테고리 관리 →
           </Link>
           <Link href="/admin/retailer-leads" style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}>
-            고객사 입점 희망 리드 →
+            고객(소매) 입점 희망 리드 →
           </Link>
         </div>
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>

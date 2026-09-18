@@ -68,7 +68,7 @@ export default async function AdminRetailerLeadsPage() {
           </Link>
         </div>
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
-          고객사(식당) 입점 희망 리드
+          고객(소매) 입점 희망 리드
         </h1>
         <p style={{ fontSize: "13px", color: "#64748b" }}>
           대문에서 접수된 입점 희망 신청 목록입니다. 알고리즘 매칭이 아니라, 적합해 보이는

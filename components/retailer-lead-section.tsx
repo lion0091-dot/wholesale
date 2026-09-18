@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { RetailerLeadForm } from "@/components/retailer-lead-form";
 
-/** 대문 "식당이신가요?" 카드의 신청 버튼 ↔ 폼 토글. */
+/** 대문 "고객(소매)이신가요?" 카드의 신청 버튼 ↔ 폼 토글. */
 export function RetailerLeadSection() {
   const [showForm, setShowForm] = useState(false);
 

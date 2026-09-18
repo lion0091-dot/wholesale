@@ -24,23 +24,23 @@ export default async function Home() {
           미트 파트너스
         </h1>
         <p style={{ color: "#334155", fontSize: "15px", lineHeight: 1.7 }}>
-          축산물 도매업체와 식당(구매 회원)을 연결하는
+          축산물 공급사(도매)와 고객(소매)을 연결하는
           <br />
           폐쇄형 B2B 발주 플랫폼입니다.
         </p>
         <p style={{ color: "#64748b", fontSize: "13px", marginTop: "10px", lineHeight: 1.7 }}>
-          오픈 마켓이 아닙니다 — 입점 도매업체는 사업자등록증·국세청 진위확인을 거쳐
-          검수되고, 식당은 도매업체의 초대를 통해서만 발주할 수 있습니다.
+          오픈 마켓이 아닙니다 — 입점 공급사(도매)는 사업자등록증·국세청 진위확인을 거쳐
+          검수되고, 고객(소매)은 공급사(도매)의 초대를 통해서만 발주할 수 있습니다.
         </p>
       </header>
 
       {/* 공급사(도매) */}
       <section style={{ ...cardStyle, marginBottom: "16px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a", marginBottom: "6px" }}>
-          도매업체이신가요?
+          공급사(도매)이신가요?
         </h2>
         <p style={{ fontSize: "13px", color: "#64748b", lineHeight: 1.6, marginBottom: "14px" }}>
-          카카오 계정으로 3초 만에 가입하고, 거래처(식당)에 미니샵 링크를 발급해
+          카카오 계정으로 3초 만에 가입하고, 거래처(고객)에 미니샵 링크를 발급해
           모바일로 발주를 받아보세요.
         </p>
         <a
@@ -60,14 +60,14 @@ export default async function Home() {
         </a>
       </section>
 
-      {/* 고객사(식당) */}
+      {/* 고객(소매) */}
       <section style={cardStyle}>
         <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a", marginBottom: "6px" }}>
-          식당이신가요?
+          고객(소매)이신가요?
         </h2>
         <p style={{ fontSize: "13px", color: "#64748b", lineHeight: 1.6, marginBottom: "14px" }}>
-          거래 중인 도매업체가 없거나 새로 찾고 계신가요? 입점 희망을 신청해주시면
-          담당자가 검토 후 적합한 도매업체를 찾아 직접 연락드립니다.
+          거래 중인 공급사(도매)가 없거나 새로 찾고 계신가요? 입점 희망을 신청해주시면
+          담당자가 검토 후 적합한 공급사(도매)를 찾아 직접 연락드립니다.
         </p>
 
         <RetailerLeadSection />

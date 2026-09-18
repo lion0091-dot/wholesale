@@ -22,8 +22,8 @@ const labelStyle: React.CSSProperties = {
 };
 
 /**
- * 대문 "고객사(식당) 입점 희망" 신청 폼. 로그인 없이 누구나 제출 가능 — 아직 우리
- * 시스템 계정이 없는 식당 사장님이 대상이다. 알고리즘 매칭이 아니라 접수된 내용을
+ * 대문 "고객(소매) 입점 희망" 신청 폼. 로그인 없이 누구나 제출 가능 — 아직 우리
+ * 시스템 계정이 없는 고객(소매) 사장님이 대상이다. 알고리즘 매칭이 아니라 접수된 내용을
  * 관리자가 보고 적합한 공급사에 직접 연락해 의뢰하는 구조라, 제출 즉시 "매칭"되는
  * 건 아니라는 점을 폼 안내문에 명시한다.
  */
@@ -71,7 +71,7 @@ export function RetailerLeadForm() {
           신청이 접수되었습니다.
         </p>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "6px", lineHeight: 1.6 }}>
-          담당자가 검토 후 적합한 도매업체를 찾아 직접 연락드립니다.
+          담당자가 검토 후 적합한 공급사(도매)를 찾아 직접 연락드립니다.
         </p>
       </div>
     );
@@ -81,7 +81,7 @@ export function RetailerLeadForm() {
     <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
       <div>
         <label style={labelStyle} htmlFor="lead-restaurant-name">
-          사업장(식당)명 *
+          사업장(고객)명 *
         </label>
         <input
           id="lead-restaurant-name"
