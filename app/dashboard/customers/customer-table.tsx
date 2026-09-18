@@ -152,6 +152,19 @@ export function CustomerTable({
     return matchesKeyword && matchesStatus;
   });
 
+  /** 모바일 전용 — 기본 문자 앱을 열어 거래처 번호+초대 문구를 채워둔다(비용 0원, 오발송 없음). */
+  const handleSendSms = () => {
+    if (!invite || !inviteTarget?.contactPhone) {
+      return;
+    }
+
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const separator = isIOS ? "&" : "?";
+    const digits = inviteTarget.contactPhone.replace(/[^0-9+]/g, "");
+
+    window.location.href = `sms:${digits}${separator}body=${encodeURIComponent(invite.message)}`;
+  };
+
   const handleCopy = async (kind: "link" | "message", text: string) => {
     try {
       await copyText(text);
@@ -680,6 +693,25 @@ export function CustomerTable({
               >
                 {copied === "message" ? "✓ 문구 복사 완료" : "💬 카톡 문구 복사"}
               </button>
+              {inviteTarget.contactPhone && (
+                <button
+                  type="button"
+                  className="dash-mobile-only"
+                  disabled={!invite}
+                  onClick={handleSendSms}
+                  style={{
+                    ...chipButtonStyle,
+                    backgroundColor: !invite ? "#f1f5f9" : "#0f172a",
+                    borderColor: !invite ? "#e2e8f0" : "#0f172a",
+                    color: !invite ? "#94a3b8" : "#ffffff",
+                    fontWeight: 700,
+                    padding: "9px 13px",
+                    cursor: invite ? "pointer" : "not-allowed",
+                  }}
+                >
+                  📱 문자로 바로 보내기
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -22,4 +22,6 @@ export interface CustomerRow {
   settlementDueDays: number;
   /** 공급사가 이 거래처에 열어준 결제수단('prepaid'/'on_credit'/'pg') */
   allowedPaymentMethods: string[];
+  /** 거래처 담당자 연락처 — "문자로 바로 보내기" 딥링크용. 조회 실패 시 null */
+  contactPhone: string | null;
 }

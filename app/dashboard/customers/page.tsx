@@ -130,35 +130,47 @@ export default async function DashboardCustomersPage() {
   if (scope?.wholesalerId) {
     const supabase = await createClient();
 
-    const [{ data: relations }, { data: customPriceRows }, { data: orderRows }, { data: wholesalerRow }] =
-      await Promise.all([
-        supabase
-          .from("wholesaler_retailers")
-          .select(
-            "retailer_id, status, memo, created_at, credit_limit, outstanding_balance, settlement_due_days, allowed_payment_methods, retailers ( restaurant_name, business_number, representative_name, delivery_address, delivery_address_detail )"
-          )
-          .eq("wholesaler_id", scope.wholesalerId)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("custom_prices")
-          .select("retailer_id")
-          .eq("wholesaler_id", scope.wholesalerId),
-        supabase
-          .from("orders")
-          .select("retailer_id, total_amount, status, ordered_at")
-          .eq("wholesaler_id", scope.wholesalerId),
-        supabase
-          .from("wholesalers")
-          .select("pg_client_key")
-          .eq("id", scope.wholesalerId)
-          .maybeSingle(),
-      ]);
+    const [
+      { data: relations },
+      { data: customPriceRows },
+      { data: orderRows },
+      { data: wholesalerRow },
+      { data: phoneRows },
+    ] = await Promise.all([
+      supabase
+        .from("wholesaler_retailers")
+        .select(
+          "retailer_id, status, memo, created_at, credit_limit, outstanding_balance, settlement_due_days, allowed_payment_methods, retailers ( restaurant_name, business_number, representative_name, delivery_address, delivery_address_detail )"
+        )
+        .eq("wholesaler_id", scope.wholesalerId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("custom_prices")
+        .select("retailer_id")
+        .eq("wholesaler_id", scope.wholesalerId),
+      supabase
+        .from("orders")
+        .select("retailer_id, total_amount, status, ordered_at")
+        .eq("wholesaler_id", scope.wholesalerId),
+      supabase
+        .from("wholesalers")
+        .select("pg_client_key")
+        .eq("id", scope.wholesalerId)
+        .maybeSingle(),
+      supabase.rpc("list_linked_retailer_phones", { p_wholesaler_id: scope.wholesalerId }),
+    ]);
 
     pgConfigured = Boolean(wholesalerRow?.pg_client_key);
 
     if (relations && relations.length > 0) {
       const customPriceCounts = countByRetailer((customPriceRows ?? []) as Array<{ retailer_id: string }>);
       const orderStats = aggregateOrderStats((orderRows ?? []) as OrderStatRow[]);
+      const phoneByRetailer = new Map(
+        ((phoneRows ?? []) as Array<{ retailer_id: string; phone: string | null }>).map((row) => [
+          row.retailer_id,
+          row.phone,
+        ])
+      );
 
       customers = (relations as RelationJoinRow[]).map((row) => {
         const retailer = Array.isArray(row.retailers) ? row.retailers[0] : row.retailers;
@@ -184,6 +196,7 @@ export default async function DashboardCustomersPage() {
           outstandingBalance: Number(row.outstanding_balance ?? 0),
           settlementDueDays: Number(row.settlement_due_days ?? 30),
           allowedPaymentMethods: row.allowed_payment_methods ?? ["prepaid"],
+          contactPhone: phoneByRetailer.get(row.retailer_id) ?? null,
         };
       });
 
@@ -226,6 +239,8 @@ export default async function DashboardCustomersPage() {
         outstandingBalance: retailer.outstanding_balance,
         settlementDueDays: retailer.settlement_due_days,
         allowedPaymentMethods: ["prepaid", "on_credit"],
+        // 데모 모드는 실제 profiles 행이 없으므로 시연용 고정 번호를 사용한다.
+        contactPhone: "010-9876-5432",
       };
     });
   }
