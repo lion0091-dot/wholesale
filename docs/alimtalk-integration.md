@@ -10,10 +10,28 @@
 - **설정 화면(`/dashboard/invites`)은 owner/manager만**: 실제 메시지 발송 비용이 발생하는 자격정보라 여신 한도 수정과 같은 기준(`requireOrgRole(["owner","manager"])`)을 적용했다. 일반 staff는 조회/저장 둘 다 불가.
 - **미설정은 에러가 아니라 정상 상태**: 아직 알림톡을 안 쓰는 공급사가 대부분일 수 있어, `dispatchAlimtalk`는 미설정을 `status: "not_configured"`로 조용히 반환하고 콘솔 에러를 남기지 않는다. 반대로 복호화 실패(키 분실 등 진짜 이상 상황)는 `status: "error"`로 구분하고 콘솔에 로그를 남긴다.
 
+### 공급사 온보딩 절차 — "투스탑"이다 (비즈뿌리오 하나로 안 끝남)
+IT에 어두운 공급사 사장님 기준으로 헷갈리기 가장 쉬운 지점이라 명시해둔다. **카카오 사이트와
+비즈뿌리오 사이트, 두 곳을 순서대로 거쳐야 한다**:
+1. **카카오 비즈니스 채널 관리자센터**(center-pf.kakao.com)에서 카카오톡 채널을 먼저 개설 —
+   비즈뿌리오 가입 여부와 무관하게 카카오 사이트에서 직접 하는 절차.
+2. **비즈뿌리오(bizppurio.com)** 가입 → 그 채널로 발신프로필 등록 → 알림톡 템플릿 4종 심사 신청
+   (신청 자체는 비즈뿌리오 대시보드 안에서 하고, 실제 심사는 카카오가 뒤에서 진행, 영업일 1~2일).
+3. 승인 완료되면 우리 플랫폼 설정 화면(`/dashboard/invites`)에 계정+템플릿 코드 입력.
+
+이 순서를 설정 화면 안내문(`alimtalk-settings-form.tsx`)에도 명시해뒀다. "비즈뿌리오 하나면
+다 된다"고 안내하면 공급사가 채널 개설 단계를 못 찾아서 헤맬 수 있다.
+
+**템플릿 승인 상태를 API로 미리 확인할 방법 없음**: 비즈뿌리오 공식 개발자 API 문서(v3.5) 전체
+목차를 확인했지만 템플릿 조회/상태확인 API 자체가 없다 — 템플릿 등록·조회는 비즈뿌리오 웹
+대시보드에서만 가능하고, 우리 쪽에서 저장 시점에 "이 코드 진짜 승인됐어?"를 미리 검증할 수
+없다. 그래서 문제는 항상 **실제 발송을 시도하는 순간에야** 드러난다(아래 에러 코드 참고).
+
 ### 비즈뿌리오 API 스펙 (2026-09-18, 공식 문서 화면 캡처 기준 — 실계정 미검증)
 - 토큰 발급: `POST https://api.bizppurio.com/v1/token`, `Authorization: Basic base64(계정:비밀번호)` → `{accesstoken, type:"Bearer", expired}` (24시간 유효)
 - 발송: `POST https://api.bizppurio.com/v3/message`, `Authorization: Bearer {accesstoken}` → body `{account, type:"at", from, to, refkey, content:{senderkey, templatecode, message}}` → 응답 `{code, description, refkey, messagekey}` (`code:1000`은 API 호출 성공일 뿐 실제 수신 성공을 보장 안 함 — 발송 결과 리포트 조회는 별도 과제)
 - 토큰 캐싱은 하지 않는다 — 서버리스라 프로세스 간 캐시 공유가 어렵고, 발송 빈도가 낮아 매번 재발급해도 무리 없다고 판단. 발송량이 늘면 최적화 고려.
+- 상태코드(AT/AI/FT) 중 템플릿 관련 10개(7204/7315/7327/7328/7330/7331/7333/7336/7338/7342)는 `lib/notifications/alimtalk.ts`의 `KNOWN_BIZPPURIO_ERROR_CODES`에서 사람이 읽기 쉬운 한국어 문구로 변환한다. 특히 `7315`(템플릿 없음/미승인), `7204`(문구 불일치)가 설정 실수로 가장 흔히 날 조합.
 
 ### 아키텍처
 - `supabase/migrations/20260930000032_wholesaler_alimtalk_settings.sql` — `wholesalers`에 `alimtalk_provider/account/password_encrypted/sender_key/sender_phone/template_codes(jsonb)` 추가. 새 RLS 정책 불필요(기존 "Wholesalers updatable by self or admin" 정책이 신규 컬럼에도 적용됨), 미니샵 카탈로그 select가 컬럼을 명시적으로 나열해서 바이어에게 노출될 일도 없음.

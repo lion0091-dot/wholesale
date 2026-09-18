@@ -16,8 +16,41 @@ import { formatOrderedAt, formatWon } from "@/lib/orders/status";
 import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import { decryptCredential } from "@/lib/security/credential-crypto";
 import { sendAlimtalk, BizppurioError } from "@/lib/notifications/bizppurio-client";
+import type { AlimtalkTemplateKey } from "@/lib/notifications/alimtalk-templates";
 
-type AlimtalkTemplateKey = "orderNew" | "cancelRequest" | "creditExceeded" | "receivablesReminder";
+export type { AlimtalkTemplateKey } from "@/lib/notifications/alimtalk-templates";
+
+/**
+ * 비즈뿌리오 알림톡(AT/AI/FT) 상태코드 중 "설정 화면에서 흔히 낼 법한 실수"에
+ * 해당하는 것만 사람이 알아보기 쉬운 문구로 바꾼다(공식 문서 status-code/at-ai-ft
+ * 기준, 2026-09-18). 목록에 없는 코드는 원본 description을 그대로 보여준다.
+ */
+const KNOWN_BIZPPURIO_ERROR_CODES: Record<number, string> = {
+  7204: "메시지 문구가 승인받은 템플릿과 다릅니다. 설정 화면의 문구를 그대로 심사 신청했는지 확인해주세요.",
+  7315: "템플릿 코드가 잘못됐거나 아직 카카오 승인이 완료되지 않았습니다.",
+  7327: "버튼/바로연결 내용이 승인받은 템플릿과 다릅니다.",
+  7328: "메시지 강조 표기 타이틀이 승인받은 템플릿과 다릅니다.",
+  7330: "메시지 타입이 승인받은 템플릿의 강조유형과 다릅니다.",
+  7331: "메시지 헤더가 승인받은 템플릿과 다릅니다.",
+  7333: "아이템 하이라이트 내용이 승인받은 템플릿과 다릅니다.",
+  7336: "아이템 리스트 내용이 승인받은 템플릿과 다릅니다.",
+  7338: "아이템 요약정보가 승인받은 템플릿과 다릅니다.",
+  7342: "대표링크가 승인받은 템플릿과 다릅니다.",
+};
+
+function describeBizppurioSendError(code: number | null, description: string | null): string {
+  const known = code !== null ? KNOWN_BIZPPURIO_ERROR_CODES[code] : undefined;
+
+  if (known) {
+    return `${known} (코드 ${code})`;
+  }
+
+  if (description) {
+    return `${description}${code !== null ? ` (코드 ${code})` : ""}`;
+  }
+
+  return code !== null ? `비즈뿌리오가 발송을 거부했습니다 (코드 ${code}).` : "비즈뿌리오가 발송을 거부했습니다.";
+}
 
 export interface OrderNotificationPayload {
   /** 데모/미연결 주문이면 null — 이 경우 발송 자체를 스킵한다 */
@@ -206,7 +239,7 @@ async function dispatchAlimtalk({
         ...base,
         success: false,
         status: "error",
-        error: result.description || `비즈뿌리오가 발송을 거부했습니다 (코드 ${result.code}).`,
+        error: describeBizppurioSendError(result.code, result.description),
       };
     }
 

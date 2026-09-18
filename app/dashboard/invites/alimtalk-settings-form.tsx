@@ -7,6 +7,10 @@ import {
   type AlimtalkSettingsStatus,
   type AlimtalkTemplateCodes,
 } from "@/app/actions/alimtalk-settings";
+import {
+  ALIMTALK_TEMPLATE_REFERENCE_TEXT,
+  type AlimtalkTemplateKey,
+} from "@/lib/notifications/alimtalk-templates";
 
 interface AlimtalkSettingsFormProps {
   initial: AlimtalkSettingsStatus;
@@ -30,12 +34,26 @@ const labelStyle: React.CSSProperties = {
   marginBottom: "5px",
 };
 
-const TEMPLATE_FIELDS: Array<{ key: keyof AlimtalkTemplateCodes; label: string }> = [
-  { key: "orderNew", label: "신규 발주 접수 알림" },
-  { key: "cancelRequest", label: "주문 취소 요청 접수 알림" },
-  { key: "creditExceeded", label: "여신 한도 초과 주문 거절 안내" },
-  { key: "receivablesReminder", label: "미수금 정산 리마인드" },
+const TEMPLATE_KEYS: AlimtalkTemplateKey[] = [
+  "orderNew",
+  "cancelRequest",
+  "creditExceeded",
+  "receivablesReminder",
 ];
+
+async function copyText(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
 
 /**
  * 공급사가 자기 비즈뿌리오(대행사) 계정으로 알림톡을 연동하는 설정 폼.
@@ -51,6 +69,7 @@ export function AlimtalkSettingsForm({ initial }: AlimtalkSettingsFormProps) {
   const [senderKey, setSenderKey] = useState(initial.senderKey ?? "");
   const [senderPhone, setSenderPhone] = useState(initial.senderPhone ?? "");
   const [templateCodes, setTemplateCodes] = useState<AlimtalkTemplateCodes>(initial.templateCodes);
+  const [copiedTemplateKey, setCopiedTemplateKey] = useState<AlimtalkTemplateKey | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -99,11 +118,32 @@ export function AlimtalkSettingsForm({ initial }: AlimtalkSettingsFormProps) {
         {initial.configured ? "✓ 연동 설정됨" : "미설정 — 알림톡이 발송되지 않습니다"}
       </div>
 
-      <p style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.7 }}>
-        비즈뿌리오(bizppurio.com)에 직접 가입해 카카오톡 채널·발신프로필·알림톡 템플릿 승인을
-        먼저 받으신 뒤, 여기에 그 계정 정보를 입력해주세요. 계약과 요금은 비즈뿌리오와 공급사님
-        사이의 별도 계약이며, 플랫폼은 발송 연동만 대행합니다.
-      </p>
+      <div
+        style={{
+          backgroundColor: "#f8fafc",
+          border: "1px solid #e2e8f0",
+          borderRadius: "8px",
+          padding: "12px 14px",
+          fontSize: "12px",
+          color: "#475569",
+          lineHeight: 1.8,
+        }}
+      >
+        <strong style={{ color: "#0f172a" }}>사이트 두 곳을 순서대로 거쳐야 합니다</strong> (비즈뿌리오
+        한 곳에서 전부 되는 게 아닙니다):
+        <ol style={{ margin: "6px 0 0", paddingLeft: "18px" }}>
+          <li>
+            <strong>카카오 비즈니스 채널 관리자센터</strong>(center-pf.kakao.com)에서 카카오톡 채널을
+            먼저 개설 — 이건 비즈뿌리오 가입과 무관하게 카카오 사이트에서 직접 합니다.
+          </li>
+          <li>
+            <strong>비즈뿌리오(bizppurio.com)</strong>에 가입해서, 위에서 만든 채널로 발신프로필을
+            등록하고 아래 템플릿 4개를 심사 신청합니다.
+          </li>
+          <li>승인이 끝나면 아래 계정 정보와 템플릿 코드를 여기에 입력하시면 됩니다.</li>
+        </ol>
+        계약과 요금은 비즈뿌리오와 공급사님 사이의 별도 계약이며, 플랫폼은 발송 연동만 대행합니다.
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }}>
         <div>
@@ -172,25 +212,78 @@ export function AlimtalkSettingsForm({ initial }: AlimtalkSettingsFormProps) {
         <summary style={{ fontSize: "12px", fontWeight: 700, color: "#334155", cursor: "pointer" }}>
           템플릿 코드 (카카오 승인 완료 후 입력)
         </summary>
-        <div style={{ display: "grid", gap: "10px", marginTop: "10px" }}>
-          {TEMPLATE_FIELDS.map(({ key, label }) => (
-            <div key={key}>
-              <label htmlFor={`template_${key}`} style={labelStyle}>
-                {label}
-              </label>
-              <input
-                id={`template_${key}`}
-                type="text"
-                value={templateCodes[key] ?? ""}
-                onChange={(event) =>
-                  setTemplateCodes((prev) => ({ ...prev, [key]: event.target.value }))
-                }
-                placeholder="승인된 템플릿 코드"
-                disabled={pending}
-                style={fieldStyle}
-              />
-            </div>
-          ))}
+        <div style={{ display: "grid", gap: "16px", marginTop: "10px" }}>
+          {TEMPLATE_KEYS.map((key) => {
+            const reference = ALIMTALK_TEMPLATE_REFERENCE_TEXT[key];
+
+            return (
+              <div key={key} style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "12px" }}>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                  {reference.title}
+                </div>
+
+                <p style={{ fontSize: "11px", color: "#94a3b8", marginBottom: "6px", lineHeight: 1.6 }}>
+                  아래 문구를 그대로 복사해서 비즈뿌리오 &quot;알림톡 템플릿 관리&quot; 화면에 심사
+                  신청하세요. 승인받으면 나온 템플릿 코드를 밑에 입력합니다.
+                </p>
+
+                <pre
+                  style={{
+                    fontSize: "11px",
+                    color: "#334155",
+                    backgroundColor: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "6px",
+                    padding: "10px",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "keep-all",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {reference.text}
+                </pre>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    void copyText(reference.text).then(() => {
+                      setCopiedTemplateKey(key);
+                      setTimeout(() => setCopiedTemplateKey((current) => (current === key ? null : current)), 2500);
+                    });
+                  }}
+                  style={{
+                    marginTop: "6px",
+                    marginBottom: "10px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: copiedTemplateKey === key ? "#166534" : "#2563eb",
+                    background: "none",
+                    border: "1px solid #bfdbfe",
+                    borderRadius: "6px",
+                    padding: "5px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  {copiedTemplateKey === key ? "✓ 복사됨" : "문구 복사"}
+                </button>
+
+                <label htmlFor={`template_${key}`} style={labelStyle}>
+                  승인된 템플릿 코드
+                </label>
+                <input
+                  id={`template_${key}`}
+                  type="text"
+                  value={templateCodes[key] ?? ""}
+                  onChange={(event) =>
+                    setTemplateCodes((prev) => ({ ...prev, [key]: event.target.value }))
+                  }
+                  placeholder="승인된 템플릿 코드"
+                  disabled={pending}
+                  style={fieldStyle}
+                />
+              </div>
+            );
+          })}
         </div>
       </details>
 
