@@ -34,13 +34,13 @@ export function HomeExploreLinks({ showAdminEntry }: HomeExploreLinksProps) {
       {open && (
         <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
           <a href="/dashboard/products" style={{ fontSize: "12px", color: "#64748b" }}>
-            도매업자 상품 관리 대시보드 →
+            공급사(도매) 상품 관리 대시보드 →
           </a>
           <a href="/shop/demo-token-12345" style={{ fontSize: "12px", color: "#64748b" }}>
             고객(소매) 전용 모바일 미니샵 (카톡 초대 링크 체험) →
           </a>
           <a href="/dashboard/orders" style={{ fontSize: "12px", color: "#64748b" }}>
-            도매업자 발주 접수 관리 대시보드 →
+            공급사(도매) 발주 접수 관리 대시보드 →
           </a>
           {showAdminEntry && (
             <a href="/admin/suppliers" style={{ fontSize: "12px", color: "#64748b" }}>

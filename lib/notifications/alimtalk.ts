@@ -285,7 +285,7 @@ ${payload.wholesalerName} 대표님, 고객(소매)로부터 새로운 발주서
 ■ 배송지: ${payload.deliveryAddress}
 ${payload.deliveryNotes ? `■ 배송 요청사항: ${payload.deliveryNotes}
 ` : ""}
-도매업자 관리 대시보드에서 발주 상세 내역을 확인하시고 출고 준비를 진행해 주시기 바랍니다.`;
+공급사(도매) 관리 대시보드에서 발주 상세 내역을 확인하시고 출고 준비를 진행해 주시기 바랍니다.`;
 
   return dispatchAlimtalk({
     wholesalerId: payload.wholesalerId,
@@ -315,7 +315,7 @@ ${payload.wholesalerName} 대표님, 고객(소매)가 접수된 발주서의 �
 ■ 요청 사유: ${payload.cancelReason}
 
 아직 취소가 확정된 것은 아닙니다.
-도매업자 관리 대시보드에서 출고 진행 상황을 확인하신 후 취소 승인 또는 반려를 처리해 주시기 바랍니다.`;
+공급사(도매) 관리 대시보드에서 출고 진행 상황을 확인하신 후 취소 승인 또는 반려를 처리해 주시기 바랍니다.`;
 
   return dispatchAlimtalk({
     wholesalerId: payload.wholesalerId,

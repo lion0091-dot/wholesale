@@ -17,8 +17,8 @@ export { MODIFY_CODE_LABELS, type ModifyCode };
 export function findMissingTaxInvoiceFields(data: StatementData): string[] {
   const missing: string[] = [];
 
-  if (!data.supplier.businessNumber) missing.push("공급자(도매업자) 사업자등록번호");
-  if (!data.supplier.address) missing.push("공급자(도매업자) 사업장 주소");
+  if (!data.supplier.businessNumber) missing.push("공급사(도매) 사업자등록번호");
+  if (!data.supplier.address) missing.push("공급사(도매) 사업장 주소");
   if (!data.buyer.businessNumber) missing.push("공급받는자(식당) 사업자등록번호");
 
   return missing;

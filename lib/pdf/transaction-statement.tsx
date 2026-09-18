@@ -230,7 +230,7 @@ function TransactionStatementDocument({ data }: { data: StatementData }) {
 
         <Text style={styles.disclaimer}>
           본 문서는 플랫폼에 적재된 발주 데이터를 기준으로 자동 생성된 거래명세서이며, 부가가치세법상
-          세금계산서를 대체하지 않습니다. 세금계산서는 공급자(도매업자)가 별도로 발행합니다.
+          세금계산서를 대체하지 않습니다. 세금계산서는 공급사(도매)가 별도로 발행합니다.
         </Text>
       </Page>
     </Document>

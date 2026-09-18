@@ -222,7 +222,7 @@ export function findMissingStatementFields(data: StatementData): string[] {
   const missing: string[] = [];
 
   if (!data.supplier.address) {
-    missing.push("공급자(도매업자) 사업장 주소");
+    missing.push("공급사(도매) 사업장 주소");
   }
 
   return missing;

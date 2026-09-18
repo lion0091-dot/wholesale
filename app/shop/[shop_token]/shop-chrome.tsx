@@ -136,7 +136,7 @@ export function ShopFooter({ businessName }: { businessName: string }) {
       <p style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.5 }}>
         본 상점은 <strong>{businessName}</strong>과 계약된 고객(소매)를 위한 비공개 1:1 발주 공간입니다.
         <br />
-        타 도매업자에게 정보가 일체 공유되지 않습니다.
+        타 공급사(도매)에게 정보가 일체 공유되지 않습니다.
       </p>
       <Link
         href="/my-shops"
