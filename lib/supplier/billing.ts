@@ -107,3 +107,43 @@ export function trialDaysRemaining(trialStartedAt: string): number {
 
   return Math.max(0, Math.ceil(remainingMs / (24 * 60 * 60 * 1000)));
 }
+
+export interface BillingInvoiceMessageInput {
+  businessName: string;
+  representativeName: string;
+  month?: number;
+  billedCount: number;
+  monthlyFee: number;
+  siteOrigin?: string;
+  bankAccountInfo?: string | null;
+}
+
+/**
+ * 플랫폼 슈퍼관리자가 공급사 대표에게 발송하는 당월 구독료 청구서 문자 템플릿 생성.
+ */
+export function buildBillingInvoiceMessage({
+  businessName,
+  representativeName,
+  month = new Date().getMonth() + 1,
+  billedCount,
+  monthlyFee,
+  siteOrigin = "",
+  bankAccountInfo,
+}: BillingInvoiceMessageInput): string {
+  const accountLine = bankAccountInfo ? `■ 입금 계좌: ${bankAccountInfo}\n` : "";
+  const billingUrl = siteOrigin ? `${siteOrigin}/dashboard/billing` : "/dashboard/billing";
+
+  return `[미트파트너스] ${month}월 플랫폼 이용 구독료 청구 안내
+
+${businessName} ${representativeName} 대표님, 안녕하세요.
+이번 달 플랫폼 이용 구독료 산정 내역을 안내해 드립니다.
+
+■ 당월 실발주 거래처: ${billedCount}곳
+■ 이번 달 구독료: ${monthlyFee.toLocaleString("ko-KR")}원 (구간별 누진 단가 적용)
+${accountLine}■ 입금 기한: 매월 말일까지
+
+상세 내역은 공급사 관리 대시보드(구독료 청구서)에서 확인하실 수 있습니다.
+👉 청구서 상세 확인: ${billingUrl}
+
+감사합니다. 미트파트너스 운영팀 드림`;
+}

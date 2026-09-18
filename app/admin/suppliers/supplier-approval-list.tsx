@@ -17,11 +17,13 @@ import {
   computeMonthlyFee,
   isBillingBlocked,
   trialDaysRemaining,
+  buildBillingInvoiceMessage,
 } from "@/lib/supplier/billing";
 import type { Wholesaler, WholesalerStatus, SubscriptionStatus } from "@/types/database";
+import type { AdminSupplierItem } from "./page";
 
 interface SupplierApprovalListProps {
-  initialSuppliers: Wholesaler[];
+  initialSuppliers: AdminSupplierItem[];
   /** wholesaler_id → 이번 달 실발주(취소 제외) 거래처 수 (구독료는 구간별 누진 단가로 computeMonthlyFee가 계산) */
   billedRetailerCounts: Record<string, number>;
 }
@@ -86,10 +88,11 @@ export function SupplierApprovalList({
   initialSuppliers,
   billedRetailerCounts,
 }: SupplierApprovalListProps) {
-  const [suppliers, setSuppliers] = useState<Wholesaler[]>(initialSuppliers);
+  const [suppliers, setSuppliers] = useState<AdminSupplierItem[]>(initialSuppliers);
   const [activeFilter, setActiveFilter] = useState<WholesalerStatus | "all">("all");
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [ntsMessage, setNtsMessage] = useState<Record<string, string>>({});
+  const [copiedInvoiceId, setCopiedInvoiceId] = useState<string | null>(null);
 
   const filtered = suppliers.filter((s) => activeFilter === "all" || s.status === activeFilter);
 
@@ -207,6 +210,38 @@ export function SupplierApprovalList({
       alert("오류가 발생했습니다.");
     } finally {
       setLoadingId(null);
+    }
+  };
+
+  const handleCopyInvoice = async (
+    supplier: AdminSupplierItem,
+    billedCount: number,
+    monthlyFee: number
+  ) => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const message = buildBillingInvoiceMessage({
+      businessName: supplier.business_name,
+      representativeName: supplier.representative_name,
+      billedCount,
+      monthlyFee,
+      siteOrigin: origin,
+    });
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(message);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = message;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setCopiedInvoiceId(supplier.id);
+      setTimeout(() => setCopiedInvoiceId(null), 3000);
+    } catch {
+      alert("문구 복사에 실패했습니다.");
     }
   };
 
@@ -371,6 +406,66 @@ export function SupplierApprovalList({
                         </span>
                       )}
                     </p>
+
+                    {/* 구독료 청구 문자 발송 / 문구 복사 액션 */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        marginTop: "10px",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleCopyInvoice(supplier, billedRetailerCount, monthlyFee)}
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: copiedInvoiceId === supplier.id ? "#166534" : "#334155",
+                          backgroundColor: copiedInvoiceId === supplier.id ? "#dcfce7" : "#f1f5f9",
+                          border: "1px solid #cbd5e1",
+                          borderRadius: "6px",
+                          padding: "5px 10px",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <span>{copiedInvoiceId === supplier.id ? "✓ 청구 문구 복사됨" : "📋 청구 문구 복사"}</span>
+                      </button>
+
+                      {supplier.contactPhone && (
+                        <a
+                          href={`sms:${supplier.contactPhone.replace(/[^0-9]/g, "")}?body=${encodeURIComponent(
+                            buildBillingInvoiceMessage({
+                              businessName: supplier.business_name,
+                              representativeName: supplier.representative_name,
+                              billedCount: billedRetailerCount,
+                              monthlyFee,
+                              siteOrigin: typeof window !== "undefined" ? window.location.origin : "",
+                            })
+                          )}`}
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            color: "#181600",
+                            backgroundColor: "#fee500",
+                            border: "1px solid #fde047",
+                            borderRadius: "6px",
+                            padding: "5px 10px",
+                            textDecoration: "none",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          <span>📱 청구서 문자 ({supplier.contactPhone})</span>
+                        </a>
+                      )}
+                    </div>
                   </div>
 
                   <a

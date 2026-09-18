@@ -56,4 +56,4 @@
 - 관리자용 "이번 달 전체 청구 예상 합계" 요약 카드는 아직 없음(공급사별 개별 표시만 있음).
 - `billing_starts_at`을 지정한 공급사가 아직 없어(실제 서비스 오픈 전) 실계정으로 차단→해제 왕복 검증 안 함.
 - 실발주 기준 전환에 따라 `retailer-suspend-permission`의 7일 냉각기간은 공식 제거됨(마이그레이션 `20260930000041` + `customer-table.tsx` 즉시 재개 가능 반영). 정지 사유 필수는 불량거래처 관리용으로 유지.
-- 능동적 청구 고지(알림톡/문자)는 없음 — 공급사가 `/dashboard/billing`을 직접 열어봐야 안다.
+- 능동적 청구 고지: 관리자 화면(`/admin/suppliers`)에서 공급사 대표 번호로 당월 청구서 문자(`sms:` 딥링크) 발송 및 문구 복사 기능 추가 완료(`lib/supplier/billing.ts`의 `buildBillingInvoiceMessage`). 대량 문자 API 자동 일괄 발송은 필요 시 후속 검토.

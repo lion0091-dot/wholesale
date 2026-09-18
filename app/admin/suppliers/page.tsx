@@ -9,8 +9,12 @@ import { countBilledRetailersForAllSuppliers } from "@/lib/supplier/billed-retai
 import { SupplierApprovalList } from "./supplier-approval-list";
 import type { Wholesaler } from "@/types/database";
 
+export interface AdminSupplierItem extends Wholesaler {
+  contactPhone?: string | null;
+}
+
 /** 데모 모드(Supabase 미설정)에서 승인 UI를 시연하기 위한 샘플 공급사 */
-const DEMO_SUPPLIERS: Wholesaler[] = [
+const DEMO_SUPPLIERS: AdminSupplierItem[] = [
   {
     id: "demo-wholesaler-1",
     profile_id: "profile-1",
@@ -30,6 +34,7 @@ const DEMO_SUPPLIERS: Wholesaler[] = [
     billing_starts_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
     created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
     updated_at: new Date().toISOString(),
+    contactPhone: "010-1234-5678",
   },
   {
     id: "demo-wholesaler-2",
@@ -50,6 +55,7 @@ const DEMO_SUPPLIERS: Wholesaler[] = [
     billing_starts_at: null,
     created_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
     updated_at: new Date().toISOString(),
+    contactPhone: "010-9876-5432",
   },
   {
     id: "demo-wholesaler-3",
@@ -70,6 +76,7 @@ const DEMO_SUPPLIERS: Wholesaler[] = [
     billing_starts_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 60).toISOString(),
     created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(),
     updated_at: new Date().toISOString(),
+    contactPhone: "010-5555-4444",
   },
 ];
 
@@ -89,7 +96,7 @@ export default async function AdminSuppliersPage() {
     }
   }
 
-  let suppliers: Wholesaler[] = DEMO_SUPPLIERS;
+  let suppliers: AdminSupplierItem[] = DEMO_SUPPLIERS;
   let canGrantAdmin = false;
   // 구독료(구간별 누진 단가) 계산용 — wholesaler_id → 이번 달 실발주(취소 제외) 거래처 수.
   // 데모 모드는 실제 orders 행이 없으므로 시연용 고정값을 쓴다.
@@ -103,11 +110,17 @@ export default async function AdminSuppliersPage() {
     const supabase = await createClient();
 
     const [{ data }, billedCounts] = await Promise.all([
-      supabase.from("wholesalers").select("*").order("created_at", { ascending: false }),
+      supabase
+        .from("wholesalers")
+        .select("*, profiles:profile_id ( phone )")
+        .order("created_at", { ascending: false }),
       countBilledRetailersForAllSuppliers(supabase),
     ]);
 
-    suppliers = (data as Wholesaler[] | null) ?? [];
+    suppliers = (((data ?? []) as Array<Wholesaler & { profiles?: { phone?: string | null } | null }>)).map((row) => ({
+      ...row,
+      contactPhone: row.profiles?.phone ?? null,
+    }));
     billedRetailerCounts = billedCounts;
 
     // "관리자 관리" 링크는 다른 관리자를 승격/강등할 수 있는 계정(can_grant=true)에게만 보인다.
