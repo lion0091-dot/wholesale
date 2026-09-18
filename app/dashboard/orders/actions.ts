@@ -7,6 +7,7 @@ import { ORDER_STATUS_TRANSITIONS, isSupplierAssignableStatus } from "@/lib/orde
 import {
   KOREAN_COURIERS,
   fetchTrackingStatus,
+  isSweetTrackerConfigured,
   type TrackingResult,
 } from "@/lib/verification/sweettracker";
 import type { OrderStatus } from "@/types/database";
@@ -169,8 +170,15 @@ async function loadOwnedOrder(orderId: string, wholesalerId: string, isSuperAdmi
   return { supabase, order };
 }
 
+export type TrackingVerification = "verified" | "skipped_not_configured";
+
 /**
  * 배송 조회 정보(택배사/운송장번호) 저장 — 정산은 관여하지 않는 순수 조회용 메타데이터다.
+ *
+ * 스위트트래커 API 키가 설정돼 있으면 저장 전에 실제로 조회 가능한 번호인지 검증한다
+ * (오타로 잘못된 번호가 저장 + 자동 배송중 전환되는 걸 막기 위함). 키가 없으면 검증을
+ * 건너뛰고 그대로 저장한다 — UI(`TrackingPanel`)가 `verification` 값으로 "검증 없이
+ * 저장됨" 사유를 보여준다.
  *
  * 운송장번호를 입력한다는 건 실질적으로 이미 상차/출고했다는 뜻이라, 현재 상태가
  * `confirmed`(확정)일 때는 저장과 동시에 `shipping`으로 자동 전환한다. ORDER_STATUS_TRANSITIONS
@@ -181,7 +189,14 @@ export async function updateOrderTrackingAction(
   orderId: string,
   courierCode: string,
   trackingNumber: string
-): Promise<ActionResult<{ courierCode: string; trackingNumber: string; status: OrderStatus }>> {
+): Promise<
+  ActionResult<{
+    courierCode: string;
+    trackingNumber: string;
+    status: OrderStatus;
+    verification: TrackingVerification;
+  }>
+> {
   try {
     const { context, wholesalerId } = await resolveOrderScope();
 
@@ -193,6 +208,20 @@ export async function updateOrderTrackingAction(
 
     if (!trimmedNumber) {
       throw new RbacError("운송장번호를 입력해주세요.");
+    }
+
+    let verification: TrackingVerification = "skipped_not_configured";
+
+    if (isSweetTrackerConfigured()) {
+      const lookup = await fetchTrackingStatus(courierCode, trimmedNumber);
+
+      if (lookup.status === "error") {
+        throw new RbacError(
+          `${lookup.message} 운송장번호나 택배사를 다시 확인해주세요.`
+        );
+      }
+
+      verification = "verified";
     }
 
     const { supabase, order } = await loadOwnedOrder(orderId, wholesalerId, context.isSuperAdmin);
@@ -218,7 +247,10 @@ export async function updateOrderTrackingAction(
     revalidatePath(REVALIDATE_PATH);
     revalidatePath(`${REVALIDATE_PATH}/${orderId}`);
 
-    return { success: true, data: { courierCode, trackingNumber: trimmedNumber, status: nextStatus } };
+    return {
+      success: true,
+      data: { courierCode, trackingNumber: trimmedNumber, status: nextStatus, verification },
+    };
   } catch (error) {
     return toResult(error);
   }

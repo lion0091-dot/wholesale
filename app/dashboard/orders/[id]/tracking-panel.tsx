@@ -59,12 +59,18 @@ export function TrackingPanel({
       return;
     }
 
+    const shippedText =
+      result.data?.status === "shipping"
+        ? " 주문 상태가 '배송중'으로 자동 전환됩니다."
+        : "";
+    const verificationText =
+      result.data?.verification === "skipped_not_configured"
+        ? " (배송 조회 API 키가 설정되지 않아 실제 존재하는 운송장인지는 확인하지 않았습니다.)"
+        : " (스위트트래커로 조회 가능한 운송장임을 확인했습니다.)";
+
     setMessage({
       type: "success",
-      text:
-        result.data?.status === "shipping"
-          ? "운송장 정보가 저장되었습니다. 주문 상태가 '배송중'으로 자동 전환됩니다."
-          : "운송장 정보가 저장되었습니다.",
+      text: `운송장 정보가 저장되었습니다.${shippedText}${verificationText}`,
     });
     router.refresh();
   };
