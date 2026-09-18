@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Product } from "@/types/database";
 import { createProductAction, updateProductAction } from "./actions";
+import { MarketPriceWidget } from "@/components/market-price-widget";
 
 interface ProductFormViewProps {
   /** 수정 모드일 때 기존 상품 값 */
@@ -636,6 +637,9 @@ export function ProductFormView({
               )}
             </span>
           </div>
+
+          <MarketPriceWidget category={selectedCategory} />
+
           <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "8px" }}>
             * 원매가는 마진 확인용 참고값으로만 사용되며 저장/노출되지 않습니다. (DB 컬럼 추가 시 저장 예정)
           </p>

@@ -27,6 +27,10 @@
 
 - [docs/delivery-tracking.md](docs/delivery-tracking.md) — 운송장 발급/배송비 정산은 대행하지 않고 스위트트래커 API로 조회만 대행. 잠긴 설계 결정(정산 비관여, 상태 캐싱 안 함, Server Action 패턴), 아키텍처. API 키 미발급(2026-09-17 기준)이라 실조회 미검증 — 문서·코드 준비만 완료.
 
+## 축산물 경락가격 위젯 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
+
+- [docs/market-price-widget.md](docs/market-price-widget.md) — ROADMAP §1 공공 시세 API 연동. 원매가 참고란 옆에 오늘 전국 평균 경락가(소/돼지)를 보여주는 참고용 위젯. DB 테이블·API 클라이언트·크론·조회 액션·UI 위젯까지 코드 전부 완료(커밋 전). KAPE API 키만 미발급 — 발급 전엔 위젯이 "시세 데이터 없음" 안내로 안전하게 폴백.
+
 ## Downloads 폴더 패치 3개 보류 (2026-09-16, Vercel 배포 우선 진행 중)
 
 - [docs/deferred-drive-patches.md](docs/deferred-drive-patches.md) — 이전 세션 산출물 패치 3개(PRD/ROADMAP 8번 섹션 추가, wholesaler 구버전 화면 삭제, KNOWN_GAPS.md 신규 생성) 검토 결과 전부 stale로 판정, 적용 보류. Vercel 배포 완료 후 재검토 예정.
