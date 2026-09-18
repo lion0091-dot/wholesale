@@ -127,14 +127,12 @@ const RETAILER_STATUS_ERROR_MESSAGES: Record<string, string> = {
   BLOCK_REASON_REQUIRED: "거래중지 사유를 입력해주세요.",
   RETAILER_NOT_FOUND: "해당 거래처를 찾을 수 없습니다.",
   STATUS_UNCHANGED: "이미 해당 상태입니다.",
-  REACTIVATION_COOLDOWN: "거래중지 후 7일이 지나야 거래를 재개할 수 있습니다.",
 };
 
 /**
- * 거래처 거래중지/재개. 정지 남용(과금 회피용 토글) 방지를 위해 실제 검증(사유 필수,
- * 재개 냉각기간)은 DB 함수(set_wholesaler_retailer_status)에서 수행한다 — 자세한
- * 내용은 해당 마이그레이션 주석 참고. 돈과 직결되는 조작이라 여신 한도와 동일하게
- * owner/manager만 허용.
+ * 거래처 거래중지/재개. 실제 검증(정지 시 사유 필수)은 DB 함수(set_wholesaler_retailer_status)에서
+ * 수행한다(과금 기준이 실발주로 전환되어 7일 재개 냉각기간은 제거됨).
+ * 돈과 직결되는 조작이라 여신 한도와 동일하게 owner/manager만 허용.
  */
 export async function updateRetailerStatusAction(
   retailerId: string,

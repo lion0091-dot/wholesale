@@ -10,19 +10,6 @@ import { CustomerCardGrid } from "./customer-card-grid";
 import { updateCreditLimitAction, updateRetailerStatusAction } from "./actions";
 import type { CustomerRow } from "./customer-types";
 
-const REACTIVATION_COOLDOWN_DAYS = 7;
-
-/** blocked 상태에서 재개까지 남은 일수 (0이면 지금 재개 가능). active면 null. */
-function reactivationCooldownRemaining(customer: CustomerRow): number | null {
-  if (customer.relationStatus !== "blocked") {
-    return null;
-  }
-
-  const elapsedMs = Date.now() - new Date(customer.statusChangedAt).getTime();
-  const remainingDays = REACTIVATION_COOLDOWN_DAYS - Math.floor(elapsedMs / (24 * 60 * 60 * 1000));
-
-  return Math.max(0, remainingDays);
-}
 
 export type { CustomerRow } from "./customer-types";
 
@@ -1112,18 +1099,9 @@ export function CustomerTable({
                     거래중지 사유: {statusTarget.blockReason}
                   </div>
                 )}
-                {(() => {
-                  const remaining = reactivationCooldownRemaining(statusTarget);
-                  const canReactivate = remaining === 0;
-
-                  return (
-                    <p style={{ fontSize: "12px", color: canReactivate ? "#166534" : "#b45309" }}>
-                      {canReactivate
-                        ? "지금 거래를 재개할 수 있습니다."
-                        : `과금 회피 방지를 위해 거래중지 후 ${REACTIVATION_COOLDOWN_DAYS}일이 지나야 재개할 수 있습니다. (${remaining}일 남음)`}
-                    </p>
-                  );
-                })()}
+                <p style={{ fontSize: "12px", color: "#166534" }}>
+                  지금 바로 거래를 재개할 수 있습니다.
+                </p>
               </>
             ) : (
               <div>
@@ -1153,8 +1131,7 @@ export function CustomerTable({
                   }}
                 />
                 <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                  거래중지 중에는 이 거래처가 발주할 수 없습니다. 재개는 최소{" "}
-                  {REACTIVATION_COOLDOWN_DAYS}일 후부터 가능합니다.
+                  거래중지 중에는 이 거래처가 발주할 수 없습니다. 언제든 다시 거래를 재개할 수 있습니다.
                 </p>
               </div>
             )}
@@ -1189,25 +1166,14 @@ export function CustomerTable({
                 <button
                   type="button"
                   onClick={handleReactivateRetailer}
-                  disabled={
-                    statusPending || readOnly || reactivationCooldownRemaining(statusTarget) !== 0
-                  }
+                  disabled={statusPending || readOnly}
                   style={{
                     ...chipButtonStyle,
-                    backgroundColor:
-                      statusPending || readOnly || reactivationCooldownRemaining(statusTarget) !== 0
-                        ? "#94a3b8"
-                        : "#16a34a",
-                    borderColor:
-                      statusPending || readOnly || reactivationCooldownRemaining(statusTarget) !== 0
-                        ? "#94a3b8"
-                        : "#16a34a",
+                    backgroundColor: statusPending || readOnly ? "#94a3b8" : "#16a34a",
+                    borderColor: statusPending || readOnly ? "#94a3b8" : "#16a34a",
                     color: "#ffffff",
                     padding: "9px 13px",
-                    cursor:
-                      statusPending || readOnly || reactivationCooldownRemaining(statusTarget) !== 0
-                        ? "not-allowed"
-                        : "pointer",
+                    cursor: statusPending || readOnly ? "not-allowed" : "pointer",
                   }}
                 >
                   {statusPending ? "처리 중..." : "거래 재개"}
