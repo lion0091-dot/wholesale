@@ -2,10 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { buildKakaoExternalOpenUrl, isKakaoInAppBrowser } from "@/lib/kakao-in-app";
+import {
+  issueTaxInvoiceAction,
+  issueTaxInvoiceCorrectionAction,
+  listTaxInvoiceIssuancesAction,
+} from "@/app/dashboard/orders/[id]/tax-invoice/issue-action";
+import { MODIFY_CODE_LABELS, type ModifyCode } from "@/lib/popbill/modify-codes";
+import type { TaxInvoiceIssuanceRow } from "@/lib/popbill/taxinvoice";
 
 interface TaxInvoiceDraftPanelProps {
   /** PDF(또는 발행 불가 경고 HTML)를 돌려주는 라우트 — /dashboard/orders/[id]/tax-invoice */
   baseHref: string;
+  /** 국세청 실제 발행/정정 Server Action이 필요로 하는 주문 ID */
+  orderId: string;
   /** 작성일자 입력 기본값 — 보통 발주일 */
   defaultIssueDate: string;
   /**
@@ -43,6 +52,7 @@ const labelStyle: React.CSSProperties = {
  */
 export function TaxInvoiceDraftPanel({
   baseHref,
+  orderId,
   defaultIssueDate,
   externalOpenBaseHref,
 }: TaxInvoiceDraftPanelProps) {
@@ -56,6 +66,76 @@ export function TaxInvoiceDraftPanel({
   const [previewKey, setPreviewKey] = useState(0);
   const [showPreview, setShowPreview] = useState(false);
   const [isKakaoInApp, setIsKakaoInApp] = useState(false);
+
+  const [issuances, setIssuances] = useState<TaxInvoiceIssuanceRow[] | null>(null);
+  const [issuing, setIssuing] = useState(false);
+  const [correctingRowId, setCorrectingRowId] = useState<string | null>(null);
+  const [modifyCode, setModifyCode] = useState<ModifyCode>(1);
+  const [correcting, setCorrecting] = useState(false);
+  const [filingError, setFilingError] = useState<string | null>(null);
+
+  async function refreshIssuances() {
+    const result = await listTaxInvoiceIssuancesAction(orderId);
+    if (result.success && result.data) {
+      setIssuances(result.data);
+    }
+  }
+
+  useEffect(() => {
+    if (open && issuances === null) {
+      refreshIssuances();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  async function handleIssue() {
+    if (
+      !window.confirm(
+        "국세청에 실제로 접수되는 계산서를 발행합니다. 이후에는 취소가 아니라 정정신고로만 바로잡을 수 있습니다. 계속할까요?"
+      )
+    ) {
+      return;
+    }
+
+    setIssuing(true);
+    setFilingError(null);
+
+    const result = await issueTaxInvoiceAction(orderId);
+
+    setIssuing(false);
+
+    if (!result.success) {
+      setFilingError(result.error ?? "발행에 실패했습니다.");
+      return;
+    }
+
+    await refreshIssuances();
+  }
+
+  async function handleCorrect(originalIssuanceId: string) {
+    if (
+      !window.confirm(
+        `"${MODIFY_CODE_LABELS[modifyCode]}" 사유로 정정신고합니다. 원본과 연결된 새 계산서가 국세청에 접수됩니다. 계속할까요?`
+      )
+    ) {
+      return;
+    }
+
+    setCorrecting(true);
+    setFilingError(null);
+
+    const result = await issueTaxInvoiceCorrectionAction(orderId, originalIssuanceId, modifyCode);
+
+    setCorrecting(false);
+
+    if (!result.success) {
+      setFilingError(result.error ?? "정정신고에 실패했습니다.");
+      return;
+    }
+
+    setCorrectingRowId(null);
+    await refreshIssuances();
+  }
 
   useEffect(() => {
     setIsKakaoInApp(isKakaoInAppBrowser(window.navigator.userAgent));
@@ -168,6 +248,135 @@ export function TaxInvoiceDraftPanel({
           <div style={{ marginTop: "10px" }}>
             <label style={labelStyle}>비고</label>
             <input type="text" value={note} onChange={(e) => setNote(e.target.value)} style={fieldStyle} />
+          </div>
+
+          <div
+            style={{
+              marginTop: "14px",
+              paddingTop: "12px",
+              borderTop: "1px dashed #fdba74",
+            }}
+          >
+            <p style={{ fontSize: "11px", fontWeight: 700, color: "#7c2d12", marginBottom: "6px" }}>
+              국세청 실제 발행 (팝빌 연동)
+            </p>
+
+            {filingError && (
+              <p style={{ fontSize: "11px", color: "#b91c1c", marginBottom: "6px" }}>{filingError}</p>
+            )}
+
+            {(issuances ?? []).map((row) => (
+              <div
+                key={row.id}
+                style={{
+                  fontSize: "11px",
+                  color: "#57534e",
+                  padding: "6px 8px",
+                  marginBottom: "4px",
+                  backgroundColor: "#ffffff",
+                  border: "1px solid #fed7aa",
+                  borderRadius: "6px",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>
+                    {row.modify_code ? `정정발행 (${MODIFY_CODE_LABELS[row.modify_code]})` : "최초발행"} ·{" "}
+                    {row.status === "issued" && "✅ 발행완료"}
+                    {row.status === "pending" && "⏳ 처리중"}
+                    {row.status === "failed" && "❌ 실패"}
+                    {row.status === "cancelled" && "취소됨"}
+                  </span>
+                  {row.status === "issued" && correctingRowId !== row.id && (
+                    <button
+                      type="button"
+                      onClick={() => setCorrectingRowId(row.id)}
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        color: "#7c2d12",
+                        border: "1px solid #fed7aa",
+                        borderRadius: "4px",
+                        padding: "3px 8px",
+                        backgroundColor: "#fff7ed",
+                        cursor: "pointer",
+                      }}
+                    >
+                      정정신고
+                    </button>
+                  )}
+                </div>
+
+                {row.status === "failed" && row.error_message && (
+                  <p style={{ marginTop: "4px", color: "#b91c1c" }}>{row.error_message}</p>
+                )}
+
+                {correctingRowId === row.id && (
+                  <div style={{ marginTop: "6px", display: "flex", gap: "6px", alignItems: "center" }}>
+                    <select
+                      value={modifyCode}
+                      onChange={(e) => setModifyCode(Number(e.target.value) as ModifyCode)}
+                      style={{ ...fieldStyle, padding: "4px 6px", fontSize: "11px" }}
+                    >
+                      {(Object.entries(MODIFY_CODE_LABELS) as [string, string][]).map(([code, label]) => (
+                        <option key={code} value={code}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={correcting}
+                      onClick={() => handleCorrect(row.id)}
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        color: "#ffffff",
+                        backgroundColor: "#7c2d12",
+                        border: "none",
+                        borderRadius: "4px",
+                        padding: "4px 8px",
+                        cursor: correcting ? "default" : "pointer",
+                        opacity: correcting ? 0.6 : 1,
+                      }}
+                    >
+                      {correcting ? "제출 중…" : "정정 제출"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCorrectingRowId(null)}
+                      style={{
+                        fontSize: "10px",
+                        color: "#57534e",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      취소
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <button
+              type="button"
+              disabled={issuing}
+              onClick={handleIssue}
+              style={{
+                fontSize: "12px",
+                fontWeight: 700,
+                color: "#ffffff",
+                backgroundColor: "#b91c1c",
+                border: "none",
+                borderRadius: "6px",
+                padding: "8px 14px",
+                cursor: issuing ? "default" : "pointer",
+                opacity: issuing ? 0.6 : 1,
+              }}
+            >
+              {issuing ? "발행 중…" : "🚨 국세청에 실제 발행"}
+            </button>
           </div>
 
           <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>

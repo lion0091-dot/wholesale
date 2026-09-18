@@ -23,6 +23,10 @@
 
 - [docs/tax-invoice-draft.md](docs/tax-invoice-draft.md) — 세금계산서 자동발행(Post-MVP, 미착수)과는 별개로, 홈택스 수동 입력을 돕는 계산서(면세) 작성 초안 PDF 도우미. 과세/면세 판단 근거(잠긴 결정), 아키텍처, 남은 과제.
 
+## 계산서(면세) 국세청 실제 발행/정정 — 팝빌 연동 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
+
+- [docs/tax-invoice-nts-filing.md](docs/tax-invoice-nts-filing.md) — 위 작성 도우미(PDF만)에서 한 단계 더 나아가 팝빌(ASP)로 실제 국세청 접수까지 대행. 알림톡과 달리 플랫폼-파트너 1건 계약 구조(공급사별 계약 아님), 최초발행+정정신고(수정사유 6종) 지원. 잠긴 설계 결정, SDK 의존성 예외 허용 사유, 미검증 항목(팝빌 계약 전이라 실호출 전무).
+
 ## 배송 조회 스위트트래커 연동 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
 
 - [docs/delivery-tracking.md](docs/delivery-tracking.md) — 운송장 발급/배송비 정산은 대행하지 않고 스위트트래커 API로 조회만 대행. 잠긴 설계 결정(정산 비관여, 상태 캐싱 안 함, Server Action 패턴), 아키텍처. API 키 미발급(2026-09-17 기준)이라 실조회 미검증 — 문서·코드 준비만 완료.

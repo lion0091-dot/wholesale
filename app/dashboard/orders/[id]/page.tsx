@@ -260,6 +260,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
           />
           <TaxInvoiceDraftPanel
             baseHref={`/dashboard/orders/${order.id}/tax-invoice`}
+            orderId={order.id}
             defaultIssueDate={order.orderedAt.slice(0, 10)}
             externalOpenBaseHref={taxInvoiceExternalOpenHref}
           />

@@ -13,7 +13,9 @@
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.49.1",
     "fast-xml-parser": "^5.11.1",
+    "linkhub": "^1.8.2",
     "next": "^15.1.7",
+    "popbill": "^1.64.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
