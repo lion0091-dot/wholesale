@@ -5,6 +5,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { isSuperAdminSession } from "@/lib/auth/rbac";
 import { ensureSuperAdminBootstrap } from "@/lib/auth/super-admin-bootstrap";
 import { isValidBusinessNumber } from "@/lib/validation/business-number";
+import { countBilledRetailersForAllSuppliers } from "@/lib/supplier/billed-retailers";
 import { SupplierApprovalList } from "./supplier-approval-list";
 import type { Wholesaler } from "@/types/database";
 
@@ -90,9 +91,9 @@ export default async function AdminSuppliersPage() {
 
   let suppliers: Wholesaler[] = DEMO_SUPPLIERS;
   let canGrantAdmin = false;
-  // 구독료(거래처 수 비례 종량제) 계산용 — wholesaler_id → 거래중(active) 거래처 수.
-  // 데모 모드는 실제 wholesaler_retailers 행이 없으므로 시연용 고정값을 쓴다.
-  let activeRetailerCounts: Record<string, number> = {
+  // 구독료(구간별 누진 단가) 계산용 — wholesaler_id → 이번 달 실발주(취소 제외) 거래처 수.
+  // 데모 모드는 실제 orders 행이 없으므로 시연용 고정값을 쓴다.
+  let billedRetailerCounts: Record<string, number> = {
     "demo-wholesaler-1": 12,
     "demo-wholesaler-2": 0,
     "demo-wholesaler-3": 5,
@@ -101,20 +102,13 @@ export default async function AdminSuppliersPage() {
   if (isConfigured) {
     const supabase = await createClient();
 
-    const [{ data }, { data: relationRows }] = await Promise.all([
+    const [{ data }, billedCounts] = await Promise.all([
       supabase.from("wholesalers").select("*").order("created_at", { ascending: false }),
-      supabase.from("wholesaler_retailers").select("wholesaler_id").eq("status", "active"),
+      countBilledRetailersForAllSuppliers(supabase),
     ]);
 
     suppliers = (data as Wholesaler[] | null) ?? [];
-
-    activeRetailerCounts = ((relationRows ?? []) as Array<{ wholesaler_id: string }>).reduce(
-      (acc, row) => {
-        acc[row.wholesaler_id] = (acc[row.wholesaler_id] ?? 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>
-    );
+    billedRetailerCounts = billedCounts;
 
     // "관리자 관리" 링크는 다른 관리자를 승격/강등할 수 있는 계정(can_grant=true)에게만 보인다.
     // /admin/admins 자체의 가드(requireAdminGranter)와 동일한 RPC로 판정한다.
@@ -209,7 +203,7 @@ export default async function AdminSuppliersPage() {
       )}
 
       {/* 공급사 승인/거절 및 구독 권한 관리 목록 */}
-      <SupplierApprovalList initialSuppliers={suppliers} activeRetailerCounts={activeRetailerCounts} />
+      <SupplierApprovalList initialSuppliers={suppliers} billedRetailerCounts={billedRetailerCounts} />
     </main>
   );
 }

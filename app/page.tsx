@@ -110,10 +110,10 @@ export default async function Home() {
           구독료 안내
         </h2>
         <p style={{ fontSize: "13px", color: "#64748b", lineHeight: 1.6, marginBottom: "14px" }}>
-          가입 후 30일은 무료로 체험하실 수 있습니다. 이후에는 거래중인 거래처(고객) 수에
-          비례해 매월 구독료가 발생하며, 거래처가 많아질수록 구간별로 단가가 낮아지는 게
-          아니라 <strong>그 구간만큼만</strong> 다음 단가가 적용됩니다(구간이 올라가도
-          이전 구간 단가는 그대로 유지).
+          가입 후 30일은 무료로 체험하실 수 있습니다. 이후에는 그 달에 실제로 발주가 있었던
+          거래처(고객) 수에 비례해 매월 구독료가 발생하며, 거래처가 많아질수록 구간별로
+          단가가 낮아지는 게 아니라 <strong>그 구간만큼만</strong> 다음 단가가 적용됩니다
+          (구간이 올라가도 이전 구간 단가는 그대로 유지).
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -141,8 +141,8 @@ export default async function Home() {
         </div>
 
         <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "10px", lineHeight: 1.6 }}>
-          예) 거래처 60곳 = 50곳 × 5,000원 + 10곳 × 7,000원 = 320,000원/월. 거래중지된
-          거래처는 과금 대상에서 제외됩니다.
+          예) 이번 달 발주한 거래처 60곳 = 50곳 × 5,000원 + 10곳 × 7,000원 = 320,000원/월.
+          발주가 없었던 거래처는 과금 대상에서 제외됩니다.
         </p>
       </section>
 

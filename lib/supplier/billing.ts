@@ -1,10 +1,15 @@
 /**
  * 플랫폼 구독료 — 거래처(소매) 수 비례 종량제, 구간별 누진(계단식·소득세형) 단가.
  *
+ * 이 파일은 순수 계산 함수만 담는다(middleware Edge 런타임에서도 import되므로
+ * next/headers 등 서버 전용 의존성 금지). "과금 대상 거래처 수를 실제로 세는" 로직은
+ * lib/supplier/billed-retailers.ts(서버 컴포넌트 전용)에 있다 — 2026-09-18부터
+ * wholesaler_retailers.status='active' 기준에서 **이번 달 실발주(주문 발생) 거래처 수**
+ * 기준으로 전환됨(자세한 배경/이유는 그 파일 주석 참고).
+ *
  * 잠긴 설계 결정:
- * - 거래중(active)인 거래처 수 기준. 구간이 올라가도 그 구간에 걸린 만큼만 높은
- *   단가가 적용된다(cliff 방식 아님) — 51번째 거래처가 생겼다고 앞의 50곳 단가까지
- *   같이 뛰지 않는다.
+ * - 구간이 올라가도 그 구간에 걸린 만큼만 높은 단가가 적용된다(cliff 방식 아님) —
+ *   51번째 거래처가 생겼다고 앞의 50곳 단가까지 같이 뛰지 않는다.
  *   - 1~50곳: 곳당 5,000원
  *   - 51~100곳: 곳당 7,000원
  *   - 101곳~: 곳당 9,000원
@@ -39,8 +44,8 @@ export interface FeeTierBreakdown {
 }
 
 /** 구간별 적용 내역 (청구서 화면에서 "50곳 × 5,000원 + 10곳 × 7,000원" 식으로 보여주는 용도) */
-export function computeFeeBreakdown(activeRetailerCount: number): FeeTierBreakdown[] {
-  let remaining = activeRetailerCount;
+export function computeFeeBreakdown(retailerCount: number): FeeTierBreakdown[] {
+  let remaining = retailerCount;
   let previousThreshold = 0;
   const breakdown: FeeTierBreakdown[] = [];
 
@@ -67,8 +72,8 @@ export function computeFeeBreakdown(activeRetailerCount: number): FeeTierBreakdo
   return breakdown;
 }
 
-export function computeMonthlyFee(activeRetailerCount: number): number {
-  return computeFeeBreakdown(activeRetailerCount).reduce((sum, tier) => sum + tier.subtotal, 0);
+export function computeMonthlyFee(retailerCount: number): number {
+  return computeFeeBreakdown(retailerCount).reduce((sum, tier) => sum + tier.subtotal, 0);
 }
 
 export function isTrialExpired(subscriptionStatus: string, trialStartedAt: string): boolean {

@@ -7,6 +7,7 @@ import {
   isBillingBlocked,
   trialDaysRemaining,
 } from "@/lib/supplier/billing";
+import { countBilledRetailers } from "@/lib/supplier/billed-retailers";
 import type { SubscriptionStatus } from "@/types/database";
 
 export const metadata = {
@@ -43,36 +44,32 @@ export default async function DashboardBillingPage() {
   let subscriptionStatus: SubscriptionStatus = "trial";
   let trialStartedAt = new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString();
   let billingStartsAt: string | null = null;
-  let activeRetailerCount = 8;
+  let billedRetailerCount = 8;
   let isDemoData = true;
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
 
-    const [{ data: wholesaler }, { count }] = await Promise.all([
+    const [{ data: wholesaler }, billedCount] = await Promise.all([
       supabase
         .from("wholesalers")
         .select("subscription_status, trial_started_at, billing_starts_at")
         .eq("id", scope.wholesalerId)
         .maybeSingle(),
-      supabase
-        .from("wholesaler_retailers")
-        .select("id", { count: "exact", head: true })
-        .eq("wholesaler_id", scope.wholesalerId)
-        .eq("status", "active"),
+      countBilledRetailers(supabase, scope.wholesalerId),
     ]);
 
     if (wholesaler) {
       subscriptionStatus = wholesaler.subscription_status as SubscriptionStatus;
       trialStartedAt = wholesaler.trial_started_at as string;
       billingStartsAt = wholesaler.billing_starts_at as string | null;
-      activeRetailerCount = count ?? 0;
+      billedRetailerCount = billedCount;
       isDemoData = false;
     }
   }
 
-  const monthlyFee = computeMonthlyFee(activeRetailerCount);
-  const breakdown = computeFeeBreakdown(activeRetailerCount);
+  const monthlyFee = computeMonthlyFee(billedRetailerCount);
+  const breakdown = computeFeeBreakdown(billedRetailerCount);
   const blocked = isBillingBlocked(subscriptionStatus, trialStartedAt, billingStartsAt);
   const daysLeft = subscriptionStatus === "trial" ? trialDaysRemaining(trialStartedAt) : null;
   const billingStarted = Boolean(billingStartsAt) && Date.now() >= new Date(billingStartsAt as string).getTime();
@@ -83,7 +80,7 @@ export default async function DashboardBillingPage() {
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>구독료 청구서</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          거래중(active)인 거래처 수를 기준으로 매달 자동 계산되는 구간별 누진 구독료입니다.
+          이번 달 실제로 발주(취소 제외)한 거래처 수를 기준으로 계산되는 구간별 누진 구독료입니다.
         </p>
       </header>
 
@@ -154,10 +151,14 @@ export default async function DashboardBillingPage() {
         ) : (
           <>
             <div style={{ marginTop: "16px" }}>
-              <div style={{ fontSize: "13px", color: "#64748b" }}>이번 달 구독료</div>
+              <div style={{ fontSize: "13px", color: "#64748b" }}>이번 달 구독료 (진행 중 · 잠정)</div>
               <div style={{ fontSize: "28px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>
                 {formatWon(monthlyFee)}
               </div>
+              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+                이번 달 남은 기간 동안 새로 발주하는 거래처가 있으면 금액이 늘어날 수 있습니다.
+                최종 금액은 월말 기준입니다.
+              </p>
             </div>
 
             <div
@@ -187,7 +188,9 @@ export default async function DashboardBillingPage() {
                 </div>
               ))}
               {breakdown.length === 0 && (
-                <div style={{ fontSize: "12px", color: "#94a3b8" }}>거래중인 거래처가 없습니다.</div>
+                <div style={{ fontSize: "12px", color: "#94a3b8" }}>
+                  이번 달 아직 발주한 거래처가 없습니다.
+                </div>
               )}
             </div>
 

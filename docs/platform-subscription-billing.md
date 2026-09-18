@@ -5,7 +5,11 @@
 
 ## 가격 구조 (잠긴 설계 결정)
 - 공급사(도매)가 플랫폼에 내는 구독료는 **거래처(소매) 수에 비례한 종량제**다. 정액제가 아니다.
-- 과금 대상은 `wholesaler_retailers.status = 'active'`(거래중)인 거래처만 — 거래중지(blocked)는 카운트에서 제외된다. 거래중지/재개는 [[retailer-suspend-permission]](../app/dashboard/customers/) 기능으로 공급사가 직접 조작할 수 있지만, 7일 냉각기간이 있어 청구 시점만 피해 되돌리는 게 어렵다.
+- **과금 대상 산정 기준 (2026-09-18, 두 번째 전환)**: 처음엔 `wholesaler_retailers.status = 'active'`(거래중 관계) 기준이었다가, 그 다음 "거래중지/재개를 반복해 과금 시점만 피하는" 우려에 [[retailer-suspend-permission]] 기능(정지 사유 필수 + 7일 냉각기간)으로 대응했었다. 하지만 사장님이 "실제 거래가 발생한 거래처를 기준으로 과금해야 하는 것 아니냐"고 다시 짚으면서, **이번 달(KST 달력 기준) 실발주(주문 발생, 취소 제외) 거래처 수**로 최종 전환했다.
+  - 관계만 맺혀있고 그 달에 발주가 한 건도 없는 "유령" 거래처는 과금 대상에서 빠진다.
+  - 이 전환으로 정지→재개 반복을 통한 과금 회피 자체가 원천적으로 무력화된다 — 이번 달 주문이 없으면 애초에 안 걷히기 때문. `retailer-suspend-permission`의 7일 냉각기간은 더 이상 과금 방어 목적으로는 불필요해졌지만(불량거래처 관리용으로는 여전히 유효), 아직 코드에서 제거하지 않았다.
+  - 집계 로직: `lib/supplier/billed-retailers.ts`의 `countBilledRetailers`/`countBilledRetailersForAllSuppliers`. middleware(Edge)에서는 이 모듈을 쓰지 않는다(서버 전용 `createClient` 의존) — 접근 차단 판정 자체는 여전히 `subscription_status`만 본다. 실발주 집계는 **금액 표시**에만 쓰인다.
+  - 월중에 조회하면 그 시점까지의 잠정 금액이고, 남은 기간 발주가 추가되면 계속 늘어날 수 있다(월말 확정). 청구서 화면(`/dashboard/billing`)에 "진행 중 · 잠정" 표기로 명시.
 - 2026-09-18부터 **구간별 누진(계단식·소득세형) 단가**로 변경(초기 정액 5,000원/곳에서 전환). 구간이 올라가도 이전 구간의 곳까지 같이 오르지 않고, 그 구간에 걸린 곳만 해당 구간 단가가 적용된다.
   - 1~50곳: 곳당 5,000원
   - 51~100곳: 곳당 7,000원
@@ -40,7 +44,9 @@
 - `lib/supplier/billing.ts` — 요금 계산(`computeMonthlyFee`)·체험만료 판정(`isTrialExpired`)·차단 판정(`isBillingBlocked`, 이제 `billingStartsAt` 인자 필수)·잔여일수(`trialDaysRemaining`) 공용 로직. middleware(Edge)와 서버 컴포넌트 양쪽에서 import.
 - `middleware.ts` — `/dashboard` 접근 시 조직의 연결된 wholesaler(`subscription_status`, `trial_started_at`, `billing_starts_at`)를 조회해 차단 판정, 막히면 `/billing-locked`로 리다이렉트.
 - `app/billing-locked/page.tsx` — 차단 안내 화면. 이미 해제됐으면 `/dashboard`로 되돌린다.
-- `app/admin/suppliers/page.tsx` + `supplier-approval-list.tsx` — 공급사별 "이번 달 구독료"(구간별 누진 단가)·체험 잔여일수·차단 여부·과금 시작일(날짜 입력 + 해제 버튼)을 목록에 표시. 거래처 수는 `wholesaler_retailers`를 `active`로 필터링해 wholesaler_id별로 집계.
+- `lib/supplier/billed-retailers.ts` — 이번 달 실발주 거래처 집계(단일/전체 공급사), KST 달력 월 경계 계산(`currentBillingMonthRangeUtc`). 서버 컴포넌트 전용(next/headers 의존) — middleware에서 import 금지.
+- `app/admin/suppliers/page.tsx` + `supplier-approval-list.tsx` — 공급사별 "이번 달 구독료"(구간별 누진 단가)·체험 잔여일수·차단 여부·과금 시작일(날짜 입력 + 해제 버튼)을 목록에 표시. 거래처 수는 `countBilledRetailersForAllSuppliers`로 집계.
+- `app/dashboard/billing/page.tsx` — 공급사 본인이 차단되기 전에 미리 확인하는 청구서 화면. 구간별 계산 내역 + "진행 중·잠정" 표기.
 - `app/admin/suppliers/actions.ts`의 `setBillingStartAction` — 과금 시작일 지정/해제, super_admin 전용.
 - `app/page.tsx`의 `#subscription` 섹션 — 대문에 구간별 요금표(1~50/51~100/101~)를 안내 문구로 게시.
 
@@ -49,3 +55,5 @@
 - 연체 유예기간(예: 3일) 없이 즉시 차단 — 필요시 유예기간 정책 추가 논의.
 - 관리자용 "이번 달 전체 청구 예상 합계" 요약 카드는 아직 없음(공급사별 개별 표시만 있음).
 - `billing_starts_at`을 지정한 공급사가 아직 없어(실제 서비스 오픈 전) 실계정으로 차단→해제 왕복 검증 안 함.
+- 실발주 기준 전환 후 `retailer-suspend-permission`의 7일 냉각기간이 더 이상 과금 방어 목적이 아니게 됨 — 유지할지(단순 오조작 방지용) 완화할지 아직 재논의 안 함.
+- 능동적 청구 고지(알림톡/문자)는 없음 — 공급사가 `/dashboard/billing`을 직접 열어봐야 안다.

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
 import { computeMonthlyFee, isBillingBlocked } from "@/lib/supplier/billing";
+import { countBilledRetailers } from "@/lib/supplier/billed-retailers";
 
 export const metadata = {
   title: "구독 이용 제한 안내",
@@ -20,17 +21,13 @@ export default async function BillingLockedPage() {
 
   const supabase = await createClient();
 
-  const [{ data: wholesaler }, { count: activeRetailerCount }] = await Promise.all([
+  const [{ data: wholesaler }, billedRetailerCount] = await Promise.all([
     supabase
       .from("wholesalers")
       .select("subscription_status, trial_started_at, billing_starts_at")
       .eq("id", scope.wholesalerId)
       .maybeSingle(),
-    supabase
-      .from("wholesaler_retailers")
-      .select("id", { count: "exact", head: true })
-      .eq("wholesaler_id", scope.wholesalerId)
-      .eq("status", "active"),
+    countBilledRetailers(supabase, scope.wholesalerId),
   ]);
 
   // 관리자가 이미 상태를 되돌렸다면(결제 확인 등) 굳이 이 화면에 머물 이유가 없다.
@@ -52,7 +49,7 @@ export default async function BillingLockedPage() {
         ? "구독료가 연체된 상태입니다."
         : "무료 체험 기간(30일)이 종료되었습니다.";
 
-  const monthlyFee = computeMonthlyFee(activeRetailerCount ?? 0);
+  const monthlyFee = computeMonthlyFee(billedRetailerCount);
 
   return (
     <div style={{ maxWidth: "480px", margin: "80px auto", padding: "0 16px", textAlign: "center" }}>
@@ -74,7 +71,7 @@ export default async function BillingLockedPage() {
         }}
       >
         <div style={{ fontSize: "13px", color: "#64748b" }}>
-          이번 달 구독료 (거래처 {activeRetailerCount ?? 0}곳, 구간별 누진 단가)
+          이번 달 구독료 (이번 달 발주 거래처 {billedRetailerCount}곳, 구간별 누진 단가)
         </div>
         <div style={{ fontSize: "24px", fontWeight: 800, color: "#0f172a", marginTop: "4px" }}>
           {monthlyFee.toLocaleString("ko-KR")}원
