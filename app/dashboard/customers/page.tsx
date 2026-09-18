@@ -245,8 +245,10 @@ export default async function DashboardCustomersPage() {
         outstandingBalance: retailer.outstanding_balance,
         settlementDueDays: retailer.settlement_due_days,
         allowedPaymentMethods: ["prepaid", "on_credit"],
-        // 데모 모드는 실제 profiles 행이 없으므로 시연용 고정 번호를 사용한다.
-        contactPhone: "010-9876-5432",
+        // 데모 모드는 실제 profiles 행이 없어 번호가 없다. 그럴듯한 가짜 번호를 채워두면
+        // "문자로 바로 보내기" 버튼이 실제 배정돼 있을 수 있는 번호로 문자 앱을 열게 되므로
+        // null로 둬서 그 버튼 자체가 안 뜨게 한다(contactPhone 조건부 렌더링).
+        contactPhone: null,
       };
     });
   }

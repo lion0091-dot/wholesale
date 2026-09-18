@@ -13,7 +13,12 @@ export interface AdminSupplierItem extends Wholesaler {
   contactPhone?: string | null;
 }
 
-/** 데모 모드(Supabase 미설정)에서 승인 UI를 시연하기 위한 샘플 공급사 */
+/**
+ * 데모 모드(Supabase 미설정)에서 승인 UI를 시연하기 위한 샘플 공급사.
+ * contactPhone은 일부러 null로 둔다 — 그럴듯한 010 번호를 채우면 "청구서 문자" 버튼이
+ * 실제 배정돼 있을 수 있는 번호로 문자 앱을 여는 위험이 있다(customers/page.tsx의
+ * 같은 패턴 참고). "청구 문구 복사" 버튼은 번호와 무관하게 계속 시연 가능하다.
+ */
 const DEMO_SUPPLIERS: AdminSupplierItem[] = [
   {
     id: "demo-wholesaler-1",
@@ -34,7 +39,7 @@ const DEMO_SUPPLIERS: AdminSupplierItem[] = [
     billing_starts_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
     created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
     updated_at: new Date().toISOString(),
-    contactPhone: "010-1234-5678",
+    contactPhone: null,
   },
   {
     id: "demo-wholesaler-2",
@@ -55,7 +60,7 @@ const DEMO_SUPPLIERS: AdminSupplierItem[] = [
     billing_starts_at: null,
     created_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
     updated_at: new Date().toISOString(),
-    contactPhone: "010-9876-5432",
+    contactPhone: null,
   },
   {
     id: "demo-wholesaler-3",
@@ -76,7 +81,7 @@ const DEMO_SUPPLIERS: AdminSupplierItem[] = [
     billing_starts_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 60).toISOString(),
     created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(),
     updated_at: new Date().toISOString(),
-    contactPhone: "010-5555-4444",
+    contactPhone: null,
   },
 ];
 
