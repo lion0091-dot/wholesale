@@ -24,18 +24,28 @@
 - super_admin은 이 차단에서 예외(감독 열람 목적).
 - `/billing-locked`는 사유(연체/해지/체험만료)와 "이번 달 구독료"(구간별 누진 단가로 계산, `computeMonthlyFee`)를 보여주고, 결제는 관리자에게 문의하라고 안내한다. 대문 요금 안내(`/#subscription`) 링크도 함께 노출.
 
+## 공급사별 과금 시작일 — `billing_starts_at` (잠긴 설계 결정, 2026-09-18 추가)
+- 지금 당장은 전체 공급사에 대해 언제부터 실제로 과금을 시작할지 결정하기 어려워서, `wholesalers.billing_starts_at`(마이그레이션 `20260930000040`, 기본값 NULL)을 과금 전체를 여닫는 마스터 스위치로 뒀다.
+- **`billing_starts_at`이 NULL이거나 아직 도래하지 않았으면, `subscription_status`가 뭐든(overdue/cancelled/체험만료 포함) 접근 차단을 절대 하지 않는다** — `isBillingBlocked()` 최상단에서 바로 `false`를 반환. 신규 컬럼 기본값을 NULL로 둔 것 자체가 "전원 비과금"을 뜻하므로, 20260930000038(trial_started_at)처럼 소급 방지용 백필이 필요 없다.
+- super_admin이 `/admin/suppliers`에서 공급사별로 날짜를 지정(`setBillingStartAction`)하면 그 순간부터 기존 체험/연체/해지 로직이 그대로 적용된다.
+- **날짜를 지정할 때 `trial_started_at`도 같은 값으로 함께 리셋한다** — 안 그러면 가입일 기준으로 이미 30일이 지난 `trial_started_at` 때문에, 과금 시작일을 지정하자마자 바로 차단되는 상황이 생긴다. 지정 = "이 날짜부터 새 30일 체험이 시작된다"로 취급.
+- 해제(NULL로 되돌리기)도 같은 화면에서 가능 — 실수로 지정했거나 다시 비과금으로 되돌리고 싶을 때.
+
 ## 결제 수단 (아직 미정 — 의도적 보류)
 자동결제(토스페이먼츠 정기결제/빌링키)는 플랫폼 자체의 별도 가맹계약이 필요해 아직 하지 않는다. 지금은 `/admin/suppliers`에서 super_admin이 계좌이체 등으로 입금을 수동 확인한 뒤 `subscription_status`를 직접 바꾸는 방식(기존 UI 그대로, `updateSupplierSubscriptionAction`)으로 운영한다. 자동화는 나중에 별도 논의.
 
 ## 아키텍처
 - `supabase/migrations/20260930000038_wholesaler_trial_started_at.sql` — `wholesalers.trial_started_at` 컬럼 추가.
-- `lib/supplier/billing.ts` — 요금 계산(`computeMonthlyFee`)·체험만료 판정(`isTrialExpired`)·차단 판정(`isBillingBlocked`)·잔여일수(`trialDaysRemaining`) 공용 로직. middleware(Edge)와 서버 컴포넌트 양쪽에서 import.
-- `middleware.ts` — `/dashboard` 접근 시 조직의 연결된 wholesaler를 조회해 차단 판정, 막히면 `/billing-locked`로 리다이렉트.
+- `supabase/migrations/20260930000040_wholesaler_billing_starts_at.sql` — `wholesalers.billing_starts_at` 컬럼 추가(기본값 NULL).
+- `lib/supplier/billing.ts` — 요금 계산(`computeMonthlyFee`)·체험만료 판정(`isTrialExpired`)·차단 판정(`isBillingBlocked`, 이제 `billingStartsAt` 인자 필수)·잔여일수(`trialDaysRemaining`) 공용 로직. middleware(Edge)와 서버 컴포넌트 양쪽에서 import.
+- `middleware.ts` — `/dashboard` 접근 시 조직의 연결된 wholesaler(`subscription_status`, `trial_started_at`, `billing_starts_at`)를 조회해 차단 판정, 막히면 `/billing-locked`로 리다이렉트.
 - `app/billing-locked/page.tsx` — 차단 안내 화면. 이미 해제됐으면 `/dashboard`로 되돌린다.
-- `app/admin/suppliers/page.tsx` + `supplier-approval-list.tsx` — 공급사별 "이번 달 구독료"(구간별 누진 단가)와 체험 잔여일수/차단 여부를 목록에 표시. 거래처 수는 `wholesaler_retailers`를 `active`로 필터링해 wholesaler_id별로 집계.
+- `app/admin/suppliers/page.tsx` + `supplier-approval-list.tsx` — 공급사별 "이번 달 구독료"(구간별 누진 단가)·체험 잔여일수·차단 여부·과금 시작일(날짜 입력 + 해제 버튼)을 목록에 표시. 거래처 수는 `wholesaler_retailers`를 `active`로 필터링해 wholesaler_id별로 집계.
+- `app/admin/suppliers/actions.ts`의 `setBillingStartAction` — 과금 시작일 지정/해제, super_admin 전용.
 - `app/page.tsx`의 `#subscription` 섹션 — 대문에 구간별 요금표(1~50/51~100/101~)를 안내 문구로 게시.
 
 ## 남은 과제
 - 실제 결제 자동화(빌링키) 여부/시점 미정.
 - 연체 유예기간(예: 3일) 없이 즉시 차단 — 필요시 유예기간 정책 추가 논의.
 - 관리자용 "이번 달 전체 청구 예상 합계" 요약 카드는 아직 없음(공급사별 개별 표시만 있음).
+- `billing_starts_at`을 지정한 공급사가 아직 없어(실제 서비스 오픈 전) 실계정으로 차단→해제 왕복 검증 안 함.

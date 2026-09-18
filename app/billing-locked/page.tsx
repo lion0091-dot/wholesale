@@ -23,7 +23,7 @@ export default async function BillingLockedPage() {
   const [{ data: wholesaler }, { count: activeRetailerCount }] = await Promise.all([
     supabase
       .from("wholesalers")
-      .select("subscription_status, trial_started_at")
+      .select("subscription_status, trial_started_at, billing_starts_at")
       .eq("id", scope.wholesalerId)
       .maybeSingle(),
     supabase
@@ -34,7 +34,14 @@ export default async function BillingLockedPage() {
   ]);
 
   // 관리자가 이미 상태를 되돌렸다면(결제 확인 등) 굳이 이 화면에 머물 이유가 없다.
-  if (!wholesaler || !isBillingBlocked(wholesaler.subscription_status, wholesaler.trial_started_at)) {
+  if (
+    !wholesaler ||
+    !isBillingBlocked(
+      wholesaler.subscription_status,
+      wholesaler.trial_started_at,
+      wholesaler.billing_starts_at
+    )
+  ) {
     redirect("/dashboard");
   }
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   updateSupplierStatusAction,
   updateSupplierSubscriptionAction,
+  setBillingStartAction,
   verifyBusinessWithNtsAction,
   getBusinessLicenseUrlAction,
 } from "./actions";
@@ -178,6 +179,37 @@ export function SupplierApprovalList({
     }
   };
 
+  /** 과금 시작일 지정(dateValue) 또는 해제(null) — 지정 시 trial_started_at도 같은 값으로 리셋된다. */
+  const handleBillingStartChange = async (id: string, dateValue: string | null) => {
+    const billingStartsAt = dateValue ? new Date(`${dateValue}T00:00:00`).toISOString() : null;
+
+    setLoadingId(id);
+
+    try {
+      const res = await setBillingStartAction(id, billingStartsAt);
+
+      if (res.success) {
+        setSuppliers((prev) =>
+          prev.map((s) =>
+            s.id === id
+              ? {
+                  ...s,
+                  billing_starts_at: billingStartsAt,
+                  ...(billingStartsAt ? { trial_started_at: billingStartsAt } : {}),
+                }
+              : s
+          )
+        );
+      } else {
+        alert(res.error || "과금 시작일 저장에 실패했습니다.");
+      }
+    } catch {
+      alert("오류가 발생했습니다.");
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
   return (
     <div>
       {/* 상태 필터 탭 */}
@@ -248,7 +280,11 @@ export function SupplierApprovalList({
             const isBusy = loadingId === supplier.id;
             const activeRetailerCount = activeRetailerCounts[supplier.id] ?? 0;
             const monthlyFee = computeMonthlyFee(activeRetailerCount);
-            const blocked = isBillingBlocked(supplier.subscription_status, supplier.trial_started_at);
+            const blocked = isBillingBlocked(
+              supplier.subscription_status,
+              supplier.trial_started_at,
+              supplier.billing_starts_at
+            );
             const daysLeft =
               supplier.subscription_status === "trial"
                 ? trialDaysRemaining(supplier.trial_started_at)
@@ -322,6 +358,17 @@ export function SupplierApprovalList({
                       )}
                       {blocked && (
                         <span style={{ color: "#dc2626", fontWeight: 700 }}> · 🔒 백오피스 접근 차단됨</span>
+                      )}
+                    </p>
+                    <p style={{ fontSize: "12px", marginTop: "4px" }}>
+                      {supplier.billing_starts_at ? (
+                        <span style={{ color: "#64748b" }}>
+                          과금 시작일: {formatDate(supplier.billing_starts_at)}
+                        </span>
+                      ) : (
+                        <span style={{ color: "#0369a1", fontWeight: 600 }}>
+                          ⏸ 과금 미시작 — 접근 차단 없음
+                        </span>
                       )}
                     </p>
                   </div>
@@ -497,6 +544,40 @@ export function SupplierApprovalList({
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#475569" }}>
+                    <span>과금 시작일:</span>
+                    <input
+                      type="date"
+                      disabled={isBusy}
+                      value={supplier.billing_starts_at ? supplier.billing_starts_at.slice(0, 10) : ""}
+                      onChange={(e) => handleBillingStartChange(supplier.id, e.target.value || null)}
+                      style={{
+                        padding: "4px 8px",
+                        borderRadius: "6px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "12px",
+                      }}
+                    />
+                    {supplier.billing_starts_at && (
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => handleBillingStartChange(supplier.id, null)}
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: "6px",
+                          border: "1px solid #cbd5e1",
+                          backgroundColor: "#ffffff",
+                          color: "#475569",
+                          fontSize: "11px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        해제
+                      </button>
+                    )}
                   </div>
 
                   <div style={{ display: "flex", gap: "8px" }}>

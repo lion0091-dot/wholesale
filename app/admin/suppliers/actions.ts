@@ -282,3 +282,52 @@ export async function updateSupplierSubscriptionAction(
     return { success: false, error: "구독 상태 변경 처리 중 오류가 발생했습니다." };
   }
 }
+
+/**
+ * 공급사별 과금 시작일 지정/해제. billing_starts_at이 null이면 체험만료/연체/해지
+ * 여부와 무관하게 접근 차단을 하지 않는다(자세한 배경은 lib/supplier/billing.ts 주석).
+ *
+ * 날짜를 지정할 때는 trial_started_at도 같은 값으로 리셋한다 — 안 그러면 신청이
+ * 훨씬 이전인 원래 trial_started_at 때문에 지정하자마자 바로 차단될 수 있다.
+ */
+export async function setBillingStartAction(
+  supplierId: string,
+  billingStartsAt: string | null
+): Promise<ActionResult> {
+  try {
+    const denied = await assertSuperAdmin();
+
+    if (denied) {
+      return { success: false, error: denied };
+    }
+
+    if (!isSupabaseConfigured()) {
+      return { success: true };
+    }
+
+    const supabase = await createClient();
+
+    const update: Record<string, string | null> = {
+      billing_starts_at: billingStartsAt,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (billingStartsAt) {
+      update.trial_started_at = billingStartsAt;
+    }
+
+    const { error } = await supabase.from("wholesalers").update(update).eq("id", supplierId);
+
+    if (error) {
+      console.error("[Admin Supplier Billing Start] DB 업데이트 오류:", error.message);
+      return { success: false, error: "과금 시작일 저장에 실패했습니다." };
+    }
+
+    revalidatePath(ADMIN_PATH);
+    revalidatePath("/dashboard", "layout");
+    return { success: true };
+  } catch (err: unknown) {
+    console.error("[Admin Supplier Billing Start ERROR]", err);
+    return { success: false, error: "과금 시작일 저장 중 오류가 발생했습니다." };
+  }
+}

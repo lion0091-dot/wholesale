@@ -141,7 +141,7 @@ export async function middleware(request: NextRequest) {
       // /billing-locked는 /dashboard 밖이라 이 블록을 다시 타지 않으므로 루프가 없다.
       const { data: organization } = await supabase
         .from("organizations")
-        .select("wholesalers ( subscription_status, trial_started_at )")
+        .select("wholesalers ( subscription_status, trial_started_at, billing_starts_at )")
         .eq("id", staff.organization_id)
         .maybeSingle();
 
@@ -149,7 +149,14 @@ export async function middleware(request: NextRequest) {
         ? organization.wholesalers[0]
         : organization?.wholesalers;
 
-      if (wholesaler && isBillingBlocked(wholesaler.subscription_status, wholesaler.trial_started_at)) {
+      if (
+        wholesaler &&
+        isBillingBlocked(
+          wholesaler.subscription_status,
+          wholesaler.trial_started_at,
+          wholesaler.billing_starts_at
+        )
+      ) {
         const { data: profile } = await supabase
           .from("profiles")
           .select("role")

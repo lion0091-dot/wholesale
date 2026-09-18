@@ -58,6 +58,12 @@ export interface Wholesaler {
   subscription_status: SubscriptionStatus;
   /** 무료 체험 시작 시각 — subscription_status='trial'일 때 +30일 경과 시 접근 차단 */
   trial_started_at: string;
+  /**
+   * 과금 시작일. NULL이면 체험만료/연체/해지 여부와 무관하게 접근 차단을 하지 않는다.
+   * super_admin이 /admin/suppliers에서 공급사별로 지정 — 지정 시 trial_started_at도
+   * 같은 값으로 리셋되어 그 날짜부터 30일의 새 체험 기간이 시작된다.
+   */
+  billing_starts_at: string | null;
   created_at: string;
   updated_at: string;
   /**

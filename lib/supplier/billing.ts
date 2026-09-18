@@ -12,6 +12,10 @@
  * - 신규 가입 후 30일 무료 체험, 이후 미결제 시 백오피스 접근 차단.
  * - 결제 자동화(빌링키 등)는 미정 — super_admin이 /admin/suppliers에서
  *   subscription_status를 수동으로 바꾸는 방식으로 우선 운영한다.
+ * - `billing_starts_at`(NULL 가능)이 지정 안 됐거나 아직 도래 전이면, 체험만료/연체/
+ *   해지 여부와 무관하게 접근 차단을 절대 하지 않는다. 지금 당장은 공급사별로
+ *   실제 과금 시작 시점을 잡기 어려워서, super_admin이 나중에 개별적으로 날짜를
+ *   지정하면 그때부터 기존 체험/연체 로직이 적용되는 구조로 뒀다.
  */
 
 /** 구간 상한(threshold)과 그 구간의 곳당 단가. 마지막 구간은 상한 없음(Infinity). */
@@ -49,8 +53,20 @@ export function isTrialExpired(subscriptionStatus: string, trialStartedAt: strin
   return subscriptionStatus === "trial" && Date.now() - new Date(trialStartedAt).getTime() > TRIAL_MS;
 }
 
-/** 연체/해지/체험만료 — 셋 중 하나라도 해당하면 백오피스 접근이 막힌다. */
-export function isBillingBlocked(subscriptionStatus: string, trialStartedAt: string): boolean {
+/**
+ * 연체/해지/체험만료 — 셋 중 하나라도 해당하면 백오피스 접근이 막힌다.
+ * 단, billingStartsAt이 null이거나 아직 도래하지 않았으면 그 어떤 경우에도 차단하지
+ * 않는다 — 과금 자체가 아직 "켜지지" 않은 상태이기 때문이다.
+ */
+export function isBillingBlocked(
+  subscriptionStatus: string,
+  trialStartedAt: string,
+  billingStartsAt: string | null
+): boolean {
+  if (!billingStartsAt || Date.now() < new Date(billingStartsAt).getTime()) {
+    return false;
+  }
+
   return (
     subscriptionStatus === "overdue" ||
     subscriptionStatus === "cancelled" ||
