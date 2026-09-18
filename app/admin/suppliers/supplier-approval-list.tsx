@@ -213,6 +213,34 @@ export function SupplierApprovalList({
     }
   };
 
+  /**
+   * 아이폰은 sms: 스킴에서 본문을 ?body=가 아니라 &body=로 넘겨야 채워진다(customer-table.tsx의
+   * handleSendSms와 동일한 이유) — 정적 <a href>로는 이 분기를 클릭 시점에 못 넣으므로 버튼+핸들러로 처리.
+   */
+  const handleSendInvoiceSms = (
+    supplier: AdminSupplierItem,
+    billedCount: number,
+    monthlyFee: number
+  ) => {
+    if (!supplier.contactPhone) {
+      return;
+    }
+
+    const message = buildBillingInvoiceMessage({
+      businessName: supplier.business_name,
+      representativeName: supplier.representative_name,
+      billedCount,
+      monthlyFee,
+      siteOrigin: typeof window !== "undefined" ? window.location.origin : "",
+    });
+
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const separator = isIOS ? "&" : "?";
+    const digits = supplier.contactPhone.replace(/[^0-9+]/g, "");
+
+    window.location.href = `sms:${digits}${separator}body=${encodeURIComponent(message)}`;
+  };
+
   const handleCopyInvoice = async (
     supplier: AdminSupplierItem,
     billedCount: number,
@@ -438,16 +466,11 @@ export function SupplierApprovalList({
                       </button>
 
                       {supplier.contactPhone && (
-                        <a
-                          href={`sms:${supplier.contactPhone.replace(/[^0-9]/g, "")}?body=${encodeURIComponent(
-                            buildBillingInvoiceMessage({
-                              businessName: supplier.business_name,
-                              representativeName: supplier.representative_name,
-                              billedCount: billedRetailerCount,
-                              monthlyFee,
-                              siteOrigin: typeof window !== "undefined" ? window.location.origin : "",
-                            })
-                          )}`}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleSendInvoiceSms(supplier, billedRetailerCount, monthlyFee)
+                          }
                           style={{
                             fontSize: "11px",
                             fontWeight: 700,
@@ -456,14 +479,14 @@ export function SupplierApprovalList({
                             border: "1px solid #fde047",
                             borderRadius: "6px",
                             padding: "5px 10px",
-                            textDecoration: "none",
+                            cursor: "pointer",
                             display: "inline-flex",
                             alignItems: "center",
                             gap: "4px",
                           }}
                         >
                           <span>📱 청구서 문자 ({supplier.contactPhone})</span>
-                        </a>
+                        </button>
                       )}
                     </div>
                   </div>
