@@ -31,6 +31,10 @@
 
 - [docs/pg-payment-integration.md](docs/pg-payment-integration.md) — 직접정산/외상에 PG(카드) 결제 추가 + 공급사가 거래처별로 결제수단을 켜고 끄는 허용목록. 알림톡과 동일한 "공급사가 PG사와 개별 가맹계약" 구조. 잠긴 설계 결정("결제 확정 후에만 주문 생성" — 유령 주문 알림 방지, 취소 시 환불 성공해야만 상태 전이 허용). 토스페이먼츠 계정 미발급이라 실호출 전무.
 
+## 대문 개편 + 고객사 입점 희망 리드 수집 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
+
+- [docs/landing-page-and-retailer-leads.md](docs/landing-page-and-retailer-leads.md) — 개발용 대시보드 링크 나열이던 대문을 실제 소개 화면으로 개편. "매칭"은 알고리즘이 아니라 관리자가 리드 목록(`/admin/retailer-leads`)을 보고 공급사에 수동으로 의뢰하는 구조(잠긴 결정). 리드 제출은 비로그인 허용, 조회/상태관리는 super_admin 전용.
+
 ## 배송 조회 스위트트래커 연동 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
 
 - [docs/delivery-tracking.md](docs/delivery-tracking.md) — 운송장 발급/배송비 정산은 대행하지 않고 스위트트래커 API로 조회만 대행. 잠긴 설계 결정(정산 비관여, 상태 캐싱 안 함, Server Action 패턴), 아키텍처. API 키 미발급(2026-09-17 기준)이라 실조회 미검증 — 문서·코드 준비만 완료.
