@@ -326,6 +326,22 @@ export async function removeStaff(staffId: string): Promise<ActionResult> {
       throw new RbacError("직원을 삭제할 권한이 없습니다.");
     }
 
+    // 이 사람이 만들어둔, 아직 안 쓰인 초대 링크를 먼저 회수한다. 삭제 후에는(특히
+    // 본인 탈퇴 케이스) RLS가 이미 조직 role을 잃은 행위자의 UPDATE를 막으므로
+    // organization_staff 삭제보다 반드시 먼저 실행해야 한다. 실패해도 직원 삭제
+    // 자체는 막지 않는다(다른 owner/manager가 팀 관리 화면에서 수동 취소 가능).
+    const { error: revokeError } = await supabase
+      .from("organization_staff_invites")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("organization_id", target.organization_id)
+      .eq("created_by", target.user_id)
+      .is("revoked_at", null)
+      .gt("expires_at", new Date().toISOString());
+
+    if (revokeError) {
+      console.error("[RemoveStaff] 초대 링크 회수 실패:", revokeError.message);
+    }
+
     // 마지막 owner 삭제는 DB 트리거가 최종 차단
     const { error } = await supabase.from("organization_staff").delete().eq("id", staffId);
 
