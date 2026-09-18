@@ -11,7 +11,8 @@ import {
 import { canRequestCancel } from "@/lib/orders/status";
 import { loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
 import { validateCancelReason } from "@/lib/shop/order-history-types";
-import { lineSubtotal, validateCart } from "@/lib/shop/order-policy";
+import { validateCart } from "@/lib/shop/order-policy";
+import { createOrderWithItems, buildOrderNumber } from "@/lib/orders/create-order";
 import { fetchTrackingStatus, type TrackingResult } from "@/lib/verification/sweettracker";
 import type { OrderStatus, PaymentMethod } from "@/types/database";
 
@@ -41,13 +42,6 @@ export interface SubmitOrderResult {
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function buildOrderNumber(): string {
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const suffix = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-  return `ORD-${today}-${suffix}`;
-}
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -155,6 +149,13 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
       return { success: false, error: validation.violations[0].message };
     }
 
+    if (input.paymentMethod === "pg") {
+      return {
+        success: false,
+        error: "PG 결제는 이 경로로 접수되지 않습니다. 결제창을 통해 다시 시도해주세요.",
+      };
+    }
+
     const totalAmount = validation.totals.totalAmount;
     const orderNumber = buildOrderNumber();
     const paymentMethod: PaymentMethod = input.paymentMethod === "on_credit" ? "on_credit" : "prepaid";
@@ -195,47 +196,22 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
         deliveryAddress,
       });
 
-      const { data: insertedOrder, error: orderError } = await supabase
-        .from("orders")
-        .insert({
-          wholesaler_id: buyer.wholesalerId,
-          retailer_id: buyer.retailerId,
-          order_number: orderNumber,
-          total_amount: totalAmount,
-          status: "pending",
-          payment_method: paymentMethod,
-          delivery_address: deliveryAddress,
-          delivery_notes: deliveryNotes,
-        })
-        .select("id")
-        .single();
+      const createResult = await createOrderWithItems(supabase, {
+        wholesalerId: buyer.wholesalerId,
+        retailerId: buyer.retailerId,
+        orderNumber,
+        totalAmount,
+        deliveryAddress,
+        deliveryNotes,
+        paymentMethod,
+        lines,
+      });
 
-      if (orderError || !insertedOrder) {
-        return {
-          success: false,
-          error: orderError?.message ?? "발주서 저장에 실패했습니다. 잠시 후 다시 시도해주세요.",
-        };
+      if ("error" in createResult) {
+        return { success: false, error: createResult.error };
       }
 
-      const { error: itemsError } = await supabase.from("order_items").insert(
-        lines.map((line) => ({
-          order_id: insertedOrder.id as string,
-          product_id: line.productId,
-          product_name: line.name,
-          category: line.category,
-          subcategory: line.subcategory,
-          unit_price: line.unitPrice,
-          quantity: line.quantity,
-          subtotal_amount: lineSubtotal(line),
-        }))
-      );
-
-      if (itemsError) {
-        // 품목 없는 빈 발주서가 남지 않도록 헤더를 롤백한다.
-        await supabase.from("orders").delete().eq("id", insertedOrder.id as string);
-
-        return { success: false, error: "발주 품목 저장에 실패했습니다. 다시 시도해주세요." };
-      }
+      const orderId = createResult.orderId;
 
       // 3) 외상 주문이면 미수금 잔액을 원자적으로 증가시킨다 (한도 재검증 포함).
       if (paymentMethod === "on_credit") {
@@ -246,7 +222,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
 
         if (creditError) {
           // 잔액 반영에 실패한 외상 주문은 남겨두지 않는다 (order_items는 CASCADE로 함께 삭제).
-          await supabase.from("orders").delete().eq("id", insertedOrder.id as string);
+          await supabase.from("orders").delete().eq("id", orderId);
 
           const isCreditLimitExceeded = creditError.message.includes("CREDIT_LIMIT_EXCEEDED");
 

@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Script from "next/script";
+import { useSearchParams } from "next/navigation";
 import { useShopCart } from "@/lib/shop/cart-store";
 import { MIN_ORDER_AMOUNT, lineSubtotal, validateCart } from "@/lib/shop/order-policy";
 import { toCartLines, type ShopCatalog } from "@/lib/shop/catalog-types";
@@ -15,7 +17,14 @@ import {
   shopPageStyle,
 } from "../shop-chrome";
 import { submitOrderAction } from "../actions";
+import { initiatePgPaymentAction } from "./pg/actions";
 import type { PaymentMethod } from "@/types/database";
+
+const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  prepaid: "직접 정산 (계좌이체 등)",
+  on_credit: "외상 거래",
+  pg: "PG(카드) 결제",
+};
 
 interface CheckoutViewProps {
   catalog: ShopCatalog;
@@ -32,6 +41,7 @@ interface OrderReceipt {
 export function CheckoutView({ catalog }: CheckoutViewProps) {
   const { customer, wholesaler, shopToken } = catalog;
   const { entries, isLoaded, clear } = useShopCart(shopToken);
+  const searchParams = useSearchParams();
 
   const [restaurantName, setRestaurantName] = useState(customer.restaurantName ?? "");
   const [contactPhone, setContactPhone] = useState(customer.contactPhone ?? "");
@@ -42,6 +52,14 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
 
+  useEffect(() => {
+    const pgError = searchParams.get("pgError");
+    if (pgError) {
+      setErrorMessage(pgError);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const lines = useMemo(
     () => (isLoaded ? toCartLines(catalog, entries) : []),
     [catalog, entries, isLoaded]
@@ -49,6 +67,67 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
 
   const validation = useMemo(() => validateCart(lines), [lines]);
   const { totals } = validation;
+
+  const pgAvailable = Boolean(wholesaler.pg_client_key);
+
+  const usableMethods = useMemo(() => {
+    const methods: PaymentMethod[] = [];
+
+    if (customer.allowedPaymentMethods.includes("prepaid")) {
+      methods.push("prepaid");
+    }
+    if (customer.allowedPaymentMethods.includes("on_credit") && customer.creditLimit > 0) {
+      methods.push("on_credit");
+    }
+    if (customer.allowedPaymentMethods.includes("pg") && pgAvailable) {
+      methods.push("pg");
+    }
+
+    return methods.length > 0 ? methods : (["prepaid"] as PaymentMethod[]);
+  }, [customer.allowedPaymentMethods, customer.creditLimit, pgAvailable]);
+
+  useEffect(() => {
+    if (!usableMethods.includes(paymentMethod)) {
+      setPaymentMethod(usableMethods[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usableMethods]);
+
+  const handlePgSubmit = async () => {
+    const initiated = await initiatePgPaymentAction({
+      shopToken,
+      items: lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+      restaurantName,
+      contactPhone,
+      deliveryAddress,
+      deliveryNotes,
+    });
+
+    if (!initiated.success || !initiated.pgOrderId || !initiated.clientKey || !initiated.amount) {
+      setErrorMessage(initiated.error ?? "결제 준비에 실패했습니다.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!window.TossPayments) {
+      setErrorMessage("결제 모듈을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    const origin = window.location.origin;
+
+    // 성공 시 브라우저가 successUrl로 이동하므로(주문 생성은 그 라우트가 담당) 이후
+    // 코드는 실행되지 않는다 — isSubmitting을 되돌리지 않는 이유.
+    await window.TossPayments(initiated.clientKey).requestPayment("카드", {
+      amount: initiated.amount,
+      orderId: initiated.pgOrderId,
+      orderName: initiated.orderName ?? "발주",
+      customerName: restaurantName,
+      successUrl: `${origin}/shop/${shopToken}/checkout/pg/success`,
+      failUrl: `${origin}/shop/${shopToken}/checkout/pg/fail`,
+    });
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -62,6 +141,11 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
     setIsSubmitting(true);
 
     try {
+      if (paymentMethod === "pg") {
+        await handlePgSubmit();
+        return;
+      }
+
       const result = await submitOrderAction({
         shopToken,
         items: lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
@@ -87,7 +171,9 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
     } catch {
       setErrorMessage("발주서 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
-      setIsSubmitting(false);
+      if (paymentMethod !== "pg") {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -340,18 +426,13 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
             />
           </div>
 
-          {customer.creditLimit > 0 && (
+          {usableMethods.length > 1 && (
             <div>
               <label style={labelStyle}>결제 방식</label>
               <div style={{ display: "flex", gap: "8px" }}>
-                {(
-                  [
-                    { value: "prepaid" as PaymentMethod, label: "즉시 결제" },
-                    { value: "on_credit" as PaymentMethod, label: "외상 거래" },
-                  ]
-                ).map((option) => (
+                {usableMethods.map((method) => (
                   <label
-                    key={option.value}
+                    key={method}
                     style={{
                       flex: 1,
                       display: "flex",
@@ -360,23 +441,24 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                       gap: "6px",
                       padding: "10px",
                       borderRadius: "8px",
-                      border: `1px solid ${paymentMethod === option.value ? "#0f172a" : "#e2e8f0"}`,
-                      backgroundColor: paymentMethod === option.value ? "#0f172a" : "#ffffff",
-                      color: paymentMethod === option.value ? "#ffffff" : "#334155",
+                      border: `1px solid ${paymentMethod === method ? "#0f172a" : "#e2e8f0"}`,
+                      backgroundColor: paymentMethod === method ? "#0f172a" : "#ffffff",
+                      color: paymentMethod === method ? "#ffffff" : "#334155",
                       fontSize: "13px",
                       fontWeight: 700,
                       cursor: "pointer",
+                      textAlign: "center",
                     }}
                   >
                     <input
                       type="radio"
                       name="payment-method"
-                      value={option.value}
-                      checked={paymentMethod === option.value}
-                      onChange={() => setPaymentMethod(option.value)}
+                      value={method}
+                      checked={paymentMethod === method}
+                      onChange={() => setPaymentMethod(method)}
                       style={{ display: "none" }}
                     />
-                    {option.label}
+                    {PAYMENT_METHOD_LABELS[method]}
                   </label>
                 ))}
               </div>
@@ -385,7 +467,16 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                   여신 한도 내에서 미수금으로 기록되며, 정산은 공급사와의 약정에 따릅니다.
                 </p>
               )}
+              {paymentMethod === "pg" && (
+                <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "6px" }}>
+                  토스페이먼츠 결제창으로 이동합니다. 결제가 완료되어야 발주서가 접수됩니다.
+                </p>
+              )}
             </div>
+          )}
+
+          {pgAvailable && (
+            <Script src="https://js.tosspayments.com/v1/payment" strategy="afterInteractive" />
           )}
 
           <div
@@ -433,7 +524,13 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               marginTop: "4px",
             }}
           >
-            {isSubmitting ? "발주서 접수 및 알림톡 발송 중..." : "도매처로 발주서 최종 전송"}
+            {isSubmitting
+              ? paymentMethod === "pg"
+                ? "결제창으로 이동 중..."
+                : "발주서 접수 및 알림톡 발송 중..."
+              : paymentMethod === "pg"
+                ? "결제하고 발주서 전송"
+                : "도매처로 발주서 최종 전송"}
           </button>
         </form>
       </div>

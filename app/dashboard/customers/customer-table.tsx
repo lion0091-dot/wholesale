@@ -104,6 +104,7 @@ export function CustomerTable({
   const [creditTarget, setCreditTarget] = useState<CustomerRow | null>(null);
   const [creditValue, setCreditValue] = useState("");
   const [dueDaysValue, setDueDaysValue] = useState("");
+  const [paymentMethodsValue, setPaymentMethodsValue] = useState<string[]>(["prepaid"]);
   const [creditError, setCreditError] = useState<string | null>(null);
   const [creditPending, startCreditTransition] = useTransition();
 
@@ -205,7 +206,16 @@ export function CustomerTable({
     setCreditError(null);
     setCreditValue(String(customer.creditLimit));
     setDueDaysValue(String(customer.settlementDueDays));
+    setPaymentMethodsValue(
+      customer.allowedPaymentMethods.length > 0 ? customer.allowedPaymentMethods : ["prepaid"]
+    );
     setCreditTarget(customer);
+  };
+
+  const togglePaymentMethod = (method: string) => {
+    setPaymentMethodsValue((current) =>
+      current.includes(method) ? current.filter((m) => m !== method) : [...current, method]
+    );
   };
 
   const handleSaveCredit = () => {
@@ -226,10 +236,20 @@ export function CustomerTable({
       return;
     }
 
+    if (paymentMethodsValue.length === 0) {
+      setCreditError("허용할 결제수단을 하나 이상 선택해주세요.");
+      return;
+    }
+
     setCreditError(null);
 
     startCreditTransition(async () => {
-      const result = await updateCreditLimitAction(creditTarget.id, parsedCredit, parsedDueDays);
+      const result = await updateCreditLimitAction(
+        creditTarget.id,
+        parsedCredit,
+        parsedDueDays,
+        paymentMethodsValue
+      );
 
       if (result.success) {
         setCreditTarget(null);
@@ -466,7 +486,7 @@ export function CustomerTable({
                             onClick={() => handleOpenCredit(customer)}
                             style={chipButtonStyle}
                           >
-                            한도 수정
+                            결제 설정
                           </button>
                           <button
                             type="button"
@@ -703,7 +723,7 @@ export function CustomerTable({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="여신 한도 수정"
+          aria-label="결제 설정 수정"
           style={{
             position: "fixed",
             inset: 0,
@@ -730,7 +750,7 @@ export function CustomerTable({
             <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
               <div style={{ flex: 1 }}>
                 <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
-                  여신 한도 수정
+                  결제 설정 수정
                 </h2>
                 <p style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
                   {creditTarget.restaurantName} — 현재 미수금 {formatWon(creditTarget.outstandingBalance)}
@@ -811,6 +831,52 @@ export function CustomerTable({
               />
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
                 주문일로부터 이 일수가 지나면 미수금 정산 화면에서 연체로 표시됩니다.
+              </p>
+            </div>
+
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#475569",
+                  marginBottom: "5px",
+                }}
+              >
+                허용 결제수단
+              </label>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {(
+                  [
+                    { value: "prepaid", label: "직접 정산 (계좌이체 등)" },
+                    { value: "on_credit", label: "외상 거래" },
+                    { value: "pg", label: "PG(카드) 결제" },
+                  ] as const
+                ).map((option) => (
+                  <label
+                    key={option.value}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      fontSize: "13px",
+                      color: "#334155",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={paymentMethodsValue.includes(option.value)}
+                      onChange={() => togglePaymentMethod(option.value)}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+                외상은 여신 한도가 0보다 커야, PG는 결제 연동(팝빌 아님, 별도 PG 설정)이
+                끝나 있어야 실제로 체크아웃에 노출됩니다.
               </p>
             </div>
 

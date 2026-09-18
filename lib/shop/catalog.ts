@@ -44,6 +44,7 @@ const GUEST_CUSTOMER: ShopCustomer = {
   deliveryAddress: null,
   isLinked: false,
   creditLimit: 0,
+  allowedPaymentMethods: [],
 };
 
 function demoWholesaler(shopToken: string): Wholesaler {
@@ -84,6 +85,8 @@ function demoCustomer(): ShopCustomer {
     isLinked: retailer.status === "active",
     // 데모 모드는 실제 wholesaler_retailers 행이 없으므로 외상 UI 시연용 고정값을 사용한다.
     creditLimit: 300000,
+    // PG는 실제 자격정보가 없어 시연 불가 — 직접정산/외상만 시연한다.
+    allowedPaymentMethods: ["prepaid", "on_credit"],
   };
 }
 
@@ -146,6 +149,7 @@ async function resolveCustomer(
     deliveryAddress: buyer.deliveryAddress,
     isLinked: buyer.isLinked,
     creditLimit: buyer.creditLimit,
+    allowedPaymentMethods: buyer.allowedPaymentMethods,
   };
 }
 
@@ -180,7 +184,7 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
   const { data: wholesalerData } = await supabase
     .from("wholesalers")
     .select(
-      "id, profile_id, business_name, business_number, representative_name, shop_token, status, subscription_status, created_at, updated_at"
+      "id, profile_id, business_name, business_number, representative_name, shop_token, status, subscription_status, created_at, updated_at, pg_client_key"
     )
     .eq("shop_token", shopToken)
     .maybeSingle();

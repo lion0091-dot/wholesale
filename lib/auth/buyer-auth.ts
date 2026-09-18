@@ -158,6 +158,8 @@ export interface BuyerIdentity {
   isLinked: boolean;
   /** 여신 한도 (0이면 외상 거래 불가). 미연결 상태면 0 */
   creditLimit: number;
+  /** 공급사가 이 거래처에 열어준 결제수단. 미연결 상태면 빈 배열 */
+  allowedPaymentMethods: string[];
 }
 
 /** 거래 관계까지 확인된 바이어 — 발주/취소 요청의 전제 조건 */
@@ -174,6 +176,8 @@ export interface LinkedBuyer {
   relationshipId: string;
   creditLimit: number;
   outstandingBalance: number;
+  /** 공급사가 이 거래처에 열어준 결제수단 */
+  allowedPaymentMethods: string[];
 }
 
 /**
@@ -213,6 +217,7 @@ export async function resolveBuyerIdentity(
       deliveryAddress: null,
       isLinked: false,
       creditLimit: 0,
+      allowedPaymentMethods: [],
     };
   }
 
@@ -233,22 +238,25 @@ export async function resolveBuyerIdentity(
       deliveryAddress: null,
       isLinked: false,
       creditLimit: 0,
+      allowedPaymentMethods: [],
     };
   }
 
   let isLinked = false;
   let creditLimit = 0;
+  let allowedPaymentMethods: string[] = [];
 
   if (wholesalerId) {
     const { data: relation } = await supabase
       .from("wholesaler_retailers")
-      .select("status, credit_limit")
+      .select("status, credit_limit, allowed_payment_methods")
       .eq("wholesaler_id", wholesalerId)
       .eq("retailer_id", retailer.id as string)
       .maybeSingle();
 
     isLinked = relation?.status === "active";
     creditLimit = isLinked ? Number(relation?.credit_limit ?? 0) : 0;
+    allowedPaymentMethods = isLinked ? ((relation?.allowed_payment_methods as string[] | null) ?? []) : [];
   }
 
   return {
@@ -263,6 +271,7 @@ export async function resolveBuyerIdentity(
       null,
     isLinked,
     creditLimit,
+    allowedPaymentMethods,
   };
 }
 
@@ -339,7 +348,7 @@ export async function requireLinkedBuyer(
 
   const { data: relation } = await supabase
     .from("wholesaler_retailers")
-    .select("id, status, credit_limit, outstanding_balance")
+    .select("id, status, credit_limit, outstanding_balance, allowed_payment_methods")
     .eq("wholesaler_id", wholesaler.id as string)
     .eq("retailer_id", retailer.id as string)
     .maybeSingle();
@@ -365,6 +374,7 @@ export async function requireLinkedBuyer(
     relationshipId: relation.id as string,
     creditLimit: Number(relation.credit_limit ?? 0),
     outstandingBalance: Number(relation.outstanding_balance ?? 0),
+    allowedPaymentMethods: (relation.allowed_payment_methods as string[] | null) ?? [],
   };
 }
 

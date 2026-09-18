@@ -14,6 +14,8 @@ import { ShopThumbnailForm } from "./shop-thumbnail-form";
 import { WithdrawWholesalerButton } from "./withdraw-wholesaler-button";
 import { AlimtalkSettingsForm } from "./alimtalk-settings-form";
 import { getAlimtalkSettingsAction } from "@/app/actions/alimtalk-settings";
+import { PgSettingsForm } from "./pg-settings-form";
+import { getPgSettingsAction } from "@/app/actions/pg-settings";
 
 export const metadata = {
   title: "영업 · 초대장 | 도매업체 통합관리시스템",
@@ -109,6 +111,10 @@ export default async function DashboardInvitesPage() {
     alimtalkSettingsResult?.success && alimtalkSettingsResult.data
       ? alimtalkSettingsResult.data
       : null;
+
+  const pgSettingsResult = account.wholesalerId ? await getPgSettingsAction() : null;
+  const pgSettings =
+    pgSettingsResult?.success && pgSettingsResult.data ? pgSettingsResult.data : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -247,6 +253,15 @@ export default async function DashboardInvitesPage() {
             알림톡 연동 설정
           </div>
           <AlimtalkSettingsForm initial={alimtalkSettings} />
+        </section>
+      )}
+
+      {account.wholesalerId && pgSettings && (
+        <section style={cardStyle}>
+          <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>
+            PG(카드) 결제 연동 설정
+          </div>
+          <PgSettingsForm initial={pgSettings} />
         </section>
       )}
 

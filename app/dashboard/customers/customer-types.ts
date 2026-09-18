@@ -20,4 +20,6 @@ export interface CustomerRow {
   outstandingBalance: number;
   /** 연체 기준일 — 주문일로부터 이 일수가 지나면 미수금 정산 화면에서 연체로 표시 */
   settlementDueDays: number;
+  /** 공급사가 이 거래처에 열어준 결제수단('prepaid'/'on_credit'/'pg') */
+  allowedPaymentMethods: string[];
 }

@@ -11,7 +11,8 @@ export type OrderStatus =
   | "cancel_requested"
   | "cancel_rejected"
   | "cancelled";
-export type PaymentMethod = "prepaid" | "on_credit";
+export type PaymentMethod = "prepaid" | "on_credit" | "pg";
+export type PaymentStatus = "unpaid" | "paid" | "refunded";
 
 export interface Profile {
   id: string;
@@ -57,6 +58,15 @@ export interface Wholesaler {
   subscription_status: SubscriptionStatus;
   created_at: string;
   updated_at: string;
+  /**
+   * PG(토스페이먼츠) 결제 연동 — 알림톡과 동일하게 공급사가 PG사와 개별 가맹계약을
+   * 맺는 구조라 공급사별 자격정보를 저장한다(마이그레이션 20260930000034).
+   * pg_client_key는 프론트 위젯에 노출해도 되는 공개 키, pg_secret_key_encrypted는
+   * 서버에서만 복호화하는 비밀키(AES-256-GCM).
+   */
+  pg_provider?: string | null;
+  pg_client_key?: string | null;
+  pg_secret_key_encrypted?: string | null;
 }
 
 export interface Retailer {
@@ -134,6 +144,14 @@ export interface Order {
    */
   courier_code?: string | null;
   tracking_number?: string | null;
+  /**
+   * PG(토스페이먼츠) 결제 상태 — prepaid/on_credit 주문에는 의미 없음(NULL로 남음).
+   * pg 결제 주문만 unpaid로 시작해 승인 성공 시 paid, 취소 승인(자동환불 성공) 시
+   * refunded로 바뀐다 (마이그레이션 20260930000034).
+   */
+  payment_status?: PaymentStatus | null;
+  pg_payment_key?: string | null;
+  pg_order_id?: string | null;
 }
 
 /** 플랫폼 관리자 allowlist 항목 (public.platform_admin_allowlist 행 그대로). */

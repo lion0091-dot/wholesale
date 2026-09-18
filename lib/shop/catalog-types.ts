@@ -26,6 +26,8 @@ export interface ShopCustomer {
   isLinked: boolean;
   /** 여신 한도 (0이면 외상 거래 불가) */
   creditLimit: number;
+  /** 공급사가 이 거래처에 열어준 결제수단('prepaid'/'on_credit'/'pg') */
+  allowedPaymentMethods: string[];
 }
 
 export interface ShopCatalog {

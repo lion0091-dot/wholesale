@@ -27,6 +27,10 @@
 
 - [docs/tax-invoice-nts-filing.md](docs/tax-invoice-nts-filing.md) — 위 작성 도우미(PDF만)에서 한 단계 더 나아가 팝빌(ASP)로 실제 국세청 접수까지 대행. 알림톡과 달리 플랫폼-파트너 1건 계약 구조(공급사별 계약 아님), 최초발행+정정신고(수정사유 6종) 지원. 잠긴 설계 결정, SDK 의존성 예외 허용 사유, 미검증 항목(팝빌 계약 전이라 실호출 전무).
 
+## PG(토스페이먼츠) 결제 연동 + 고객별 결제수단 관리 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
+
+- [docs/pg-payment-integration.md](docs/pg-payment-integration.md) — 직접정산/외상에 PG(카드) 결제 추가 + 공급사가 거래처별로 결제수단을 켜고 끄는 허용목록. 알림톡과 동일한 "공급사가 PG사와 개별 가맹계약" 구조. 잠긴 설계 결정("결제 확정 후에만 주문 생성" — 유령 주문 알림 방지, 취소 시 환불 성공해야만 상태 전이 허용). 토스페이먼츠 계정 미발급이라 실호출 전무.
+
 ## 배송 조회 스위트트래커 연동 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
 
 - [docs/delivery-tracking.md](docs/delivery-tracking.md) — 운송장 발급/배송비 정산은 대행하지 않고 스위트트래커 API로 조회만 대행. 잠긴 설계 결정(정산 비관여, 상태 캐싱 안 함, Server Action 패턴), 아키텍처. API 키 미발급(2026-09-17 기준)이라 실조회 미검증 — 문서·코드 준비만 완료.

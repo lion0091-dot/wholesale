@@ -10,6 +10,8 @@ import {
   isSweetTrackerConfigured,
   type TrackingResult,
 } from "@/lib/verification/sweettracker";
+import { cancelPayment, TossPaymentsError } from "@/lib/payments/tosspayments-client";
+import { decryptCredential, CredentialCryptoError } from "@/lib/security/credential-crypto";
 import type { OrderStatus } from "@/types/database";
 
 export interface ActionResult<T = undefined> {
@@ -105,7 +107,7 @@ export async function updateOrderStatusAction(
 
     const { data: order } = await supabase
       .from("orders")
-      .select("id, wholesaler_id, status")
+      .select("id, wholesaler_id, status, payment_method, payment_status, pg_payment_key")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -127,10 +129,51 @@ export async function updateOrderStatusAction(
       throw new RbacError("현재 상태에서는 해당 처리를 진행할 수 없습니다.");
     }
 
-    const { error } = await supabase
-      .from("orders")
-      .update({ status: nextStatus, updated_at: new Date().toISOString() })
-      .eq("id", orderId);
+    const updates: Record<string, unknown> = { status: nextStatus, updated_at: new Date().toISOString() };
+
+    // PG로 결제 완료된 주문을 취소하는 경우, 상태만 바꾸는 게 아니라 실제로
+    // 환불까지 성공해야 한다 — 환불이 실패하면 상태 전이 자체를 막는다(돈은
+    // 안 돌려주고 취소 처리만 되는 사고 방지).
+    if (
+      nextStatus === "cancelled" &&
+      order.payment_method === "pg" &&
+      order.payment_status === "paid" &&
+      order.pg_payment_key
+    ) {
+      const { data: orderWholesaler } = await supabase
+        .from("wholesalers")
+        .select("pg_secret_key_encrypted")
+        .eq("id", order.wholesaler_id as string)
+        .maybeSingle();
+
+      const encryptedSecret = orderWholesaler?.pg_secret_key_encrypted as string | null;
+
+      if (!encryptedSecret) {
+        throw new RbacError("PG 연동 설정을 찾을 수 없어 환불을 진행할 수 없습니다. 공급사 설정을 확인해주세요.");
+      }
+
+      try {
+        const secretKey = decryptCredential(encryptedSecret);
+
+        await cancelPayment({
+          secretKey,
+          paymentKey: order.pg_payment_key as string,
+          cancelReason: "구매자 취소 요청 승인",
+        });
+
+        updates.payment_status = "refunded";
+      } catch (refundError) {
+        if (refundError instanceof TossPaymentsError) {
+          throw new RbacError(`환불 처리에 실패해 취소를 진행할 수 없습니다: ${refundError.message}`);
+        }
+        if (refundError instanceof CredentialCryptoError) {
+          throw new RbacError("PG 연동 설정 오류로 환불을 진행할 수 없습니다.");
+        }
+        throw refundError;
+      }
+    }
+
+    const { error } = await supabase.from("orders").update(updates).eq("id", orderId);
 
     if (error) {
       throw new Error(error.message);
