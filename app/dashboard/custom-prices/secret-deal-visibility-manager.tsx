@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   addSecretDealVisibilityAction,
@@ -79,7 +80,33 @@ export function SecretDealVisibilityManager({
   }, [assignments]);
 
   if (secretDealProducts.length === 0) {
-    return null;
+    return (
+      <div
+        style={{
+          ...cardStyle,
+          fontSize: "13px",
+          color: "#64748b",
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px",
+        }}
+      >
+        <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a" }}>
+          🔥 시크릿 딜 노출 대상 지정
+        </div>
+        <p>
+          시크릿 딜로 등록된 상품이 없어 지정할 대상이 없습니다. 상품 관리에서 상품을
+          &quot;🔥 시크릿 딜(단골 전용 마감 특가) 상품&quot;으로 켜면 여기서 특정
+          고객(소매)에게만 노출되도록 지정할 수 있습니다.
+        </p>
+        <Link
+          href="/dashboard/products"
+          style={{ fontSize: "12px", fontWeight: 600, color: "#2563eb", width: "fit-content" }}
+        >
+          상품 관리로 이동 →
+        </Link>
+      </div>
+    );
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
