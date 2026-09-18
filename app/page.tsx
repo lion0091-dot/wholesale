@@ -104,6 +104,48 @@ export default async function Home() {
         <HomeKakaoCta authDisabled={!authEnabled} />
       </section>
 
+      {/* 구독료 안내 */}
+      <section id="subscription" style={{ ...cardStyle, marginBottom: "16px" }}>
+        <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a", marginBottom: "6px" }}>
+          구독료 안내
+        </h2>
+        <p style={{ fontSize: "13px", color: "#64748b", lineHeight: 1.6, marginBottom: "14px" }}>
+          가입 후 30일은 무료로 체험하실 수 있습니다. 이후에는 거래중인 거래처(고객) 수에
+          비례해 매월 구독료가 발생하며, 거래처가 많아질수록 구간별로 단가가 낮아지는 게
+          아니라 <strong>그 구간만큼만</strong> 다음 단가가 적용됩니다(구간이 올라가도
+          이전 구간 단가는 그대로 유지).
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {[
+            { range: "1 ~ 50곳", price: "거래처당 5,000원" },
+            { range: "51 ~ 100곳", price: "거래처당 7,000원" },
+            { range: "101곳 이상", price: "거래처당 9,000원" },
+          ].map((tier) => (
+            <div
+              key={tier.range}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "13px",
+                padding: "9px 12px",
+                borderRadius: "8px",
+                backgroundColor: "#f8fafc",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <span style={{ color: "#334155", fontWeight: 600 }}>{tier.range}</span>
+              <span style={{ color: "#0f172a", fontWeight: 700 }}>{tier.price}</span>
+            </div>
+          ))}
+        </div>
+
+        <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "10px", lineHeight: 1.6 }}>
+          예) 거래처 60곳 = 50곳 × 5,000원 + 10곳 × 7,000원 = 320,000원/월. 거래중지된
+          거래처는 과금 대상에서 제외됩니다.
+        </p>
+      </section>
+
       {/* 고객(소매) */}
       <section style={cardStyle}>
         <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a", marginBottom: "6px" }}>

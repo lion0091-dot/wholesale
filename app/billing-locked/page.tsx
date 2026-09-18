@@ -67,7 +67,7 @@ export default async function BillingLockedPage() {
         }}
       >
         <div style={{ fontSize: "13px", color: "#64748b" }}>
-          이번 달 구독료 (거래처 {activeRetailerCount ?? 0}곳 × 5,000원)
+          이번 달 구독료 (거래처 {activeRetailerCount ?? 0}곳, 구간별 누진 단가)
         </div>
         <div style={{ fontSize: "24px", fontWeight: 800, color: "#0f172a", marginTop: "4px" }}>
           {monthlyFee.toLocaleString("ko-KR")}원
@@ -76,6 +76,11 @@ export default async function BillingLockedPage() {
 
       <p style={{ fontSize: "13px", color: "#94a3b8", marginTop: "20px", lineHeight: 1.6 }}>
         결제 안내는 플랫폼 관리자에게 문의해주세요. 결제 확인 후 이용이 즉시 재개됩니다.
+      </p>
+      <p style={{ fontSize: "12px", marginTop: "8px" }}>
+        <a href="/#subscription" style={{ color: "#2563eb" }}>
+          구간별 요금 안내 보기 →
+        </a>
       </p>
     </div>
   );

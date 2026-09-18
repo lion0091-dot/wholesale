@@ -21,7 +21,7 @@ import type { Wholesaler, WholesalerStatus, SubscriptionStatus } from "@/types/d
 
 interface SupplierApprovalListProps {
   initialSuppliers: Wholesaler[];
-  /** wholesaler_id → 거래중(active) 거래처 수 (구독료 = 이 수 × 5,000원) */
+  /** wholesaler_id → 거래중(active) 거래처 수 (구독료는 구간별 누진 단가로 computeMonthlyFee가 계산) */
   activeRetailerCounts: Record<string, number>;
 }
 
@@ -312,8 +312,8 @@ export function SupplierApprovalList({
                       대표자: {supplier.representative_name} | 신청일: {formatDate(supplier.created_at)}
                     </p>
                     <p style={{ fontSize: "12px", color: "#334155", marginTop: "4px", fontWeight: 600 }}>
-                      이번 달 구독료: {monthlyFee.toLocaleString("ko-KR")}원 (거래처 {activeRetailerCount}곳 ×
-                      5,000원)
+                      이번 달 구독료: {monthlyFee.toLocaleString("ko-KR")}원 (거래처 {activeRetailerCount}곳,
+                      구간별 누진 단가)
                       {daysLeft !== null && (
                         <span style={{ color: daysLeft <= 7 ? "#dc2626" : "#64748b", fontWeight: 700 }}>
                           {" "}
