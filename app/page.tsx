@@ -34,6 +34,61 @@ export default async function Home() {
         </p>
       </header>
 
+      {/* 서비스 흐름 요약 */}
+      <section style={{ ...cardStyle, marginBottom: "16px" }}>
+        <h2 style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a", marginBottom: "14px" }}>
+          이렇게 진행돼요
+        </h2>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div>
+            <div style={{ fontSize: "12px", fontWeight: 700, color: "#b91c1c", marginBottom: "6px" }}>
+              공급사(도매)
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                color: "#334155",
+              }}
+            >
+              <span>카카오 가입</span>
+              <span style={{ color: "#cbd5e1" }}>→</span>
+              <span>상품 등록</span>
+              <span style={{ color: "#cbd5e1" }}>→</span>
+              <span>거래처 초대 링크 발급</span>
+              <span style={{ color: "#cbd5e1" }}>→</span>
+              <span>발주 접수·출고</span>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0f172a", marginBottom: "6px" }}>
+              고객(소매)
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                color: "#334155",
+              }}
+            >
+              <span>초대 링크로 카카오 로그인</span>
+              <span style={{ color: "#cbd5e1" }}>→</span>
+              <span>미니샵에서 발주</span>
+              <span style={{ color: "#cbd5e1" }}>→</span>
+              <span>알림톡으로 진행상황 확인</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* 공급사(도매) */}
       <section style={{ ...cardStyle, marginBottom: "16px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a", marginBottom: "6px" }}>
