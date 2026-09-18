@@ -5,7 +5,9 @@
  * - 공급사(도매) 식별 및 활성 상태 확인
  * - 접속 고객(식당) 바인딩 및 거래 관계 확인
  * - 상품 목록에 해당 식당 전용 맞춤 단가 적용
- * - 시크릿 딜은 거래 관계가 확인된 단골 고객에게만 노출 (미연결 고객에게는 응답에서 제외)
+ * - 시크릿 딜은 거래 관계가 확인된 단골 고객에게만 노출 (미연결 고객에게는 응답에서 제외).
+ *   추가로 특정 고객만 지정(secret_deal_visibility)했다면 그 목록으로 더 좁혀진다 —
+ *   지정이 하나도 없는 시크릿 딜 상품은 기존과 동일하게 거래중인 전체 고객에게 노출된다.
  *
  * Supabase 미설정/데이터 미존재 시 백오피스와 동일한 데모 모드 샘플로 대체한다.
  *
@@ -153,6 +155,41 @@ async function resolveCustomer(
   };
 }
 
+/**
+ * 시크릿 딜 상품별 지정 노출 대상 조회. product_id → 지정된 retailer_id 집합.
+ * 지정이 없는 상품은 이 맵에 키 자체가 없다 — 호출부에서 "전체 노출"로 취급한다.
+ */
+async function loadSecretDealVisibility(
+  supabase: SupabaseServerClient,
+  wholesalerId: string,
+  secretDealProductIds: string[]
+): Promise<Map<string, Set<string>>> {
+  if (secretDealProductIds.length === 0) {
+    return new Map();
+  }
+
+  const { data } = await supabase
+    .from("secret_deal_visibility")
+    .select("product_id, retailer_id")
+    .eq("wholesaler_id", wholesalerId)
+    .in("product_id", secretDealProductIds);
+
+  const map = new Map<string, Set<string>>();
+
+  for (const row of data ?? []) {
+    const productId = row.product_id as string;
+    const retailerId = row.retailer_id as string;
+
+    if (!map.has(productId)) {
+      map.set(productId, new Set());
+    }
+
+    map.get(productId)!.add(retailerId);
+  }
+
+  return map;
+}
+
 /** 식당 전용 맞춤 단가 조회 (retailer_id + product_id 단위) */
 async function loadCustomPrices(
   supabase: SupabaseServerClient,
@@ -213,9 +250,32 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
   const customer = await resolveCustomer(supabase, wholesaler.id);
   const canViewSecretDeals = customer.isLinked;
 
-  const visibleProducts = products.filter(
-    (product) => canViewSecretDeals || !product.is_secret_deal
-  );
+  const secretDealVisibility = canViewSecretDeals
+    ? await loadSecretDealVisibility(
+        supabase,
+        wholesaler.id,
+        products.filter((product) => product.is_secret_deal).map((product) => product.id)
+      )
+    : new Map<string, Set<string>>();
+
+  const visibleProducts = products.filter((product) => {
+    if (!product.is_secret_deal) {
+      return true;
+    }
+
+    if (!canViewSecretDeals) {
+      return false;
+    }
+
+    const allowedRetailers = secretDealVisibility.get(product.id);
+
+    // 지정된 고객이 없으면(맵에 키 없음) 기존 동작대로 전체 노출
+    if (!allowedRetailers) {
+      return true;
+    }
+
+    return customer.retailerId !== null && allowedRetailers.has(customer.retailerId);
+  });
 
   const customPrices = customer.retailerId
     ? await loadCustomPrices(

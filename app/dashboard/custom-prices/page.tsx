@@ -13,6 +13,10 @@ import {
   type CustomerOption,
   type ProductOption,
 } from "./custom-price-manager";
+import {
+  SecretDealVisibilityManager,
+  type SecretDealAssignment,
+} from "./secret-deal-visibility-manager";
 
 export const metadata = {
   title: "맞춤 단가 관리 | 도매업체 통합관리시스템",
@@ -46,24 +50,30 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
   let customers: CustomerOption[] = [];
   let products: ProductOption[] = [];
   let assigned: AssignedCustomPrice[] = [];
+  let secretDealAssignments: SecretDealAssignment[] = [];
   let isDemoData = true;
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
 
-    const [{ data: relations }, { data: productRows }, customPriceResult] = await Promise.all([
-      supabase
-        .from("wholesaler_retailers")
-        .select("retailer_id, retailers ( restaurant_name )")
-        .eq("wholesaler_id", scope.wholesalerId)
-        .eq("status", "active"),
-      supabase
-        .from("products")
-        .select("id, name, base_price, unit, is_secret_deal")
-        .eq("wholesaler_id", scope.wholesalerId)
-        .order("name", { ascending: true }),
-      listCustomPrices(),
-    ]);
+    const [{ data: relations }, { data: productRows }, customPriceResult, { data: secretVisibilityRows }] =
+      await Promise.all([
+        supabase
+          .from("wholesaler_retailers")
+          .select("retailer_id, retailers ( restaurant_name )")
+          .eq("wholesaler_id", scope.wholesalerId)
+          .eq("status", "active"),
+        supabase
+          .from("products")
+          .select("id, name, base_price, unit, is_secret_deal")
+          .eq("wholesaler_id", scope.wholesalerId)
+          .order("name", { ascending: true }),
+        listCustomPrices(),
+        supabase
+          .from("secret_deal_visibility")
+          .select("id, product_id, retailer_id")
+          .eq("wholesaler_id", scope.wholesalerId),
+      ]);
 
     customers = ((relations ?? []) as RelationRow[]).map((row) => ({
       id: row.retailer_id,
@@ -94,6 +104,14 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
         unit: productMap.get(row.product_id)?.unit ?? "kg",
         customPrice: Number(row.custom_price),
         updatedAt: row.updated_at,
+      }));
+
+      secretDealAssignments = (secretVisibilityRows ?? []).map((row) => ({
+        id: row.id as string,
+        productId: row.product_id as string,
+        productName: productMap.get(row.product_id as string)?.name ?? "삭제된 상품",
+        retailerId: row.retailer_id as string,
+        retailerName: customerMap.get(row.retailer_id as string)?.name ?? "거래 종료된 고객(소매)",
       }));
     }
   }
@@ -164,6 +182,13 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
             ? requestedRetailerId
             : undefined
         }
+      />
+
+      <SecretDealVisibilityManager
+        customers={customers}
+        secretDealProducts={products.filter((product) => product.is_secret_deal)}
+        assignments={secretDealAssignments}
+        readOnly={isDemoData}
       />
     </div>
   );
