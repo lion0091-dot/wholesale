@@ -12,7 +12,8 @@ export type AlimtalkTemplateKey =
   | "orderNew"
   | "cancelRequest"
   | "creditExceeded"
-  | "receivablesReminder";
+  | "receivablesReminder"
+  | "creditLimitChanged";
 
 /**
  * 공급사가 비즈뿌리오/카카오에 템플릿 심사를 신청할 때 그대로 제출해야 하는 기준 문구.
@@ -76,5 +77,16 @@ export const ALIMTALK_TEMPLATE_REFERENCE_TEXT: Record<
 ■ #{정산기한안내}
 
 빠른 시일 내 정산 부탁드립니다. 이미 정산을 완료하셨다면 안내를 확인해 주시기 바랍니다.`,
+  },
+  creditLimitChanged: {
+    title: "여신 한도 변경 안내",
+    text: `[여신 한도 변경 안내]
+
+#{바이어상호} 담당자님, #{공급사명}입니다.
+
+■ 변경 전 한도: #{이전한도}원
+■ 변경 후 한도: #{변경한도}원
+
+여신 한도가 변경되었습니다. 확인 부탁드립니다.`,
   },
 };

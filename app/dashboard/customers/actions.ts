@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
 import { requireOrgRole, RbacError } from "@/lib/auth/rbac";
+import { sendCreditLimitChangedNotificationToRetailer } from "@/lib/notifications/alimtalk";
 import type { ActionResult } from "@/app/actions/invite";
 
 const VALID_PAYMENT_METHODS = ["prepaid", "on_credit", "pg"];
@@ -51,6 +52,16 @@ export async function updateCreditLimitAction(
 
     const supabase = await createClient();
 
+    // 알림톡 발송 여부 판단(한도가 실제로 바뀌었는지)을 위해 갱신 전 값을 먼저 읽는다.
+    const { data: before } = await supabase
+      .from("wholesaler_retailers")
+      .select("credit_limit")
+      .eq("wholesaler_id", scope.wholesalerId)
+      .eq("retailer_id", retailerId)
+      .maybeSingle();
+
+    const previousLimit = before ? Number(before.credit_limit ?? 0) : null;
+
     const { data, error } = await supabase
       .from("wholesaler_retailers")
       .update({
@@ -73,6 +84,33 @@ export async function updateCreditLimitAction(
 
     revalidatePath("/dashboard/customers");
     revalidatePath("/dashboard/receivables");
+
+    // 한도가 실제로 바뀐 경우에만 거래처에 알림톡 발송. 미설정/발송 실패는 저장 자체를
+    // 막지 않는다(알림톡은 부가 기능 — dispatchAlimtalk가 이미 조용히 처리).
+    if (previousLimit !== null && previousLimit !== creditLimit) {
+      const { data: retailer } = await supabase
+        .from("retailers")
+        .select("restaurant_name, profile_id")
+        .eq("id", retailerId)
+        .maybeSingle();
+
+      if (retailer) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("phone")
+          .eq("id", retailer.profile_id as string)
+          .maybeSingle();
+
+        await sendCreditLimitChangedNotificationToRetailer({
+          wholesalerId: scope.wholesalerId,
+          wholesalerName: scope.businessName,
+          retailerName: (retailer.restaurant_name as string) ?? "거래처",
+          retailerPhone: (profile?.phone as string | undefined) ?? undefined,
+          previousLimit,
+          newLimit: creditLimit,
+        });
+      }
+    }
 
     return { success: true };
   } catch (error) {

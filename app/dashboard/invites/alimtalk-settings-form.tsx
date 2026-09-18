@@ -39,6 +39,7 @@ const TEMPLATE_KEYS: AlimtalkTemplateKey[] = [
   "cancelRequest",
   "creditExceeded",
   "receivablesReminder",
+  "creditLimitChanged",
 ];
 
 async function copyText(text: string) {

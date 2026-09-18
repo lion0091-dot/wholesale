@@ -99,6 +99,15 @@ export interface ReceivablesReminderPayload {
   isOverdue: boolean;
 }
 
+export interface CreditLimitChangedNotificationPayload {
+  wholesalerId: string;
+  wholesalerName: string;
+  retailerName: string;
+  retailerPhone?: string;
+  previousLimit: number;
+  newLimit: number;
+}
+
 export interface NotificationResult {
   success: boolean;
   /** sent: 실제 발송 시도까지 감. not_configured: 정상적인 미설정 상태. error: 설정은 있는데 실패. */
@@ -367,6 +376,35 @@ ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
     wholesalerId: payload.wholesalerId,
     templateKey: "receivablesReminder",
     templateTitle: payload.isOverdue ? "미수금 정산 경과 리마인드" : "미수금 정산 기한 임박 리마인드",
+    formattedMessage,
+    targetPhone: payload.retailerPhone,
+  });
+}
+
+/**
+ * 거래처(식당) 대상 여신 한도 변경 알림톡.
+ *
+ * 공급사가 /dashboard/customers "결제 설정" 모달에서 한도를 바꿀 때마다 트리거된다.
+ * 한도 상향은 바이어 입장에서 "이제 주문 가능"이라는 의미가 커서 상향/하향 구분 없이
+ * 값이 실제로 바뀔 때마다 보낸다(변경 이력을 바이어도 알게 하려는 목적 — 공급사가
+ * 예외로 올려준 뒤 되돌리는 걸 깜빡해도 최소한 변경 시점은 양쪽 다 인지하게 된다).
+ */
+export async function sendCreditLimitChangedNotificationToRetailer(
+  payload: CreditLimitChangedNotificationPayload
+): Promise<NotificationResult> {
+  const formattedMessage = `[여신 한도 변경 안내]
+
+${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
+
+■ 변경 전 한도: ${formatWon(payload.previousLimit)}
+■ 변경 후 한도: ${formatWon(payload.newLimit)}
+
+여신 한도가 변경되었습니다. 확인 부탁드립니다.`;
+
+  return dispatchAlimtalk({
+    wholesalerId: payload.wholesalerId,
+    templateKey: "creditLimitChanged",
+    templateTitle: "여신 한도 변경 안내",
     formattedMessage,
     targetPhone: payload.retailerPhone,
   });

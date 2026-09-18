@@ -21,6 +21,7 @@ export interface AlimtalkTemplateCodes {
   cancelRequest?: string;
   creditExceeded?: string;
   receivablesReminder?: string;
+  creditLimitChanged?: string;
 }
 
 export interface AlimtalkSettingsStatus {
@@ -54,6 +55,8 @@ function toTemplateCodes(value: unknown): AlimtalkTemplateCodes {
     creditExceeded: typeof raw.creditExceeded === "string" ? raw.creditExceeded : undefined,
     receivablesReminder:
       typeof raw.receivablesReminder === "string" ? raw.receivablesReminder : undefined,
+    creditLimitChanged:
+      typeof raw.creditLimitChanged === "string" ? raw.creditLimitChanged : undefined,
   };
 }
 
