@@ -235,7 +235,7 @@ export async function GET(request: NextRequest) {
         request,
         errorPath,
         "claim_failed",
-        "이미 바이어(구매 회원)로 가입된 카카오 계정입니다. 공급사 가입은 다른 카카오 계정으로 진행해주세요."
+        "이미 고객(소매)로 가입된 카카오 계정입니다. 공급사 가입은 다른 카카오 계정으로 진행해주세요."
       );
     }
 

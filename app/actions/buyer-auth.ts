@@ -186,7 +186,7 @@ export async function withdrawBuyerAccountAction(): Promise<ActionResult> {
       const message = rpcError.message ?? "";
 
       if (message.includes("NOT_A_RETAILER_ACCOUNT")) {
-        throw new BuyerAuthError("not_a_buyer", "바이어(구매회원) 계정만 탈퇴할 수 있습니다.");
+        throw new BuyerAuthError("not_a_buyer", "고객(소매) 계정만 탈퇴할 수 있습니다.");
       }
 
       if (message.includes("RETAILER_NOT_FOUND")) {

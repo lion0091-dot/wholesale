@@ -70,7 +70,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <p style={{ fontSize: "13px", color: "#64748b", lineHeight: 1.6 }}>
           상품·단가·발주 관리를 위한 도매업체 관리자 화면입니다.
           <br />
-          바이어(구매 회원)는 전달받은 전용 초대 링크로 접속해 주세요.
+          고객(소매)는 전달받은 전용 초대 링크로 접속해 주세요.
         </p>
       </header>
 
@@ -103,7 +103,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           }}
         >
           <li>즉시 이용: 상품 등록, 맞춤 단가, 발주 접수, 마이페이지</li>
-          <li>승인 후 이용: 바이어 초대장 발부 (사업자 검증 등 행정 절차 완료 시 활성화)</li>
+          <li>승인 후 이용: 고객(소매) 초대장 발부 (사업자 검증 등 행정 절차 완료 시 활성화)</li>
         </ul>
       </section>
 

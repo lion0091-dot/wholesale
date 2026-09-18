@@ -66,7 +66,7 @@ function buildGroups(
 
     return {
       retailerId: relation.retailer_id,
-      restaurantName: retailer?.restaurant_name ?? "이름 미등록 바이어",
+      restaurantName: retailer?.restaurant_name ?? "이름 미등록 고객(소매)",
       creditLimit: Number(relation.credit_limit ?? 0),
       outstandingBalance: Number(relation.outstanding_balance ?? 0),
       settlementDueDays: dueDays,

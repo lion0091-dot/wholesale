@@ -60,7 +60,7 @@ async function backfillRetailerProfile(
 ): Promise<void> {
   const retailerPatch: Record<string, string> = {};
 
-  if (!buyer.restaurantName || buyer.restaurantName === "바이어") {
+  if (!buyer.restaurantName || buyer.restaurantName === "고객(소매)") {
     retailerPatch.restaurant_name = input.restaurantName;
   }
 

@@ -225,7 +225,7 @@ export default async function DashboardPage() {
           {businessName} 대시보드
         </h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          오늘의 발주 현황과 매출 요약을 확인하고, 바이어(구매 회원) 전용 미니샵 초대 링크를
+          오늘의 발주 현황과 매출 요약을 확인하고, 고객(소매) 전용 미니샵 초대 링크를
           전달하세요.
         </p>
       </header>
@@ -276,7 +276,7 @@ export default async function DashboardPage() {
         </div>
         <p style={{ fontSize: "13px", color: "#64748b", lineHeight: 1.6, marginBottom: "12px" }}>
           카카오톡으로 전달할 초대 문구와 전용 발주 링크를 한 번에 복사합니다. 링크를 받은
-          바이어만 내 미니샵과 단가를 볼 수 있습니다.
+          고객(소매)만 내 미니샵과 단가를 볼 수 있습니다.
         </p>
         <CopyInviteButton
           canIssue={canIssueInvite}
@@ -287,7 +287,7 @@ export default async function DashboardPage() {
 
       <section className="dash-cards">
         <SummaryCard
-          label="거래 중인 바이어"
+          label="거래 중인 고객(소매)"
           value={`${activeCustomerCount}곳`}
           hint="초대 수락 후 거래 활성 상태"
           accent="#0f172a"
@@ -313,7 +313,7 @@ export default async function DashboardPage() {
               href="/dashboard/custom-prices"
               style={{ fontSize: "13px", fontWeight: 600, color: "#2563eb" }}
             >
-              바이어별 맞춤 단가 설정 →
+              고객(소매)별 맞춤 단가 설정 →
             </Link>
             <Link
               href="/dashboard/orders"

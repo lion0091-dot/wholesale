@@ -276,10 +276,10 @@ export async function sendOrderNotificationToWholesaler(
   // 카카오 알림톡 승인 템플릿으로 등록해야 하는 기준 문구
   const formattedMessage = `[신규 B2B 육류 발주 접수 알림]
 
-${payload.wholesalerName} 대표님, 바이어(구매 회원)로부터 새로운 발주서가 접수되었습니다.
+${payload.wholesalerName} 대표님, 고객(소매)로부터 새로운 발주서가 접수되었습니다.
 
 ■ 발주 번호: ${payload.orderNumber}
-■ 발주처(바이어): ${payload.restaurantName}
+■ 발주처(소매): ${payload.restaurantName}
 ■ 발주 내역: ${payload.itemsSummary}
 ■ 총 발주 금액: ${payload.totalAmount.toLocaleString()}원
 ■ 배송지: ${payload.deliveryAddress}
@@ -307,10 +307,10 @@ export async function sendCancelRequestNotificationToWholesaler(
 ): Promise<NotificationResult> {
   const formattedMessage = `[주문 취소 요청 접수 알림]
 
-${payload.wholesalerName} 대표님, 바이어(구매 회원)가 접수된 발주서의 취소를 요청했습니다.
+${payload.wholesalerName} 대표님, 고객(소매)가 접수된 발주서의 취소를 요청했습니다.
 
 ■ 발주 번호: ${payload.orderNumber}
-■ 발주처(바이어): ${payload.restaurantName}
+■ 발주처(소매): ${payload.restaurantName}
 ■ 발주 금액: ${payload.totalAmount.toLocaleString()}원
 ■ 요청 사유: ${payload.cancelReason}
 
@@ -437,7 +437,7 @@ ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
   return dispatchAlimtalk({
     wholesalerId: payload.wholesalerId,
     templateKey: "creditLimitExceededRetailer",
-    templateTitle: "외상 거래 제한 안내(바이어)",
+    templateTitle: "외상 거래 제한 안내(고객)",
     formattedMessage,
     targetPhone: payload.retailerPhone,
   });

@@ -26,7 +26,7 @@ export default async function Image() {
       >
         <div style={{ fontSize: 76, fontWeight: 800 }}>미트 파트너스</div>
         <div style={{ fontSize: 28, marginTop: 24, color: "#94a3b8" }}>
-          도매업체와 바이어를 위한 1:1 모바일 발주 플랫폼
+          도매업체와 고객(소매)를 위한 1:1 모바일 발주 플랫폼
         </div>
       </div>
     ),

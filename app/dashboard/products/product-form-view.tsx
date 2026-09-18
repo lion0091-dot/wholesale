@@ -416,7 +416,7 @@ export function ProductFormView({
           {isEdit ? "상품 정보 수정" : "신규 상품 등록"}
         </h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          바이어(구매 회원) 미니샵에 노출될 품목 정보와 기본 단가를 입력하세요.
+          고객(소매) 미니샵에 노출될 품목 정보와 기본 단가를 입력하세요.
         </p>
       </header>
 
@@ -672,7 +672,7 @@ export function ProductFormView({
             name="description"
             rows={3}
             defaultValue={product?.description ?? ""}
-            placeholder="지육 스펙, 보관 방법 등 바이어 전달용 메모"
+            placeholder="지육 스펙, 보관 방법 등 고객(소매) 전달용 메모"
             style={{ ...fieldStyle, resize: "vertical" }}
           />
         </div>

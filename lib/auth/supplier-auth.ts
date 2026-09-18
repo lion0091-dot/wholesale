@@ -88,7 +88,7 @@ export function sanitizeSupplierReturnPath(raw: string | null | undefined): stri
 const SIGNUP_ERROR_MESSAGES: Record<string, string> = {
   AUTH_REQUIRED: "로그인이 필요합니다. 카카오 로그인을 다시 시도해주세요.",
   NOT_A_SUPPLIER_ACCOUNT:
-    "이미 바이어(구매 회원)로 가입된 카카오 계정입니다. 공급사 가입은 다른 카카오 계정으로 진행해주세요.",
+    "이미 고객(소매)로 가입된 카카오 계정입니다. 공급사 가입은 다른 카카오 계정으로 진행해주세요.",
   STAFF_ACCOUNT_CANNOT_ONBOARD:
     "내부 스태프 계정은 공급사 가입을 진행할 수 없습니다. 관리자 권한 부여를 기다려주세요.",
   INVALID_BUSINESS_NAME: "상호(업체명)를 2자 이상 입력해주세요.",

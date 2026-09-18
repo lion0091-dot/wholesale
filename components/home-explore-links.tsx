@@ -37,7 +37,7 @@ export function HomeExploreLinks({ showAdminEntry }: HomeExploreLinksProps) {
             도매업자 상품 관리 대시보드 →
           </a>
           <a href="/shop/demo-token-12345" style={{ fontSize: "12px", color: "#64748b" }}>
-            바이어 전용 모바일 미니샵 (카톡 초대 링크 체험) →
+            고객(소매) 전용 모바일 미니샵 (카톡 초대 링크 체험) →
           </a>
           <a href="/dashboard/orders" style={{ fontSize: "12px", color: "#64748b" }}>
             도매업자 발주 접수 관리 대시보드 →

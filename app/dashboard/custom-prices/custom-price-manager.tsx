@@ -116,7 +116,7 @@ export function CustomPriceManager({
     if (readOnly) {
       setMessage({
         type: "error",
-        text: "샘플 데이터에는 단가를 저장할 수 없습니다. 바이어 초대와 상품 등록 후 이용해주세요.",
+        text: "샘플 데이터에는 단가를 저장할 수 없습니다. 고객(소매) 초대와 상품 등록 후 이용해주세요.",
       });
       return;
     }
@@ -173,13 +173,13 @@ export function CustomPriceManager({
       {/* 1) 맞춤 단가 설정 폼 */}
       <form onSubmit={handleSubmit} style={{ ...cardStyle, display: "grid", gap: "14px" }}>
         <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a" }}>
-          바이어별 맞춤 단가 설정
+          고객(소매)별 맞춤 단가 설정
         </div>
 
         <div className="dash-form-grid-3">
           <div>
             <label htmlFor="retailer_id" style={labelStyle}>
-              고객(바이어) *
+              고객(소매) *
             </label>
             <select
               id="retailer_id"
@@ -188,7 +188,7 @@ export function CustomPriceManager({
               required
               style={fieldStyle}
             >
-              {customers.length === 0 && <option value="">거래 중인 바이어 없음</option>}
+              {customers.length === 0 && <option value="">거래 중인 고객(소매) 없음</option>}
               {customers.map((customer) => (
                 <option key={customer.id} value={customer.id}>
                   {customer.name}
@@ -357,7 +357,7 @@ export function CustomPriceManager({
               borderRadius: "6px",
             }}
           >
-            <option value="all">전체 바이어</option>
+            <option value="all">전체 고객(소매)</option>
             {customers.map((customer) => (
               <option key={customer.id} value={customer.id}>
                 {customer.name}
@@ -375,7 +375,7 @@ export function CustomPriceManager({
               color: "#94a3b8",
             }}
           >
-            지정된 맞춤 단가가 없습니다. 위 폼에서 바이어별 VIP 단가를 설정하세요.
+            지정된 맞춤 단가가 없습니다. 위 폼에서 고객(소매)별 VIP 단가를 설정하세요.
           </p>
         ) : (
           <>
@@ -383,7 +383,7 @@ export function CustomPriceManager({
             <table className="dash-table">
               <thead>
                 <tr>
-                  <th>고객(바이어)</th>
+                  <th>고객(소매)</th>
                   <th>상품</th>
                   <th>기준 단가</th>
                   <th>맞춤 단가</th>

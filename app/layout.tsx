@@ -5,10 +5,10 @@ import { StagingBanner } from "@/components/staging-banner";
 
 export const metadata: Metadata = {
   title: "미트 파트너스",
-  description: "도매업체와 바이어(구매 회원)를 위한 1:1 모바일 발주 플랫폼",
+  description: "도매업체와 고객(소매)를 위한 1:1 모바일 발주 플랫폼",
   openGraph: {
     title: "미트 파트너스",
-    description: "도매업체와 바이어(구매 회원)를 위한 1:1 모바일 발주 플랫폼",
+    description: "도매업체와 고객(소매)를 위한 1:1 모바일 발주 플랫폼",
     type: "website",
     locale: "ko_KR",
   },

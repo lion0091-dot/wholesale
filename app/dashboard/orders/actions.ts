@@ -102,7 +102,7 @@ export async function updateOrderStatusAction(
 
     // 취소 '요청'은 바이어만 생성할 수 있고, 공급사는 승인/반려만 한다.
     if (!isSupplierAssignableStatus(nextStatus)) {
-      throw new RbacError("취소 요청은 바이어만 생성할 수 있습니다.");
+      throw new RbacError("취소 요청은 고객(소매)만 생성할 수 있습니다.");
     }
 
     const { data: order } = await supabase

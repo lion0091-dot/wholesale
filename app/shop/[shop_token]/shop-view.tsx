@@ -215,7 +215,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
           >
             <div style={{ fontSize: "32px", marginBottom: "12px" }}>🔒</div>
             <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#991b1b", marginBottom: "6px" }}>
-              바이어(구매 회원) 전용 시크릿 딜 룸
+              고객(소매) 전용 시크릿 딜 룸
             </h3>
             <p style={{ fontSize: "13px", color: "#475569", lineHeight: 1.6, marginBottom: "20px" }}>
               정규 시장 가격 붕괴를 방지하기 위해 <strong>인증된 단골 거래처</strong>에게만 한정 수량 당일 마감 특가가 공개됩니다.

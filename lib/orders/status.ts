@@ -119,19 +119,19 @@ const ALIMTALK_BY_STATUS: Record<OrderStatus, AlimtalkStatus> = {
   },
   confirmed: {
     label: "발주 확정 안내",
-    target: "바이어(구매 회원)",
+    target: "고객(소매)",
     bg: "#dbeafe",
     color: "#1e40af",
   },
   shipping: {
     label: "출고/배송 시작 안내",
-    target: "바이어(구매 회원)",
+    target: "고객(소매)",
     bg: "#e0e7ff",
     color: "#3730a3",
   },
   delivered: {
     label: "배송 완료 안내",
-    target: "바이어(구매 회원)",
+    target: "고객(소매)",
     bg: "#dcfce7",
     color: "#166534",
   },
@@ -143,13 +143,13 @@ const ALIMTALK_BY_STATUS: Record<OrderStatus, AlimtalkStatus> = {
   },
   cancel_rejected: {
     label: "취소 요청 반려 안내",
-    target: "바이어(구매 회원)",
+    target: "고객(소매)",
     bg: "#f1f5f9",
     color: "#475569",
   },
   cancelled: {
     label: "주문 취소 안내",
-    target: "바이어(구매 회원)",
+    target: "고객(소매)",
     bg: "#fee2e2",
     color: "#991b1b",
   },

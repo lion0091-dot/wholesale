@@ -8,7 +8,7 @@ import Link from "next/link";
  * 실제 사업자 정보는 환경변수로 주입하고, 미설정 시 플레이스홀더를 노출한다.
  */
 const PLATFORM = {
-  companyName: process.env.NEXT_PUBLIC_COMPANY_NAME || "(주)미트체인",
+  companyName: process.env.NEXT_PUBLIC_COMPANY_NAME || "미트 파트너스",
   representative: process.env.NEXT_PUBLIC_COMPANY_REPRESENTATIVE || "홍길동",
   businessNumber: process.env.NEXT_PUBLIC_COMPANY_BUSINESS_NUMBER || "220-88-00000",
   mailOrderNumber:
@@ -124,7 +124,7 @@ export function LegalFooter() {
               }}
             >
               <p>
-                {PLATFORM.companyName}은(는) 통신판매중개자로서 개별 육류 공급사와 바이어(구매 회원) 간의 주문
+                {PLATFORM.companyName}은(는) 통신판매중개자로서 개별 육류 공급사와 고객(소매) 간의 주문
                 중개 시스템만을 제공하며, 통신판매의 당사자가 아닙니다. 상품의 등록, 재고, 단가, 품질 및 배송에
                 대한 일체의 법적 책임은 해당 공급사에 있습니다.
               </p>

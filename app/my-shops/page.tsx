@@ -82,7 +82,7 @@ export default async function MyShopsPage() {
   if (profile?.role !== "retailer") {
     return (
       <main style={mainStyle}>
-        <div style={noticeStyle}>바이어(구매 회원) 계정에서만 이용할 수 있는 화면입니다.</div>
+        <div style={noticeStyle}>고객(소매) 계정에서만 이용할 수 있는 화면입니다.</div>
       </main>
     );
   }

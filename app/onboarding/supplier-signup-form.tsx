@@ -123,7 +123,7 @@ export function SupplierSignupForm({ defaultName, defaultPhone }: SupplierSignup
           disabled={pending}
           style={inputStyle}
         />
-        <p style={hintStyle}>바이어에게 표시되는 이름입니다. 나중에 수정할 수 있습니다.</p>
+        <p style={hintStyle}>고객(소매)에게 표시되는 이름입니다. 나중에 수정할 수 있습니다.</p>
       </div>
 
       <div style={{ marginBottom: "14px" }}>

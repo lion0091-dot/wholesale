@@ -315,7 +315,7 @@ export async function requireLinkedBuyer(
   if (role === "wholesaler" || role === "super_admin") {
     throw new BuyerAuthError(
       "not_a_buyer",
-      "공급사/관리자 계정으로는 발주할 수 없습니다. 바이어 카카오 계정으로 로그인해주세요."
+      "공급사/관리자 계정으로는 발주할 수 없습니다. 고객(소매) 카카오 계정으로 로그인해주세요."
     );
   }
 
@@ -363,7 +363,7 @@ export async function requireLinkedBuyer(
   return {
     userId: user.id,
     retailerId: retailer.id as string,
-    restaurantName: (retailer.restaurant_name as string | null) ?? "바이어",
+    restaurantName: (retailer.restaurant_name as string | null) ?? "고객(소매)",
     contactPhone: (profile?.phone as string | undefined) ?? null,
     deliveryAddress:
       [retailer.delivery_address, retailer.delivery_address_detail].filter(Boolean).join(", ") ||
@@ -393,7 +393,7 @@ const CLAIM_ERROR_MESSAGES: Record<string, string> = {
   AUTH_REQUIRED: "카카오 로그인이 필요합니다. 다시 시도해주세요.",
   INVALID_SHOP_TOKEN: "유효하지 않거나 중지된 공급사 링크입니다. 공급사에 문의해주세요.",
   NOT_A_BUYER_ACCOUNT:
-    "공급사/관리자 계정으로는 바이어 미니샵을 이용할 수 없습니다. 바이어 카카오 계정으로 로그인해주세요.",
+    "공급사/관리자 계정으로는 고객(소매) 미니샵을 이용할 수 없습니다. 고객(소매) 카카오 계정으로 로그인해주세요.",
 };
 
 export async function claimShopAccess(shopToken: string): Promise<ClaimShopAccessResult> {

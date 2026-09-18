@@ -149,7 +149,7 @@ export function OrderBoard({ orders, isLiveChannel, isDemo = false }: OrderBoard
           type="search"
           value={keyword}
           onChange={(event) => setKeyword(event.target.value)}
-          placeholder="주문번호 또는 발주처(바이어) 상호 검색"
+          placeholder="주문번호 또는 발주처(소매) 상호 검색"
           style={{
             width: "100%",
             padding: "8px 10px",
@@ -171,7 +171,7 @@ export function OrderBoard({ orders, isLiveChannel, isDemo = false }: OrderBoard
             <thead>
               <tr>
                 <th>주문번호 / 접수일시</th>
-                <th>발주처(바이어)</th>
+                <th>발주처(소매)</th>
                 <th>발주 품목</th>
                 <th>총 금액</th>
                 <th>주문 상태</th>

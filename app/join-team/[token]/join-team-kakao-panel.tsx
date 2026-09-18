@@ -70,7 +70,7 @@ export function JoinTeamKakaoPanel({ token, initialError }: JoinTeamKakaoPanelPr
 
       <p style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.7, marginTop: "14px" }}>
         본인 명의 카카오 계정으로 로그인하면 자동으로 이 업체의 직원으로 등록됩니다. 다른
-        업체의 대표·직원이거나 이미 바이어(구매 회원)로 가입된 계정은 사용할 수 없습니다.
+        업체의 대표·직원이거나 이미 고객(소매)로 가입된 계정은 사용할 수 없습니다.
       </p>
     </div>
   );

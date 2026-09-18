@@ -27,7 +27,7 @@ interface RelationRow {
 function relationName(row: RelationRow): string {
   const retailer = Array.isArray(row.retailers) ? row.retailers[0] : row.retailers;
 
-  return retailer?.restaurant_name ?? "이름 미등록 바이어";
+  return retailer?.restaurant_name ?? "이름 미등록 고객(소매)";
 }
 
 interface CustomPricesPageProps {
@@ -87,7 +87,7 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
       assigned = (customPriceResult.success ? customPriceResult.data ?? [] : []).map((row) => ({
         id: row.id,
         retailerId: row.retailer_id,
-        retailerName: customerMap.get(row.retailer_id)?.name ?? "거래 종료된 바이어",
+        retailerName: customerMap.get(row.retailer_id)?.name ?? "거래 종료된 고객(소매)",
         productId: row.product_id,
         productName: productMap.get(row.product_id)?.name ?? "삭제된 상품",
         basePrice: productMap.get(row.product_id)?.base_price ?? 0,
@@ -133,8 +133,8 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>맞춤 단가 관리</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          거래 중인 바이어(구매 회원)별 VIP 단가를 지정합니다. 지정하지 않은 상품은 기본 단가가
-          적용되며, 단가는 해당 바이어에게만 노출됩니다.
+          거래 중인 고객(소매)별 VIP 단가를 지정합니다. 지정하지 않은 상품은 기본 단가가
+          적용되며, 단가는 해당 고객(소매)에게만 노출됩니다.
         </p>
       </header>
 
@@ -149,7 +149,7 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
             borderRadius: "8px",
           }}
         >
-          ℹ️ 거래 중인 바이어 또는 등록된 상품이 없어 샘플 데이터로 화면을 표시합니다. 샘플
+          ℹ️ 거래 중인 고객(소매) 또는 등록된 상품이 없어 샘플 데이터로 화면을 표시합니다. 샘플
           데이터는 저장/삭제되지 않습니다.
         </div>
       )}

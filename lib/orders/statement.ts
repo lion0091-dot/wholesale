@@ -158,7 +158,7 @@ async function fetchParties(
       phone: (w?.profile_id && phoneByProfileId.get(w.profile_id)) || null,
     },
     buyer: {
-      name: r?.restaurant_name ?? "바이어 정보 미등록",
+      name: r?.restaurant_name ?? "고객(소매) 정보 미등록",
       representativeName: r?.representative_name ?? null,
       businessNumber: r?.business_number ?? null,
       address: r

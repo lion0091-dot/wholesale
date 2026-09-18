@@ -25,7 +25,7 @@ interface OrderJoinRow {
 function retailerName(row: OrderJoinRow): string {
   const retailer = Array.isArray(row.retailers) ? row.retailers[0] : row.retailers;
 
-  return retailer?.restaurant_name ?? "이름 미등록 바이어";
+  return retailer?.restaurant_name ?? "이름 미등록 고객(소매)";
 }
 
 /** "한우 1++ 등심 2 외 2건" 형태의 품목 요약 */

@@ -122,7 +122,7 @@ async function loadOrder(
             a.created_at.localeCompare(b.created_at)
           ),
           retailer: {
-            restaurant_name: retailer?.restaurant_name ?? "이름 미등록 바이어",
+            restaurant_name: retailer?.restaurant_name ?? "이름 미등록 고객(소매)",
             representative_name: retailer?.representative_name ?? null,
             business_number: retailer?.business_number ?? null,
             delivery_address: retailer?.delivery_address ?? null,
@@ -366,7 +366,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
           <div style={cardTitleStyle}>배송지 정보</div>
           <dl style={{ display: "flex", flexDirection: "column", gap: "9px", fontSize: "13px" }}>
             {[
-              { term: "발주처(바이어)", value: order.retailer.restaurant_name },
+              { term: "발주처(소매)", value: order.retailer.restaurant_name },
               { term: "대표자", value: order.retailer.representative_name ?? "미등록" },
               { term: "사업자번호", value: order.retailer.business_number ?? "미등록" },
               { term: "배송 주소", value: order.deliveryAddress },

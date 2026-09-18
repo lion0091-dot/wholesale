@@ -70,7 +70,7 @@ export default async function DashboardInvitesPage() {
         <header>
           <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>영업 · 초대장</h1>
           <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-            바이어에게 보낼 미니샵 전용 초대장을 발부합니다.
+            고객(소매)에게 보낼 미니샵 전용 초대장을 발부합니다.
           </p>
         </header>
 
@@ -121,8 +121,8 @@ export default async function DashboardInvitesPage() {
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>영업 · 초대장</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px", lineHeight: 1.7 }}>
-          바이어에게 보낼 미니샵 전용 초대장(카카오톡 문구 + 발주 링크)을 발부합니다. 링크를 받은
-          바이어만 내 상품과 단가를 볼 수 있습니다.
+          고객(소매)에게 보낼 미니샵 전용 초대장(카카오톡 문구 + 발주 링크)을 발부합니다. 링크를 받은
+          고객(소매)만 내 상품과 단가를 볼 수 있습니다.
         </p>
       </header>
 
@@ -144,7 +144,7 @@ export default async function DashboardInvitesPage() {
         />
         {canIssue && (
           <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "10px", lineHeight: 1.7 }}>
-            복사한 문구를 카카오톡으로 그대로 전달하세요. 바이어가 링크를 열고 카카오 로그인 한
+            복사한 문구를 카카오톡으로 그대로 전달하세요. 고객(소매)이 링크를 열고 카카오 로그인 한
             번을 마치면 단골 거래처로 자동 등록됩니다.
           </p>
         )}
@@ -241,7 +241,7 @@ export default async function DashboardInvitesPage() {
             미니샵 썸네일
           </div>
           <p style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.7, marginBottom: "12px" }}>
-            바이어의 &quot;내 거래처&quot; 목록에서 상호명 옆에 표시되는 업체 대표 사진/로고입니다.
+            고객(소매)의 &quot;내 거래처&quot; 목록에서 상호명 옆에 표시되는 업체 대표 사진/로고입니다.
           </p>
           <ShopThumbnailForm currentThumbnailUrl={account.shopThumbnailUrl} />
         </section>

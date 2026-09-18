@@ -166,7 +166,7 @@ export default async function DashboardCustomersPage() {
 
         return {
           id: row.retailer_id,
-          restaurantName: retailer?.restaurant_name ?? "이름 미등록 바이어",
+          restaurantName: retailer?.restaurant_name ?? "이름 미등록 고객(소매)",
           representativeName: retailer?.representative_name ?? "미등록",
           businessNumber: retailer?.business_number ?? null,
           deliveryAddress: fullAddress(
@@ -239,7 +239,7 @@ export default async function DashboardCustomersPage() {
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>고객 관리</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          단골 바이어(구매 회원)의 사업자 정보와 발주 실적을 확인하고, 미니샵 전용 초대 링크를
+          단골 고객(소매)의 사업자 정보와 발주 실적을 확인하고, 미니샵 전용 초대 링크를
           발송합니다.
         </p>
       </header>

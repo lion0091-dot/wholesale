@@ -359,7 +359,7 @@ export function CustomerTable({
           <p
             style={{ padding: "40px 16px", textAlign: "center", fontSize: "13px", color: "#94a3b8" }}
           >
-            조건에 맞는 고객(바이어)이 없습니다.
+            조건에 맞는 고객(소매)이 없습니다.
           </p>
         ) : viewMode === "card" ? (
           <CustomerCardGrid
@@ -377,7 +377,7 @@ export function CustomerTable({
             <table className="dash-table">
               <thead>
                 <tr>
-                  <th>고객사 (바이어)</th>
+                  <th>고객사 (소매)</th>
                   <th>사업자 정보</th>
                   <th>배송지</th>
                   <th>맞춤 단가</th>
