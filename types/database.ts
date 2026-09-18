@@ -56,6 +56,8 @@ export interface Wholesaler {
   shop_token: string;
   status: WholesalerStatus;
   subscription_status: SubscriptionStatus;
+  /** 무료 체험 시작 시각 — subscription_status='trial'일 때 +30일 경과 시 접근 차단 */
+  trial_started_at: string;
   created_at: string;
   updated_at: string;
   /**

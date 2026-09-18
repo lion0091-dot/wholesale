@@ -47,6 +47,10 @@
 
 - [docs/alimtalk-integration.md](docs/alimtalk-integration.md) — 기존 스텁(플랫폼 공용 키 가정)을 공급사별 자격정보(비즈뿌리오 1:1 계약) 구조로 전면 재설계. 잠긴 설계 결정(비밀번호 AES 암호화 저장, 플랫폼이 대행사 계정 관리 안 함, 설정 화면 owner/manager 전용), 비즈뿌리오 API 스펙, 코드 전부 완료. 실계정 미검증.
 
+## 플랫폼 구독료 (거래처 수 비례 종량제) (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
+
+- [docs/platform-subscription-billing.md](docs/platform-subscription-billing.md) — 공급사가 플랫폼에 내는 구독료(거래처 1곳당 월 5,000원, 거래중 상태만 카운트) + 무료체험 30일 + 연체/해지/체험만료 시 `/dashboard` 접근 차단(`/billing-locked`로 리다이렉트). 결제 자동화는 미정 — 지금은 `/admin/suppliers`에서 super_admin 수동 확인/전환.
+
 ## Downloads 폴더 패치 3개 보류 (2026-09-16, Vercel 배포 우선 진행 중)
 
 - [docs/deferred-drive-patches.md](docs/deferred-drive-patches.md) — 이전 세션 산출물 패치 3개(PRD/ROADMAP 8번 섹션 추가, wholesaler 구버전 화면 삭제, KNOWN_GAPS.md 신규 생성) 검토 결과 전부 stale로 판정, 적용 보류. Vercel 배포 완료 후 재검토 예정.

@@ -25,6 +25,7 @@ const DEMO_SUPPLIERS: Wholesaler[] = [
     shop_token: "demo-token-12345",
     status: "active",
     subscription_status: "active",
+    trial_started_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
     created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
     updated_at: new Date().toISOString(),
   },
@@ -43,6 +44,7 @@ const DEMO_SUPPLIERS: Wholesaler[] = [
     shop_token: "token-doksan-hanwoo",
     status: "pending",
     subscription_status: "trial",
+    trial_started_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
     created_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
     updated_at: new Date().toISOString(),
   },
@@ -61,6 +63,7 @@ const DEMO_SUPPLIERS: Wholesaler[] = [
     shop_token: "token-garak-meat",
     status: "suspended",
     subscription_status: "overdue",
+    trial_started_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 60).toISOString(),
     created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(),
     updated_at: new Date().toISOString(),
   },
@@ -84,16 +87,31 @@ export default async function AdminSuppliersPage() {
 
   let suppliers: Wholesaler[] = DEMO_SUPPLIERS;
   let canGrantAdmin = false;
+  // 구독료(거래처 수 비례 종량제) 계산용 — wholesaler_id → 거래중(active) 거래처 수.
+  // 데모 모드는 실제 wholesaler_retailers 행이 없으므로 시연용 고정값을 쓴다.
+  let activeRetailerCounts: Record<string, number> = {
+    "demo-wholesaler-1": 12,
+    "demo-wholesaler-2": 0,
+    "demo-wholesaler-3": 5,
+  };
 
   if (isConfigured) {
     const supabase = await createClient();
 
-    const { data } = await supabase
-      .from("wholesalers")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const [{ data }, { data: relationRows }] = await Promise.all([
+      supabase.from("wholesalers").select("*").order("created_at", { ascending: false }),
+      supabase.from("wholesaler_retailers").select("wholesaler_id").eq("status", "active"),
+    ]);
 
     suppliers = (data as Wholesaler[] | null) ?? [];
+
+    activeRetailerCounts = ((relationRows ?? []) as Array<{ wholesaler_id: string }>).reduce(
+      (acc, row) => {
+        acc[row.wholesaler_id] = (acc[row.wholesaler_id] ?? 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>
+    );
 
     // "관리자 관리" 링크는 다른 관리자를 승격/강등할 수 있는 계정(can_grant=true)에게만 보인다.
     // /admin/admins 자체의 가드(requireAdminGranter)와 동일한 RPC로 판정한다.
@@ -188,7 +206,7 @@ export default async function AdminSuppliersPage() {
       )}
 
       {/* 공급사 승인/거절 및 구독 권한 관리 목록 */}
-      <SupplierApprovalList initialSuppliers={suppliers} />
+      <SupplierApprovalList initialSuppliers={suppliers} activeRetailerCounts={activeRetailerCounts} />
     </main>
   );
 }

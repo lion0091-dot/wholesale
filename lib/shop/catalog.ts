@@ -67,6 +67,7 @@ function demoWholesaler(shopToken: string): Wholesaler {
     shop_token: shopToken,
     status: "active",
     subscription_status: "active",
+    trial_started_at: timestamp,
     created_at: timestamp,
     updated_at: timestamp,
   };

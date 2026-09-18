@@ -12,10 +12,17 @@ import {
   resolveDocumentVerification,
   type DocumentVerificationLevel,
 } from "@/lib/validation/business-number";
+import {
+  computeMonthlyFee,
+  isBillingBlocked,
+  trialDaysRemaining,
+} from "@/lib/supplier/billing";
 import type { Wholesaler, WholesalerStatus, SubscriptionStatus } from "@/types/database";
 
 interface SupplierApprovalListProps {
   initialSuppliers: Wholesaler[];
+  /** wholesaler_id → 거래중(active) 거래처 수 (구독료 = 이 수 × 5,000원) */
+  activeRetailerCounts: Record<string, number>;
 }
 
 interface BadgeStyle {
@@ -74,7 +81,10 @@ function formatDate(value: string): string {
   });
 }
 
-export function SupplierApprovalList({ initialSuppliers }: SupplierApprovalListProps) {
+export function SupplierApprovalList({
+  initialSuppliers,
+  activeRetailerCounts,
+}: SupplierApprovalListProps) {
   const [suppliers, setSuppliers] = useState<Wholesaler[]>(initialSuppliers);
   const [activeFilter, setActiveFilter] = useState<WholesalerStatus | "all">("all");
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -236,6 +246,13 @@ export function SupplierApprovalList({ initialSuppliers }: SupplierApprovalListP
             const doc = resolveDocumentVerification(supplier.business_number, supplier.status);
             const docStyle = DOC_BADGES[doc.level];
             const isBusy = loadingId === supplier.id;
+            const activeRetailerCount = activeRetailerCounts[supplier.id] ?? 0;
+            const monthlyFee = computeMonthlyFee(activeRetailerCount);
+            const blocked = isBillingBlocked(supplier.subscription_status, supplier.trial_started_at);
+            const daysLeft =
+              supplier.subscription_status === "trial"
+                ? trialDaysRemaining(supplier.trial_started_at)
+                : null;
 
             return (
               <div
@@ -293,6 +310,19 @@ export function SupplierApprovalList({ initialSuppliers }: SupplierApprovalListP
 
                     <p style={{ fontSize: "12px", color: "#64748b", marginTop: "6px" }}>
                       대표자: {supplier.representative_name} | 신청일: {formatDate(supplier.created_at)}
+                    </p>
+                    <p style={{ fontSize: "12px", color: "#334155", marginTop: "4px", fontWeight: 600 }}>
+                      이번 달 구독료: {monthlyFee.toLocaleString("ko-KR")}원 (거래처 {activeRetailerCount}곳 ×
+                      5,000원)
+                      {daysLeft !== null && (
+                        <span style={{ color: daysLeft <= 7 ? "#dc2626" : "#64748b", fontWeight: 700 }}>
+                          {" "}
+                          · 체험 종료까지 {daysLeft}일
+                        </span>
+                      )}
+                      {blocked && (
+                        <span style={{ color: "#dc2626", fontWeight: 700 }}> · 🔒 백오피스 접근 차단됨</span>
+                      )}
                     </p>
                   </div>
 

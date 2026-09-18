@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { updateSession, withSessionCookies } from "@/lib/supabase/middleware";
 import { isDevOrgBypassEnabled } from "@/lib/auth/dev-mode";
 import { isSuperAdminEmail } from "@/lib/auth/super-admin";
+import { isBillingBlocked } from "@/lib/supplier/billing";
 
 /** 공급사 백오피스 — 로그인 + 조직 소속(organization_staff) 필수 */
 const SUPPLIER_PREFIXES = ["/dashboard"];
@@ -17,6 +18,9 @@ const ADMIN_PREFIXES = ["/admin"];
  * 백오피스 레이아웃(사이드바/조직 헤더) 밖의 독립 라우트여야 한다.
  */
 const ORG_ONBOARDING_PATH = "/onboarding";
+
+/** 구독료 연체/해지/체험만료 시 보내는 안내 경로. /dashboard 밖이어야 리다이렉트 루프가 안 생긴다. */
+const BILLING_LOCKED_PATH = "/billing-locked";
 
 const LOGIN_PATH = "/login";
 
@@ -132,6 +136,30 @@ export async function middleware(request: NextRequest) {
       // 다운스트림(Server Component)에서 재조회 없이 사용할 수 있도록 전달
       response.headers.set("x-organization-id", String(staff.organization_id));
       response.headers.set("x-organization-role", String(staff.role));
+
+      // 구독료(거래처 수 비례 종량제) 연체/해지/체험만료 시 백오피스 접근 차단.
+      // /billing-locked는 /dashboard 밖이라 이 블록을 다시 타지 않으므로 루프가 없다.
+      const { data: organization } = await supabase
+        .from("organizations")
+        .select("wholesalers ( subscription_status, trial_started_at )")
+        .eq("id", staff.organization_id)
+        .maybeSingle();
+
+      const wholesaler = Array.isArray(organization?.wholesalers)
+        ? organization.wholesalers[0]
+        : organization?.wholesalers;
+
+      if (wholesaler && isBillingBlocked(wholesaler.subscription_status, wholesaler.trial_started_at)) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (profile?.role !== "super_admin") {
+          return withSessionCookies(redirectTo(request, BILLING_LOCKED_PATH), response);
+        }
+      }
     }
 
     return response;
