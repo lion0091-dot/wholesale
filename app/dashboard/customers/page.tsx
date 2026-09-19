@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
+import { isRetailerNamePlaceholder } from "@/lib/shop/retailer-placeholder";
 import {
   describeInviteRestriction,
   getSupplierAccount,
@@ -76,6 +77,18 @@ function fullAddress(
   }
 
   return detail ? `${address} ${detail}` : address;
+}
+
+/**
+ * 카카오 로그인만 하고 첫 발주서를 아직 안 써본 거래처는 상호/배송지가
+ * claim_shop_access() RPC가 채워둔 자리표시자("카카오 회원", 빈 배송지)로 남아있다.
+ * 담당자 정보도 같은 카카오 계정 하나로 결정되므로 이 두 필드만 보면 충분하다.
+ */
+function hasIncompleteProfile(
+  restaurantName: string | null | undefined,
+  deliveryAddress: string | null | undefined
+): boolean {
+  return isRetailerNamePlaceholder(restaurantName) || !deliveryAddress;
 }
 
 /** 취소 건은 실적 금액에서 제외하고, 최근 발주 일시는 전체 기준으로 집계한다. */
@@ -249,6 +262,10 @@ export default async function DashboardCustomersPage() {
           settlementDueDays: Number(row.settlement_due_days ?? 30),
           allowedPaymentMethods: row.allowed_payment_methods ?? ["prepaid"],
           contactPhone: phoneByRetailer.get(row.retailer_id) ?? null,
+          hasIncompleteProfile: hasIncompleteProfile(
+            retailer?.restaurant_name,
+            retailer?.delivery_address
+          ),
         };
       });
 
@@ -297,6 +314,10 @@ export default async function DashboardCustomersPage() {
         // "문자로 바로 보내기" 버튼이 실제 배정돼 있을 수 있는 번호로 문자 앱을 열게 되므로
         // null로 둬서 그 버튼 자체가 안 뜨게 한다(contactPhone 조건부 렌더링).
         contactPhone: null,
+        hasIncompleteProfile: hasIncompleteProfile(
+          retailer.restaurant_name,
+          retailer.delivery_address
+        ),
       };
     });
   }

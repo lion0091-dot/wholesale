@@ -13,6 +13,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
 import { SampleBadge } from "@/components/sample-badge";
+import { IncompleteProfileBadge } from "@/components/incomplete-profile-badge";
 import type { RelationshipStatus } from "@/types/database";
 import type { CustomerRow } from "./customer-types";
 
@@ -161,6 +162,7 @@ export function CustomerCardGrid({
                     {customer.restaurantName}
                   </h3>
                   {isDemo && <SampleBadge />}
+                  {customer.hasIncompleteProfile && <IncompleteProfileBadge />}
                 </div>
                 <p style={{ fontSize: "12px", color: "#475569", marginTop: "3px" }}>
                   담당자 {customer.representativeName}

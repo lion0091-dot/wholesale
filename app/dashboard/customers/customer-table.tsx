@@ -5,6 +5,7 @@ import Link from "next/link";
 import { issueInviteAction, type IssuedInvite } from "@/app/actions/invite";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
 import { SampleBadge } from "@/components/sample-badge";
+import { IncompleteProfileBadge } from "@/components/incomplete-profile-badge";
 import type { RelationshipStatus } from "@/types/database";
 import { CustomerCardGrid } from "./customer-card-grid";
 import { updateCreditLimitAction, updateRetailerStatusAction } from "./actions";
@@ -433,9 +434,10 @@ export function CustomerTable({
                       style={{ opacity: customer.relationStatus === "blocked" ? 0.6 : 1 }}
                     >
                       <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                           <div style={{ fontWeight: 700 }}>{customer.restaurantName}</div>
                           {readOnly && <SampleBadge />}
+                          {customer.hasIncompleteProfile && <IncompleteProfileBadge />}
                         </div>
                         <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
                           거래 시작 {formatOrderedAt(customer.joinedAt)}

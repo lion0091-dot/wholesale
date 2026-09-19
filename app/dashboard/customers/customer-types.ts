@@ -28,4 +28,6 @@ export interface CustomerRow {
   allowedPaymentMethods: string[];
   /** 거래처 담당자 연락처 — "문자로 바로 보내기" 딥링크용. 조회 실패 시 null */
   contactPhone: string | null;
+  /** 상호명 또는 배송지가 아직 자리표시자인 카카오 회원 — 공급사가 발주/배송 전에 확인이 필요함 */
+  hasIncompleteProfile: boolean;
 }
