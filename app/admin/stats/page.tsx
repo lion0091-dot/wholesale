@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
@@ -6,6 +5,7 @@ import { isSuperAdminSession } from "@/lib/auth/rbac";
 import { getMonthlyPlatformStats, type MonthlyPlatformStat } from "@/lib/supplier/platform-stats";
 import { AdminTrendChart } from "@/components/admin-trend-chart";
 import { AdminDateRangeFilter } from "@/components/admin-date-range-filter";
+import { AdminNav } from "@/components/admin-nav";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -104,12 +104,7 @@ export default async function AdminStatsPage({ searchParams }: PageProps) {
   return (
     <main style={{ maxWidth: "768px", margin: "0 auto", padding: "24px 16px" }}>
       <header style={{ marginBottom: "24px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ fontSize: "12px", color: "#dc2626", fontWeight: 700 }}>플랫폼 슈퍼 관리자</span>
-          <Link href="/admin/suppliers" style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}>
-            ← 공급사 승인으로 이동
-          </Link>
-        </div>
+        <AdminNav />
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
           월별 구독자·구독료 추이
         </h1>

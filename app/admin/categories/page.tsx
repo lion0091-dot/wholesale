@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { isSuperAdminSession } from "@/lib/auth/rbac";
 import { ensureSuperAdminBootstrap } from "@/lib/auth/super-admin-bootstrap";
+import { AdminNav } from "@/components/admin-nav";
 import { CategoryManager } from "./category-manager";
 
 export const metadata = { title: "상품 카테고리 관리 | 미트 파트너스" };
@@ -52,9 +52,7 @@ export default async function AdminCategoriesPage() {
 
   return (
     <main style={{ maxWidth: "480px", margin: "0 auto", padding: "24px 16px" }}>
-      <Link href="/admin/suppliers" style={{ fontSize: "12px", color: "#64748b", textDecoration: "underline" }}>
-        ← 공급사 관리로 이동
-      </Link>
+      <AdminNav />
       <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: "8px 0 4px" }}>
         상품 카테고리 관리
       </h1>

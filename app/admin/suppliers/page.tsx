@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
@@ -11,6 +10,7 @@ import {
   resolveDiscountForWholesaler,
   type ActiveEventDiscount,
 } from "@/lib/supplier/platform-events";
+import { AdminNav } from "@/components/admin-nav";
 import { SupplierApprovalList } from "./supplier-approval-list";
 import type { Wholesaler } from "@/types/database";
 
@@ -107,7 +107,6 @@ export default async function AdminSuppliersPage() {
   }
 
   let suppliers: AdminSupplierItem[] = DEMO_SUPPLIERS;
-  let canGrantAdmin = false;
   // 구독료(구간별 누진 단가) 계산용 — wholesaler_id → 이번 달 실발주(취소 제외) 거래처 수.
   // 데모 모드는 실제 orders 행이 없으므로 시연용 고정값을 쓴다.
   let billedRetailerCounts: Record<string, number> = {
@@ -137,11 +136,6 @@ export default async function AdminSuppliersPage() {
     eventDiscounts = Object.fromEntries(
       suppliers.map((supplier) => [supplier.id, resolveDiscountForWholesaler(supplier.id, eventsSnapshot)])
     );
-
-    // "관리자 관리" 링크는 다른 관리자를 승격/강등할 수 있는 계정(can_grant=true)에게만 보인다.
-    // /admin/admins 자체의 가드(requireAdminGranter)와 동일한 RPC로 판정한다.
-    const { data: grantCheck } = await supabase.rpc("can_current_user_grant_admin");
-    canGrantAdmin = Boolean(grantCheck);
   }
 
   const pendingCount = suppliers.filter((s) => s.status === "pending").length;
@@ -152,35 +146,7 @@ export default async function AdminSuppliersPage() {
   return (
     <main style={{ maxWidth: "768px", margin: "0 auto", padding: "24px 16px" }}>
       <header style={{ marginBottom: "24px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ fontSize: "12px", color: "#dc2626", fontWeight: 700 }}>플랫폼 슈퍼 관리자</span>
-          <Link href="/" style={{ fontSize: "12px", color: "#64748b", textDecoration: "underline" }}>
-            ← 메인 허브로 이동
-          </Link>
-          {canGrantAdmin && (
-            <Link
-              href="/admin/admins"
-              style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}
-            >
-              관리자 관리 →
-            </Link>
-          )}
-          <Link href="/admin/categories" style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}>
-            상품 카테고리 관리 →
-          </Link>
-          <Link href="/admin/retailer-leads" style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}>
-            고객(소매) 입점 희망 리드 →
-          </Link>
-          <Link href="/admin/events" style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}>
-            구독료 할인 이벤트 →
-          </Link>
-          <Link href="/admin/stats" style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}>
-            구독자·구독료 추이 →
-          </Link>
-          <Link href="/admin/billing" style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}>
-            구독료 청구·수납 관리 →
-          </Link>
-        </div>
+        <AdminNav />
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
           공급사 입점 승인 및 구독 거버넌스
         </h1>
