@@ -3,17 +3,13 @@
 import { useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-interface AdminDateRangeFilterProps {
+interface AdminMonthRangeFilterProps {
   basePath: string;
+  /** 'YYYY-MM' */
   from: string;
+  /** 'YYYY-MM' */
   to: string;
-  /** 필터 오른쪽에 붙는 보조 안내 문구(선택) */
   helperText?: string;
-  /**
-   * URL 쿼리 파라미터 이름. 기본은 "from"/"to"이지만, 한 페이지에 이 필터가 여러 개
-   * 있을 때(예: /admin/stats의 구독자 일별 필터 + 구독료 월별 필터)는 서로 다른 이름을
-   * 써야 값이 섞이지 않는다.
-   */
   fromParam?: string;
   toParam?: string;
 }
@@ -28,17 +24,18 @@ const fieldStyle: React.CSSProperties = {
 };
 
 /**
- * 관리자 통계/청구 화면 공용 — 조회 기간을 날짜(일 단위)로 자유롭게 정하는 필터.
- * URL 쿼리(from/to, 'YYYY-MM-DD')로 상태를 유지한다.
+ * 월 단위로만 의미가 있는 지표(구독료처럼 매달 한 번 청구되는 값)용 조회 기간 필터.
+ * admin-date-range-filter.tsx(일 단위)와 같은 페이지에 공존할 수 있도록 쿼리
+ * 파라미터 이름을 다르게 지정할 수 있다.
  */
-export function AdminDateRangeFilter({
+export function AdminMonthRangeFilter({
   basePath,
   from,
   to,
   helperText,
-  fromParam = "from",
-  toParam = "to",
-}: AdminDateRangeFilterProps) {
+  fromParam = "monthFrom",
+  toParam = "monthTo",
+}: AdminMonthRangeFilterProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [draftFrom, setDraftFrom] = useState(from);
@@ -47,8 +44,6 @@ export function AdminDateRangeFilter({
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
 
-    // 한 페이지에 이 필터가 여러 개 있을 수 있어(예: /admin/stats), 이 필터가 관리하지
-    // 않는 다른 쿼리 파라미터(예: 월별 필터의 feeFrom/feeTo)는 그대로 보존한다.
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.set(fromParam, draftFrom);
     nextParams.set(toParam, draftTo);
@@ -69,9 +64,9 @@ export function AdminDateRangeFilter({
         padding: "12px 14px",
       }}
     >
-      <span style={{ fontSize: "12px", fontWeight: 700, color: "#334155" }}>조회 기간</span>
+      <span style={{ fontSize: "12px", fontWeight: 700, color: "#334155" }}>조회 기간(월)</span>
       <input
-        type="date"
+        type="month"
         value={draftFrom}
         max={draftTo}
         onChange={(event) => setDraftFrom(event.target.value)}
@@ -79,7 +74,7 @@ export function AdminDateRangeFilter({
       />
       <span style={{ fontSize: "12px", color: "#94a3b8" }}>~</span>
       <input
-        type="date"
+        type="month"
         value={draftTo}
         min={draftFrom}
         onChange={(event) => setDraftTo(event.target.value)}

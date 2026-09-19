@@ -15,15 +15,23 @@ interface AdminTrendChartProps {
   color: string;
   /** 값 단위. 'count'는 "곳", 'won'은 "원" 접미사를 붙인다. */
   valueUnit: "count" | "won";
+  /** label 형식 — 'month'는 'YYYY-MM', 'day'는 'YYYY-MM-DD'를 받는다. */
+  granularity: "month" | "day";
 }
 
 /**
  * 서버 컴포넌트(app/admin/stats/page.tsx)가 렌더링하는 화면이라 포매터 함수를 그대로
- * props로 넘길 수 없다(RSC 경계에서 함수는 직렬화 불가) — 문자열 유닛만 받아 여기서
- * 포맷을 결정한다. label은 항상 'YYYY-MM' 월 키라 여기서 고정 포맷한다.
+ * props로 넘길 수 없다(RSC 경계에서 함수는 직렬화 불가) — 문자열 유닛/그래뉼래러티만
+ * 받아 여기서 포맷을 결정한다.
  */
-function formatMonthLabel(monthKey: string): string {
-  const [, month] = monthKey.split("-");
+function formatLabelByGranularity(label: string, granularity: "month" | "day"): string {
+  if (granularity === "day") {
+    const [, month, day] = label.split("-");
+
+    return `${Number(month)}/${Number(day)}`;
+  }
+
+  const [, month] = label.split("-");
 
   return `${Number(month)}월`;
 }
@@ -36,17 +44,21 @@ const WIDTH = 640;
 const HEIGHT = 220;
 const PADDING = { top: 16, right: 16, bottom: 30, left: 60 };
 const GRID_RATIOS = [0, 0.25, 0.5, 0.75, 1];
+/** 일 단위 구간은 점이 많아질 수 있어(예: 90일) x축 라벨을 최대 이 개수만 골라 보여준다. */
+const MAX_AXIS_LABELS = 8;
 
 /**
  * 의존성 없는 인라인 SVG 점+선 추이 그래프. 단일 시리즈만 다루므로(범례 불필요,
  * 차트 제목이 곧 시리즈 이름) 색은 브랜드 색 하나만 쓴다. 호버 시 툴팁으로 정확한
  * 값을 보여준다.
  */
-export function AdminTrendChart({ title, points, color, valueUnit }: AdminTrendChartProps) {
+export function AdminTrendChart({ title, points, color, valueUnit, granularity }: AdminTrendChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   const formatValue = (value: number) => formatValueByUnit(value, valueUnit);
-  const formatLabel = formatMonthLabel;
+  const formatLabel = (label: string) => formatLabelByGranularity(label, granularity);
+  const labelStep = Math.max(1, Math.ceil(points.length / MAX_AXIS_LABELS));
+  const showAxisLabelAt = (index: number) => index % labelStep === 0 || index === points.length - 1;
 
   const plotWidth = WIDTH - PADDING.left - PADDING.right;
   const plotHeight = HEIGHT - PADDING.top - PADDING.bottom;
@@ -95,9 +107,11 @@ export function AdminTrendChart({ title, points, color, valueUnit }: AdminTrendC
                   onMouseLeave={() => setHoverIndex((current) => (current === index ? null : current))}
                   style={{ cursor: "pointer" }}
                 />
-                <text x={xFor(index)} y={HEIGHT - PADDING.bottom + 18} textAnchor="middle" fontSize="10" fill="#64748b">
-                  {formatLabel(point.label)}
-                </text>
+                {showAxisLabelAt(index) && (
+                  <text x={xFor(index)} y={HEIGHT - PADDING.bottom + 18} textAnchor="middle" fontSize="10" fill="#64748b">
+                    {formatLabel(point.label)}
+                  </text>
+                )}
               </g>
             ))}
           </svg>
