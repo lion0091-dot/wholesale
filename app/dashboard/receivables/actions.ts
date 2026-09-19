@@ -7,6 +7,7 @@ import { requireOrgRole, RbacError } from "@/lib/auth/rbac";
 import { computeDueAt, isOverdue } from "@/lib/orders/receivables";
 import { sendReceivablesReminderToRetailer } from "@/lib/notifications/alimtalk";
 import type { ActionResult } from "@/app/actions/invite";
+import { AUDIT_LOG_PAGE_SIZE, type AuditLogPage } from "@/app/actions/audit-log";
 
 /**
  * 선택한 외상 주문들을 정산완료 처리한다.
@@ -74,16 +75,22 @@ interface AuditLogRow {
   old_data: Record<string, unknown> | null;
   new_data: Record<string, unknown> | null;
   created_at: string;
+  total_count: number;
 }
 
 function toNumberOrNull(value: unknown): number | null {
   return value === null || value === undefined ? null : Number(value);
 }
 
-/** 거래처의 여신(한도/미수금/상태) 변경 이력 — 여러 직원이 쓰는 백오피스라 "누가" 바꿨는지 포함 */
+/**
+ * 거래처의 여신(한도/미수금/상태) 변경 이력 — 여러 직원이 쓰는 백오피스라 "누가" 바꿨는지 포함.
+ * AUDIT_LOG_PAGE_SIZE(10)개씩 끊어서 가져온다. RPC가 count(*) over()로 전체 개수를
+ * 같이 실어주므로 offset + 이번 개수 < totalCount 로 "더 남았는지"를 판단한다.
+ */
 export async function getReceivableAuditLogAction(
-  retailerId: string
-): Promise<ActionResult<ReceivableAuditEntry[]>> {
+  retailerId: string,
+  offset = 0
+): Promise<ActionResult<AuditLogPage<ReceivableAuditEntry>>> {
   try {
     const scope = await getSupplierScope();
 
@@ -97,6 +104,8 @@ export async function getReceivableAuditLogAction(
       supabase.rpc("get_wholesaler_retailer_audit_log", {
         p_wholesaler_id: scope.wholesalerId,
         p_retailer_id: retailerId,
+        p_limit: AUDIT_LOG_PAGE_SIZE,
+        p_offset: offset,
       }),
       supabase.rpc("list_wholesaler_member_names", { p_wholesaler_id: scope.wholesalerId }),
     ]);
@@ -112,7 +121,10 @@ export async function getReceivableAuditLogAction(
       ])
     );
 
-    const entries: ReceivableAuditEntry[] = ((data ?? []) as AuditLogRow[]).map((row) => ({
+    const rows = (data ?? []) as AuditLogRow[];
+    const totalCount = rows[0]?.total_count ?? 0;
+
+    const entries: ReceivableAuditEntry[] = rows.map((row) => ({
       id: row.id,
       action: row.action,
       changedByName: row.changed_by ? (nameMap.get(row.changed_by) ?? "알 수 없음") : "시스템",
@@ -125,7 +137,10 @@ export async function getReceivableAuditLogAction(
       createdAt: row.created_at,
     }));
 
-    return { success: true, data: entries };
+    return {
+      success: true,
+      data: { entries, totalCount, hasMore: offset + entries.length < totalCount },
+    };
   } catch (error) {
     return {
       success: false,

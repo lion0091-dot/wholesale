@@ -29,7 +29,10 @@ export function ReceivablesView({ groups, readOnly = false, alimtalkReady = fals
   const [auditEntriesByGroup, setAuditEntriesByGroup] = useState<
     Record<string, ReceivableAuditEntry[] | undefined>
   >({});
+  const [auditHasMoreByGroup, setAuditHasMoreByGroup] = useState<Record<string, boolean>>({});
+  const [auditTotalCountByGroup, setAuditTotalCountByGroup] = useState<Record<string, number>>({});
   const [auditLoadingGroupId, setAuditLoadingGroupId] = useState<string | null>(null);
+  const [auditLoadingMoreGroupId, setAuditLoadingMoreGroupId] = useState<string | null>(null);
   const [, startAuditTransition] = useTransition();
 
   const [reminderPendingGroupId, setReminderPendingGroupId] = useState<string | null>(null);
@@ -139,11 +142,41 @@ export function ReceivablesView({ groups, readOnly = false, alimtalkReady = fals
 
         setAuditEntriesByGroup((prev) => ({
           ...prev,
-          [group.retailerId]: result.success ? (result.data ?? []) : [],
+          [group.retailerId]: result.success ? (result.data?.entries ?? []) : [],
+        }));
+        setAuditHasMoreByGroup((prev) => ({
+          ...prev,
+          [group.retailerId]: result.success ? (result.data?.hasMore ?? false) : false,
+        }));
+        setAuditTotalCountByGroup((prev) => ({
+          ...prev,
+          [group.retailerId]: result.success ? (result.data?.totalCount ?? 0) : 0,
         }));
         setAuditLoadingGroupId(null);
       });
     }
+  };
+
+  /** "다음" — 이미 불러온 개수를 offset 삼아 다음 페이지를 이어붙인다. */
+  const handleLoadMoreAudit = (group: ReceivableCustomerGroup) => {
+    const offset = auditEntriesByGroup[group.retailerId]?.length ?? 0;
+    setAuditLoadingMoreGroupId(group.retailerId);
+
+    void getReceivableAuditLogAction(group.retailerId, offset).then((result) => {
+      setAuditEntriesByGroup((prev) => ({
+        ...prev,
+        [group.retailerId]: [...(prev[group.retailerId] ?? []), ...(result.data?.entries ?? [])],
+      }));
+      setAuditHasMoreByGroup((prev) => ({
+        ...prev,
+        [group.retailerId]: result.success ? (result.data?.hasMore ?? false) : false,
+      }));
+      setAuditTotalCountByGroup((prev) => ({
+        ...prev,
+        [group.retailerId]: result.success ? (result.data?.totalCount ?? prev[group.retailerId] ?? 0) : (prev[group.retailerId] ?? 0),
+      }));
+      setAuditLoadingMoreGroupId(null);
+    });
   };
 
   const totalSelected = useMemo(() => selected.size, [selected]);
@@ -342,6 +375,9 @@ export function ReceivablesView({ groups, readOnly = false, alimtalkReady = fals
                   <p style={{ fontSize: "12px", color: "#94a3b8" }}>변경 이력이 없습니다.</p>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <p style={{ fontSize: "11px", color: "#94a3b8" }}>
+                      총 {auditTotalCountByGroup[group.retailerId] ?? 0}건
+                    </p>
                     {(auditEntriesByGroup[group.retailerId] ?? []).map((entry) => (
                       <div key={entry.id} style={{ fontSize: "11px", color: "#475569", lineHeight: 1.6 }}>
                         <strong>{formatOrderedAt(entry.createdAt)}</strong> · {entry.changedByName}
@@ -362,6 +398,31 @@ export function ReceivablesView({ groups, readOnly = false, alimtalkReady = fals
                         )}
                       </div>
                     ))}
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+                      {auditHasMoreByGroup[group.retailerId] && (
+                        <button
+                          type="button"
+                          onClick={() => handleLoadMoreAudit(group)}
+                          disabled={auditLoadingMoreGroupId === group.retailerId}
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            color: "#334155",
+                            backgroundColor: "#ffffff",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: "6px",
+                            padding: "6px 10px",
+                            cursor: auditLoadingMoreGroupId === group.retailerId ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          {auditLoadingMoreGroupId === group.retailerId ? "불러오는 중..." : "다음"}
+                        </button>
+                      )}
+                      <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                        {(auditEntriesByGroup[group.retailerId] ?? []).length} /{" "}
+                        {auditTotalCountByGroup[group.retailerId] ?? 0}건 조회됨
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
