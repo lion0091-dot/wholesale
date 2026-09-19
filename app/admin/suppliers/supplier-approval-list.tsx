@@ -748,9 +748,7 @@ export function SupplierApprovalList({
                       <>
                         {(() => {
                           const canApprove =
-                            doc.checksumValid &&
-                            Boolean(supplier.business_license_path) &&
-                            supplier.nts_verification_status === "match";
+                            doc.checksumValid && supplier.nts_verification_status === "match";
 
                           return (
                             <button
@@ -760,9 +758,7 @@ export function SupplierApprovalList({
                                   ? undefined
                                   : !doc.checksumValid
                                     ? "사업자등록번호 체크섬 오류 — 승인할 수 없습니다."
-                                    : !supplier.business_license_path
-                                      ? "사업자등록증 사본이 제출되지 않아 승인할 수 없습니다."
-                                      : "국세청 진위확인이 완료(일치)되지 않아 승인할 수 없습니다."
+                                    : "국세청 진위확인이 완료(일치)되지 않아 승인할 수 없습니다."
                               }
                               onClick={() => handleStatusChange(supplier.id, "active")}
                               style={{

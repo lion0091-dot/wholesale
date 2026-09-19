@@ -59,11 +59,14 @@ export async function updateSupplierStatusAction(
 
     const supabase = await createClient();
 
-    // 입점 승인은 체크섬 통과 + 국세청 진위확인(match) + 등록증 사본 제출이 전제 조건이다.
+    // 입점 승인은 체크섬 통과 + 국세청 진위확인(match)이 전제 조건이다.
+    // 등록증 사본 제출 여부는 승인을 막지 않는다 — 국세청 API가 이미 사업자번호·
+    // 대표자명·개업일자를 실데이터와 대조하므로, 사본은 관리자가 참고용으로만
+    // 대조하는 보조 자료다(제출 안 해도 승인 가능).
     if (newStatus === "active") {
       const { data: supplier } = await supabase
         .from("wholesalers")
-        .select("business_number, nts_verification_status, business_license_path")
+        .select("business_number, nts_verification_status")
         .eq("id", supplierId)
         .maybeSingle();
 
@@ -75,13 +78,6 @@ export async function updateSupplierStatusAction(
         return {
           success: false,
           error: "사업자등록번호 체크섬이 유효하지 않아 승인할 수 없습니다.",
-        };
-      }
-
-      if (!supplier.business_license_path) {
-        return {
-          success: false,
-          error: "사업자등록증 사본이 제출되지 않아 승인할 수 없습니다.",
         };
       }
 
