@@ -365,6 +365,9 @@ export function OrderBoard({
       {group === "historical" && isHistorySearch && (
         <div
           style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
             padding: "10px 12px",
             borderBottom: "1px solid #e2e8f0",
             backgroundColor: "#f8fafc",
@@ -372,9 +375,29 @@ export function OrderBoard({
             color: "#64748b",
           }}
         >
-          {historySearchLoading
-            ? "검색 중..."
-            : `검색결과 ${visibleOrders.length}건 (전체 기간 중 최대 50건까지 표시)`}
+          <span>
+            {historySearchLoading
+              ? "검색 중..."
+              : `검색결과 ${visibleOrders.length}건 (전체 기간 중 최대 50건까지 표시)`}
+          </span>
+          <button
+            type="button"
+            onClick={() => setKeyword("")}
+            style={{
+              marginLeft: "auto",
+              fontSize: "12px",
+              fontWeight: 600,
+              padding: "4px 9px",
+              borderRadius: "6px",
+              border: "1px solid #cbd5e1",
+              backgroundColor: "#ffffff",
+              color: "#334155",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            검색 취소
+          </button>
         </div>
       )}
 
