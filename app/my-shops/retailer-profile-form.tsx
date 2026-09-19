@@ -52,7 +52,9 @@ export function RetailerProfileForm({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
-  const [open, setOpen] = useState(false);
+  // 사업자등록번호가 비어있으면 접힌 버튼 뒤에 숨기지 않고 처음부터 펼쳐서 보여준다
+  // (계산서(면세)·거래명세서 발행에 필요한데 놓치기 쉬운 값이라 눈에 띄게 함).
+  const [open, setOpen] = useState(!businessNumber);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -156,9 +158,20 @@ export function RetailerProfileForm({
         />
       </div>
 
-      <div>
-        <label style={labelStyle} htmlFor="business_number">
-          사업자등록번호 (선택)
+      <div
+        style={{
+          backgroundColor: "#fffbeb",
+          border: "1px solid #fde68a",
+          borderRadius: "10px",
+          padding: "12px",
+        }}
+      >
+        <label
+          style={{ ...labelStyle, color: businessNumber ? "#334155" : "#b45309" }}
+          htmlFor="business_number"
+        >
+          사업자등록번호{" "}
+          {businessNumber ? "(등록 완료 — 수정 가능)" : "⚠️ 계산서(면세)·거래명세서 발행에 꼭 필요해요"}
         </label>
         <input
           id="business_number"
@@ -167,12 +180,13 @@ export function RetailerProfileForm({
           inputMode="numeric"
           maxLength={12}
           defaultValue={formatBusinessNumber(businessNumber)}
-          placeholder="1234567890 (숫자 10자리, 사업자만)"
+          placeholder="1234567890 (숫자 10자리)"
           disabled={pending}
           style={inputStyle}
         />
-        <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-          계산서(면세)를 받으려면 필요합니다. 사업자가 아니면 비워두세요.
+        <p style={{ fontSize: "11px", color: "#92400e", marginTop: "6px", lineHeight: 1.6 }}>
+          공급사가 이 번호로 계산서(면세)를 작성합니다. 미등록 상태면 계산서·거래명세서에
+          사업자등록번호가 빈 채로 나갑니다. 사업자가 아니면 비워두세요.
         </p>
       </div>
 
