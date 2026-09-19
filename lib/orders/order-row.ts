@@ -29,6 +29,14 @@ export interface OrderJoinRow {
 export const ORDER_LIST_SELECT_COLUMNS =
   "id, order_number, status, total_amount, delivery_address, ordered_at, order_items ( product_name, quantity ), retailers ( restaurant_name )";
 
+/**
+ * 거래처 상호(retailers.restaurant_name)로 필터링할 때 쓴다. PostgREST는 embedded
+ * 리소스 컬럼을 필터 조건으로 쓰려면 그 리소스가 inner join이어야 해서 별도로 둔다.
+ * (select 문자열을 런타임에 조합하면 Supabase 타입 추론이 깨지므로 리터럴로 유지)
+ */
+export const ORDER_LIST_SELECT_COLUMNS_RETAILER_INNER =
+  "id, order_number, status, total_amount, delivery_address, ordered_at, order_items ( product_name, quantity ), retailers!inner ( restaurant_name )";
+
 function retailerName(row: OrderJoinRow): string {
   const retailer = Array.isArray(row.retailers) ? row.retailers[0] : row.retailers;
 

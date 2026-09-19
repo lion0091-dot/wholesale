@@ -7,11 +7,12 @@ import { getSupplierScope } from "@/lib/supplier/scope";
 import { ORDER_STATUS_TRANSITIONS, HISTORICAL_ORDER_STATUSES, isSupplierAssignableStatus } from "@/lib/orders/status";
 import {
   ORDER_LIST_SELECT_COLUMNS,
+  ORDER_LIST_SELECT_COLUMNS_RETAILER_INNER,
   mapOrderJoinRow,
   type OrderJoinRow,
   type OrderRow,
 } from "@/lib/orders/order-row";
-import { ORDER_HISTORY_PAGE_SIZE } from "@/lib/orders/history-range";
+import { ORDER_HISTORY_PAGE_SIZE, ORDER_HISTORY_SEARCH_LIMIT } from "@/lib/orders/history-range";
 import {
   KOREAN_COURIERS,
   fetchTrackingStatus,
@@ -359,6 +360,81 @@ export async function getHistoricalOrdersAction(
     return {
       success: false,
       error: error instanceof Error ? error.message : "조회 중 오류가 발생했습니다.",
+    };
+  }
+}
+
+/**
+ * 배송완료/취소 목록에서 발주번호 또는 거래처(소매) 상호로 검색한다.
+ * 조회 구간(30일/3개월)에 갇히면 예전 발주를 못 찾으므로, 검색은 전체 기간을
+ * 대상으로 하되 결과가 무한정 커지는 걸 막기 위해 ORDER_HISTORY_SEARCH_LIMIT으로
+ * 상한만 둔다(페이지네이션 없음 — 특정 건을 찾는 용도이지 목록 훑어보기가 아니라서).
+ *
+ * 거래처 상호는 retailers 조인 테이블 컬럼이라 order_number 검색과 한 쿼리의
+ * or()로 묶기 까다로워(임베디드 리소스 필터는 inner join을 요구) 두 번 쿼리해서
+ * 합친다.
+ */
+export async function searchHistoricalOrdersAction(
+  keyword: string
+): Promise<ActionResult<{ entries: OrderRow[] }>> {
+  try {
+    const scope = await getSupplierScope();
+
+    if (!scope?.wholesalerId) {
+      return { success: false, error: "로그인이 필요합니다." };
+    }
+
+    const trimmed = keyword.trim();
+
+    if (!trimmed) {
+      return { success: true, data: { entries: [] } };
+    }
+
+    const supabase = await createClient();
+    const pattern = `%${trimmed.replace(/[%_]/g, (char) => `\\${char}`)}%`;
+
+    const [byOrderNumber, byRetailerName] = await Promise.all([
+      supabase
+        .from("orders")
+        .select(ORDER_LIST_SELECT_COLUMNS)
+        .eq("wholesaler_id", scope.wholesalerId)
+        .in("status", HISTORICAL_ORDER_STATUSES)
+        .ilike("order_number", pattern)
+        .order("ordered_at", { ascending: false })
+        .limit(ORDER_HISTORY_SEARCH_LIMIT),
+      supabase
+        .from("orders")
+        .select(ORDER_LIST_SELECT_COLUMNS_RETAILER_INNER)
+        .eq("wholesaler_id", scope.wholesalerId)
+        .in("status", HISTORICAL_ORDER_STATUSES)
+        .ilike("retailers.restaurant_name", pattern)
+        .order("ordered_at", { ascending: false })
+        .limit(ORDER_HISTORY_SEARCH_LIMIT),
+    ]);
+
+    if (byOrderNumber.error || byRetailerName.error) {
+      return { success: false, error: "발주서 검색에 실패했습니다." };
+    }
+
+    const merged = new Map<string, OrderJoinRow>();
+
+    for (const row of [
+      ...((byOrderNumber.data ?? []) as OrderJoinRow[]),
+      ...((byRetailerName.data ?? []) as OrderJoinRow[]),
+    ]) {
+      merged.set(row.id, row);
+    }
+
+    const entries = Array.from(merged.values())
+      .sort((a, b) => (a.ordered_at < b.ordered_at ? 1 : -1))
+      .slice(0, ORDER_HISTORY_SEARCH_LIMIT)
+      .map(mapOrderJoinRow);
+
+    return { success: true, data: { entries } };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "검색 중 오류가 발생했습니다.",
     };
   }
 }

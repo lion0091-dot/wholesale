@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ORDER_STATUS_BADGES,
-  ORDER_STATUS_FILTERS,
-  HISTORICAL_ORDER_STATUSES,
+  ACTIVE_STATUS_FILTERS,
+  HISTORICAL_STATUS_FILTERS,
   formatOrderedAt,
   formatWon,
   resolveAlimtalkStatus,
@@ -13,10 +13,51 @@ import {
 import { ORDER_HISTORY_RANGE_OPTIONS } from "@/lib/orders/history-range";
 import type { OrderRow } from "@/lib/orders/order-row";
 import { SampleBadge } from "@/components/sample-badge";
-import { getHistoricalOrdersAction } from "./actions";
+import { getHistoricalOrdersAction, searchHistoricalOrdersAction } from "./actions";
 import type { OrderStatus } from "@/types/database";
 
+type OrderGroup = "active" | "historical";
+
 export type { OrderRow } from "@/lib/orders/order-row";
+
+/** 발주번호가 길어서 모바일에서 길게 눌러 선택하기 번거로우므로 한 번에 복사하는 버튼. */
+function CopyOrderNumberButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // 클립보드 API를 못 쓰는 환경(권한 거부 등) — 텍스트 길게 눌러 선택하는 방식은 여전히 가능하다.
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title="발주번호 복사"
+      style={{
+        border: "1px solid #e2e8f0",
+        background: copied ? "#dcfce7" : "#ffffff",
+        color: copied ? "#166534" : "#94a3b8",
+        borderRadius: "4px",
+        padding: "2px 6px",
+        fontSize: "11px",
+        fontWeight: 600,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {copied ? "복사됨" : "복사"}
+    </button>
+  );
+}
 
 interface OrderBoardProps {
   /** 접수대기~취소반려 — 기간 제한 없이 항상 전체를 받는다 */
@@ -42,7 +83,10 @@ export function OrderBoard({
   isLiveChannel,
   isDemo = false,
 }: OrderBoardProps) {
-  const [activeFilter, setActiveFilter] = useState<OrderStatus | "all">("all");
+  // 진행중과 완료·취소는 데이터 로딩 방식 자체가 다르므로(진행중=항상 전체,
+  // 완료·취소=기간 제한+페이지네이션) 하나의 목록으로 섞지 않고 탭으로 분리한다.
+  const [group, setGroup] = useState<OrderGroup>("active");
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
   const [keyword, setKeyword] = useState("");
   const filterScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -54,16 +98,57 @@ export function OrderBoard({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
 
-  // 배송완료/취소는 조회 구간으로 제한되어 있어서, 지금 선택된 탭이 그 구간의 영향을
-  // 받는지(전체 탭도 포함) 여부에 따라 구간 선택 UI를 보여줄지 정한다.
-  const showsHistoricalOrders =
-    activeFilter === "all" || HISTORICAL_ORDER_STATUSES.includes(activeFilter as OrderStatus);
+  // 완료·취소 탭 검색 — 조회 구간(30일/3개월)에 갇히면 예전 발주를 못 찾으므로
+  // 전체 기간을 서버에서 재조회한다. null = 검색 중이 아님(구간 뷰 표시).
+  const [historySearchResults, setHistorySearchResults] = useState<OrderRow[] | null>(null);
+  const [historySearchLoading, setHistorySearchLoading] = useState(false);
 
-  const orders = useMemo(
-    () =>
-      [...activeOrders, ...historicalOrders].sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1)),
-    [activeOrders, historicalOrders]
-  );
+  const normalizedKeyword = keyword.trim().toLowerCase();
+  const isHistorySearch = group === "historical" && normalizedKeyword.length > 0 && !isDemo;
+
+  const filters = group === "active" ? ACTIVE_STATUS_FILTERS : HISTORICAL_STATUS_FILTERS;
+
+  const handleGroupChange = (nextGroup: OrderGroup) => {
+    if (nextGroup === group) return;
+    setGroup(nextGroup);
+    setStatusFilter("all");
+    setKeyword("");
+    setHistorySearchResults(null);
+  };
+
+  // 데모는 실제 DB가 없어 서버 검색을 탈 수 없으므로, 완료·취소 탭도 클라이언트에서
+  // 필터링한다(데이터 양이 적어 성능 문제 없음).
+  useEffect(() => {
+    if (group !== "historical" || isDemo) return;
+
+    const trimmed = keyword.trim();
+
+    if (!trimmed) {
+      setHistorySearchResults(null);
+      setHistorySearchLoading(false);
+      return;
+    }
+
+    setHistorySearchLoading(true);
+
+    const timer = setTimeout(() => {
+      void searchHistoricalOrdersAction(trimmed).then((result) => {
+        setHistorySearchResults(result.success ? result.data?.entries ?? [] : []);
+        setHistorySearchLoading(false);
+      });
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [group, keyword, isDemo]);
+
+  const baseOrders =
+    group === "active"
+      ? activeOrders
+      : isHistorySearch
+        ? (historySearchResults ?? [])
+        : historicalOrders;
+
+  const orders = useMemo(() => baseOrders, [baseOrders]);
 
   const updateFilterScrollFade = () => {
     const el = filterScrollRef.current;
@@ -108,20 +193,25 @@ export function OrderBoard({
     });
   };
 
-  const normalizedKeyword = keyword.trim().toLowerCase();
+  // isHistorySearch가 참이면 orders는 이미 서버에서 키워드로 걸러진 검색 결과라
+  // 다시 텍스트로 거를 필요 없다. 진행중 탭과 데모의 완료·취소 탭만 클라이언트에서 거른다.
+  const keywordFilteredOrders =
+    !isHistorySearch && normalizedKeyword
+      ? orders.filter(
+          (order) =>
+            order.orderNumber.toLowerCase().includes(normalizedKeyword) ||
+            order.retailerName.toLowerCase().includes(normalizedKeyword)
+        )
+      : orders;
 
-  const visibleOrders = orders.filter((order) => {
-    const matchesStatus = activeFilter === "all" ? true : order.status === activeFilter;
-    const matchesKeyword = normalizedKeyword
-      ? order.orderNumber.toLowerCase().includes(normalizedKeyword) ||
-        order.retailerName.toLowerCase().includes(normalizedKeyword)
-      : true;
-
-    return matchesStatus && matchesKeyword;
-  });
+  const visibleOrders = keywordFilteredOrders.filter((order) =>
+    statusFilter === "all" ? true : order.status === statusFilter
+  );
 
   const countFor = (filter: OrderStatus | "all") =>
-    filter === "all" ? orders.length : orders.filter((order) => order.status === filter).length;
+    filter === "all"
+      ? keywordFilteredOrders.length
+      : keywordFilteredOrders.filter((order) => order.status === filter).length;
 
   return (
     <section
@@ -132,6 +222,55 @@ export function OrderBoard({
         overflow: "hidden",
       }}
     >
+      {/* 그룹 탭 — 진행중(항상 전체 로드)과 완료·취소(기간 제한 로드)는 데이터 성격이
+          달라서 하나로 섞지 않고 분리한다. */}
+      <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0" }}>
+        {(
+          [
+            { key: "active" as const, label: "진행중", count: activeOrders.length },
+            { key: "historical" as const, label: "완료·취소", count: historyTotalCount },
+          ]
+        ).map((tab) => {
+          const isSelected = group === tab.key;
+
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => handleGroupChange(tab.key)}
+              style={{
+                flex: 1,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: "6px",
+                padding: "12px",
+                fontSize: "14px",
+                fontWeight: isSelected ? 800 : 600,
+                color: isSelected ? "#0f172a" : "#94a3b8",
+                backgroundColor: isSelected ? "#f8fafc" : "#ffffff",
+                border: "none",
+                borderBottom: isSelected ? "2px solid #0f172a" : "2px solid transparent",
+                cursor: "pointer",
+              }}
+            >
+              {tab.label}
+              <span
+                style={{
+                  fontSize: "11px",
+                  padding: "1px 6px",
+                  borderRadius: "10px",
+                  backgroundColor: isSelected ? "#e2e8f0" : "#f1f5f9",
+                  color: "#64748b",
+                }}
+              >
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* 상태 필터 탭 — 오른쪽에 더 있으면 흐릿한 그라데이션으로 가로 스크롤 가능함을 알려준다 */}
       <div style={{ position: "relative", borderBottom: "1px solid #e2e8f0" }}>
         <div
@@ -144,15 +283,15 @@ export function OrderBoard({
             overflowX: "auto",
           }}
         >
-        {ORDER_STATUS_FILTERS.map((filter) => {
-          const isSelected = activeFilter === filter;
+        {filters.map((filter) => {
+          const isSelected = statusFilter === filter;
           const label = filter === "all" ? "전체" : ORDER_STATUS_BADGES[filter].label;
 
           return (
             <button
               key={filter}
               type="button"
-              onClick={() => setActiveFilter(filter)}
+              onClick={() => setStatusFilter(filter)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -206,7 +345,11 @@ export function OrderBoard({
           type="search"
           value={keyword}
           onChange={(event) => setKeyword(event.target.value)}
-          placeholder="발주번호 또는 발주처(소매) 상호 검색"
+          placeholder={
+            group === "historical"
+              ? "발주번호 또는 발주처(소매) 상호 검색 (전체 기간 대상)"
+              : "발주번호 또는 발주처(소매) 상호 검색"
+          }
           style={{
             width: "100%",
             padding: "8px 10px",
@@ -217,9 +360,25 @@ export function OrderBoard({
         />
       </div>
 
-      {/* 배송완료/취소는 조회 구간으로 제한돼 있어서, 그 구간이 보이는 탭(완료/취소/전체)일
-          때만 구간 선택을 보여준다. 접수대기~취소반려는 항상 전체가 보이므로 여기 영향 없음. */}
-      {showsHistoricalOrders && (
+      {/* 완료·취소 탭에서 검색 중일 땐 조회구간/페이지네이션이 의미가 없어서
+          검색 결과 건수만 보여주고, 검색 중이 아닐 때만 구간 선택 UI를 보여준다. */}
+      {group === "historical" && isHistorySearch && (
+        <div
+          style={{
+            padding: "10px 12px",
+            borderBottom: "1px solid #e2e8f0",
+            backgroundColor: "#f8fafc",
+            fontSize: "12px",
+            color: "#64748b",
+          }}
+        >
+          {historySearchLoading
+            ? "검색 중..."
+            : `검색결과 ${visibleOrders.length}건 (전체 기간 중 최대 50건까지 표시)`}
+        </div>
+      )}
+
+      {group === "historical" && !isHistorySearch && (
         <div
           style={{
             display: "flex",
@@ -316,6 +475,7 @@ export function OrderBoard({
                     <td style={{ whiteSpace: "nowrap" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                         <div style={{ fontWeight: 700 }}>{order.orderNumber}</div>
+                        <CopyOrderNumberButton value={order.orderNumber} />
                         {isDemo && <SampleBadge />}
                       </div>
                       <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
@@ -431,6 +591,7 @@ export function OrderBoard({
                     >
                       {order.orderNumber}
                     </span>
+                    <CopyOrderNumberButton value={order.orderNumber} />
                     {isDemo && <SampleBadge />}
                   </div>
                   <span style={{ fontSize: "11px", color: "#94a3b8" }}>

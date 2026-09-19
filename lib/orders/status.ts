@@ -17,15 +17,23 @@ export const ORDER_STATUS_BADGES: Record<OrderStatus, StatusBadge> = {
   cancelled: { label: "취소", bg: "#fee2e2", color: "#991b1b" },
 };
 
-/** 필터 탭 순서 (전체 + 7개 상태) */
-export const ORDER_STATUS_FILTERS: Array<OrderStatus | "all"> = [
+/**
+ * 진행중 탭 안에서의 상태 필터 순서 (전체 + 5개 상태).
+ * 완료/취소는 별도 탭(HISTORICAL_STATUS_FILTERS)에서 다룬다.
+ */
+export const ACTIVE_STATUS_FILTERS: Array<OrderStatus | "all"> = [
   "all",
   "pending",
   "confirmed",
   "cancel_requested",
   "shipping",
-  "delivered",
   "cancel_rejected",
+];
+
+/** 완료·취소 탭 안에서의 상태 필터 순서 (전체 + 2개 상태) */
+export const HISTORICAL_STATUS_FILTERS: Array<OrderStatus | "all"> = [
+  "all",
+  "delivered",
   "cancelled",
 ];
 

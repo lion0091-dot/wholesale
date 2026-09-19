@@ -7,6 +7,12 @@ export const DEFAULT_ORDER_HISTORY_DAYS = 30;
  */
 export const ORDER_HISTORY_PAGE_SIZE = 30;
 
+/**
+ * 배송완료/취소 검색은 조회 구간(30일/3개월)에 갇히지 않고 전체 기간에서 찾아야
+ * 의미가 있다 — 특정 발주번호/거래처를 찾으려는 용도라 페이지네이션 없이 상한만 둔다.
+ */
+export const ORDER_HISTORY_SEARCH_LIMIT = 50;
+
 export interface HistoryRangeOption {
   days: number | null;
   label: string;
