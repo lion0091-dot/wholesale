@@ -168,7 +168,7 @@ export function CustomerCardGrid({
                   담당자 {customer.representativeName}
                 </p>
                 <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
-                  {customer.businessNumber ?? "사업자번호 미등록"}
+                  {customer.businessNumber ?? "사업자번호 미등록(사업자만 해당)"}
                 </p>
               </div>
             </div>

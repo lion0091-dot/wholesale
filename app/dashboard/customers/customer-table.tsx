@@ -452,7 +452,7 @@ export function CustomerTable({
                       <td style={{ fontSize: "12px" }}>
                         <div>대표 {customer.representativeName}</div>
                         <div style={{ color: "#64748b", marginTop: "2px" }}>
-                          {customer.businessNumber ?? "사업자번호 미등록"}
+                          {customer.businessNumber ?? "사업자번호 미등록(사업자만 해당)"}
                         </div>
                       </td>
 
