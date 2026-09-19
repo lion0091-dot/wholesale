@@ -34,12 +34,29 @@ export function currentBillingMonthRangeUtc(now: Date = new Date()): { startUtc:
   };
 }
 
-/** 특정 공급사의 이번 달 실발주(취소 제외) 거래처 수. */
+/** 임의의 'YYYY-MM'(KST) 달력 월 경계를 UTC ISO로. currentBillingMonthRangeUtc의 과거/미래 버전. */
+export function monthRangeUtc(monthKey: string): { startUtc: string; endUtc: string } {
+  const [year, month] = monthKey.split("-").map(Number);
+  const startKst = Date.UTC(year, month - 1, 1, 0, 0, 0);
+  const endKst = Date.UTC(year, month, 1, 0, 0, 0);
+
+  return {
+    startUtc: new Date(startKst - KST_OFFSET_MS).toISOString(),
+    endUtc: new Date(endKst - KST_OFFSET_MS).toISOString(),
+  };
+}
+
+/**
+ * 특정 공급사의 실발주(취소 제외) 거래처 수. monthRangeUtc를 생략하면 이번 달 기준
+ * (구독료 청구서 화면용), 넘기면 그 달 기준(app/api/cron/finalize-subscription-invoices의
+ * 과거 달 확정용)으로 집계한다.
+ */
 export async function countBilledRetailers(
   supabase: SupabaseServerClient,
-  wholesalerId: string
+  wholesalerId: string,
+  monthRangeUtc: { startUtc: string; endUtc: string } = currentBillingMonthRangeUtc()
 ): Promise<number> {
-  const { startUtc, endUtc } = currentBillingMonthRangeUtc();
+  const { startUtc, endUtc } = monthRangeUtc;
 
   const { data } = await supabase
     .from("orders")

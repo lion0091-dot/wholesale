@@ -76,6 +76,48 @@ export function computeMonthlyFee(retailerCount: number): number {
   return computeFeeBreakdown(retailerCount).reduce((sum, tier) => sum + tier.subtotal, 0);
 }
 
+/**
+ * 첫 과금월(billing_starts_at이 속한 달)의 일할 비율. 월 중간에 과금이 시작되면
+ * "시작일 ~ 그 달 말일"만큼만 비례 청구하고, 그 다음 달부터는 항상 1(전액)이다.
+ * 달 경계는 호출측이 lib/supplier/billed-retailers.ts의 currentBillingMonthRangeUtc()로
+ * 구한 KST 달력 월 경계를 그대로 넘겨야 한다(이 파일은 middleware Edge에서도 쓰이므로
+ * next/headers 의존 모듈을 직접 import하지 않는다).
+ */
+export function computeProrationRatio(
+  billingStartsAt: string,
+  monthRangeUtc: { startUtc: string; endUtc: string }
+): number {
+  const startsAtMs = new Date(billingStartsAt).getTime();
+  const monthStartMs = new Date(monthRangeUtc.startUtc).getTime();
+  const monthEndMs = new Date(monthRangeUtc.endUtc).getTime();
+
+  // 과금 시작일이 이번 달 1일 이전(이미 지난 달부터 과금 중)이면 전액.
+  if (startsAtMs <= monthStartMs) {
+    return 1;
+  }
+
+  // 과금 시작일이 이번 달 이후(아직 도래 전)면 호출측(isBillingBlocked)에서 이미
+  // 차단하지 않도록 걸렀겠지만, 방어적으로 0을 반환한다.
+  if (startsAtMs >= monthEndMs) {
+    return 0;
+  }
+
+  return (monthEndMs - startsAtMs) / (monthEndMs - monthStartMs);
+}
+
+/**
+ * 일할 비율 + 이벤트 할인율(%, lib/supplier/platform-events.ts)을 함께 적용한 최종 청구액.
+ * 두 조정을 한 번에 곱해서 반올림 한 번만 하도록 모아둔 것 — 각각 따로 반올림하면
+ * 둘 다 적용되는 달에 오차가 누적될 수 있다.
+ */
+export function computeFinalFee(
+  fullMonthFee: number,
+  prorationRatio: number,
+  discountRatePercent: number
+): number {
+  return Math.round(fullMonthFee * prorationRatio * (1 - discountRatePercent / 100));
+}
+
 export function isTrialExpired(subscriptionStatus: string, trialStartedAt: string): boolean {
   return subscriptionStatus === "trial" && Date.now() - new Date(trialStartedAt).getTime() > TRIAL_MS;
 }
@@ -113,7 +155,10 @@ export interface BillingInvoiceMessageInput {
   representativeName: string;
   month?: number;
   billedCount: number;
+  /** 최종 청구액(일할 계산·이벤트 할인이 적용됐다면 적용 후 금액) */
   monthlyFee: number;
+  /** 일할/할인 적용 전 원래 한 달치 금액. monthlyFee와 다르면 안내 문구에 병기한다. */
+  fullMonthFee?: number;
   siteOrigin?: string;
   bankAccountInfo?: string | null;
 }
@@ -127,11 +172,16 @@ export function buildBillingInvoiceMessage({
   month = new Date().getMonth() + 1,
   billedCount,
   monthlyFee,
+  fullMonthFee,
   siteOrigin = "",
   bankAccountInfo,
 }: BillingInvoiceMessageInput): string {
   const accountLine = bankAccountInfo ? `■ 입금 계좌: ${bankAccountInfo}\n` : "";
   const billingUrl = siteOrigin ? `${siteOrigin}/dashboard/billing` : "/dashboard/billing";
+  const isAdjusted = fullMonthFee !== undefined && fullMonthFee !== monthlyFee;
+  const feeLine = isAdjusted
+    ? `■ 이번 달 구독료: ${monthlyFee.toLocaleString("ko-KR")}원 (정가 ${fullMonthFee!.toLocaleString("ko-KR")}원에서 일할 계산·이벤트 할인 적용)`
+    : `■ 이번 달 구독료: ${monthlyFee.toLocaleString("ko-KR")}원 (구간별 누진 단가 적용)`;
 
   return `[미트파트너스] ${month}월 플랫폼 이용 구독료 청구 안내
 
@@ -139,7 +189,7 @@ ${businessName} ${representativeName} 대표님, 안녕하세요.
 이번 달 플랫폼 이용 구독료 산정 내역을 안내해 드립니다.
 
 ■ 당월 실발주 거래처: ${billedCount}곳
-■ 이번 달 구독료: ${monthlyFee.toLocaleString("ko-KR")}원 (구간별 누진 단가 적용)
+${feeLine}
 ${accountLine}■ 입금 기한: 매월 말일까지
 
 상세 내역은 공급사 관리 대시보드(구독료 청구서)에서 확인하실 수 있습니다.

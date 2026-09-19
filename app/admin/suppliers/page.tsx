@@ -5,7 +5,12 @@ import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { isSuperAdminSession } from "@/lib/auth/rbac";
 import { ensureSuperAdminBootstrap } from "@/lib/auth/super-admin-bootstrap";
 import { isValidBusinessNumber } from "@/lib/validation/business-number";
-import { countBilledRetailersForAllSuppliers } from "@/lib/supplier/billed-retailers";
+import { countBilledRetailersForAllSuppliers, currentBillingMonthRangeUtc } from "@/lib/supplier/billed-retailers";
+import {
+  listActiveEventsForMonth,
+  resolveDiscountForWholesaler,
+  type ActiveEventDiscount,
+} from "@/lib/supplier/platform-events";
 import { SupplierApprovalList } from "./supplier-approval-list";
 import type { Wholesaler } from "@/types/database";
 
@@ -110,16 +115,18 @@ export default async function AdminSuppliersPage() {
     "demo-wholesaler-2": 0,
     "demo-wholesaler-3": 5,
   };
+  let eventDiscounts: Record<string, ActiveEventDiscount> = {};
 
   if (isConfigured) {
     const supabase = await createClient();
 
-    const [{ data }, billedCounts] = await Promise.all([
+    const [{ data }, billedCounts, eventsSnapshot] = await Promise.all([
       supabase
         .from("wholesalers")
         .select("*, profiles:profile_id ( phone )")
         .order("created_at", { ascending: false }),
       countBilledRetailersForAllSuppliers(supabase),
+      listActiveEventsForMonth(supabase, currentBillingMonthRangeUtc()),
     ]);
 
     suppliers = (((data ?? []) as Array<Wholesaler & { profiles?: { phone?: string | null } | null }>)).map((row) => ({
@@ -127,6 +134,9 @@ export default async function AdminSuppliersPage() {
       contactPhone: row.profiles?.phone ?? null,
     }));
     billedRetailerCounts = billedCounts;
+    eventDiscounts = Object.fromEntries(
+      suppliers.map((supplier) => [supplier.id, resolveDiscountForWholesaler(supplier.id, eventsSnapshot)])
+    );
 
     // "관리자 관리" 링크는 다른 관리자를 승격/강등할 수 있는 계정(can_grant=true)에게만 보인다.
     // /admin/admins 자체의 가드(requireAdminGranter)와 동일한 RPC로 판정한다.
@@ -160,6 +170,15 @@ export default async function AdminSuppliersPage() {
           </Link>
           <Link href="/admin/retailer-leads" style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}>
             고객(소매) 입점 희망 리드 →
+          </Link>
+          <Link href="/admin/events" style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}>
+            구독료 할인 이벤트 →
+          </Link>
+          <Link href="/admin/stats" style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}>
+            구독자·구독료 추이 →
+          </Link>
+          <Link href="/admin/billing" style={{ fontSize: "12px", color: "#1d4ed8", textDecoration: "underline" }}>
+            구독료 청구·수납 관리 →
           </Link>
         </div>
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
@@ -221,7 +240,11 @@ export default async function AdminSuppliersPage() {
       )}
 
       {/* 공급사 승인/거절 및 구독 권한 관리 목록 */}
-      <SupplierApprovalList initialSuppliers={suppliers} billedRetailerCounts={billedRetailerCounts} />
+      <SupplierApprovalList
+        initialSuppliers={suppliers}
+        billedRetailerCounts={billedRetailerCounts}
+        eventDiscounts={eventDiscounts}
+      />
     </main>
   );
 }

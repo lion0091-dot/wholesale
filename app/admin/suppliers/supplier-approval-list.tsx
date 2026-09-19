@@ -14,11 +14,15 @@ import {
   type DocumentVerificationLevel,
 } from "@/lib/validation/business-number";
 import {
+  computeFinalFee,
   computeMonthlyFee,
+  computeProrationRatio,
   isBillingBlocked,
   trialDaysRemaining,
   buildBillingInvoiceMessage,
 } from "@/lib/supplier/billing";
+import { currentBillingMonthRangeUtc } from "@/lib/supplier/billed-retailers";
+import type { ActiveEventDiscount } from "@/lib/supplier/platform-events";
 import type { Wholesaler, WholesalerStatus, SubscriptionStatus } from "@/types/database";
 import type { AdminSupplierItem } from "./page";
 
@@ -26,6 +30,8 @@ interface SupplierApprovalListProps {
   initialSuppliers: AdminSupplierItem[];
   /** wholesaler_id → 이번 달 실발주(취소 제외) 거래처 수 (구독료는 구간별 누진 단가로 computeMonthlyFee가 계산) */
   billedRetailerCounts: Record<string, number>;
+  /** wholesaler_id → 이번 달 적용 중인 이벤트 할인(없으면 discountRate 0) */
+  eventDiscounts: Record<string, ActiveEventDiscount>;
 }
 
 interface BadgeStyle {
@@ -87,6 +93,7 @@ function formatDate(value: string): string {
 export function SupplierApprovalList({
   initialSuppliers,
   billedRetailerCounts,
+  eventDiscounts,
 }: SupplierApprovalListProps) {
   const [suppliers, setSuppliers] = useState<AdminSupplierItem[]>(initialSuppliers);
   const [activeFilter, setActiveFilter] = useState<WholesalerStatus | "all">("all");
@@ -220,7 +227,8 @@ export function SupplierApprovalList({
   const handleSendInvoiceSms = (
     supplier: AdminSupplierItem,
     billedCount: number,
-    monthlyFee: number
+    monthlyFee: number,
+    fullMonthFee: number
   ) => {
     if (!supplier.contactPhone) {
       return;
@@ -231,6 +239,7 @@ export function SupplierApprovalList({
       representativeName: supplier.representative_name,
       billedCount,
       monthlyFee,
+      fullMonthFee,
       siteOrigin: typeof window !== "undefined" ? window.location.origin : "",
     });
 
@@ -244,7 +253,8 @@ export function SupplierApprovalList({
   const handleCopyInvoice = async (
     supplier: AdminSupplierItem,
     billedCount: number,
-    monthlyFee: number
+    monthlyFee: number,
+    fullMonthFee: number
   ) => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     const message = buildBillingInvoiceMessage({
@@ -252,6 +262,7 @@ export function SupplierApprovalList({
       representativeName: supplier.representative_name,
       billedCount,
       monthlyFee,
+      fullMonthFee,
       siteOrigin: origin,
     });
 
@@ -342,7 +353,17 @@ export function SupplierApprovalList({
             const docStyle = DOC_BADGES[doc.level];
             const isBusy = loadingId === supplier.id;
             const billedRetailerCount = billedRetailerCounts[supplier.id] ?? 0;
-            const monthlyFee = computeMonthlyFee(billedRetailerCount);
+            const fullMonthFee = computeMonthlyFee(billedRetailerCount);
+            const prorationRatio = supplier.billing_starts_at
+              ? computeProrationRatio(supplier.billing_starts_at, currentBillingMonthRangeUtc())
+              : 1;
+            const { discountRate: eventDiscountRate, eventName } = eventDiscounts[supplier.id] ?? {
+              discountRate: 0,
+              eventName: null,
+            };
+            const monthlyFee = computeFinalFee(fullMonthFee, prorationRatio, eventDiscountRate);
+            const isProrated = prorationRatio < 1;
+            const isDiscounted = eventDiscountRate > 0;
             const blocked = isBillingBlocked(
               supplier.subscription_status,
               supplier.trial_started_at,
@@ -413,6 +434,19 @@ export function SupplierApprovalList({
                     <p style={{ fontSize: "12px", color: "#334155", marginTop: "4px", fontWeight: 600 }}>
                       이번 달 구독료: {monthlyFee.toLocaleString("ko-KR")}원 (이번 달 발주 거래처{" "}
                       {billedRetailerCount}곳, 구간별 누진 단가)
+                      {isProrated && (
+                        <span style={{ color: "#0f172a" }}>
+                          {" "}
+                          · 일할 적용(원래 {fullMonthFee.toLocaleString("ko-KR")}원 중{" "}
+                          {(prorationRatio * 100).toFixed(1)}%)
+                        </span>
+                      )}
+                      {isDiscounted && (
+                        <span style={{ color: "#166534" }}>
+                          {" "}
+                          · 🎉 {eventName} 할인 {eventDiscountRate}%
+                        </span>
+                      )}
                       {daysLeft !== null && (
                         <span style={{ color: daysLeft <= 7 ? "#dc2626" : "#64748b", fontWeight: 700 }}>
                           {" "}
@@ -447,7 +481,9 @@ export function SupplierApprovalList({
                     >
                       <button
                         type="button"
-                        onClick={() => handleCopyInvoice(supplier, billedRetailerCount, monthlyFee)}
+                        onClick={() =>
+                          handleCopyInvoice(supplier, billedRetailerCount, monthlyFee, fullMonthFee)
+                        }
                         style={{
                           fontSize: "11px",
                           fontWeight: 700,
@@ -469,7 +505,7 @@ export function SupplierApprovalList({
                         <button
                           type="button"
                           onClick={() =>
-                            handleSendInvoiceSms(supplier, billedRetailerCount, monthlyFee)
+                            handleSendInvoiceSms(supplier, billedRetailerCount, monthlyFee, fullMonthFee)
                           }
                           style={{
                             fontSize: "11px",

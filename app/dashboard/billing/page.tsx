@@ -3,11 +3,14 @@ import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import {
   computeFeeBreakdown,
+  computeFinalFee,
   computeMonthlyFee,
+  computeProrationRatio,
   isBillingBlocked,
   trialDaysRemaining,
 } from "@/lib/supplier/billing";
-import { countBilledRetailers } from "@/lib/supplier/billed-retailers";
+import { countBilledRetailers, currentBillingMonthRangeUtc } from "@/lib/supplier/billed-retailers";
+import { getActiveEventDiscount } from "@/lib/supplier/platform-events";
 import type { SubscriptionStatus } from "@/types/database";
 
 export const metadata = {
@@ -46,17 +49,21 @@ export default async function DashboardBillingPage() {
   let billingStartsAt: string | null = null;
   let billedRetailerCount = 8;
   let isDemoData = true;
+  let eventDiscountRate = 0;
+  let eventName: string | null = null;
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
+    const monthRange = currentBillingMonthRangeUtc();
 
-    const [{ data: wholesaler }, billedCount] = await Promise.all([
+    const [{ data: wholesaler }, billedCount, eventDiscount] = await Promise.all([
       supabase
         .from("wholesalers")
         .select("subscription_status, trial_started_at, billing_starts_at")
         .eq("id", scope.wholesalerId)
         .maybeSingle(),
       countBilledRetailers(supabase, scope.wholesalerId),
+      getActiveEventDiscount(supabase, scope.wholesalerId, monthRange),
     ]);
 
     if (wholesaler) {
@@ -64,16 +71,26 @@ export default async function DashboardBillingPage() {
       trialStartedAt = wholesaler.trial_started_at as string;
       billingStartsAt = wholesaler.billing_starts_at as string | null;
       billedRetailerCount = billedCount;
+      eventDiscountRate = eventDiscount.discountRate;
+      eventName = eventDiscount.eventName;
       isDemoData = false;
     }
   }
 
-  const monthlyFee = computeMonthlyFee(billedRetailerCount);
+  const fullMonthFee = computeMonthlyFee(billedRetailerCount);
   const breakdown = computeFeeBreakdown(billedRetailerCount);
   const blocked = isBillingBlocked(subscriptionStatus, trialStartedAt, billingStartsAt);
   const daysLeft = subscriptionStatus === "trial" ? trialDaysRemaining(trialStartedAt) : null;
   const billingStarted = Boolean(billingStartsAt) && Date.now() >= new Date(billingStartsAt as string).getTime();
   const statusBadge = STATUS_BADGES[subscriptionStatus] ?? STATUS_BADGES.trial;
+
+  // 과금 시작월(billing_starts_at이 속한 달)이면 일할 계산 — 그 이후 달은 ratio가 항상 1.
+  const prorationRatio = billingStartsAt
+    ? computeProrationRatio(billingStartsAt, currentBillingMonthRangeUtc())
+    : 1;
+  const monthlyFee = computeFinalFee(fullMonthFee, prorationRatio, eventDiscountRate);
+  const isProrated = prorationRatio < 1;
+  const isDiscounted = eventDiscountRate > 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "560px" }}>
@@ -155,6 +172,18 @@ export default async function DashboardBillingPage() {
               <div style={{ fontSize: "28px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>
                 {formatWon(monthlyFee)}
               </div>
+              {isProrated && (
+                <p style={{ fontSize: "11px", color: "#0f172a", marginTop: "4px", fontWeight: 600 }}>
+                  일할 계산 적용 — 과금 시작일({formatDate(billingStartsAt as string)})부터 이번 달
+                  말일까지 {(prorationRatio * 100).toFixed(1)}%만 청구됩니다(일할 계산 전{" "}
+                  {formatWon(fullMonthFee)}).
+                </p>
+              )}
+              {isDiscounted && (
+                <p style={{ fontSize: "11px", color: "#166534", marginTop: "4px", fontWeight: 600 }}>
+                  🎉 {eventName} 할인 적용 중 — 구독료 {eventDiscountRate}% 할인
+                </p>
+              )}
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
                 이번 달 남은 기간 동안 새로 발주하는 거래처가 있으면 금액이 늘어날 수 있습니다.
                 최종 금액은 월말 기준입니다.
