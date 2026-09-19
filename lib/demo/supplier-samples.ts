@@ -120,7 +120,9 @@ export const DEMO_RETAILERS: DemoRetailer[] = [
   {
     id: "demo-retailer-3",
     restaurant_name: "마포 갈비천국",
-    business_number: null,
+    // 계산서(면세) 데모 미리보기(demo-order-4/5가 이 거래처를 참조)가 고객
+    // 사업자등록번호 미등록 게이트에 막히지 않도록 다른 데모 거래처처럼 값을 채운다.
+    business_number: "220-81-58962",
     representative_name: "이정훈",
     delivery_address: "서울 마포구 도화동 12-3",
     delivery_address_detail: null,

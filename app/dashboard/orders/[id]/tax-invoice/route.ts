@@ -88,8 +88,5 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   return buildTaxInvoiceResponse(data, overrides, {
     actionHref: "/dashboard/invites",
     actionLabel: "사업장 주소 등록하러 가기",
-    // 고객(소매) 사업자등록번호는 공급사가 이 화면에서 대신 고칠 수 없다 —
-    // 고객 본인이 /my-shops "내 정보 수정"에서 입력해야 한다.
-    note: "고객(소매) 사업자등록번호가 비어있다면, 공급사가 아니라 고객 본인이 미니샵의 '내 정보 수정'에서 등록해야 합니다. 고객에게 등록을 요청해주세요.",
   });
 }

@@ -375,8 +375,9 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 lineHeight: 1.6,
               }}
             >
-              ⚠️ 카카오 계정 정보로만 가입되어 있어요. 아래 입력한 내용은 이번 주문에만
-              쓰입니다 — 사업자등록번호 등록, 다음 주문부터 자동으로 채워질 정보 수정은{" "}
+              ⚠️ 카카오 계정 정보로만 가입되어 있어요. 아래 상호명·배송지는 이번 주문을
+              접수하면 앞으로의 기본 정보로 저장됩니다 — 사업자등록번호 등록이나 나중에
+              다시 고치는 건{" "}
               <Link href="/my-shops" style={{ fontWeight: 700, color: "#b45309" }}>
                 내 정보 수정
               </Link>

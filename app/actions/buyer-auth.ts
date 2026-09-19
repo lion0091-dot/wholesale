@@ -260,6 +260,7 @@ export async function updateRetailerProfileAction(
 
     if (phoneError) {
       console.error("[Retailer Profile] 연락처 저장 오류:", phoneError.message);
+      throw new Error("연락처 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
     }
 
     revalidatePath("/my-shops");
