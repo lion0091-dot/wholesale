@@ -13,8 +13,23 @@ interface AdminTrendChartProps {
   points: TrendPoint[];
   /** 라인/점 색상 */
   color: string;
-  valueFormatter?: (value: number) => string;
-  labelFormatter?: (label: string) => string;
+  /** 값 단위. 'count'는 "곳", 'won'은 "원" 접미사를 붙인다. */
+  valueUnit: "count" | "won";
+}
+
+/**
+ * 서버 컴포넌트(app/admin/stats/page.tsx)가 렌더링하는 화면이라 포매터 함수를 그대로
+ * props로 넘길 수 없다(RSC 경계에서 함수는 직렬화 불가) — 문자열 유닛만 받아 여기서
+ * 포맷을 결정한다. label은 항상 'YYYY-MM' 월 키라 여기서 고정 포맷한다.
+ */
+function formatMonthLabel(monthKey: string): string {
+  const [, month] = monthKey.split("-");
+
+  return `${Number(month)}월`;
+}
+
+function formatValueByUnit(value: number, unit: "count" | "won"): string {
+  return unit === "won" ? `${value.toLocaleString("ko-KR")}원` : `${value.toLocaleString("ko-KR")}곳`;
 }
 
 const WIDTH = 640;
@@ -27,11 +42,11 @@ const GRID_RATIOS = [0, 0.25, 0.5, 0.75, 1];
  * 차트 제목이 곧 시리즈 이름) 색은 브랜드 색 하나만 쓴다. 호버 시 툴팁으로 정확한
  * 값을 보여준다.
  */
-export function AdminTrendChart({ title, points, color, valueFormatter, labelFormatter }: AdminTrendChartProps) {
+export function AdminTrendChart({ title, points, color, valueUnit }: AdminTrendChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
-  const formatValue = valueFormatter ?? ((value: number) => value.toLocaleString("ko-KR"));
-  const formatLabel = labelFormatter ?? ((label: string) => label);
+  const formatValue = (value: number) => formatValueByUnit(value, valueUnit);
+  const formatLabel = formatMonthLabel;
 
   const plotWidth = WIDTH - PADDING.left - PADDING.right;
   const plotHeight = HEIGHT - PADDING.top - PADDING.bottom;

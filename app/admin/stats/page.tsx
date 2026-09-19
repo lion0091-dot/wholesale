@@ -34,16 +34,6 @@ function shiftMonthKey(monthKey: string, delta: number): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-function formatMonthLabel(monthKey: string): string {
-  const [, month] = monthKey.split("-");
-
-  return `${Number(month)}월`;
-}
-
-function formatWon(amount: number): string {
-  return `${amount.toLocaleString("ko-KR")}원`;
-}
-
 /** 데모 모드(Supabase 미설정) 시연용 6개월 샘플 데이터. */
 function buildDemoStats(fromMonth: string, toMonth: string): MonthlyPlatformStat[] {
   const months: string[] = [];
@@ -124,20 +114,8 @@ export default async function AdminStatsPage({ searchParams }: PageProps) {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        <AdminTrendChart
-          title="누적 가입 공급사 수"
-          points={subscriberPoints}
-          color="#b91c1c"
-          labelFormatter={formatMonthLabel}
-          valueFormatter={(value) => `${value.toLocaleString("ko-KR")}곳`}
-        />
-        <AdminTrendChart
-          title="전체 공급사 구독료 합계"
-          points={feePoints}
-          color="#166534"
-          labelFormatter={formatMonthLabel}
-          valueFormatter={formatWon}
-        />
+        <AdminTrendChart title="누적 가입 공급사 수" points={subscriberPoints} color="#b91c1c" valueUnit="count" />
+        <AdminTrendChart title="전체 공급사 구독료 합계" points={feePoints} color="#166534" valueUnit="won" />
       </div>
     </main>
   );
