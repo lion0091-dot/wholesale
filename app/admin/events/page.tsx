@@ -129,7 +129,7 @@ export default async function AdminEventsPage() {
   }
 
   return (
-    <main style={{ maxWidth: "768px", margin: "0 auto", padding: "24px 16px" }}>
+    <div style={{ maxWidth: "768px", margin: "0 auto" }}>
       <header style={{ marginBottom: "24px" }}>
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
           구독료 할인 이벤트
@@ -142,6 +142,6 @@ export default async function AdminEventsPage() {
       </header>
 
       <EventManager suppliers={suppliers} initialEvents={events} />
-    </main>
+    </div>
   );
 }

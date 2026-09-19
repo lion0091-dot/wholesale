@@ -50,7 +50,7 @@ export default async function AdminCategoriesPage() {
   }
 
   return (
-    <main style={{ maxWidth: "480px", margin: "0 auto", padding: "24px 16px" }}>
+    <div style={{ maxWidth: "480px", margin: "0 auto" }}>
       <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: "8px 0 4px" }}>
         상품 카테고리 관리
       </h1>
@@ -58,6 +58,6 @@ export default async function AdminCategoriesPage() {
         모든 공급사의 상품 등록 화면에서 공용으로 쓰이는 카테고리 목록입니다.
       </p>
       <CategoryManager initialCategories={categories} />
-    </main>
+    </div>
   );
 }

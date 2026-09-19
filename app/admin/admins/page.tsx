@@ -11,7 +11,7 @@ export default async function AdminAdminsPage() {
 
   if (!result.success) {
     return (
-      <main style={{ maxWidth: "768px", margin: "0 auto", padding: "24px 16px" }}>
+      <div style={{ maxWidth: "768px", margin: "0 auto" }}>
         <div
           role="alert"
           style={{
@@ -25,12 +25,12 @@ export default async function AdminAdminsPage() {
         >
           {result.error ?? "관리자 목록을 불러오지 못했습니다."}
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main style={{ maxWidth: "768px", margin: "0 auto", padding: "24px 16px" }}>
+    <div style={{ maxWidth: "768px", margin: "0 auto" }}>
       <header style={{ marginBottom: "24px" }}>
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
           관리자 후보 목록
@@ -41,6 +41,6 @@ export default async function AdminAdminsPage() {
       </header>
 
       <AdminAdminsClient initialAdmins={result.data ?? []} currentUserId={userId} />
-    </main>
+    </div>
   );
 }

@@ -157,7 +157,7 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
   }
 
   return (
-    <main style={{ maxWidth: "960px", margin: "0 auto", padding: "24px 16px" }}>
+    <div style={{ maxWidth: "960px", margin: "0 auto" }}>
       <header style={{ marginBottom: "24px" }}>
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
           구독료 청구·수납 관리
@@ -178,6 +178,6 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
       </div>
 
       <BillingInvoiceList from={rangeFrom} to={rangeTo} initialInvoices={invoices} />
-    </main>
+    </div>
   );
 }

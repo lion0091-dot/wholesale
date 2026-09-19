@@ -202,7 +202,7 @@ export default async function AdminStatsPage({ searchParams }: PageProps) {
   });
 
   return (
-    <main style={{ maxWidth: "768px", margin: "0 auto", padding: "24px 16px" }}>
+    <div style={{ maxWidth: "768px", margin: "0 auto" }}>
       <header style={{ marginBottom: "24px" }}>
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
           구독자·구독료 추이
@@ -273,6 +273,6 @@ export default async function AdminStatsPage({ searchParams }: PageProps) {
           />
         </div>
       </div>
-    </main>
+    </div>
   );
 }
