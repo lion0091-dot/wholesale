@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { WithdrawAccountButton } from "./withdraw-account-button";
+import { RetailerProfileForm } from "./retailer-profile-form";
 import type { RelationshipStatus, WholesalerStatus } from "@/types/database";
 
 export const metadata = {
@@ -89,7 +90,9 @@ export default async function MyShopsPage() {
 
   const { data: retailer } = await supabase
     .from("retailers")
-    .select("id")
+    .select(
+      "id, restaurant_name, representative_name, business_number, delivery_address, delivery_address_detail"
+    )
     .eq("profile_id", user.id)
     .maybeSingle();
 
@@ -102,6 +105,12 @@ export default async function MyShopsPage() {
       </main>
     );
   }
+
+  const { data: contactProfile } = await supabase
+    .from("profiles")
+    .select("phone")
+    .eq("id", user.id)
+    .maybeSingle();
 
   const { data: rows } = await supabase
     .from("wholesaler_retailers")
@@ -196,6 +205,17 @@ export default async function MyShopsPage() {
           ))}
         </div>
       )}
+
+      <div style={{ marginTop: "20px" }}>
+        <RetailerProfileForm
+          restaurantName={retailer.restaurant_name as string}
+          representativeName={retailer.representative_name as string}
+          businessNumber={retailer.business_number as string | null}
+          deliveryAddress={retailer.delivery_address as string}
+          deliveryAddressDetail={retailer.delivery_address_detail as string | null}
+          contactPhone={contactProfile?.phone as string | null}
+        />
+      </div>
 
       <WithdrawAccountButton />
     </main>

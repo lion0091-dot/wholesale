@@ -12,6 +12,7 @@ import {
   resolveSiteOrigin,
   sanitizeShopReturnPath,
 } from "@/lib/auth/buyer-auth";
+import { isValidBusinessNumber, normalizeBusinessNumber } from "@/lib/validation/business-number";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -151,6 +152,117 @@ export async function recordBuyerConsentAction(
     }
 
     revalidatePath(`/shop/${shopToken}`);
+
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export interface RetailerProfileInput {
+  restaurantName: string;
+  representativeName: string;
+  businessNumber: string;
+  deliveryAddress: string;
+  deliveryAddressDetail: string;
+  contactPhone: string;
+}
+
+/**
+ * 바이어(구매회원) 본인 정보 수정 — 상호명/대표자명/사업자번호/배송지/연락처.
+ *
+ * claim_shop_access()는 카카오 닉네임만으로 거래처 행을 만들고, 첫 주문 때
+ * backfillRetailerProfile()이 비어있는 값만 한 번 채운다(app/shop/[shop_token]/actions.ts).
+ * 그 이후로는 본인도 공급사도 이 정보를 고칠 방법이 없었다 — 거래명세서/계산서(면세)가
+ * 이 값을 매번 실시간으로 읽어서 만들어지므로(lib/orders/statement.ts, 스냅샷 아님),
+ * 여기서 고치면 과거에 발행한 주문 건도 다시 열람/다운로드할 때 자동으로 최신 정보로
+ * 나온다 — 별도 소급 처리가 필요 없다.
+ *
+ * business_address와 같은 이유로 SECURITY DEFINER RPC 없이 기존 RLS로 직접 UPDATE한다.
+ * 사업자번호는 선택 입력(소매는 국세청 진위확인 대상이 아니다) — 입력했으면 체크섬만 확인한다.
+ */
+export async function updateRetailerProfileAction(
+  input: RetailerProfileInput
+): Promise<ActionResult> {
+  try {
+    const restaurantName = input.restaurantName.trim();
+    const representativeName = input.representativeName.trim();
+    const deliveryAddress = input.deliveryAddress.trim();
+    const deliveryAddressDetail = input.deliveryAddressDetail.trim();
+    const contactPhone = input.contactPhone.replace(/\D/g, "");
+    const businessNumberRaw = normalizeBusinessNumber(input.businessNumber);
+
+    if (restaurantName.length < 2 || restaurantName.length > 40) {
+      throw new BuyerAuthError("invalid_input", "상호(사업장)명을 2~40자 이내로 입력해주세요.");
+    }
+
+    if (representativeName.length < 2 || representativeName.length > 30) {
+      throw new BuyerAuthError("invalid_input", "대표자명을 2~30자 이내로 입력해주세요.");
+    }
+
+    if (deliveryAddress.length < 5 || deliveryAddress.length > 200) {
+      throw new BuyerAuthError("invalid_input", "배송지 주소를 5~200자 이내로 정확히 입력해주세요.");
+    }
+
+    if (deliveryAddressDetail.length > 100) {
+      throw new BuyerAuthError("invalid_input", "상세주소는 100자 이내로 입력해주세요.");
+    }
+
+    if (contactPhone.length < 9 || contactPhone.length > 11) {
+      throw new BuyerAuthError("invalid_input", "연락처를 정확히 입력해주세요. (숫자만 9~11자리)");
+    }
+
+    if (businessNumberRaw && !isValidBusinessNumber(businessNumberRaw)) {
+      throw new BuyerAuthError(
+        "invalid_input",
+        "사업자등록번호 체크섬이 올바르지 않습니다. 번호를 다시 확인해주세요. (미입력 후 나중에 등록도 가능합니다)"
+      );
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new BuyerAuthError("auth_required", "로그인이 필요합니다.");
+    }
+
+    const { data, error } = await supabase
+      .from("retailers")
+      .update({
+        restaurant_name: restaurantName,
+        representative_name: representativeName,
+        business_number: businessNumberRaw || null,
+        delivery_address: deliveryAddress,
+        delivery_address_detail: deliveryAddressDetail || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("profile_id", user.id)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      throw new Error("정보 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    if (!data) {
+      throw new BuyerAuthError(
+        "profile_missing",
+        "거래처 정보를 찾을 수 없습니다. 초대 링크로 먼저 접속해주세요."
+      );
+    }
+
+    const { error: phoneError } = await supabase
+      .from("profiles")
+      .update({ phone: contactPhone, updated_at: new Date().toISOString() })
+      .eq("id", user.id);
+
+    if (phoneError) {
+      console.error("[Retailer Profile] 연락처 저장 오류:", phoneError.message);
+    }
+
+    revalidatePath("/my-shops");
 
     return { success: true };
   } catch (error) {

@@ -45,7 +45,8 @@ export type BuyerAuthErrorCode =
   | "not_a_buyer"
   | "profile_missing"
   | "invalid_shop"
-  | "not_linked";
+  | "not_linked"
+  | "invalid_input";
 
 export function isValidShopToken(shopToken: string | null | undefined): boolean {
   return Boolean(shopToken) && UUID_PATTERN.test(shopToken as string);
