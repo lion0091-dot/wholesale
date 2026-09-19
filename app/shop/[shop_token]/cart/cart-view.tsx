@@ -97,7 +97,7 @@ export function CartView({ catalog }: CartViewProps) {
                             </span>
                           )}
                         </h3>
-                        <p style={{ fontSize: "12px", color: "#334155", marginTop: "3px" }}>
+                        <p style={{ fontSize: "13px", color: "#334155", marginTop: "3px" }}>
                           {formatWon(line.unitPrice)} / {line.unit}
                           {line.isCustomPrice && (
                             <span style={{ color: "#166534", fontWeight: 700, marginLeft: "6px" }}>
@@ -166,7 +166,7 @@ export function CartView({ catalog }: CartViewProps) {
                         <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
                           {formatWon(lineSubtotal(line))}
                         </div>
-                        <div style={{ fontSize: "12px", color: "#475569" }}>
+                        <div style={{ fontSize: "13px", color: "#475569" }}>
                           {step}{line.unit} 단위 · 재고 {line.stockQuantity}{line.unit}
                         </div>
                       </div>
@@ -234,7 +234,7 @@ export function CartView({ catalog }: CartViewProps) {
                 </span>
               </div>
 
-              <p style={{ fontSize: "12px", color: "#475569", marginTop: "8px" }}>
+              <p style={{ fontSize: "13px", color: "#475569", marginTop: "8px" }}>
                 최소 주문 금액 {MIN_ORDER_AMOUNT.toLocaleString()}원 (부가세 별도, 배송비는 공급사 정책에 따름)
               </p>
             </div>
@@ -253,7 +253,7 @@ export function CartView({ catalog }: CartViewProps) {
                 {blockingMessages.map((violation, index) => (
                   <p
                     key={`${violation.code}-${violation.productId ?? index}`}
-                    style={{ fontSize: "12px", color: "#b91c1c", lineHeight: 1.6 }}
+                    style={{ fontSize: "13px", color: "#b91c1c", lineHeight: 1.6 }}
                   >
                     • {violation.message}
                   </p>

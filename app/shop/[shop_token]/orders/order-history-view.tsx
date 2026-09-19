@@ -63,7 +63,7 @@ function TrackingLookupButton({ shopToken, order }: { shopToken: string; order: 
         type="button"
         onClick={() => void handleToggle()}
         style={{
-          fontSize: "12px",
+          fontSize: "13px",
           fontWeight: 700,
           color: "#2563eb",
           border: "1px solid #bfdbfe",
@@ -77,7 +77,7 @@ function TrackingLookupButton({ shopToken, order }: { shopToken: string; order: 
       </button>
 
       {open && (
-        <div style={{ marginTop: "8px", fontSize: "12px" }}>
+        <div style={{ marginTop: "8px", fontSize: "13px" }}>
           {pending ? (
             <p style={{ color: "#334155" }}>조회 중...</p>
           ) : result ? (
@@ -262,7 +262,7 @@ export function OrderHistoryView({
                       display: "flex",
                       justifyContent: "space-between",
                       gap: "10px",
-                      fontSize: "12px",
+                      fontSize: "13px",
                     }}
                   >
                     <span style={{ color: "#334155" }}>
@@ -286,7 +286,7 @@ export function OrderHistoryView({
                   borderTop: "1px solid #f1f5f9",
                 }}
               >
-                <span style={{ fontSize: "12px", color: "#334155" }}>총 발주 금액</span>
+                <span style={{ fontSize: "13px", color: "#334155" }}>총 발주 금액</span>
                 <strong style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
                   {formatWon(order.totalAmount)}
                 </strong>
@@ -303,7 +303,7 @@ export function OrderHistoryView({
                 )}
               </div>
 
-              <p style={{ fontSize: "12px", color: "#475569", marginTop: "8px", lineHeight: 1.6 }}>
+              <p style={{ fontSize: "13px", color: "#475569", marginTop: "8px", lineHeight: 1.6 }}>
                 배송지: {order.deliveryAddress || "-"}
                 {order.deliveryNotes && (
                   <>
@@ -320,7 +320,7 @@ export function OrderHistoryView({
                     marginTop: "12px",
                     backgroundColor: badge.bg,
                     color: badge.color,
-                    fontSize: "12px",
+                    fontSize: "13px",
                     lineHeight: 1.6,
                     padding: "10px 12px",
                     borderRadius: "8px",
@@ -353,7 +353,7 @@ export function OrderHistoryView({
                     backgroundColor: "#f0fdf4",
                     border: "1px solid #bbf7d0",
                     color: "#166534",
-                    fontSize: "12px",
+                    fontSize: "13px",
                     lineHeight: 1.6,
                     padding: "10px 12px",
                     borderRadius: "8px",
@@ -449,7 +449,7 @@ export function OrderHistoryView({
                       backgroundColor: "#fffbeb",
                       border: "1px solid #fde68a",
                       color: "#92400e",
-                      fontSize: "12px",
+                      fontSize: "13px",
                       lineHeight: 1.6,
                       padding: "10px",
                       borderRadius: "8px",
@@ -465,7 +465,7 @@ export function OrderHistoryView({
                         backgroundColor: "#fef2f2",
                         border: "1px solid #fecaca",
                         color: "#b91c1c",
-                        fontSize: "12px",
+                        fontSize: "13px",
                         padding: "10px",
                         borderRadius: "8px",
                       }}

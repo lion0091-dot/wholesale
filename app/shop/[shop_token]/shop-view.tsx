@@ -177,7 +177,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
               backgroundColor: "#fffbeb",
               border: "1px solid #fde68a",
               color: "#92400e",
-              fontSize: "12px",
+              fontSize: "13px",
               padding: "10px 12px",
               borderRadius: "8px",
               marginBottom: "12px",
@@ -193,7 +193,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
               backgroundColor: "#eff6ff",
               border: "1px solid #bfdbfe",
               color: "#1e40af",
-              fontSize: "12px",
+              fontSize: "13px",
               padding: "10px 12px",
               borderRadius: "8px",
               marginBottom: "12px",
@@ -222,7 +222,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
             </p>
 
             {sessionError && (
-              <p style={{ fontSize: "12px", color: "#dc2626", marginBottom: "12px" }}>{sessionError}</p>
+              <p style={{ fontSize: "13px", color: "#dc2626", marginBottom: "12px" }}>{sessionError}</p>
             )}
 
             <button
@@ -495,7 +495,7 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
       {product.description && (
         <p
           style={{
-            fontSize: "12px",
+            fontSize: "13px",
             color: "#334155",
             backgroundColor: "#f8fafc",
             padding: "8px",

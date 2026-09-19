@@ -314,7 +314,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
       <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
         {/* 발주 품목 확인 */}
         <div style={{ ...cardStyle, padding: "16px" }}>
-          <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>
+          <span style={{ fontSize: "13px", fontWeight: 700, color: "#475569" }}>
             발주 품목 ({totals.itemCount})
           </span>
 
@@ -354,7 +354,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
             </span>
           </div>
 
-          <p style={{ fontSize: "12px", color: "#475569", marginTop: "6px" }}>
+          <p style={{ fontSize: "13px", color: "#475569", marginTop: "6px" }}>
             최소 주문 금액 {MIN_ORDER_AMOUNT.toLocaleString()}원 · 부가세 별도
           </p>
         </div>
@@ -369,7 +369,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 backgroundColor: "#fef3c7",
                 border: "1px solid #fde68a",
                 color: "#92400e",
-                fontSize: "12px",
+                fontSize: "13px",
                 padding: "10px 12px",
                 borderRadius: "8px",
                 lineHeight: 1.6,
@@ -429,7 +429,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               style={inputStyle}
             />
             {customer.deliveryAddress && (
-              <p style={{ fontSize: "12px", color: "#475569", marginTop: "4px" }}>
+              <p style={{ fontSize: "13px", color: "#475569", marginTop: "4px" }}>
                 등록된 기본 배송지가 입력되어 있습니다. 필요 시 수정하세요.
               </p>
             )}
@@ -486,12 +486,12 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 ))}
               </div>
               {paymentMethod === "on_credit" && (
-                <p style={{ fontSize: "12px", color: "#475569", marginTop: "6px" }}>
+                <p style={{ fontSize: "13px", color: "#475569", marginTop: "6px" }}>
                   여신 한도 내에서 미수금으로 기록되며, 정산은 공급사와의 약정에 따릅니다.
                 </p>
               )}
               {paymentMethod === "pg" && (
-                <p style={{ fontSize: "12px", color: "#475569", marginTop: "6px" }}>
+                <p style={{ fontSize: "13px", color: "#475569", marginTop: "6px" }}>
                   토스페이먼츠 결제창으로 이동합니다. 결제가 완료되어야 발주서가 접수됩니다.
                 </p>
               )}
@@ -508,7 +508,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               border: "1px solid #bfdbfe",
               padding: "10px",
               borderRadius: "8px",
-              fontSize: "12px",
+              fontSize: "13px",
               color: "#1e40af",
               lineHeight: 1.6,
             }}
@@ -523,7 +523,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 backgroundColor: "#fef2f2",
                 border: "1px solid #fecaca",
                 color: "#b91c1c",
-                fontSize: "12px",
+                fontSize: "13px",
                 padding: "10px",
                 borderRadius: "8px",
               }}
