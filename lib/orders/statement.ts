@@ -228,6 +228,24 @@ export function findMissingStatementFields(data: StatementData): string[] {
   return missing;
 }
 
+/**
+ * 계산서(면세) 발행에 필요한 필수 정보 확인 — 거래명세서 조건(공급사 주소)에
+ * 고객(소매) 사업자등록번호를 추가로 더한다.
+ *
+ * 계산서는 공급받는자 사업자등록번호 없이는 문서로서 의미가 없어 거래명세서보다
+ * 기준이 하나 더 있다. 반대로 거래명세서는 비사업자 고객도 받는 문서라
+ * findMissingStatementFields()는 그대로 두고 이 함수를 계산서 라우트에서만 쓴다.
+ */
+export function findMissingTaxInvoiceFields(data: StatementData): string[] {
+  const missing = findMissingStatementFields(data);
+
+  if (!data.buyer.businessNumber) {
+    missing.push("고객(소매) 사업자등록번호");
+  }
+
+  return missing;
+}
+
 /** 바이어(미니샵) 인가 — wholesalerId + retailerId 둘 다 일치해야 함(교차 조회 차단) */
 export async function loadStatementDataForBuyer(
   supabase: SupabaseServerClient,

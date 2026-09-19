@@ -1,11 +1,11 @@
 /**
  * 계산서 작성 도우미 라우트가 쓰는 응답 생성 로직.
- * 거래명세서(lib/pdf/statement-response.ts)와 같은 가드(주소 미등록 시 422)를 쓰되,
- * 문서 라벨과 PDF 렌더러만 다르다.
+ * 거래명세서(lib/pdf/statement-response.ts)와 비슷한 가드(422)를 쓰되, 계산서는
+ * 공급받는자 사업자등록번호까지 필수라 findMissingTaxInvoiceFields로 하나 더 확인한다.
  */
 
 import { NextResponse } from "next/server";
-import { findMissingStatementFields, type StatementData } from "@/lib/orders/statement";
+import { findMissingTaxInvoiceFields, type StatementData } from "@/lib/orders/statement";
 import { renderTaxInvoicePdf, type TaxInvoiceOverrides } from "@/lib/pdf/tax-invoice";
 import { renderMissingFieldsHtml, type MissingFieldsPageOptions } from "@/lib/pdf/statement-warning-page";
 
@@ -14,7 +14,7 @@ export async function buildTaxInvoiceResponse(
   overrides: TaxInvoiceOverrides,
   warningOptions: Omit<MissingFieldsPageOptions, "missingFields" | "documentLabel">
 ): Promise<NextResponse> {
-  const missingFields = findMissingStatementFields(data);
+  const missingFields = findMissingTaxInvoiceFields(data);
 
   if (missingFields.length > 0) {
     return new NextResponse(
