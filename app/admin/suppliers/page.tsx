@@ -128,7 +128,10 @@ export default async function AdminSuppliersPage() {
         .order("created_at", { ascending: false }),
       countBilledRetailersForAllSuppliers(supabase),
       listActiveEventsForMonth(supabase, currentBillingMonthRangeUtc()),
-      supabase.from("platform_subscription_invoices").select("wholesaler_id, amount").eq("status", "unpaid"),
+      supabase
+        .from("platform_subscription_invoices")
+        .select("wholesaler_id, amount, billing_month")
+        .eq("status", "unpaid"),
     ]);
 
     suppliers = (((data ?? []) as Array<Wholesaler & { profiles?: { phone?: string | null } | null }>)).map((row) => ({
@@ -140,7 +143,24 @@ export default async function AdminSuppliersPage() {
       suppliers.map((supplier) => [supplier.id, resolveDiscountForWholesaler(supplier.id, eventsSnapshot)])
     );
 
-    for (const row of (unpaidInvoiceRows ?? []) as Array<{ wholesaler_id: string; amount: number }>) {
+    // 이 화면의 "청구 문구"는 이번 달 금액을 platform_subscription_invoices 행이 아니라
+    // billedRetailerCounts로 그때그때 새로 계산한다(app/admin/billing/actions.ts의
+    // generateInvoiceSmsQueueAction처럼 확정된 청구서 anchor id로 제외하는 게 아니라)
+    // — 그래서 "이전 미납액" 합계에서도 이번 달(KST) billing_month는 직접 제외해야
+    // 이중 계산을 막을 수 있다. 지금은 확정 크론이 항상 지난달 행만 만들어 이번 달
+    // 미납 행이 존재하지 않지만, 그 불변식에만 기대지 않기 위한 명시적 제외다.
+    const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const currentBillingMonthDate = `${kstNow.getUTCFullYear()}-${String(kstNow.getUTCMonth() + 1).padStart(2, "0")}-01`;
+
+    for (const row of (unpaidInvoiceRows ?? []) as Array<{
+      wholesaler_id: string;
+      amount: number;
+      billing_month: string;
+    }>) {
+      if (row.billing_month === currentBillingMonthDate) {
+        continue;
+      }
+
       const current = unpaidPriorInvoices[row.wholesaler_id] ?? { amount: 0, count: 0 };
       unpaidPriorInvoices[row.wholesaler_id] = {
         amount: current.amount + Number(row.amount),

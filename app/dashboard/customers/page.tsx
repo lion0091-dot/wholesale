@@ -12,7 +12,7 @@ import {
   DEMO_RETAILERS,
 } from "@/lib/demo/supplier-samples";
 import { formatWon } from "@/lib/orders/status";
-import type { OutboundSmsQueueRow } from "@/lib/notifications/sms-queue";
+import { INVITE_RESEND_COOLDOWN_DAYS, type OutboundSmsQueueRow } from "@/lib/notifications/sms-queue";
 import { CustomerTable } from "./customer-table";
 import { InviteSmsQueuePanel } from "./invite-sms-queue-panel";
 import type { CustomerRow } from "./customer-types";
@@ -169,6 +169,11 @@ export default async function DashboardCustomersPage() {
         .select("id, retailer_id, recipient_name, recipient_phone, message_body, status, created_at")
         .eq("message_type", "retailer_invite")
         .eq("wholesaler_id", scope.wholesalerId)
+        // 화면에는 거래처별 최신 행 하나만 필요하다. 그 행이 쿨다운 기간보다 오래된
+        // "발송완료" 행이면 재발송 가능 상태와 다를 게 없으므로, pending이거나 최근
+        // 쿨다운 기간 이내인 행만 가져와 쌓여가는 전체 발송 이력을 매번 다 읽지 않는다
+        // (app/dashboard/customers/actions.ts의 generateInviteSmsQueueAction과 동일한 경계).
+        .or(`status.eq.pending,created_at.gte.${new Date(Date.now() - INVITE_RESEND_COOLDOWN_DAYS * 24 * 60 * 60 * 1000).toISOString()}`)
         .order("created_at", { ascending: false }),
     ]);
 

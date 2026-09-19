@@ -41,6 +41,9 @@ export async function markInvoiceStatusAction(
         paid_at: status === "paid" ? new Date().toISOString() : null,
         collected_by: status === "paid" ? (user?.id ?? null) : null,
         paid_amount: status === "paid" ? paidAmount : null,
+        // 완납 처리되면 "대사 시도했지만 미매칭" 표시를 지운다(20260930000046 마이그레이션
+        // 주석의 잠긴 불변식) — 되돌아가서 미납으로 바꿀 때는 건드리지 않는다.
+        ...(status === "paid" ? { last_reconcile_attempted_at: null } : {}),
       })
       .eq("id", invoiceId);
 
@@ -97,6 +100,7 @@ export async function bulkUpdateInvoiceStatusAction(
           paid_at: update.status === "paid" ? new Date().toISOString() : null,
           collected_by: update.status === "paid" ? (user?.id ?? null) : null,
           paid_amount: update.status === "paid" ? (update.paidAmount ?? null) : null,
+          ...(update.status === "paid" ? { last_reconcile_attempted_at: null } : {}),
         })
         .eq("id", update.invoiceId);
 
@@ -155,7 +159,10 @@ export async function reconcileInvoicePaymentsAction(
     let updatedCount = 0;
 
     for (const match of matches) {
-      const { error } = await supabase
+      // .eq("status", "unpaid")로 걸어둔 조건 때문에 이미 다른 매칭(또는 다른 관리자)이
+      // 먼저 완납 처리한 청구서는 영향받은 행이 0개인 채로 error 없이 성공 응답이 온다 —
+      // .select()로 실제 갱신된 행을 받아 확인해야 이런 조용한 무반영을 실패로 잡아낼 수 있다.
+      const { data: updatedRows, error } = await supabase
         .from("platform_subscription_invoices")
         .update({
           status: "paid",
@@ -166,9 +173,10 @@ export async function reconcileInvoicePaymentsAction(
           last_reconcile_attempted_at: null,
         })
         .eq("id", match.invoiceId)
-        .eq("status", "unpaid");
+        .eq("status", "unpaid")
+        .select("id");
 
-      if (error) {
+      if (error || !updatedRows || updatedRows.length === 0) {
         failedIds.push(match.invoiceId);
       } else {
         updatedCount += 1;
@@ -325,17 +333,21 @@ export async function generateInvoiceSmsQueueAction(): Promise<
       });
     }
 
+    // wholesaler_id 기준으로 중복을 막는다 — invoice_id 기준이면 이전 달(예: 7월) 청구서가
+    // 이미 pending으로 큐에 있는 상태에서 새 anchor(예: 8월, 이전엔 큐에 없던 id)로 다시
+    // 생성 버튼을 누를 때 걸러지지 않고 같은 공급사에게 중복 pending 큐 행이 쌓인다.
     const { data: existing } = await supabase
       .from("outbound_sms_queue")
-      .select("invoice_id")
+      .select("wholesaler_id")
       .eq("message_type", "billing_invoice")
+      .eq("status", "pending")
       .in(
-        "invoice_id",
-        anchors.map(({ anchor }) => anchor.id)
+        "wholesaler_id",
+        anchors.map(({ anchor }) => anchor.wholesaler_id)
       );
 
     const alreadyQueued = new Set(
-      ((existing ?? []) as Array<{ invoice_id: string }>).map((row) => row.invoice_id)
+      ((existing ?? []) as Array<{ wholesaler_id: string }>).map((row) => row.wholesaler_id)
     );
 
     const profileIds = Array.from(
@@ -370,7 +382,7 @@ export async function generateInvoiceSmsQueueAction(): Promise<
     let skippedNoPhoneCount = 0;
 
     for (const { anchor, previousUnpaidAmount, previousUnpaidCount } of anchors) {
-      if (alreadyQueued.has(anchor.id)) {
+      if (alreadyQueued.has(anchor.wholesaler_id)) {
         continue;
       }
 

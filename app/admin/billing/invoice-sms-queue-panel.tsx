@@ -71,8 +71,11 @@ export function InvoiceSmsQueuePanel({ initialQueue }: InvoiceSmsQueuePanelProps
       );
 
       // 페이지 서버 컴포넌트가 다음 방문 시 새로고침되므로, 지금은 클라이언트에서
-      // 낙관적으로 새 항목을 알 수 없다 — 안내만 하고 새로고침을 유도한다.
-      window.location.reload();
+      // 낙관적으로 새 항목을 알 수 없다 — 안내를 화면에 띄운 뒤(즉시 reload하면 안내가
+      // 뜨자마자 사라져 안 보인다) 새로고침을 유도한다.
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 1500);
     });
   };
 

@@ -76,7 +76,10 @@ export function InviteSmsQueuePanel({ initialQueue }: InviteSmsQueuePanelProps) 
       );
 
       // 서버 컴포넌트가 다시 렌더링돼야 새로 생성된 큐 행을 알 수 있어 새로고침을 유도한다.
-      window.location.reload();
+      // 안내를 화면에 띄운 뒤(즉시 reload하면 안내가 뜨자마자 사라져 안 보인다) 새로고침한다.
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 1500);
     });
   };
 

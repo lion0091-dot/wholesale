@@ -71,6 +71,10 @@ export function BankReconcileUploader({ onApplied }: BankReconcileUploaderProps)
   const [unpaidInvoices, setUnpaidInvoices] = useState<ReconcilableInvoice[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [matches, setMatches] = useState<MatchRow[] | null>(null);
+  // 이번 업로드에서 실제로 금액이 비교된(byAmount 후보로 등장한) 청구서 id만 담는다 —
+  // "대사를 시도했다"는 이 CSV와 실제로 비교된 청구서에만 해당하고, 이번 업로드와 무관한
+  // 시스템 전체의 다른 미납 청구서는 포함하면 안 된다.
+  const [candidateInvoiceIds, setCandidateInvoiceIds] = useState<Set<string>>(new Set());
   const [parseError, setParseError] = useState<string | null>(null);
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -143,9 +147,15 @@ export function BankReconcileUploader({ onApplied }: BankReconcileUploaderProps)
 
       // 이미 매칭된 청구서는 다음 거래의 후보에서 빼서 같은 청구서가 두 번 매칭되지 않게 한다.
       const remaining = new Map((unpaidInvoices ?? []).map((invoice) => [invoice.id, invoice]));
+      const candidateIds = new Set<string>();
 
       const result: MatchRow[] = transactions.map((transaction) => {
         const byAmount = Array.from(remaining.values()).filter((invoice) => invoice.amount === transaction.amount);
+
+        for (const invoice of byAmount) {
+          candidateIds.add(invoice.id);
+        }
+
         let picked: ReconcilableInvoice | null = null;
 
         if (byAmount.length === 1) {
@@ -169,6 +179,7 @@ export function BankReconcileUploader({ onApplied }: BankReconcileUploaderProps)
       });
 
       setMatches(result);
+      setCandidateInvoiceIds(candidateIds);
     };
 
     reader.readAsArrayBuffer(file);
@@ -200,12 +211,11 @@ export function BankReconcileUploader({ onApplied }: BankReconcileUploaderProps)
       };
     });
 
-    // 이번 대사에서 후보로 있었지만(드롭다운에 떴지만) 끝내 어떤 거래와도 매칭되지 않은
-    // 청구서 — "대사를 시도했는데도 여전히 미납"임을 청구 리스트 화면에 남기기 위함.
+    // 이번 대사에서 실제로 금액이 비교된(candidateInvoiceIds) 청구서 중 끝내 어떤 거래와도
+    // 매칭되지 못한 것 — "대사를 시도했는데도 여전히 미납"임을 청구 리스트 화면에 남기기
+    // 위함이다. 이번 CSV와 무관한 시스템 전체의 다른 미납 청구서는 포함하지 않는다.
     const matchedIds = new Set(payload.map((item) => item.invoiceId));
-    const unmatchedCandidateIds = (unpaidInvoices ?? [])
-      .map((invoice) => invoice.id)
-      .filter((id) => !matchedIds.has(id));
+    const unmatchedCandidateIds = Array.from(candidateInvoiceIds).filter((id) => !matchedIds.has(id));
 
     startTransition(async () => {
       const result = await reconcileInvoicePaymentsAction(payload, unmatchedCandidateIds);
@@ -215,8 +225,14 @@ export function BankReconcileUploader({ onApplied }: BankReconcileUploaderProps)
         return;
       }
 
-      onApplied(payload, unmatchedCandidateIds);
-      setUnpaidInvoices((prev) => (prev ? prev.filter((invoice) => !matchedIds.has(invoice.id)) : prev));
+      // 서버가 실제로 갱신한 건만 화면에 반영한다 — 동시 매칭 등으로 일부가 조용히
+      // 무반영됐는데도 전체를 성공으로 표시하지 않기 위함.
+      const failedIdSet = new Set(result.data.failedIds);
+      const succeededPayload = payload.filter((item) => !failedIdSet.has(item.invoiceId));
+      const succeededIds = new Set(succeededPayload.map((item) => item.invoiceId));
+
+      onApplied(succeededPayload, unmatchedCandidateIds);
+      setUnpaidInvoices((prev) => (prev ? prev.filter((invoice) => !succeededIds.has(invoice.id)) : prev));
       setApplyMessage(
         `${result.data.updatedCount}건 완납 처리 완료${
           result.data.failedIds.length > 0 ? ` · 실패 ${result.data.failedIds.length}건` : ""

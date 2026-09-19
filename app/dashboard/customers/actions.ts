@@ -7,7 +7,7 @@ import { requireOrgRole, RbacError } from "@/lib/auth/rbac";
 import { resolveSiteOrigin } from "@/lib/auth/supplier-auth";
 import { describeInviteRestriction, getSupplierAccount } from "@/lib/supplier/verification";
 import { buildInviteMessage } from "@/lib/supplier/invite";
-import { BULK_SMS_NOT_CONFIGURED_NOTICE } from "@/lib/notifications/sms-queue";
+import { BULK_SMS_NOT_CONFIGURED_NOTICE, INVITE_RESEND_COOLDOWN_DAYS } from "@/lib/notifications/sms-queue";
 import {
   sendCreditLimitChangedNotificationToWholesaler,
   sendCreditLimitIncreasedNotificationToRetailer,
@@ -309,9 +309,6 @@ export async function updateRetailerStatusAction(
   }
 }
 
-/** 마지막 발송 후 이 일수가 지나야 같은 거래처를 "채우기" 버튼이 다시 큐에 채워준다. */
-const INVITE_RESEND_COOLDOWN_DAYS = 30;
-
 /**
  * 거래중(active) 거래처 전체를 초대장 문자 발송 큐(outbound_sms_queue)에 채워 넣는다.
  * 신규 거래처는 항상 포함되고, 이미 큐에 들어간 적 있는 거래처는 "대기중(pending)"이면
@@ -361,6 +358,10 @@ export async function generateInviteSmsQueueAction(): Promise<
       return { success: true, data: { insertedCount: 0, skippedNoPhoneCount: 0 } };
     }
 
+    const resendCutoffIso = new Date(
+      Date.now() - INVITE_RESEND_COOLDOWN_DAYS * 24 * 60 * 60 * 1000
+    ).toISOString();
+
     const [{ data: existingRows }, { data: phoneRows }] = await Promise.all([
       supabase
         .from("outbound_sms_queue")
@@ -371,6 +372,11 @@ export async function generateInviteSmsQueueAction(): Promise<
           "retailer_id",
           relations.map((relation) => relation.retailer_id)
         )
+        // 쿨다운 판단에는 거래처별 "가장 최근 행"만 의미가 있다. 그 행이 cutoff보다 오래된
+        // 행이면 결과는 항상 "다시 채울 수 있음"(row 없을 때와 동일)이므로, pending이거나
+        // cutoff 이후인 행만 가져와도 정확도는 그대로 유지하면서 쌓여가는 전체 이력을
+        // 매번 통째로 fetch하지 않을 수 있다.
+        .or(`status.eq.pending,created_at.gte.${resendCutoffIso}`)
         .order("created_at", { ascending: false }),
       supabase.rpc("list_linked_retailer_phones", { p_wholesaler_id: wholesalerId }),
     ]);
@@ -466,6 +472,11 @@ export async function generateInviteSmsQueueAction(): Promise<
 
       if (!rowInsertError) {
         insertedCount += 1;
+      } else if (rowInsertError.code !== "23505") {
+        // 23505(unique_violation)는 의도한 동시클릭 경합 상황이라 조용히 건너뛴다 —
+        // 그 외 에러(RLS, FK, NOT NULL 등)는 로그로 남겨야 "추가할 거래처가 없습니다"라는
+        // 정상 메시지 뒤에 진짜 실패가 숨어버리지 않는다.
+        console.error("[generateInviteSmsQueueAction] insert failed", rowInsertError);
       }
     }
 

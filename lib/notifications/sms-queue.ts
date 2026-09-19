@@ -9,6 +9,9 @@
 export const BULK_SMS_NOT_CONFIGURED_NOTICE =
   "문자 대량발송은 SMS 발송 대행사(알리고·Solapi 등) 계약 후 서버 연동이 필요합니다. 계약이 끝나면 담당 개발자에게 연동을 요청해주세요. 지금은 아래 목록에서 건별로 눌러 직접 발송해주세요.";
 
+/** 마지막 발송 후 이 일수가 지나야 같은 거래처를 "채우기" 버튼이 다시 큐에 채워준다. */
+export const INVITE_RESEND_COOLDOWN_DAYS = 30;
+
 export interface OutboundSmsQueueRow {
   id: string;
   recipientName: string;
