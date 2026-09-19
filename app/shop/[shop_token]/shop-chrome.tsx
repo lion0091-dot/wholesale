@@ -76,7 +76,7 @@ export function ShopHeader({
             display: "inline-block",
             fontSize: "12px",
             fontWeight: 600,
-            color: "#64748b",
+            color: "#334155",
             textDecoration: "none",
             marginBottom: "10px",
           }}
@@ -93,7 +93,7 @@ export function ShopHeader({
           <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>
             {wholesaler.business_name}
           </h1>
-          <p style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
+          <p style={{ fontSize: "12px", color: "#334155", marginTop: "2px" }}>
             대표자: {wholesaler.representative_name} | 사업자번호: {wholesaler.business_number}
           </p>
         </div>
@@ -133,7 +133,7 @@ export function ShopFooter({ businessName }: { businessName: string }) {
         marginTop: "40px",
       }}
     >
-      <p style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.5 }}>
+      <p style={{ fontSize: "12px", color: "#475569", lineHeight: 1.5 }}>
         본 상점은 <strong>{businessName}</strong>과 계약된 고객(소매)를 위한 비공개 1:1 발주 공간입니다.
         <br />
         타 공급사(도매)에게 정보가 일체 공유되지 않습니다.

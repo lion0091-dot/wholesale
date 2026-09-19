@@ -46,7 +46,7 @@ export function CartView({ catalog }: CartViewProps) {
 
       <div style={{ padding: "16px" }}>
         {!isLoaded ? (
-          <p style={{ fontSize: "13px", color: "#64748b", textAlign: "center", padding: "40px 0" }}>
+          <p style={{ fontSize: "13px", color: "#334155", textAlign: "center", padding: "40px 0" }}>
             장바구니를 불러오는 중...
           </p>
         ) : lines.length === 0 ? (
@@ -60,7 +60,7 @@ export function CartView({ catalog }: CartViewProps) {
             }}
           >
             <div style={{ fontSize: "28px", marginBottom: "10px" }}>🧺</div>
-            <p style={{ fontSize: "14px", color: "#64748b", marginBottom: "20px" }}>
+            <p style={{ fontSize: "14px", color: "#334155", marginBottom: "20px" }}>
               장바구니가 비어 있습니다.
             </p>
             <Link
@@ -92,12 +92,12 @@ export function CartView({ catalog }: CartViewProps) {
                         <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>
                           {line.name}
                           {line.isSecretDeal && (
-                            <span style={{ fontSize: "11px", color: "#b91c1c", marginLeft: "6px" }}>
+                            <span style={{ fontSize: "12px", color: "#b91c1c", marginLeft: "6px" }}>
                               시크릿 특가
                             </span>
                           )}
                         </h3>
-                        <p style={{ fontSize: "12px", color: "#64748b", marginTop: "3px" }}>
+                        <p style={{ fontSize: "12px", color: "#334155", marginTop: "3px" }}>
                           {formatWon(line.unitPrice)} / {line.unit}
                           {line.isCustomPrice && (
                             <span style={{ color: "#166534", fontWeight: 700, marginLeft: "6px" }}>
@@ -112,7 +112,7 @@ export function CartView({ catalog }: CartViewProps) {
                         style={{
                           background: "none",
                           border: "none",
-                          color: "#94a3b8",
+                          color: "#475569",
                           fontSize: "12px",
                           cursor: "pointer",
                           alignSelf: "flex-start",
@@ -166,7 +166,7 @@ export function CartView({ catalog }: CartViewProps) {
                         <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
                           {formatWon(lineSubtotal(line))}
                         </div>
-                        <div style={{ fontSize: "11px", color: "#94a3b8" }}>
+                        <div style={{ fontSize: "12px", color: "#475569" }}>
                           {step}{line.unit} 단위 · 재고 {line.stockQuantity}{line.unit}
                         </div>
                       </div>
@@ -183,7 +183,7 @@ export function CartView({ catalog }: CartViewProps) {
                 width: "100%",
                 backgroundColor: "#ffffff",
                 border: "1px solid #e2e8f0",
-                color: "#64748b",
+                color: "#334155",
                 fontSize: "13px",
                 fontWeight: 600,
                 padding: "10px",
@@ -234,7 +234,7 @@ export function CartView({ catalog }: CartViewProps) {
                 </span>
               </div>
 
-              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "8px" }}>
+              <p style={{ fontSize: "12px", color: "#475569", marginTop: "8px" }}>
                 최소 주문 금액 {MIN_ORDER_AMOUNT.toLocaleString()}원 (부가세 별도, 배송비는 공급사 정책에 따름)
               </p>
             </div>

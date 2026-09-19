@@ -79,7 +79,7 @@ function TrackingLookupButton({ shopToken, order }: { shopToken: string; order: 
       {open && (
         <div style={{ marginTop: "8px", fontSize: "12px" }}>
           {pending ? (
-            <p style={{ color: "#64748b" }}>조회 중...</p>
+            <p style={{ color: "#334155" }}>조회 중...</p>
           ) : result ? (
             <p style={{ fontWeight: 700, color: result.status === "ok" ? "#166534" : "#b91c1c" }}>
               {result.message}
@@ -222,7 +222,7 @@ export function OrderHistoryView({
                     </div>
                     {catalog.isDemo && <SampleBadge />}
                   </div>
-                  <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "3px" }}>
+                  <div style={{ fontSize: "12px", color: "#475569", marginTop: "3px" }}>
                     {formatOrderedAt(order.orderedAt)} 접수
                   </div>
                 </div>
@@ -230,7 +230,7 @@ export function OrderHistoryView({
                 <span
                   style={{
                     flexShrink: 0,
-                    fontSize: "11px",
+                    fontSize: "12px",
                     fontWeight: 700,
                     backgroundColor: badge.bg,
                     color: badge.color,
@@ -267,7 +267,7 @@ export function OrderHistoryView({
                   >
                     <span style={{ color: "#334155" }}>
                       {line.productName}
-                      <span style={{ color: "#94a3b8" }}> x {line.quantity}</span>
+                      <span style={{ color: "#475569" }}> x {line.quantity}</span>
                     </span>
                     <span style={{ color: "#0f172a", fontWeight: 600, whiteSpace: "nowrap" }}>
                       {formatWon(line.subtotalAmount)}
@@ -286,7 +286,7 @@ export function OrderHistoryView({
                   borderTop: "1px solid #f1f5f9",
                 }}
               >
-                <span style={{ fontSize: "12px", color: "#64748b" }}>총 발주 금액</span>
+                <span style={{ fontSize: "12px", color: "#334155" }}>총 발주 금액</span>
                 <strong style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
                   {formatWon(order.totalAmount)}
                 </strong>
@@ -303,7 +303,7 @@ export function OrderHistoryView({
                 )}
               </div>
 
-              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "8px", lineHeight: 1.6 }}>
+              <p style={{ fontSize: "12px", color: "#475569", marginTop: "8px", lineHeight: 1.6 }}>
                 배송지: {order.deliveryAddress || "-"}
                 {order.deliveryNotes && (
                   <>
@@ -413,8 +413,8 @@ export function OrderHistoryView({
                       style={{
                         display: "flex",
                         justifyContent: "flex-end",
-                        fontSize: "11px",
-                        color: "#94a3b8",
+                        fontSize: "12px",
+                        color: "#475569",
                         marginTop: "4px",
                       }}
                     >
@@ -434,7 +434,7 @@ export function OrderHistoryView({
                           border: "none",
                           borderRadius: "12px",
                           padding: "6px 10px",
-                          fontSize: "11px",
+                          fontSize: "12px",
                           fontWeight: 600,
                           cursor: "pointer",
                         }}

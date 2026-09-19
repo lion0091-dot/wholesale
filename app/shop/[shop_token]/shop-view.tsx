@@ -123,7 +123,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
               fontWeight: 700,
               cursor: "pointer",
               backgroundColor: activeTab === "normal" ? "#0f172a" : "#f1f5f9",
-              color: activeTab === "normal" ? "#ffffff" : "#64748b",
+              color: activeTab === "normal" ? "#ffffff" : "#334155",
             }}
           >
             기본 납품 품목 {normalItems.length}
@@ -166,7 +166,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
           }}
         >
           <span>📋 내 발주 내역 · 주문 취소 요청</span>
-          <span style={{ color: "#94a3b8" }}>→</span>
+          <span style={{ color: "#475569" }}>→</span>
         </Link>
       </ShopHeader>
 
@@ -279,7 +279,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
                   border: "1px dashed #cbd5e1",
                 }}
               >
-                <p style={{ color: "#64748b", fontSize: "14px" }}>
+                <p style={{ color: "#334155", fontSize: "14px" }}>
                   {tabItems.length === 0
                     ? activeTab === "normal"
                       ? "공급사가 아직 기본 납품 품목을 등록하지 않았습니다."
@@ -353,7 +353,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
           }}
         >
           <div>
-            <span style={{ fontSize: "12px", color: "#94a3b8" }}>담은 품목 {totals.itemCount}건</span>
+            <span style={{ fontSize: "12px", color: "#cbd5e1" }}>담은 품목 {totals.itemCount}건</span>
             <div style={{ fontSize: "17px", fontWeight: 800 }}>{formatWon(totals.totalAmount)}</div>
           </div>
 
@@ -405,7 +405,7 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
           <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
             <span
               style={{
-                fontSize: "11px",
+                fontSize: "12px",
                 fontWeight: 700,
                 color: product.is_secret_deal ? "#b91c1c" : "#475569",
                 backgroundColor: product.is_secret_deal ? "#fee2e2" : "#f1f5f9",
@@ -418,7 +418,7 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
             {product.subcategory && (
               <span
                 style={{
-                  fontSize: "11px",
+                  fontSize: "12px",
                   fontWeight: 700,
                   color: "#475569",
                   backgroundColor: "#f1f5f9",
@@ -432,7 +432,7 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
             <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>{product.name}</h3>
             {isDemo && <SampleBadge />}
           </div>
-          <p style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
+          <p style={{ fontSize: "12px", color: "#334155", marginTop: "4px" }}>
             원산지: {product.origin}
             {product.grade ? ` | 등급: ${product.grade}` : ""}
           </p>
@@ -442,8 +442,8 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
           {isCustomPrice && (
             <div
               style={{
-                fontSize: "11px",
-                color: "#94a3b8",
+                fontSize: "12px",
+                color: "#475569",
                 textDecoration: "line-through",
               }}
             >
@@ -458,13 +458,13 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
             }}
           >
             {formatWon(effectivePrice)}
-            <span style={{ fontSize: "12px", fontWeight: 400, color: "#64748b", marginLeft: "2px" }}>
+            <span style={{ fontSize: "12px", fontWeight: 400, color: "#334155", marginLeft: "2px" }}>
               / {product.unit}
             </span>
           </div>
           <div
             style={{
-              fontSize: "11px",
+              fontSize: "12px",
               color: isSoldOut ? "#dc2626" : "#166534",
               fontWeight: 600,
               marginTop: "2px",
@@ -479,7 +479,7 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
         <div
           style={{
             display: "inline-block",
-            fontSize: "11px",
+            fontSize: "12px",
             fontWeight: 700,
             color: "#166534",
             backgroundColor: "#dcfce7",
@@ -496,7 +496,7 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
         <p
           style={{
             fontSize: "12px",
-            color: "#64748b",
+            color: "#334155",
             backgroundColor: "#f8fafc",
             padding: "8px",
             borderRadius: "6px",

@@ -190,7 +190,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
             <h2 style={{ fontSize: "18px", fontWeight: 800, color: "#0f172a", marginBottom: "8px" }}>
               발주서가 접수되었습니다!
             </h2>
-            <p style={{ fontSize: "13px", color: "#64748b", lineHeight: 1.6, marginBottom: "18px" }}>
+            <p style={{ fontSize: "13px", color: "#334155", lineHeight: 1.6, marginBottom: "18px" }}>
               {wholesaler.business_name} 대표님께 카카오 알림톡이 발송되었습니다.
               <br />
               출고 확정 시 다시 안내드립니다.
@@ -276,7 +276,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               textAlign: "center",
             }}
           >
-            <p style={{ fontSize: "14px", color: "#64748b", marginBottom: "20px" }}>
+            <p style={{ fontSize: "14px", color: "#334155", marginBottom: "20px" }}>
               발주할 품목이 없습니다. 먼저 품목을 담아주세요.
             </p>
             <Link
@@ -328,7 +328,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                   {line.name} × {line.quantity}
                   {line.unit}
                   {line.isCustomPrice && (
-                    <span style={{ color: "#166534", fontSize: "11px", marginLeft: "4px" }}>맞춤</span>
+                    <span style={{ color: "#166534", fontSize: "12px", marginLeft: "4px" }}>맞춤</span>
                   )}
                 </span>
                 <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>
@@ -354,7 +354,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
             </span>
           </div>
 
-          <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "6px" }}>
+          <p style={{ fontSize: "12px", color: "#475569", marginTop: "6px" }}>
             최소 주문 금액 {MIN_ORDER_AMOUNT.toLocaleString()}원 · 부가세 별도
           </p>
         </div>
@@ -429,7 +429,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               style={inputStyle}
             />
             {customer.deliveryAddress && (
-              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+              <p style={{ fontSize: "12px", color: "#475569", marginTop: "4px" }}>
                 등록된 기본 배송지가 입력되어 있습니다. 필요 시 수정하세요.
               </p>
             )}
@@ -486,12 +486,12 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 ))}
               </div>
               {paymentMethod === "on_credit" && (
-                <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "6px" }}>
+                <p style={{ fontSize: "12px", color: "#475569", marginTop: "6px" }}>
                   여신 한도 내에서 미수금으로 기록되며, 정산은 공급사와의 약정에 따릅니다.
                 </p>
               )}
               {paymentMethod === "pg" && (
-                <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "6px" }}>
+                <p style={{ fontSize: "12px", color: "#475569", marginTop: "6px" }}>
                   토스페이먼츠 결제창으로 이동합니다. 결제가 완료되어야 발주서가 접수됩니다.
                 </p>
               )}

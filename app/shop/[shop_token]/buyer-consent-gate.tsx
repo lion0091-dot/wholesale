@@ -236,7 +236,7 @@ export function BuyerConsentGate({ shopToken, displayName }: BuyerConsentGatePro
                 style={{ marginTop: "3px" }}
               />
               <span>
-                <span style={{ color: "#64748b" }}>[선택]</span> 특가·신상품 알림톡 수신에
+                <span style={{ color: "#334155" }}>[선택]</span> 특가·신상품 알림톡 수신에
                 동의합니다.
               </span>
             </label>

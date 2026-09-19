@@ -118,7 +118,7 @@ export function KakaoLoginGate({
           {isPending ? "카카오로 이동 중..." : "카카오로 3초 시작하기"}
         </button>
 
-        <p style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.6, marginTop: "16px" }}>
+        <p style={{ fontSize: "12px", color: "#475569", lineHeight: 1.6, marginTop: "16px" }}>
           링크가 다른 사람에게 전달되어도 본인의 카카오 계정 없이는 발주 내역을 볼 수 없습니다.
         </p>
       </div>
