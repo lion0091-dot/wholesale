@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, useTransition, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type ChangeEvent } from "react";
 import { decodeCsvFile, parseCsv } from "@/lib/utils/csv";
-import { reconcileInvoicePaymentsAction } from "./actions";
+import { listAllUnpaidInvoicesForReconcileAction, reconcileInvoicePaymentsAction } from "./actions";
 
 export interface ReconcilableInvoice {
   id: string;
@@ -51,8 +51,10 @@ function parseAmountCell(raw: string): number | null {
 }
 
 interface BankReconcileUploaderProps {
-  unpaidInvoices: ReconcilableInvoice[];
-  onApplied: (matches: Array<{ invoiceId: string; note: string; paidAmount: number }>) => void;
+  onApplied: (
+    matches: Array<{ invoiceId: string; note: string; paidAmount: number }>,
+    unmatchedCandidateIds: string[]
+  ) => void;
 }
 
 /**
@@ -60,13 +62,29 @@ interface BankReconcileUploaderProps {
  * 도구. 완전 자동화(오픈뱅킹 API로 실시간 조회)는 별도 계약이 필요해 범위 밖이라, 관리자가
  * 수동으로 다운받은 CSV를 올리면 "금액 → 입금자명" 순으로 매칭해주고 애매한 건 화면에서
  * 직접 고르게 한다.
+ *
+ * 매칭 후보(unpaidInvoices)는 부모(billing-invoice-list.tsx)가 보여주는 날짜 필터와
+ * 무관하게 시스템 전체의 미납 청구서를 스스로 불러온다 — 화면의 조회 기간 밖에 있는
+ * 오래된 미납 청구서도 대사 대상에서 빠지면 안 되기 때문이다.
  */
-export function BankReconcileUploader({ unpaidInvoices, onApplied }: BankReconcileUploaderProps) {
+export function BankReconcileUploader({ onApplied }: BankReconcileUploaderProps) {
+  const [unpaidInvoices, setUnpaidInvoices] = useState<ReconcilableInvoice[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [matches, setMatches] = useState<MatchRow[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    listAllUnpaidInvoicesForReconcileAction().then((result) => {
+      if (result.success && result.data) {
+        setUnpaidInvoices(result.data);
+      } else {
+        setLoadError(result.error ?? "미납 청구서 목록을 불러오지 못했습니다.");
+      }
+    });
+  }, []);
 
   const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -124,7 +142,7 @@ export function BankReconcileUploader({ unpaidInvoices, onApplied }: BankReconci
       }
 
       // 이미 매칭된 청구서는 다음 거래의 후보에서 빼서 같은 청구서가 두 번 매칭되지 않게 한다.
-      const remaining = new Map(unpaidInvoices.map((invoice) => [invoice.id, invoice]));
+      const remaining = new Map((unpaidInvoices ?? []).map((invoice) => [invoice.id, invoice]));
 
       const result: MatchRow[] = transactions.map((transaction) => {
         const byAmount = Array.from(remaining.values()).filter((invoice) => invoice.amount === transaction.amount);
@@ -182,15 +200,23 @@ export function BankReconcileUploader({ unpaidInvoices, onApplied }: BankReconci
       };
     });
 
+    // 이번 대사에서 후보로 있었지만(드롭다운에 떴지만) 끝내 어떤 거래와도 매칭되지 않은
+    // 청구서 — "대사를 시도했는데도 여전히 미납"임을 청구 리스트 화면에 남기기 위함.
+    const matchedIds = new Set(payload.map((item) => item.invoiceId));
+    const unmatchedCandidateIds = (unpaidInvoices ?? [])
+      .map((invoice) => invoice.id)
+      .filter((id) => !matchedIds.has(id));
+
     startTransition(async () => {
-      const result = await reconcileInvoicePaymentsAction(payload);
+      const result = await reconcileInvoicePaymentsAction(payload, unmatchedCandidateIds);
 
       if (!result.success || !result.data) {
         setParseError(result.error ?? "반영에 실패했습니다.");
         return;
       }
 
-      onApplied(payload);
+      onApplied(payload, unmatchedCandidateIds);
+      setUnpaidInvoices((prev) => (prev ? prev.filter((invoice) => !matchedIds.has(invoice.id)) : prev));
       setApplyMessage(
         `${result.data.updatedCount}건 완납 처리 완료${
           result.data.failedIds.length > 0 ? ` · 실패 ${result.data.failedIds.length}건` : ""
@@ -235,6 +261,7 @@ export function BankReconcileUploader({ unpaidInvoices, onApplied }: BankReconci
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
+          disabled={unpaidInvoices === null}
           style={{
             fontSize: "12px",
             fontWeight: 700,
@@ -243,7 +270,7 @@ export function BankReconcileUploader({ unpaidInvoices, onApplied }: BankReconci
             border: "1px solid #cbd5e1",
             borderRadius: "6px",
             padding: "7px 12px",
-            cursor: "pointer",
+            cursor: unpaidInvoices === null ? "wait" : "pointer",
           }}
         >
           🏦 은행 거래내역 CSV 업로드
@@ -251,6 +278,14 @@ export function BankReconcileUploader({ unpaidInvoices, onApplied }: BankReconci
         <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFile} style={{ display: "none" }} />
       </div>
 
+      {unpaidInvoices === null && !loadError && (
+        <p style={{ fontSize: "12px", color: "#94a3b8", margin: 0 }}>미납 청구서 목록 불러오는 중...</p>
+      )}
+      {loadError && (
+        <p role="alert" style={{ fontSize: "12px", color: "#b91c1c", margin: 0 }}>
+          {loadError}
+        </p>
+      )}
       {parseError && (
         <p role="alert" style={{ fontSize: "12px", color: "#b91c1c", margin: 0 }}>
           {parseError}
@@ -312,7 +347,7 @@ export function BankReconcileUploader({ unpaidInvoices, onApplied }: BankReconci
                   }}
                 >
                   <option value="">매칭 안 함</option>
-                  {unpaidInvoices.map((invoice) => (
+                  {(unpaidInvoices ?? []).map((invoice) => (
                     <option key={invoice.id} value={invoice.id}>
                       {invoice.businessName} ({invoice.amount.toLocaleString("ko-KR")}원)
                     </option>
@@ -320,7 +355,7 @@ export function BankReconcileUploader({ unpaidInvoices, onApplied }: BankReconci
                 </select>
                 {match.selectedInvoiceId &&
                   (() => {
-                    const invoice = unpaidInvoices.find((row) => row.id === match.selectedInvoiceId);
+                    const invoice = (unpaidInvoices ?? []).find((row) => row.id === match.selectedInvoiceId);
 
                     return invoice && invoice.amount !== match.transaction.amount ? (
                       <span

@@ -126,9 +126,16 @@ export interface ReconcileInvoiceMatch {
   paidAmount: number;
 }
 
-/** 은행 거래내역 CSV 대사 결과를 완납으로 일괄 반영. memo에 매칭 근거를 남겨 추적 가능하게 한다. */
+/**
+ * 은행 거래내역 CSV 대사 결과를 완납으로 일괄 반영. memo에 매칭 근거를 남겨 추적 가능하게 한다.
+ *
+ * unmatchedCandidateIds — 이번 대사에서 후보(미납 청구서 드롭다운)에는 있었지만 끝내
+ * 매칭되지 못한 청구서 id 목록. "한 번도 대사 안 해본 미납"과 "대사했는데 매칭 안 되는
+ * 미납"을 화면에서 구분할 수 있도록 last_reconcile_attempted_at을 남긴다.
+ */
 export async function reconcileInvoicePaymentsAction(
-  matches: ReconcileInvoiceMatch[]
+  matches: ReconcileInvoiceMatch[],
+  unmatchedCandidateIds: string[] = []
 ): Promise<ActionResult<{ updatedCount: number; failedIds: string[] }>> {
   try {
     if (!(await isSuperAdminSession())) {
@@ -156,6 +163,7 @@ export async function reconcileInvoicePaymentsAction(
           collected_by: user?.id ?? null,
           memo: match.note,
           paid_amount: match.paidAmount,
+          last_reconcile_attempted_at: null,
         })
         .eq("id", match.invoiceId)
         .eq("status", "unpaid");
@@ -167,6 +175,14 @@ export async function reconcileInvoicePaymentsAction(
       }
     }
 
+    if (unmatchedCandidateIds.length > 0) {
+      await supabase
+        .from("platform_subscription_invoices")
+        .update({ last_reconcile_attempted_at: new Date().toISOString() })
+        .in("id", unmatchedCandidateIds)
+        .eq("status", "unpaid");
+    }
+
     revalidatePath("/admin/billing");
 
     return { success: true, data: { updatedCount, failedIds } };
@@ -174,6 +190,60 @@ export async function reconcileInvoicePaymentsAction(
     return {
       success: false,
       error: error instanceof Error ? error.message : "대사 반영 중 오류가 발생했습니다.",
+    };
+  }
+}
+
+/**
+ * 은행 거래내역 대사 도구의 매칭 후보 — 조회 기간 필터와 무관하게 시스템 전체의
+ * 미납 청구서를 전부 보여준다. 화면(청구·수납 관리)의 날짜 필터는 "무엇을 볼지"만
+ * 결정할 뿐, "무엇과 매칭할 수 있는지"까지 좁혀버리면 조회 기간 밖의 오래된 미납
+ * 청구서는 영원히 자동 대사로 매칭할 방법이 없어진다.
+ */
+export async function listAllUnpaidInvoicesForReconcileAction(): Promise<
+  ActionResult<Array<{ id: string; businessName: string; amount: number }>>
+> {
+  try {
+    if (!(await isSuperAdminSession())) {
+      return { success: false, error: "권한이 없습니다." };
+    }
+
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from("platform_subscription_invoices")
+      .select("id, amount, wholesalers:wholesaler_id ( business_name )")
+      .eq("status", "unpaid")
+      .order("billing_month", { ascending: true });
+
+    if (error) {
+      return { success: false, error: error.message ?? "미납 청구서 조회에 실패했습니다." };
+    }
+
+    type WholesalerInfo = { business_name: string };
+
+    const rows = (data ?? []) as unknown as Array<{
+      id: string;
+      amount: number;
+      wholesalers: WholesalerInfo | WholesalerInfo[] | null;
+    }>;
+
+    return {
+      success: true,
+      data: rows.map((row) => {
+        const wholesaler = Array.isArray(row.wholesalers) ? row.wholesalers[0] : row.wholesalers;
+
+        return {
+          id: row.id,
+          businessName: wholesaler?.business_name ?? "알 수 없음",
+          amount: Number(row.amount),
+        };
+      }),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "미납 청구서 조회 중 오류가 발생했습니다.",
     };
   }
 }

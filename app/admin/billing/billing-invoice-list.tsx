@@ -23,6 +23,8 @@ export interface InvoiceRow {
   /** 실제 입금 확인된 금액. amount와 다르면 화면에서 불일치로 표시한다. 완납인데 null이면
    *  이 필드 도입 이전에 처리된 건이라 "수납액 미기록"으로 구분한다(불일치로 오인 금지). */
   paidAmount: number | null;
+  /** 은행 거래내역 대사 도구가 후보로 들고 있었지만 매칭에 실패한 마지막 시각(미납일 때만 의미 있음). */
+  lastReconcileAttemptedAt: string | null;
 }
 
 interface BillingInvoiceListProps {
@@ -366,22 +368,30 @@ export function BillingInvoiceList({ from, to, initialInvoices }: BillingInvoice
       </p>
 
       <BankReconcileUploader
-        unpaidInvoices={invoices.filter((row) => row.status === "unpaid")}
-        onApplied={(matches) => {
+        onApplied={(matches, unmatchedCandidateIds) => {
+          const unmatchedSet = new Set(unmatchedCandidateIds);
+
           setInvoices((prev) =>
             prev.map((row) => {
               const match = matches.find((m) => m.invoiceId === row.id);
 
-              if (!match) return row;
+              if (match) {
+                return {
+                  ...row,
+                  status: "paid",
+                  paidAt: new Date().toISOString(),
+                  collectedByName: "은행내역 대사",
+                  memo: match.note,
+                  paidAmount: match.paidAmount,
+                  lastReconcileAttemptedAt: null,
+                };
+              }
 
-              return {
-                ...row,
-                status: "paid",
-                paidAt: new Date().toISOString(),
-                collectedByName: "은행내역 대사",
-                memo: match.note,
-                paidAmount: match.paidAmount,
-              };
+              if (unmatchedSet.has(row.id)) {
+                return { ...row, lastReconcileAttemptedAt: new Date().toISOString() };
+              }
+
+              return row;
             })
           );
         }}
@@ -465,6 +475,23 @@ export function BillingInvoiceList({ from, to, initialInvoices }: BillingInvoice
                       </p>
                     )}
                   </>
+                )}
+                {invoice.status === "unpaid" && invoice.lastReconcileAttemptedAt && (
+                  <p
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#9a3412",
+                      backgroundColor: "#fff7ed",
+                      border: "1px solid #fed7aa",
+                      borderRadius: "6px",
+                      padding: "3px 8px",
+                      marginTop: "4px",
+                      display: "inline-block",
+                    }}
+                  >
+                    🔍 대사 시도함 — 매칭 실패 ({formatDate(invoice.lastReconcileAttemptedAt)})
+                  </p>
                 )}
               </div>
 

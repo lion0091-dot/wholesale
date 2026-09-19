@@ -36,6 +36,7 @@ const DEMO_INVOICES: InvoiceRow[] = [
     collectedByName: null,
     memo: null,
     paidAmount: null,
+    lastReconcileAttemptedAt: null,
   },
 ];
 
@@ -69,7 +70,7 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
     const { data } = await supabase
       .from("platform_subscription_invoices")
       .select(
-        "id, wholesaler_id, billing_month, billed_retailer_count, full_month_fee, amount, status, paid_at, paid_amount, collected_by, memo, wholesalers:wholesaler_id ( business_name, business_number )"
+        "id, wholesaler_id, billing_month, billed_retailer_count, full_month_fee, amount, status, paid_at, paid_amount, last_reconcile_attempted_at, collected_by, memo, wholesalers:wholesaler_id ( business_name, business_number )"
       )
       .gte("billing_month", rangeFromMonth)
       .lte("billing_month", rangeToMonth)
@@ -90,6 +91,7 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
       status: "unpaid" | "paid";
       paid_at: string | null;
       paid_amount: number | null;
+      last_reconcile_attempted_at: string | null;
       collected_by: string | null;
       memo: string | null;
       wholesalers: WholesalerInfo | WholesalerInfo[] | null;
@@ -128,6 +130,7 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
         collectedByName: row.collected_by ? nameMap.get(row.collected_by) ?? "알 수 없음" : null,
         memo: row.memo,
         paidAmount: row.paid_amount !== null ? Number(row.paid_amount) : null,
+        lastReconcileAttemptedAt: row.last_reconcile_attempted_at,
       };
     });
 
