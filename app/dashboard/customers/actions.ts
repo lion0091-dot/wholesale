@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
 import { requireOrgRole, RbacError } from "@/lib/auth/rbac";
+import { resolveSiteOrigin } from "@/lib/auth/supplier-auth";
+import { describeInviteRestriction, getSupplierAccount } from "@/lib/supplier/verification";
+import { buildInviteMessage } from "@/lib/supplier/invite";
+import { BULK_SMS_NOT_CONFIGURED_NOTICE } from "@/lib/notifications/sms-queue";
 import {
   sendCreditLimitChangedNotificationToWholesaler,
   sendCreditLimitIncreasedNotificationToRetailer,
@@ -303,4 +307,151 @@ export async function updateRetailerStatusAction(
       error: error instanceof Error ? error.message : "상태 변경 중 오류가 발생했습니다.",
     };
   }
+}
+
+/**
+ * 거래중(active) 거래처 전체를 초대장 문자 발송 큐(outbound_sms_queue)에 채워 넣는다.
+ * 이미 큐에 들어간 거래처는 건너뛰므로(부분 유니크 인덱스 + 사전 조회) 버튼을 여러 번
+ * 눌러도 안전하다. 초대장 발부는 승인된 공급사만 가능하므로 개별 발부(issueInviteAction)와
+ * 동일하게 describeInviteRestriction으로 막는다.
+ */
+export async function generateInviteSmsQueueAction(): Promise<
+  ActionResult<{ insertedCount: number; skippedNoPhoneCount: number }>
+> {
+  try {
+    const account = await getSupplierAccount();
+
+    if (!account) {
+      return { success: false, error: "로그인이 필요합니다. 카카오 로그인 후 다시 시도해주세요." };
+    }
+
+    const restriction = describeInviteRestriction(account);
+
+    if (restriction || !account.shopToken || !account.wholesalerId) {
+      return { success: false, error: restriction ?? "초대장을 발부할 수 없는 상태입니다." };
+    }
+
+    const wholesalerId = account.wholesalerId;
+    const supabase = await createClient();
+
+    const { data: relationRows, error: relationError } = await supabase
+      .from("wholesaler_retailers")
+      .select("retailer_id, retailers:retailer_id ( restaurant_name )")
+      .eq("wholesaler_id", wholesalerId)
+      .eq("status", "active");
+
+    if (relationError) {
+      return { success: false, error: relationError.message ?? "거래처 조회에 실패했습니다." };
+    }
+
+    type RelationRow = {
+      retailer_id: string;
+      retailers: { restaurant_name: string } | Array<{ restaurant_name: string }> | null;
+    };
+
+    const relations = (relationRows ?? []) as unknown as RelationRow[];
+
+    if (relations.length === 0) {
+      return { success: true, data: { insertedCount: 0, skippedNoPhoneCount: 0 } };
+    }
+
+    const [{ data: existing }, { data: phoneRows }] = await Promise.all([
+      supabase
+        .from("outbound_sms_queue")
+        .select("retailer_id")
+        .eq("message_type", "retailer_invite")
+        .eq("wholesaler_id", wholesalerId)
+        .in(
+          "retailer_id",
+          relations.map((relation) => relation.retailer_id)
+        ),
+      supabase.rpc("list_linked_retailer_phones", { p_wholesaler_id: wholesalerId }),
+    ]);
+
+    const alreadyQueued = new Set(
+      ((existing ?? []) as Array<{ retailer_id: string }>).map((row) => row.retailer_id)
+    );
+    const phoneByRetailer = new Map(
+      ((phoneRows ?? []) as Array<{ retailer_id: string; phone: string | null }>).map((row) => [
+        row.retailer_id,
+        row.phone,
+      ])
+    );
+
+    const origin = await resolveSiteOrigin();
+    const shopUrl = `${origin}/shop/${account.shopToken}`;
+    const businessName = account.businessName ?? "공급사";
+
+    const newRows: Array<{
+      message_type: "retailer_invite";
+      wholesaler_id: string;
+      retailer_id: string;
+      recipient_name: string;
+      recipient_phone: string;
+      message_body: string;
+      created_by: string;
+    }> = [];
+
+    let skippedNoPhoneCount = 0;
+
+    for (const relation of relations) {
+      if (alreadyQueued.has(relation.retailer_id)) {
+        continue;
+      }
+
+      const phone = phoneByRetailer.get(relation.retailer_id);
+
+      if (!phone) {
+        skippedNoPhoneCount += 1;
+        continue;
+      }
+
+      const retailer = Array.isArray(relation.retailers) ? relation.retailers[0] : relation.retailers;
+      const customerName = retailer?.restaurant_name ?? null;
+
+      newRows.push({
+        message_type: "retailer_invite",
+        wholesaler_id: wholesalerId,
+        retailer_id: relation.retailer_id,
+        recipient_name: customerName ?? "거래처",
+        recipient_phone: phone,
+        message_body: buildInviteMessage({ wholesalerName: businessName, shopUrl, customerName }),
+        created_by: account.userId,
+      });
+    }
+
+    if (newRows.length === 0) {
+      return { success: true, data: { insertedCount: 0, skippedNoPhoneCount } };
+    }
+
+    const { error: insertError } = await supabase.from("outbound_sms_queue").insert(newRows);
+
+    if (insertError) {
+      return { success: false, error: insertError.message ?? "발송 큐 생성에 실패했습니다." };
+    }
+
+    revalidatePath("/dashboard/customers");
+
+    return { success: true, data: { insertedCount: newRows.length, skippedNoPhoneCount } };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "발송 큐 생성 중 오류가 발생했습니다.",
+    };
+  }
+}
+
+/**
+ * 선택한 초대장 문자 큐를 일괄발송한다 — 실제로는 아직 SMS 벤더 계약이 없어 발송하지
+ * 않고 안내 문구만 반환한다(app/admin/billing/actions.ts의 sendInvoiceSmsQueueAction과
+ * 동일한 이유, 20260930000044 마이그레이션 주석 참고).
+ */
+export async function sendInviteSmsQueueAction(_ids: string[]): Promise<ActionResult> {
+  const account = await getSupplierAccount();
+
+  if (!account || describeInviteRestriction(account)) {
+    return { success: false, error: "권한이 없습니다." };
+  }
+
+  return { success: false, error: BULK_SMS_NOT_CONFIGURED_NOTICE };
 }

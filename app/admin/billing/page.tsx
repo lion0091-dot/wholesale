@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { isSuperAdminSession } from "@/lib/auth/rbac";
+import type { OutboundSmsQueueRow } from "@/lib/notifications/sms-queue";
 import { BillingInvoiceList, type InvoiceRow } from "./billing-invoice-list";
+import { InvoiceSmsQueuePanel } from "./invoice-sms-queue-panel";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -57,6 +59,7 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
   const rangeToMonth = `${rangeTo.slice(0, 7)}-01`;
 
   let invoices: InvoiceRow[] = DEMO_INVOICES;
+  let smsQueue: OutboundSmsQueueRow[] = [];
 
   if (isConfigured) {
     const supabase = await createClient();
@@ -123,6 +126,28 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
         memo: row.memo,
       };
     });
+
+    const { data: queueRows } = await supabase
+      .from("outbound_sms_queue")
+      .select("id, recipient_name, recipient_phone, message_body, status, created_at")
+      .eq("message_type", "billing_invoice")
+      .order("created_at", { ascending: false });
+
+    smsQueue = ((queueRows ?? []) as Array<{
+      id: string;
+      recipient_name: string;
+      recipient_phone: string;
+      message_body: string;
+      status: "pending" | "sent";
+      created_at: string;
+    }>).map((row) => ({
+      id: row.id,
+      recipientName: row.recipient_name,
+      recipientPhone: row.recipient_phone,
+      messageBody: row.message_body,
+      status: row.status,
+      createdAt: row.created_at,
+    }));
   }
 
   return (
@@ -147,6 +172,10 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
           에서 실시간으로 볼 수 있습니다.
         </p>
       </header>
+
+      <div style={{ marginBottom: "20px" }}>
+        <InvoiceSmsQueuePanel initialQueue={smsQueue} />
+      </div>
 
       <BillingInvoiceList from={rangeFrom} to={rangeTo} initialInvoices={invoices} />
     </main>

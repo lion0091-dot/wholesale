@@ -12,7 +12,9 @@ import {
   DEMO_RETAILERS,
 } from "@/lib/demo/supplier-samples";
 import { formatWon } from "@/lib/orders/status";
+import type { OutboundSmsQueueRow } from "@/lib/notifications/sms-queue";
 import { CustomerTable } from "./customer-table";
+import { InviteSmsQueuePanel } from "./invite-sms-queue-panel";
 import type { CustomerRow } from "./customer-types";
 import type { OrderStatus, RelationshipStatus } from "@/types/database";
 
@@ -128,6 +130,7 @@ export default async function DashboardCustomersPage() {
   let shopToken: string | null = DEMO_SHOP_TOKEN;
   let isDemoData = true;
   let pgConfigured = false;
+  let inviteSmsQueue: OutboundSmsQueueRow[] = [];
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -138,6 +141,7 @@ export default async function DashboardCustomersPage() {
       { data: orderRows },
       { data: wholesalerRow },
       { data: phoneRows },
+      { data: queueRows },
     ] = await Promise.all([
       supabase
         .from("wholesaler_retailers")
@@ -160,9 +164,30 @@ export default async function DashboardCustomersPage() {
         .eq("id", scope.wholesalerId)
         .maybeSingle(),
       supabase.rpc("list_linked_retailer_phones", { p_wholesaler_id: scope.wholesalerId }),
+      supabase
+        .from("outbound_sms_queue")
+        .select("id, recipient_name, recipient_phone, message_body, status, created_at")
+        .eq("message_type", "retailer_invite")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .order("created_at", { ascending: false }),
     ]);
 
     pgConfigured = Boolean(wholesalerRow?.pg_client_key);
+    inviteSmsQueue = ((queueRows ?? []) as Array<{
+      id: string;
+      recipient_name: string;
+      recipient_phone: string;
+      message_body: string;
+      status: "pending" | "sent";
+      created_at: string;
+    }>).map((row) => ({
+      id: row.id,
+      recipientName: row.recipient_name,
+      recipientPhone: row.recipient_phone,
+      messageBody: row.message_body,
+      status: row.status,
+      createdAt: row.created_at,
+    }));
 
     if (relations && relations.length > 0) {
       const customPriceCounts = countByRetailer((customPriceRows ?? []) as Array<{ retailer_id: string }>);
@@ -308,6 +333,8 @@ export default async function DashboardCustomersPage() {
           </div>
         ))}
       </section>
+
+      {canIssueInvite && !isDemoData && <InviteSmsQueuePanel initialQueue={inviteSmsQueue} />}
 
       <CustomerTable
         customers={customers}
