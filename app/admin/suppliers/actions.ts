@@ -154,7 +154,7 @@ export async function verifyBusinessWithNtsAction(
 
     const { data: supplier } = await supabase
       .from("wholesalers")
-      .select("business_name, business_number, representative_name, business_start_date")
+      .select("business_number, representative_name, business_start_date")
       .eq("id", supplierId)
       .maybeSingle();
 
@@ -177,7 +177,6 @@ export async function verifyBusinessWithNtsAction(
       businessNumber: supplier.business_number as string,
       representativeName: supplier.representative_name as string,
       startDate: supplier.business_start_date as string,
-      businessName: supplier.business_name as string | null,
     });
 
     const { error: rpcError } = await supabase.rpc("set_nts_verification_result", {

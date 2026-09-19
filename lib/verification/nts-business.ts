@@ -17,7 +17,6 @@ export interface NtsVerificationInput {
   representativeName: string;
   /** YYYY-MM-DD */
   startDate: string;
-  businessName?: string | null;
 }
 
 export interface NtsVerificationResult {
@@ -53,10 +52,14 @@ export async function verifyBusinessRegistration(
       body: JSON.stringify({
         businesses: [
           {
+            // b_nm(상호)은 선택 파라미터이지만 실제로 보내면 국세청 등록 상호와
+            // 한 글자라도 다를 때(플랫폼 표시용 상호명이 법인 정식 상호와 다른
+            // 경우 등) valid: "02"(불일치)를 반환한다 — 실계정 테스트로 확인된
+            // 오탐 원인. 신원 확인에는 사업자번호+개업일자+대표자명 3개면
+            // 충분하므로(국세청 API 필수 파라미터) b_nm은 보내지 않는다.
             b_no: input.businessNumber,
             start_dt: toNtsDate(input.startDate),
             p_nm: input.representativeName,
-            b_nm: input.businessName || "",
           },
         ],
       }),
