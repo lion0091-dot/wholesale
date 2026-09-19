@@ -10,14 +10,23 @@ import type { ActionResult } from "@/app/actions/invite";
 
 type InvoiceStatus = "paid" | "unpaid";
 
-/** 확정된 청구서 하나의 수납 상태 변경(완납/미납 토글). 화면에서 직접 처리할 때 쓴다. */
+/**
+ * 확정된 청구서 하나의 수납 상태 변경(완납/미납 토글). 화면에서 직접 처리할 때 쓴다.
+ * 완납 처리 시에는 실제 입금액(paidAmount)을 반드시 같이 받는다 — 청구액(amount)과
+ * 다르면 화면에서 불일치로 표시하기 위함이다. 미납으로 되돌리면 paid_amount도 비운다.
+ */
 export async function markInvoiceStatusAction(
   invoiceId: string,
-  status: InvoiceStatus
+  status: InvoiceStatus,
+  paidAmount?: number
 ): Promise<ActionResult> {
   try {
     if (!(await isSuperAdminSession())) {
       return { success: false, error: "권한이 없습니다." };
+    }
+
+    if (status === "paid" && (paidAmount === undefined || !Number.isFinite(paidAmount) || paidAmount <= 0)) {
+      return { success: false, error: "실제 입금액을 올바르게 입력해주세요." };
     }
 
     const supabase = await createClient();
@@ -31,6 +40,7 @@ export async function markInvoiceStatusAction(
         status,
         paid_at: status === "paid" ? new Date().toISOString() : null,
         collected_by: status === "paid" ? (user?.id ?? null) : null,
+        paid_amount: status === "paid" ? paidAmount : null,
       })
       .eq("id", invoiceId);
 
@@ -52,6 +62,8 @@ export async function markInvoiceStatusAction(
 export interface BulkInvoiceStatusUpdate {
   invoiceId: string;
   status: InvoiceStatus;
+  /** status가 'paid'일 때만 의미 있음 — CSV에 수납액 열이 비어있으면 "수납액 미기록"(null)으로 저장한다. */
+  paidAmount?: number;
 }
 
 /** 엑셀(CSV) 업로드로 여러 청구서의 수납 상태를 한 번에 반영. */
@@ -84,6 +96,7 @@ export async function bulkUpdateInvoiceStatusAction(
           status: update.status,
           paid_at: update.status === "paid" ? new Date().toISOString() : null,
           collected_by: update.status === "paid" ? (user?.id ?? null) : null,
+          paid_amount: update.status === "paid" ? (update.paidAmount ?? null) : null,
         })
         .eq("id", update.invoiceId);
 
@@ -109,6 +122,8 @@ export interface ReconcileInvoiceMatch {
   invoiceId: string;
   /** 은행 거래내역 대사 근거(입금일·입금자명·금액 등)를 memo에 그대로 남긴다. */
   note: string;
+  /** 실제로 입금된 금액 — 청구서 amount와 다르면 화면에서 불일치로 표시된다. */
+  paidAmount: number;
 }
 
 /** 은행 거래내역 CSV 대사 결과를 완납으로 일괄 반영. memo에 매칭 근거를 남겨 추적 가능하게 한다. */
@@ -140,6 +155,7 @@ export async function reconcileInvoicePaymentsAction(
           paid_at: new Date().toISOString(),
           collected_by: user?.id ?? null,
           memo: match.note,
+          paid_amount: match.paidAmount,
         })
         .eq("id", match.invoiceId)
         .eq("status", "unpaid");

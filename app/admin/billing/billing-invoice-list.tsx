@@ -20,6 +20,9 @@ export interface InvoiceRow {
   paidAt: string | null;
   collectedByName: string | null;
   memo: string | null;
+  /** 실제 입금 확인된 금액. amount와 다르면 화면에서 불일치로 표시한다. 완납인데 null이면
+   *  이 필드 도입 이전에 처리된 건이라 "수납액 미기록"으로 구분한다(불일치로 오인 금지). */
+  paidAmount: number | null;
 }
 
 interface BillingInvoiceListProps {
@@ -37,6 +40,7 @@ const CSV_HEADERS = [
   "정가",
   "확정청구액",
   "상태",
+  "수납액",
   "완납일",
   "처리자",
   "메모",
@@ -70,6 +74,7 @@ function buildCsv(rows: InvoiceRow[]): string {
         String(row.fullMonthFee),
         String(row.amount),
         row.status === "paid" ? "완납" : "미납",
+        row.paidAmount !== null ? String(row.paidAmount) : "",
         row.paidAt ? formatDate(row.paidAt) : "",
         row.collectedByName ?? "",
         row.memo ?? "",
@@ -99,6 +104,10 @@ function parseStatusCell(raw: string): "paid" | "unpaid" | null {
 export function BillingInvoiceList({ from, to, initialInvoices }: BillingInvoiceListProps) {
   const [invoices, setInvoices] = useState(initialInvoices);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  // 완납 처리는 실제 입금액을 같이 받아야 해서 버튼 한 번에 끝나지 않는다 — 이 청구서
+  // ID가 세팅되면 목록에 금액 입력 행이 인라인으로 펼쳐진다.
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [draftAmount, setDraftAmount] = useState("");
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -107,12 +116,28 @@ export function BillingInvoiceList({ from, to, initialInvoices }: BillingInvoice
   const totalAmount = invoices.reduce((sum, row) => sum + row.amount, 0);
   const unpaidCount = invoices.filter((row) => row.status === "unpaid").length;
 
-  const handleToggleStatus = (invoice: InvoiceRow) => {
-    const nextStatus = invoice.status === "paid" ? "unpaid" : "paid";
+  const handleStartPaying = (invoice: InvoiceRow) => {
+    setPayingId(invoice.id);
+    setDraftAmount(String(invoice.amount));
+  };
+
+  const handleCancelPaying = () => {
+    setPayingId(null);
+    setDraftAmount("");
+  };
+
+  const handleConfirmPaid = (invoice: InvoiceRow) => {
+    const amount = Number(draftAmount);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert("실제 입금액을 올바르게 입력해주세요.");
+      return;
+    }
+
     setPendingId(invoice.id);
 
     startTransition(async () => {
-      const result = await markInvoiceStatusAction(invoice.id, nextStatus);
+      const result = await markInvoiceStatusAction(invoice.id, "paid", amount);
       setPendingId(null);
 
       if (!result.success) {
@@ -125,10 +150,35 @@ export function BillingInvoiceList({ from, to, initialInvoices }: BillingInvoice
           row.id === invoice.id
             ? {
                 ...row,
-                status: nextStatus,
-                paidAt: nextStatus === "paid" ? new Date().toISOString() : null,
-                collectedByName: nextStatus === "paid" ? "방금 처리함" : null,
+                status: "paid",
+                paidAt: new Date().toISOString(),
+                collectedByName: "방금 처리함",
+                paidAmount: amount,
               }
+            : row
+        )
+      );
+      setPayingId(null);
+      setDraftAmount("");
+    });
+  };
+
+  const handleRevertToUnpaid = (invoice: InvoiceRow) => {
+    setPendingId(invoice.id);
+
+    startTransition(async () => {
+      const result = await markInvoiceStatusAction(invoice.id, "unpaid");
+      setPendingId(null);
+
+      if (!result.success) {
+        alert(result.error ?? "처리에 실패했습니다.");
+        return;
+      }
+
+      setInvoices((prev) =>
+        prev.map((row) =>
+          row.id === invoice.id
+            ? { ...row, status: "unpaid", paidAt: null, collectedByName: null, paidAmount: null }
             : row
         )
       );
@@ -172,6 +222,7 @@ export function BillingInvoiceList({ from, to, initialInvoices }: BillingInvoice
       const header = rows[0];
       const idIndex = header.indexOf("청구서ID");
       const statusIndex = header.indexOf("상태");
+      const paidAmountIndex = header.indexOf("수납액");
 
       if (idIndex === -1 || statusIndex === -1) {
         setUploadError('업로드 파일에 "청구서ID"와 "상태" 열이 모두 있어야 합니다(다운로드한 양식을 그대로 써주세요).');
@@ -179,7 +230,7 @@ export function BillingInvoiceList({ from, to, initialInvoices }: BillingInvoice
       }
 
       const knownIds = new Set(invoices.map((row) => row.id));
-      const updates: Array<{ invoiceId: string; status: "paid" | "unpaid" }> = [];
+      const updates: Array<{ invoiceId: string; status: "paid" | "unpaid"; paidAmount?: number }> = [];
       const skipped: string[] = [];
 
       for (const cells of rows.slice(1)) {
@@ -191,7 +242,15 @@ export function BillingInvoiceList({ from, to, initialInvoices }: BillingInvoice
           continue;
         }
 
-        updates.push({ invoiceId, status });
+        // "수납액" 열이 비어있으면 undefined로 둔다 — 서버 액션이 그 경우 paid_amount를
+        // null(수납액 미기록)로 저장한다(청구액과 같다고 함부로 가정하지 않는다).
+        const paidAmountRaw = paidAmountIndex !== -1 ? (cells[paidAmountIndex] ?? "").trim() : "";
+        const paidAmount =
+          status === "paid" && paidAmountRaw !== "" && Number.isFinite(Number(paidAmountRaw))
+            ? Number(paidAmountRaw)
+            : undefined;
+
+        updates.push({ invoiceId, status, paidAmount });
       }
 
       if (updates.length === 0) {
@@ -218,6 +277,7 @@ export function BillingInvoiceList({ from, to, initialInvoices }: BillingInvoice
               status: match.status,
               paidAt: match.status === "paid" ? new Date().toISOString() : null,
               collectedByName: match.status === "paid" ? "엑셀 일괄 반영" : null,
+              paidAmount: match.status === "paid" ? (match.paidAmount ?? null) : null,
             };
           })
         );
@@ -300,8 +360,9 @@ export function BillingInvoiceList({ from, to, initialInvoices }: BillingInvoice
       )}
 
       <p style={{ fontSize: "11px", color: "#94a3b8", margin: 0 }}>
-        업로드 파일은 다운로드한 CSV의 &quot;청구서ID&quot;·&quot;상태&quot; 열만 읽습니다(다른 열은 참고용,
-        상태는 완납/미납으로 적어주세요) — 다운로드한 파일을 그대로 편집해서 다시 올리면 됩니다.
+        업로드 파일은 다운로드한 CSV의 &quot;청구서ID&quot;·&quot;상태&quot;·&quot;수납액&quot; 열을 읽습니다(다른
+        열은 참고용, 상태는 완납/미납으로 적어주세요) — 수납액을 비워두면 "수납액 미기록"으로
+        저장되고, 청구액(확정청구액)과 다르게 적으면 화면에 불일치로 표시됩니다.
       </p>
 
       <BankReconcileUploader
@@ -319,6 +380,7 @@ export function BillingInvoiceList({ from, to, initialInvoices }: BillingInvoice
                 paidAt: new Date().toISOString(),
                 collectedByName: "은행내역 대사",
                 memo: match.note,
+                paidAmount: match.paidAmount,
               };
             })
           );
@@ -374,30 +436,124 @@ export function BillingInvoiceList({ from, to, initialInvoices }: BillingInvoice
                   )}
                 </p>
                 {invoice.status === "paid" && (
-                  <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                    완납 처리: {invoice.collectedByName ?? "알 수 없음"}
-                    {invoice.paidAt && ` · ${formatDate(invoice.paidAt)}`}
-                  </p>
+                  <>
+                    <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+                      완납 처리: {invoice.collectedByName ?? "알 수 없음"}
+                      {invoice.paidAt && ` · ${formatDate(invoice.paidAt)}`}
+                    </p>
+                    {invoice.paidAmount === null ? (
+                      <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>수납액 미기록</p>
+                    ) : invoice.paidAmount !== invoice.amount ? (
+                      <p
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#92400e",
+                          backgroundColor: "#fef3c7",
+                          border: "1px solid #fde68a",
+                          borderRadius: "6px",
+                          padding: "3px 8px",
+                          marginTop: "4px",
+                          display: "inline-block",
+                        }}
+                      >
+                        ⚠ 수납액 {formatWon(invoice.paidAmount)} — 청구액과 불일치
+                      </p>
+                    ) : (
+                      <p style={{ fontSize: "11px", color: "#166534", marginTop: "2px" }}>
+                        수납액 {formatWon(invoice.paidAmount)} (청구액과 일치)
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleToggleStatus(invoice)}
-                disabled={pendingId === invoice.id}
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  color: invoice.status === "paid" ? "#991b1b" : "#166534",
-                  backgroundColor: invoice.status === "paid" ? "#fef2f2" : "#f0fdf4",
-                  border: `1px solid ${invoice.status === "paid" ? "#fecaca" : "#bbf7d0"}`,
-                  borderRadius: "6px",
-                  padding: "7px 12px",
-                  cursor: pendingId === invoice.id ? "wait" : "pointer",
-                }}
-              >
-                {pendingId === invoice.id ? "처리 중..." : invoice.status === "paid" ? "미납으로 되돌리기" : "완납 처리"}
-              </button>
+              {invoice.status === "paid" ? (
+                <button
+                  type="button"
+                  onClick={() => handleRevertToUnpaid(invoice)}
+                  disabled={pendingId === invoice.id}
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: "#991b1b",
+                    backgroundColor: "#fef2f2",
+                    border: "1px solid #fecaca",
+                    borderRadius: "6px",
+                    padding: "7px 12px",
+                    cursor: pendingId === invoice.id ? "wait" : "pointer",
+                  }}
+                >
+                  {pendingId === invoice.id ? "처리 중..." : "미납으로 되돌리기"}
+                </button>
+              ) : payingId === invoice.id ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <input
+                    type="number"
+                    value={draftAmount}
+                    onChange={(event) => setDraftAmount(event.target.value)}
+                    style={{
+                      width: "110px",
+                      fontSize: "12px",
+                      padding: "6px 8px",
+                      borderRadius: "6px",
+                      border: "1px solid #cbd5e1",
+                    }}
+                    placeholder="실제 입금액"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleConfirmPaid(invoice)}
+                    disabled={pendingId === invoice.id}
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: "#166534",
+                      backgroundColor: "#f0fdf4",
+                      border: "1px solid #bbf7d0",
+                      borderRadius: "6px",
+                      padding: "7px 10px",
+                      cursor: pendingId === invoice.id ? "wait" : "pointer",
+                    }}
+                  >
+                    {pendingId === invoice.id ? "처리 중..." : "확인"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelPaying}
+                    disabled={pendingId === invoice.id}
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: "#64748b",
+                      backgroundColor: "#f1f5f9",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "6px",
+                      padding: "7px 10px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    취소
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleStartPaying(invoice)}
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: "#166534",
+                    backgroundColor: "#f0fdf4",
+                    border: "1px solid #bbf7d0",
+                    borderRadius: "6px",
+                    padding: "7px 12px",
+                    cursor: "pointer",
+                  }}
+                >
+                  완납 처리
+                </button>
+              )}
             </div>
           ))}
         </div>

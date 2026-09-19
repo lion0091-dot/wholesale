@@ -35,6 +35,7 @@ const DEMO_INVOICES: InvoiceRow[] = [
     paidAt: null,
     collectedByName: null,
     memo: null,
+    paidAmount: null,
   },
 ];
 
@@ -68,7 +69,7 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
     const { data } = await supabase
       .from("platform_subscription_invoices")
       .select(
-        "id, wholesaler_id, billing_month, billed_retailer_count, full_month_fee, amount, status, paid_at, collected_by, memo, wholesalers:wholesaler_id ( business_name, business_number )"
+        "id, wholesaler_id, billing_month, billed_retailer_count, full_month_fee, amount, status, paid_at, paid_amount, collected_by, memo, wholesalers:wholesaler_id ( business_name, business_number )"
       )
       .gte("billing_month", rangeFromMonth)
       .lte("billing_month", rangeToMonth)
@@ -88,6 +89,7 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
       amount: number;
       status: "unpaid" | "paid";
       paid_at: string | null;
+      paid_amount: number | null;
       collected_by: string | null;
       memo: string | null;
       wholesalers: WholesalerInfo | WholesalerInfo[] | null;
@@ -125,6 +127,7 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
         paidAt: row.paid_at,
         collectedByName: row.collected_by ? nameMap.get(row.collected_by) ?? "알 수 없음" : null,
         memo: row.memo,
+        paidAmount: row.paid_amount !== null ? Number(row.paid_amount) : null,
       };
     });
 

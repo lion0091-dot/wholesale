@@ -52,7 +52,7 @@ function parseAmountCell(raw: string): number | null {
 
 interface BankReconcileUploaderProps {
   unpaidInvoices: ReconcilableInvoice[];
-  onApplied: (matches: Array<{ invoiceId: string; note: string }>) => void;
+  onApplied: (matches: Array<{ invoiceId: string; note: string; paidAmount: number }>) => void;
 }
 
 /**
@@ -178,6 +178,7 @@ export function BankReconcileUploader({ unpaidInvoices, onApplied }: BankReconci
       return {
         invoiceId: match.selectedInvoiceId as string,
         note: `은행내역 대사 매칭 (${noteParts.join(" · ")})`,
+        paidAmount: match.transaction.amount,
       };
     });
 
@@ -317,6 +318,26 @@ export function BankReconcileUploader({ unpaidInvoices, onApplied }: BankReconci
                     </option>
                   ))}
                 </select>
+                {match.selectedInvoiceId &&
+                  (() => {
+                    const invoice = unpaidInvoices.find((row) => row.id === match.selectedInvoiceId);
+
+                    return invoice && invoice.amount !== match.transaction.amount ? (
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#92400e",
+                          backgroundColor: "#fef3c7",
+                          border: "1px solid #fde68a",
+                          borderRadius: "6px",
+                          padding: "2px 8px",
+                        }}
+                      >
+                        ⚠ 청구액 {invoice.amount.toLocaleString("ko-KR")}원과 불일치
+                      </span>
+                    ) : null;
+                  })()}
               </div>
             ))}
           </div>
