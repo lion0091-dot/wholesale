@@ -56,15 +56,17 @@ export function InviteSmsQueuePanel({ initialQueue }: InviteSmsQueuePanelProps) 
         return;
       }
 
-      const { insertedCount, skippedNoPhoneCount } = result.data ?? { insertedCount: 0, skippedNoPhoneCount: 0 };
+      const { insertedCount, skippedNoPhoneCount, failedCount } =
+        result.data ?? { insertedCount: 0, skippedNoPhoneCount: 0, failedCount: 0 };
+      const failedSuffix = failedCount > 0 ? ` · 처리 실패 ${failedCount}건(다시 시도해주세요)` : "";
 
       if (insertedCount === 0) {
         // 새로고침하면 이 안내가 뜨자마자 사라져서 아무 반응도 없는 것처럼 보이던 버그가
         // 있었다 — 추가된 게 없을 때는 새로고침하지 않고 안내만 남긴다.
         setNotice(
-          skippedNoPhoneCount > 0
+          (skippedNoPhoneCount > 0
             ? `추가된 항목이 없습니다 — 연락처 미등록 ${skippedNoPhoneCount}곳은 문자를 보낼 수 없어 제외되었습니다.`
-            : "추가할 거래처가 없습니다 — 거래중인 고객이 없거나 이미 전부 큐에 들어가 있습니다."
+            : "추가할 거래처가 없습니다 — 거래중인 고객이 없거나 이미 전부 큐에 들어가 있습니다.") + failedSuffix
         );
         return;
       }
@@ -72,7 +74,7 @@ export function InviteSmsQueuePanel({ initialQueue }: InviteSmsQueuePanelProps) 
       setNotice(
         `${insertedCount}건을 큐에 추가했습니다.${
           skippedNoPhoneCount > 0 ? ` (연락처 미등록 ${skippedNoPhoneCount}곳 제외)` : ""
-        }`
+        }${failedSuffix}`
       );
 
       // 서버 컴포넌트가 다시 렌더링돼야 새로 생성된 큐 행을 알 수 있어 새로고침을 유도한다.

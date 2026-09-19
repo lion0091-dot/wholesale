@@ -173,7 +173,9 @@ export default async function DashboardCustomersPage() {
         // "발송완료" 행이면 재발송 가능 상태와 다를 게 없으므로, pending이거나 최근
         // 쿨다운 기간 이내인 행만 가져와 쌓여가는 전체 발송 이력을 매번 다 읽지 않는다
         // (app/dashboard/customers/actions.ts의 generateInviteSmsQueueAction과 동일한 경계).
-        .or(`status.eq.pending,created_at.gte.${new Date(Date.now() - INVITE_RESEND_COOLDOWN_DAYS * 24 * 60 * 60 * 1000).toISOString()}`)
+        // 기준은 sent_at(실제 발송 시각)이어야 한다 — created_at(큐 등록 시각)로 거르면
+        // 오래전에 큐에 들어갔다가 최근에야 수동 발송된 행이 목록에서 빠져버린다.
+        .or(`status.eq.pending,sent_at.gte.${new Date(Date.now() - INVITE_RESEND_COOLDOWN_DAYS * 24 * 60 * 60 * 1000).toISOString()}`)
         .order("created_at", { ascending: false }),
     ]);
 

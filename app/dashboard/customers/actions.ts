@@ -319,7 +319,7 @@ export async function updateRetailerStatusAction(
  * describeInviteRestriction으로 막는다.
  */
 export async function generateInviteSmsQueueAction(): Promise<
-  ActionResult<{ insertedCount: number; skippedNoPhoneCount: number }>
+  ActionResult<{ insertedCount: number; skippedNoPhoneCount: number; failedCount: number }>
 > {
   try {
     const account = await getSupplierAccount();
@@ -355,12 +355,11 @@ export async function generateInviteSmsQueueAction(): Promise<
     const relations = (relationRows ?? []) as unknown as RelationRow[];
 
     if (relations.length === 0) {
-      return { success: true, data: { insertedCount: 0, skippedNoPhoneCount: 0 } };
+      return { success: true, data: { insertedCount: 0, skippedNoPhoneCount: 0, failedCount: 0 } };
     }
 
-    const resendCutoffIso = new Date(
-      Date.now() - INVITE_RESEND_COOLDOWN_DAYS * 24 * 60 * 60 * 1000
-    ).toISOString();
+    const resendCutoffMs = Date.now() - INVITE_RESEND_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+    const resendCutoffIso = new Date(resendCutoffMs).toISOString();
 
     const [{ data: existingRows }, { data: phoneRows }] = await Promise.all([
       supabase
@@ -372,11 +371,11 @@ export async function generateInviteSmsQueueAction(): Promise<
           "retailer_id",
           relations.map((relation) => relation.retailer_id)
         )
-        // 쿨다운 판단에는 거래처별 "가장 최근 행"만 의미가 있다. 그 행이 cutoff보다 오래된
-        // 행이면 결과는 항상 "다시 채울 수 있음"(row 없을 때와 동일)이므로, pending이거나
-        // cutoff 이후인 행만 가져와도 정확도는 그대로 유지하면서 쌓여가는 전체 이력을
-        // 매번 통째로 fetch하지 않을 수 있다.
-        .or(`status.eq.pending,created_at.gte.${resendCutoffIso}`)
+        // 쿨다운 판단 기준은 sent_at(실제 발송 시각)이지 created_at(큐에 들어간 시각)이
+        // 아니다 — 오래전에 큐에 들어갔다가 최근에야 수동 발송된 행을 created_at 기준으로
+        // 걸러내면 진짜 최근 발송 이력을 놓쳐서 쿨다운이 무시된 채 중복 재발송될 수 있다.
+        // status='pending' 행은 sent_at이 항상 null이라 별도로 같이 걸어준다.
+        .or(`status.eq.pending,sent_at.gte.${resendCutoffIso}`)
         .order("created_at", { ascending: false }),
       supabase.rpc("list_linked_retailer_phones", { p_wholesaler_id: wholesalerId }),
     ]);
@@ -393,8 +392,6 @@ export async function generateInviteSmsQueueAction(): Promise<
       }
     }
 
-    const resendCutoff = Date.now() - INVITE_RESEND_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
-
     const isEligibleForQueue = (retailerId: string): boolean => {
       const latest = latestByRetailer.get(retailerId);
 
@@ -406,7 +403,7 @@ export async function generateInviteSmsQueueAction(): Promise<
         return false;
       }
 
-      return new Date(latest.sent_at).getTime() <= resendCutoff;
+      return new Date(latest.sent_at).getTime() <= resendCutoffMs;
     };
 
     const phoneByRetailer = new Map(
@@ -459,13 +456,14 @@ export async function generateInviteSmsQueueAction(): Promise<
     }
 
     if (newRows.length === 0) {
-      return { success: true, data: { insertedCount: 0, skippedNoPhoneCount } };
+      return { success: true, data: { insertedCount: 0, skippedNoPhoneCount, failedCount: 0 } };
     }
 
     // 한 번에 배치 삽입하지 않고 행마다 따로 삽입한다 — 같은 조직의 다른 직원이 거의
     // 동시에 "채우기"를 눌러 같은 거래처를 먼저 큐에 넣었다면(부분 유니크 인덱스 충돌)
     // 그 행만 실패로 건너뛰고, 나머지 무관한 거래처들은 정상적으로 큐에 들어가야 한다.
     let insertedCount = 0;
+    let failedCount = 0;
 
     for (const row of newRows) {
       const { error: rowInsertError } = await supabase.from("outbound_sms_queue").insert(row);
@@ -474,15 +472,16 @@ export async function generateInviteSmsQueueAction(): Promise<
         insertedCount += 1;
       } else if (rowInsertError.code !== "23505") {
         // 23505(unique_violation)는 의도한 동시클릭 경합 상황이라 조용히 건너뛴다 —
-        // 그 외 에러(RLS, FK, NOT NULL 등)는 로그로 남겨야 "추가할 거래처가 없습니다"라는
-        // 정상 메시지 뒤에 진짜 실패가 숨어버리지 않는다.
+        // 그 외 에러(RLS, FK, NOT NULL 등)는 로그로도 남기고 failedCount로 호출자(화면)에도
+        // 알려야 "추가할 거래처가 없습니다" 같은 정상 메시지 뒤에 진짜 실패가 숨지 않는다.
         console.error("[generateInviteSmsQueueAction] insert failed", rowInsertError);
+        failedCount += 1;
       }
     }
 
     revalidatePath("/dashboard/customers");
 
-    return { success: true, data: { insertedCount, skippedNoPhoneCount } };
+    return { success: true, data: { insertedCount, skippedNoPhoneCount, failedCount } };
   } catch (error) {
     return {
       success: false,
