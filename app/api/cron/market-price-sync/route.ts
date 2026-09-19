@@ -17,14 +17,16 @@ import {
  */
 export const runtime = "nodejs";
 
-/** KST(Asia/Seoul) 기준 오늘 날짜를 YYYYMMDD로 반환한다. 서버 타임존과 무관하게 항상 KST 기준. */
-function todayYmdInSeoul(): string {
+/** KST(Asia/Seoul) 기준 N일 전 날짜를 YYYYMMDD로 반환한다. 서버 타임존과 무관하게 항상 KST 기준. */
+function ymdDaysAgoInSeoul(daysAgo: number): string {
+  const date = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).formatToParts(new Date());
+  }).formatToParts(date);
 
   const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
 
@@ -39,53 +41,69 @@ interface SpeciesSyncResult {
   species: string;
   status: "ok" | "skipped" | "error";
   rowCount?: number;
+  snapshotDate?: string;
   message?: string;
 }
 
+/** 주말/공휴일엔 경매가 없어 당일 조회가 가격 없는 등급코드표만 돌려준다 — 최근 실제 경매일까지 거슬러 올라간다. */
+const MAX_LOOKBACK_DAYS = 6;
+
 async function syncSpecies(
   label: string,
-  fetcher: () => Promise<MarketPriceRow[] | null>,
-  supabase: ReturnType<typeof createServiceRoleClient>,
-  snapshotDateIso: string
+  fetcher: (dateYmd: string) => Promise<MarketPriceRow[] | null>,
+  supabase: ReturnType<typeof createServiceRoleClient>
 ): Promise<SpeciesSyncResult> {
-  let rows: MarketPriceRow[] | null;
+  for (let offset = 0; offset <= MAX_LOOKBACK_DAYS; offset++) {
+    const dateYmd = ymdDaysAgoInSeoul(offset);
+    let rows: MarketPriceRow[] | null;
 
-  try {
-    rows = await fetcher();
-  } catch (error) {
+    try {
+      rows = await fetcher(dateYmd);
+    } catch (error) {
+      return {
+        species: label,
+        status: "error",
+        message: error instanceof Error ? error.message : "알 수 없는 오류",
+      };
+    }
+
+    if (rows === null) {
+      return { species: label, status: "skipped", message: "KAPE_MARKET_PRICE_API_KEY 미설정" };
+    }
+
+    if (rows.length === 0) {
+      continue;
+    }
+
+    const snapshotDateIso = ymdToIsoDate(dateYmd);
+
+    const { error } = await supabase!.from("market_price_snapshots").upsert(
+      rows.map((row) => ({
+        species: row.species,
+        grade: row.grade,
+        region: "national",
+        price_per_kg: row.pricePerKg,
+        unit_count: row.unitCount,
+        snapshot_date: snapshotDateIso,
+        source: row.source,
+      })),
+      { onConflict: "species,grade,region,snapshot_date" }
+    );
+
+    if (error) {
+      return { species: label, status: "error", message: error.message };
+    }
+
     return {
       species: label,
-      status: "error",
-      message: error instanceof Error ? error.message : "알 수 없는 오류",
+      status: "ok",
+      rowCount: rows.length,
+      snapshotDate: snapshotDateIso,
+      message: offset > 0 ? `당일 데이터 없어 ${offset}일 전(최근 경매일) 데이터 사용` : undefined,
     };
   }
 
-  if (rows === null) {
-    return { species: label, status: "skipped", message: "KAPE_MARKET_PRICE_API_KEY 미설정" };
-  }
-
-  if (rows.length === 0) {
-    return { species: label, status: "ok", rowCount: 0, message: "응답에 등급별 행이 없음" };
-  }
-
-  const { error } = await supabase!.from("market_price_snapshots").upsert(
-    rows.map((row) => ({
-      species: row.species,
-      grade: row.grade,
-      region: "national",
-      price_per_kg: row.pricePerKg,
-      unit_count: row.unitCount,
-      snapshot_date: snapshotDateIso,
-      source: row.source,
-    })),
-    { onConflict: "species,grade,region,snapshot_date" }
-  );
-
-  if (error) {
-    return { species: label, status: "error", message: error.message };
-  }
-
-  return { species: label, status: "ok", rowCount: rows.length };
+  return { species: label, status: "ok", rowCount: 0, message: `최근 ${MAX_LOOKBACK_DAYS}일간 경매 데이터 없음` };
 }
 
 export async function GET(request: NextRequest) {
@@ -109,15 +127,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "service_role 클라이언트를 생성할 수 없습니다." }, { status: 500 });
   }
 
-  const dateYmd = todayYmdInSeoul();
-  const snapshotDateIso = ymdToIsoDate(dateYmd);
-
   const results = await Promise.all([
-    syncSpecies("cattle", () => fetchCattleAuctionPrices(dateYmd), supabase, snapshotDateIso),
-    syncSpecies("pig", () => fetchPigAuctionPrices(dateYmd), supabase, snapshotDateIso),
+    syncSpecies("cattle", fetchCattleAuctionPrices, supabase),
+    syncSpecies("pig", fetchPigAuctionPrices, supabase),
   ]);
 
   // 축종 하나가 실패해도 다른 쪽 캐싱은 이미 반영됐으니 200으로 응답하고
   // 실패 내역은 body의 results로만 남긴다(크론 모니터링에서 오탐 알림 방지).
-  return NextResponse.json({ snapshotDate: snapshotDateIso, results });
+  return NextResponse.json({ results });
 }
