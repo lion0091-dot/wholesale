@@ -161,10 +161,22 @@ export interface BillingInvoiceMessageInput {
   fullMonthFee?: number;
   siteOrigin?: string;
   bankAccountInfo?: string | null;
+  /**
+   * 이번 달 청구분을 제외한, 그 이전 달부터 이어져 온 미납 청구서 합계. 0(또는 미지정)이면
+   * 안내 문구에서 이 블록 자체를 생략한다 — 밀린 게 없는 공급사에게 "이전 미납 0원"이라고
+   * 굳이 보여줄 필요는 없다.
+   */
+  previousUnpaidAmount?: number;
+  /** previousUnpaidAmount에 포함된 청구서 건수(월 수). */
+  previousUnpaidCount?: number;
 }
 
 /**
  * 플랫폼 슈퍼관리자가 공급사 대표에게 발송하는 당월 구독료 청구서 문자 템플릿 생성.
+ *
+ * 이전 달부터 밀린 미납이 있으면 이번 달 청구액만 보여주는 게 아니라 "이전 미납액 +
+ * 총 납부하실 금액"까지 같이 안내한다 — 안 그러면 2~3달 연속 미납인 공급사가 이번
+ * 달치만 내면 되는 줄 오해할 수 있다(2026-09-19 결정).
  */
 export function buildBillingInvoiceMessage({
   businessName,
@@ -175,6 +187,8 @@ export function buildBillingInvoiceMessage({
   fullMonthFee,
   siteOrigin = "",
   bankAccountInfo,
+  previousUnpaidAmount = 0,
+  previousUnpaidCount = 0,
 }: BillingInvoiceMessageInput): string {
   const accountLine = bankAccountInfo ? `■ 입금 계좌: ${bankAccountInfo}\n` : "";
   const billingUrl = siteOrigin ? `${siteOrigin}/dashboard/billing` : "/dashboard/billing";
@@ -183,6 +197,12 @@ export function buildBillingInvoiceMessage({
     ? `■ 이번 달 구독료: ${monthlyFee.toLocaleString("ko-KR")}원 (정가 ${fullMonthFee!.toLocaleString("ko-KR")}원에서 일할 계산·이벤트 할인 적용)`
     : `■ 이번 달 구독료: ${monthlyFee.toLocaleString("ko-KR")}원 (구간별 누진 단가 적용)`;
 
+  const hasPreviousUnpaid = previousUnpaidAmount > 0;
+  const totalDue = monthlyFee + previousUnpaidAmount;
+  const previousUnpaidBlock = hasPreviousUnpaid
+    ? `■ 이전 미납액: ${previousUnpaidAmount.toLocaleString("ko-KR")}원 (${previousUnpaidCount}건)\n■ 총 납부하실 금액: ${totalDue.toLocaleString("ko-KR")}원\n`
+    : "";
+
   return `[미트파트너스] ${month}월 플랫폼 이용 구독료 청구 안내
 
 ${businessName} ${representativeName} 대표님, 안녕하세요.
@@ -190,7 +210,7 @@ ${businessName} ${representativeName} 대표님, 안녕하세요.
 
 ■ 당월 실발주 거래처: ${billedCount}곳
 ${feeLine}
-${accountLine}■ 입금 기한: 매월 말일까지
+${previousUnpaidBlock}${accountLine}■ 입금 기한: 매월 말일까지
 
 상세 내역은 공급사 관리 대시보드(구독료 청구서)에서 확인하실 수 있습니다.
 👉 청구서 상세 확인: ${billingUrl}

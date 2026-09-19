@@ -115,17 +115,20 @@ export default async function AdminSuppliersPage() {
     "demo-wholesaler-3": 5,
   };
   let eventDiscounts: Record<string, ActiveEventDiscount> = {};
+  // wholesaler_id → 확정된 미납 청구서 합계·건수. 청구서 문자에 "이전 미납액"으로 같이 보여준다.
+  let unpaidPriorInvoices: Record<string, { amount: number; count: number }> = {};
 
   if (isConfigured) {
     const supabase = await createClient();
 
-    const [{ data }, billedCounts, eventsSnapshot] = await Promise.all([
+    const [{ data }, billedCounts, eventsSnapshot, { data: unpaidInvoiceRows }] = await Promise.all([
       supabase
         .from("wholesalers")
         .select("*, profiles:profile_id ( phone )")
         .order("created_at", { ascending: false }),
       countBilledRetailersForAllSuppliers(supabase),
       listActiveEventsForMonth(supabase, currentBillingMonthRangeUtc()),
+      supabase.from("platform_subscription_invoices").select("wholesaler_id, amount").eq("status", "unpaid"),
     ]);
 
     suppliers = (((data ?? []) as Array<Wholesaler & { profiles?: { phone?: string | null } | null }>)).map((row) => ({
@@ -136,6 +139,14 @@ export default async function AdminSuppliersPage() {
     eventDiscounts = Object.fromEntries(
       suppliers.map((supplier) => [supplier.id, resolveDiscountForWholesaler(supplier.id, eventsSnapshot)])
     );
+
+    for (const row of (unpaidInvoiceRows ?? []) as Array<{ wholesaler_id: string; amount: number }>) {
+      const current = unpaidPriorInvoices[row.wholesaler_id] ?? { amount: 0, count: 0 };
+      unpaidPriorInvoices[row.wholesaler_id] = {
+        amount: current.amount + Number(row.amount),
+        count: current.count + 1,
+      };
+    }
   }
 
   const pendingCount = suppliers.filter((s) => s.status === "pending").length;
@@ -210,6 +221,7 @@ export default async function AdminSuppliersPage() {
         initialSuppliers={suppliers}
         billedRetailerCounts={billedRetailerCounts}
         eventDiscounts={eventDiscounts}
+        unpaidPriorInvoices={unpaidPriorInvoices}
       />
     </main>
   );

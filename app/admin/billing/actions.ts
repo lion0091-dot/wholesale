@@ -253,6 +253,13 @@ export async function listAllUnpaidInvoicesForReconcileAction(): Promise<
  * 청구서는 건너뛰므로(부분 유니크 인덱스 + 사전 조회) 버튼을 여러 번 눌러도 안전하다.
  * 대표 연락처(profiles.phone)가 없는 공급사는 문자를 보낼 수 없으므로 건너뛰고
  * skippedNoPhoneCount로 알려준다.
+ *
+ * 공급사 하나가 여러 달 연속 미납일 수 있다 — 그런데 청구서는 달마다 별도 행이라,
+ * 예전처럼 청구서 1건당 큐 1행을 만들면 같은 공급사에게 "7월분", "8월분", "9월분"을
+ * 서로 무관한 별개 문자로 3통 보내게 된다. 그러면 공급사 입장에서 이번 달치만 내면
+ * 되는 줄 오해하기 쉬워서, wholesaler_id로 묶어 가장 최근 달(anchor) 청구서 하나에만
+ * 큐 행을 만들고, 그 앞선 미납 청구서들의 합계를 "이전 미납액"으로 문구에 같이 넣는다
+ * (2026-09-19 결정).
  */
 export async function generateInvoiceSmsQueueAction(): Promise<
   ActionResult<{ insertedCount: number; skippedNoPhoneCount: number }>
@@ -294,13 +301,37 @@ export async function generateInvoiceSmsQueueAction(): Promise<
       return { success: true, data: { insertedCount: 0, skippedNoPhoneCount: 0 } };
     }
 
+    // 공급사별로 묶어서 가장 최근 달(anchor)을 고른다 — billing_month는 'YYYY-MM-01'
+    // 문자열이라 그대로 비교해도 오름차순/내림차순이 정확하다.
+    const rowsByWholesaler = new Map<string, typeof rows>();
+
+    for (const row of rows) {
+      const list = rowsByWholesaler.get(row.wholesaler_id) ?? [];
+      list.push(row);
+      rowsByWholesaler.set(row.wholesaler_id, list);
+    }
+
+    const anchors: Array<{ anchor: (typeof rows)[number]; previousUnpaidAmount: number; previousUnpaidCount: number }> =
+      [];
+
+    for (const group of rowsByWholesaler.values()) {
+      const sorted = [...group].sort((a, b) => (a.billing_month < b.billing_month ? 1 : -1));
+      const [anchor, ...previous] = sorted;
+
+      anchors.push({
+        anchor,
+        previousUnpaidAmount: previous.reduce((sum, row) => sum + Number(row.amount), 0),
+        previousUnpaidCount: previous.length,
+      });
+    }
+
     const { data: existing } = await supabase
       .from("outbound_sms_queue")
       .select("invoice_id")
       .eq("message_type", "billing_invoice")
       .in(
         "invoice_id",
-        rows.map((row) => row.id)
+        anchors.map(({ anchor }) => anchor.id)
       );
 
     const alreadyQueued = new Set(
@@ -309,8 +340,8 @@ export async function generateInvoiceSmsQueueAction(): Promise<
 
     const profileIds = Array.from(
       new Set(
-        rows
-          .map((row) => (Array.isArray(row.wholesalers) ? row.wholesalers[0] : row.wholesalers)?.profile_id)
+        anchors
+          .map(({ anchor }) => (Array.isArray(anchor.wholesalers) ? anchor.wholesalers[0] : anchor.wholesalers)?.profile_id)
           .filter((id): id is string => Boolean(id))
       )
     );
@@ -338,12 +369,12 @@ export async function generateInvoiceSmsQueueAction(): Promise<
 
     let skippedNoPhoneCount = 0;
 
-    for (const row of rows) {
-      if (alreadyQueued.has(row.id)) {
+    for (const { anchor, previousUnpaidAmount, previousUnpaidCount } of anchors) {
+      if (alreadyQueued.has(anchor.id)) {
         continue;
       }
 
-      const wholesaler = Array.isArray(row.wholesalers) ? row.wholesalers[0] : row.wholesalers;
+      const wholesaler = Array.isArray(anchor.wholesalers) ? anchor.wholesalers[0] : anchor.wholesalers;
       const phone = wholesaler?.profile_id ? phoneByProfile.get(wholesaler.profile_id) : null;
 
       if (!wholesaler || !phone) {
@@ -351,22 +382,24 @@ export async function generateInvoiceSmsQueueAction(): Promise<
         continue;
       }
 
-      const month = Number(row.billing_month.slice(5, 7));
+      const month = Number(anchor.billing_month.slice(5, 7));
 
       newRows.push({
         message_type: "billing_invoice",
-        wholesaler_id: row.wholesaler_id,
-        invoice_id: row.id,
+        wholesaler_id: anchor.wholesaler_id,
+        invoice_id: anchor.id,
         recipient_name: wholesaler.representative_name || wholesaler.business_name,
         recipient_phone: phone,
         message_body: buildBillingInvoiceMessage({
           businessName: wholesaler.business_name,
           representativeName: wholesaler.representative_name,
           month,
-          billedCount: row.billed_retailer_count,
-          monthlyFee: Number(row.amount),
-          fullMonthFee: Number(row.full_month_fee),
+          billedCount: anchor.billed_retailer_count,
+          monthlyFee: Number(anchor.amount),
+          fullMonthFee: Number(anchor.full_month_fee),
           siteOrigin: origin,
+          previousUnpaidAmount,
+          previousUnpaidCount,
         }),
         created_by: user?.id ?? null,
       });

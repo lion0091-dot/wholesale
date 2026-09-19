@@ -32,6 +32,8 @@ interface SupplierApprovalListProps {
   billedRetailerCounts: Record<string, number>;
   /** wholesaler_id → 이번 달 적용 중인 이벤트 할인(없으면 discountRate 0) */
   eventDiscounts: Record<string, ActiveEventDiscount>;
+  /** wholesaler_id → 확정된(전월 이전) 미납 청구서 합계·건수. 청구서 문자에 "이전 미납액"으로 같이 안내한다. */
+  unpaidPriorInvoices: Record<string, { amount: number; count: number }>;
 }
 
 interface BadgeStyle {
@@ -94,6 +96,7 @@ export function SupplierApprovalList({
   initialSuppliers,
   billedRetailerCounts,
   eventDiscounts,
+  unpaidPriorInvoices,
 }: SupplierApprovalListProps) {
   const [suppliers, setSuppliers] = useState<AdminSupplierItem[]>(initialSuppliers);
   const [activeFilter, setActiveFilter] = useState<WholesalerStatus | "all">("all");
@@ -234,6 +237,7 @@ export function SupplierApprovalList({
       return;
     }
 
+    const prior = unpaidPriorInvoices[supplier.id];
     const message = buildBillingInvoiceMessage({
       businessName: supplier.business_name,
       representativeName: supplier.representative_name,
@@ -241,6 +245,8 @@ export function SupplierApprovalList({
       monthlyFee,
       fullMonthFee,
       siteOrigin: typeof window !== "undefined" ? window.location.origin : "",
+      previousUnpaidAmount: prior?.amount,
+      previousUnpaidCount: prior?.count,
     });
 
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -257,6 +263,7 @@ export function SupplierApprovalList({
     fullMonthFee: number
   ) => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const prior = unpaidPriorInvoices[supplier.id];
     const message = buildBillingInvoiceMessage({
       businessName: supplier.business_name,
       representativeName: supplier.representative_name,
@@ -264,6 +271,8 @@ export function SupplierApprovalList({
       monthlyFee,
       fullMonthFee,
       siteOrigin: origin,
+      previousUnpaidAmount: prior?.amount,
+      previousUnpaidCount: prior?.count,
     });
 
     try {
