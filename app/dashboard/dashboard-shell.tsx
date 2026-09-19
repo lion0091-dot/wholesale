@@ -114,14 +114,14 @@ export function DashboardShell({
 
         <nav style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
           {navGroups.map((group, groupIndex) => (
-            <div key={groupIndex}>
+            <div key={groupIndex} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
               {groupIndex > 0 && (
                 <div
                   aria-hidden
                   style={{
                     height: "1px",
                     backgroundColor: "#334155",
-                    margin: "8px 10px",
+                    margin: "6px 10px",
                   }}
                 />
               )}

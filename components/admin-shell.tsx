@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { SignOutButton } from "@/components/sign-out-button";
 
 interface AdminNavLink {
   href: string;
@@ -89,11 +90,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
         <nav style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
           {ADMIN_NAV_GROUPS.map((group, groupIndex) => (
-            <div key={groupIndex}>
+            <div key={groupIndex} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
               {groupIndex > 0 && (
                 <div
                   aria-hidden
-                  style={{ height: "1px", backgroundColor: "#334155", margin: "8px 10px" }}
+                  style={{ height: "1px", backgroundColor: "#334155", margin: "6px 10px" }}
                 />
               )}
               {group.map((link) => (
@@ -161,6 +162,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </button>
 
           <div style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>{currentLabel}</div>
+
+          <div style={{ marginLeft: "auto" }}>
+            <SignOutButton />
+          </div>
         </header>
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>{children}</div>
