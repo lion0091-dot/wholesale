@@ -309,11 +309,17 @@ export async function updateRetailerStatusAction(
   }
 }
 
+/** 마지막 발송 후 이 일수가 지나야 같은 거래처를 "채우기" 버튼이 다시 큐에 채워준다. */
+const INVITE_RESEND_COOLDOWN_DAYS = 30;
+
 /**
  * 거래중(active) 거래처 전체를 초대장 문자 발송 큐(outbound_sms_queue)에 채워 넣는다.
- * 이미 큐에 들어간 거래처는 건너뛰므로(부분 유니크 인덱스 + 사전 조회) 버튼을 여러 번
- * 눌러도 안전하다. 초대장 발부는 승인된 공급사만 가능하므로 개별 발부(issueInviteAction)와
- * 동일하게 describeInviteRestriction으로 막는다.
+ * 신규 거래처는 항상 포함되고, 이미 큐에 들어간 적 있는 거래처는 "대기중(pending)"이면
+ * 제외, "발송완료(sent)"면 마지막 발송(sent_at)으로부터 INVITE_RESEND_COOLDOWN_DAYS일이
+ * 지났을 때만 다시 포함한다(2026-09-19 결정 — 청구서처럼 버튼 한 번으로 완전 일괄이
+ * 되면서도, 실수로 방금 보낸 거래처를 곧바로 또 채우는 사고는 최소 경과일로 막는다).
+ * 초대장 발부는 승인된 공급사만 가능하므로 개별 발부(issueInviteAction)와 동일하게
+ * describeInviteRestriction으로 막는다.
  */
 export async function generateInviteSmsQueueAction(): Promise<
   ActionResult<{ insertedCount: number; skippedNoPhoneCount: number }>
@@ -355,22 +361,48 @@ export async function generateInviteSmsQueueAction(): Promise<
       return { success: true, data: { insertedCount: 0, skippedNoPhoneCount: 0 } };
     }
 
-    const [{ data: existing }, { data: phoneRows }] = await Promise.all([
+    const [{ data: existingRows }, { data: phoneRows }] = await Promise.all([
       supabase
         .from("outbound_sms_queue")
-        .select("retailer_id")
+        .select("retailer_id, status, sent_at")
         .eq("message_type", "retailer_invite")
         .eq("wholesaler_id", wholesalerId)
         .in(
           "retailer_id",
           relations.map((relation) => relation.retailer_id)
-        ),
+        )
+        .order("created_at", { ascending: false }),
       supabase.rpc("list_linked_retailer_phones", { p_wholesaler_id: wholesalerId }),
     ]);
 
-    const alreadyQueued = new Set(
-      ((existing ?? []) as Array<{ retailer_id: string }>).map((row) => row.retailer_id)
-    );
+    type ExistingQueueRow = { retailer_id: string; status: "pending" | "sent"; sent_at: string | null };
+
+    // 거래처당 여러 행(과거 발송 이력)이 있을 수 있어 created_at 내림차순으로 정렬해 받은 뒤
+    // 거래처별로 가장 최근 행 하나만 남긴다.
+    const latestByRetailer = new Map<string, ExistingQueueRow>();
+
+    for (const row of (existingRows ?? []) as ExistingQueueRow[]) {
+      if (!latestByRetailer.has(row.retailer_id)) {
+        latestByRetailer.set(row.retailer_id, row);
+      }
+    }
+
+    const resendCutoff = Date.now() - INVITE_RESEND_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+
+    const isEligibleForQueue = (retailerId: string): boolean => {
+      const latest = latestByRetailer.get(retailerId);
+
+      if (!latest) {
+        return true;
+      }
+
+      if (latest.status === "pending" || !latest.sent_at) {
+        return false;
+      }
+
+      return new Date(latest.sent_at).getTime() <= resendCutoff;
+    };
+
     const phoneByRetailer = new Map(
       ((phoneRows ?? []) as Array<{ retailer_id: string; phone: string | null }>).map((row) => [
         row.retailer_id,
@@ -395,7 +427,7 @@ export async function generateInviteSmsQueueAction(): Promise<
     let skippedNoPhoneCount = 0;
 
     for (const relation of relations) {
-      if (alreadyQueued.has(relation.retailer_id)) {
+      if (!isEligibleForQueue(relation.retailer_id)) {
         continue;
       }
 
@@ -424,15 +456,22 @@ export async function generateInviteSmsQueueAction(): Promise<
       return { success: true, data: { insertedCount: 0, skippedNoPhoneCount } };
     }
 
-    const { error: insertError } = await supabase.from("outbound_sms_queue").insert(newRows);
+    // 한 번에 배치 삽입하지 않고 행마다 따로 삽입한다 — 같은 조직의 다른 직원이 거의
+    // 동시에 "채우기"를 눌러 같은 거래처를 먼저 큐에 넣었다면(부분 유니크 인덱스 충돌)
+    // 그 행만 실패로 건너뛰고, 나머지 무관한 거래처들은 정상적으로 큐에 들어가야 한다.
+    let insertedCount = 0;
 
-    if (insertError) {
-      return { success: false, error: insertError.message ?? "발송 큐 생성에 실패했습니다." };
+    for (const row of newRows) {
+      const { error: rowInsertError } = await supabase.from("outbound_sms_queue").insert(row);
+
+      if (!rowInsertError) {
+        insertedCount += 1;
+      }
     }
 
     revalidatePath("/dashboard/customers");
 
-    return { success: true, data: { insertedCount: newRows.length, skippedNoPhoneCount } };
+    return { success: true, data: { insertedCount, skippedNoPhoneCount } };
   } catch (error) {
     return {
       success: false,
@@ -454,4 +493,78 @@ export async function sendInviteSmsQueueAction(_ids: string[]): Promise<ActionRe
   }
 
   return { success: false, error: BULK_SMS_NOT_CONFIGURED_NOTICE };
+}
+
+/**
+ * "이 건만 직접 발송"(sms: 딥링크) 클릭 시 호출 — 해당 큐 행을 발송완료로 표시한다.
+ * sent_at을 남겨야 generateInviteSmsQueueAction의 재발송 최소 경과일(30일) 기준이 동작한다.
+ */
+export async function markInviteSmsSentAction(queueId: string): Promise<ActionResult> {
+  try {
+    const account = await getSupplierAccount();
+
+    if (!account || describeInviteRestriction(account) || !account.wholesalerId) {
+      return { success: false, error: "권한이 없습니다." };
+    }
+
+    const supabase = await createClient();
+
+    const { error } = await supabase
+      .from("outbound_sms_queue")
+      .update({ status: "sent", sent_at: new Date().toISOString() })
+      .eq("id", queueId)
+      .eq("wholesaler_id", account.wholesalerId)
+      .eq("message_type", "retailer_invite");
+
+    if (error) {
+      return { success: false, error: error.message ?? "발송 처리 기록에 실패했습니다." };
+    }
+
+    revalidatePath("/dashboard/customers");
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "발송 처리 기록 중 오류가 발생했습니다.",
+    };
+  }
+}
+
+/**
+ * markInviteSmsSentAction으로 발송완료 처리된 건을 다시 대기중으로 되돌린다. 문자 앱을
+ * 열었어도 실제로는 안 보냈거나 취소한 경우를 위한 수동 정정 — sent_at을 비워야
+ * generateInviteSmsQueueAction의 30일 쿨다운이 풀려 곧바로 다시 채우기 대상이 된다.
+ */
+export async function revertInviteSmsSentAction(queueId: string): Promise<ActionResult> {
+  try {
+    const account = await getSupplierAccount();
+
+    if (!account || describeInviteRestriction(account) || !account.wholesalerId) {
+      return { success: false, error: "권한이 없습니다." };
+    }
+
+    const supabase = await createClient();
+
+    const { error } = await supabase
+      .from("outbound_sms_queue")
+      .update({ status: "pending", sent_at: null })
+      .eq("id", queueId)
+      .eq("wholesaler_id", account.wholesalerId)
+      .eq("message_type", "retailer_invite")
+      .eq("status", "sent");
+
+    if (error) {
+      return { success: false, error: error.message ?? "되돌리기에 실패했습니다." };
+    }
+
+    revalidatePath("/dashboard/customers");
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "되돌리기 중 오류가 발생했습니다.",
+    };
+  }
 }

@@ -1,7 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { generateInviteSmsQueueAction, sendInviteSmsQueueAction } from "./actions";
+import {
+  generateInviteSmsQueueAction,
+  markInviteSmsSentAction,
+  revertInviteSmsSentAction,
+  sendInviteSmsQueueAction,
+} from "./actions";
 import type { OutboundSmsQueueRow } from "@/lib/notifications/sms-queue";
 
 interface InviteSmsQueuePanelProps {
@@ -12,7 +17,7 @@ interface InviteSmsQueuePanelProps {
  * 아이폰은 sms: 스킴에서 본문을 ?body=가 아니라 &body=로 넘겨야 채워진다
  * (customer-table.tsx의 handleSendSms와 동일한 이유).
  */
-function handleSendSingle(row: OutboundSmsQueueRow) {
+function openSmsApp(row: OutboundSmsQueueRow) {
   const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
   const separator = isIOS ? "&" : "?";
   const digits = row.recipientPhone.replace(/[^0-9+]/g, "");
@@ -72,6 +77,47 @@ export function InviteSmsQueuePanel({ initialQueue }: InviteSmsQueuePanelProps) 
 
       // 서버 컴포넌트가 다시 렌더링돼야 새로 생성된 큐 행을 알 수 있어 새로고침을 유도한다.
       window.location.reload();
+    });
+  };
+
+  const handleSendSingle = (row: OutboundSmsQueueRow) => {
+    openSmsApp(row);
+
+    // 문자 앱은 이미 열었으니 되돌릴 수 없다 — 화면은 낙관적으로 먼저 발송완료로
+    // 바꾸고, 서버 기록이 실패하면 되돌리면서 안내를 남긴다(그래야 30일 쿨다운
+    // 기준이 되는 sent_at 누락을 사용자가 알아챌 수 있다).
+    setQueue((prev) =>
+      prev.map((item) => (item.id === row.id ? { ...item, status: "sent" as const } : item))
+    );
+
+    startTransition(async () => {
+      const result = await markInviteSmsSentAction(row.id);
+
+      if (!result.success) {
+        setQueue((prev) =>
+          prev.map((item) => (item.id === row.id ? { ...item, status: "pending" as const } : item))
+        );
+        setNotice(
+          `문자 앱은 열었지만 발송완료 기록에는 실패했습니다: ${result.error ?? "알 수 없는 오류"}`
+        );
+      }
+    });
+  };
+
+  const handleRevertSent = (row: OutboundSmsQueueRow) => {
+    setQueue((prev) =>
+      prev.map((item) => (item.id === row.id ? { ...item, status: "pending" as const } : item))
+    );
+
+    startTransition(async () => {
+      const result = await revertInviteSmsSentAction(row.id);
+
+      if (!result.success) {
+        setQueue((prev) =>
+          prev.map((item) => (item.id === row.id ? { ...item, status: "sent" as const } : item))
+        );
+        setNotice(result.error ?? "되돌리기에 실패했습니다.");
+      }
     });
   };
 
@@ -174,6 +220,7 @@ export function InviteSmsQueuePanel({ initialQueue }: InviteSmsQueuePanelProps) 
                   </span>
                   <button
                     type="button"
+                    disabled={isPending}
                     onClick={() => handleSendSingle(row)}
                     style={{
                       marginLeft: "8px",
@@ -184,11 +231,32 @@ export function InviteSmsQueuePanel({ initialQueue }: InviteSmsQueuePanelProps) 
                       border: "1px solid #fde047",
                       borderRadius: "4px",
                       padding: "2px 8px",
-                      cursor: "pointer",
+                      cursor: isPending ? "wait" : "pointer",
                     }}
                   >
                     📱 이 건만 직접 발송
                   </button>
+                  {row.status === "sent" && (
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => handleRevertSent(row)}
+                      title="실제로는 안 보냈거나 취소한 경우, 대기 상태로 되돌려 즉시 다시 채우기 대상에 포함시킵니다."
+                      style={{
+                        marginLeft: "6px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "#475569",
+                        backgroundColor: "#f1f5f9",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "4px",
+                        padding: "2px 8px",
+                        cursor: isPending ? "wait" : "pointer",
+                      }}
+                    >
+                      ↩️ 되돌리기
+                    </button>
+                  )}
                 </span>
               </label>
             ))}

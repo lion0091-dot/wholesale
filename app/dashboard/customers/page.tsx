@@ -166,21 +166,37 @@ export default async function DashboardCustomersPage() {
       supabase.rpc("list_linked_retailer_phones", { p_wholesaler_id: scope.wholesalerId }),
       supabase
         .from("outbound_sms_queue")
-        .select("id, recipient_name, recipient_phone, message_body, status, created_at")
+        .select("id, retailer_id, recipient_name, recipient_phone, message_body, status, created_at")
         .eq("message_type", "retailer_invite")
         .eq("wholesaler_id", scope.wholesalerId)
         .order("created_at", { ascending: false }),
     ]);
 
     pgConfigured = Boolean(wholesalerRow?.pg_client_key);
-    inviteSmsQueue = ((queueRows ?? []) as Array<{
+
+    // 재발송(30일 쿨다운) 도입 후 같은 거래처가 여러 행(과거 발송 이력 + 최신 대기)으로
+    // 쌓일 수 있다 — 화면에는 거래처당 가장 최근 행 하나만 보여준다(created_at 내림차순
+    // 정렬을 그대로 활용).
+    const latestQueueRowByRetailer = new Map<
+      string,
+      { id: string; recipient_name: string; recipient_phone: string; message_body: string; status: "pending" | "sent"; created_at: string }
+    >();
+
+    for (const row of (queueRows ?? []) as Array<{
       id: string;
+      retailer_id: string;
       recipient_name: string;
       recipient_phone: string;
       message_body: string;
       status: "pending" | "sent";
       created_at: string;
-    }>).map((row) => ({
+    }>) {
+      if (!latestQueueRowByRetailer.has(row.retailer_id)) {
+        latestQueueRowByRetailer.set(row.retailer_id, row);
+      }
+    }
+
+    inviteSmsQueue = Array.from(latestQueueRowByRetailer.values()).map((row) => ({
       id: row.id,
       recipientName: row.recipient_name,
       recipientPhone: row.recipient_phone,
