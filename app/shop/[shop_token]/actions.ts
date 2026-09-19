@@ -13,6 +13,7 @@ import { canRequestCancel } from "@/lib/orders/status";
 import { loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
 import { validateCancelReason } from "@/lib/shop/order-history-types";
 import { validateCart } from "@/lib/shop/order-policy";
+import { isRetailerNamePlaceholder } from "@/lib/shop/retailer-placeholder";
 import { createOrderWithItems, buildOrderNumber } from "@/lib/orders/create-order";
 import { fetchTrackingStatus, type TrackingResult } from "@/lib/verification/sweettracker";
 import type { OrderStatus, PaymentMethod } from "@/types/database";
@@ -47,17 +48,6 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 /**
- * claim_shop_access()가 상호명 자리에 채워 넣는 자리표시자 목록.
- *
- * "카카오 회원" — 카카오 프로필에 닉네임/이름이 전혀 없을 때 DB 함수(RPC)가 쓰는 값.
- * "고객(소매)" — buyer-auth.ts(requireLinkedBuyer)가 null인 상호명을 화면에 보여줄 때
- * 쓰는 표시용 대체값. 두 값 다 "아직 진짜 이름이 아님"을 뜻하므로 둘 다 덮어써야 하는데,
- * 예전엔 "고객(소매)"만 확인해서 "카카오 회원"으로 생성된 고객은 첫 주문을 넣어도
- * 상호명이 영영 "카카오 회원"에 고정되는 버그가 있었다.
- */
-const RESTAURANT_NAME_PLACEHOLDERS = new Set(["카카오 회원", "고객(소매)"]);
-
-/**
  * 카카오 로그인 직후 자동 생성된 거래처 자리표시자를 발주서 입력값으로 채운다.
  *
  * claim_shop_access() 는 카카오 닉네임만으로 retailers 행을 만들기 때문에
@@ -71,7 +61,7 @@ async function backfillRetailerProfile(
 ): Promise<void> {
   const retailerPatch: Record<string, string> = {};
 
-  if (!buyer.restaurantName || RESTAURANT_NAME_PLACEHOLDERS.has(buyer.restaurantName)) {
+  if (isRetailerNamePlaceholder(buyer.restaurantName)) {
     retailerPatch.restaurant_name = input.restaurantName;
   }
 

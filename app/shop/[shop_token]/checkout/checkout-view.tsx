@@ -18,6 +18,7 @@ import {
 } from "../shop-chrome";
 import { submitOrderAction } from "../actions";
 import { initiatePgPaymentAction } from "./pg/actions";
+import { isRetailerNamePlaceholder } from "@/lib/shop/retailer-placeholder";
 import type { PaymentMethod } from "@/types/database";
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -361,6 +362,27 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
         {/* 배송지 확인 및 요청사항 */}
         <form onSubmit={handleSubmit} style={{ ...cardStyle, padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
           <h2 style={{ fontSize: "15px", fontWeight: 800, color: "#0f172a" }}>배송 정보 확인</h2>
+
+          {isRetailerNamePlaceholder(customer.restaurantName) && (
+            <div
+              style={{
+                backgroundColor: "#fef3c7",
+                border: "1px solid #fde68a",
+                color: "#92400e",
+                fontSize: "12px",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                lineHeight: 1.6,
+              }}
+            >
+              ⚠️ 카카오 계정 정보로만 가입되어 있어요. 아래 입력한 내용은 이번 주문에만
+              쓰입니다 — 사업자등록번호 등록, 다음 주문부터 자동으로 채워질 정보 수정은{" "}
+              <Link href="/my-shops" style={{ fontWeight: 700, color: "#b45309" }}>
+                내 정보 수정
+              </Link>
+              에서 해주세요.
+            </div>
+          )}
 
           <div>
             <label style={labelStyle} htmlFor="restaurant-name">
