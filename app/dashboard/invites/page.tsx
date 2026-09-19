@@ -8,6 +8,7 @@ import {
   getSupplierAccount,
 } from "@/lib/supplier/verification";
 import { BusinessAddressForm } from "./business-address-form";
+import { RepresentativeNameForm } from "./representative-name-form";
 import { BusinessNumberForm } from "./business-number-form";
 import { BusinessLicenseForm } from "./business-license-form";
 import { ShopThumbnailForm } from "./shop-thumbnail-form";
@@ -214,6 +215,7 @@ export default async function DashboardInvitesPage() {
             사업자등록번호를 제출하면 플랫폼 운영팀이 등록증을 대조해 승인 여부를 확정합니다.
             승인 전에도 상품 등록·단가·발주 관리는 제한 없이 사용할 수 있습니다.
           </p>
+          <RepresentativeNameForm currentRepresentativeName={account.representativeName} />
           <BusinessNumberForm
             currentBusinessNumber={account.businessNumber}
             currentBusinessStartDate={account.businessStartDate}

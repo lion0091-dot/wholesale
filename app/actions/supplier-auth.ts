@@ -263,6 +263,69 @@ export async function submitSupplierBusinessAddressAction(
 }
 
 /**
+ * 대표자(담당자) 성명 등록/수정 (공급사 본인).
+ *
+ * business_number/business_start_date와 달리 승인 심사와 무관하게 언제든
+ * 등록·수정할 수 있다 — business_address와 같은 이유로 SECURITY DEFINER RPC
+ * 없이 기존 RLS("Wholesalers updatable by self or admin")로 직접 UPDATE한다.
+ *
+ * 국세청 진위확인(verifyBusinessWithNtsAction)이 이 값을 대표자명(p_nm)으로
+ * 그대로 보내므로, 사업자등록증에 인쇄된 이름과 정확히 일치해야 한다. 가입
+ * 초기 버전에서는 이 필드가 카카오 닉네임으로 대체되거나 비어 있을 수 있어
+ * 별도로 고칠 수 있는 창구가 필요했다.
+ */
+export async function submitSupplierRepresentativeNameAction(
+  formData: FormData
+): Promise<ActionResult<{ representativeName: string }>> {
+  try {
+    const representativeName = ((formData.get("representative_name") as string) || "").trim();
+
+    if (representativeName.length < 2 || representativeName.length > 30) {
+      throw new SupplierAuthError(
+        "invalid_input",
+        "대표자(담당자) 성명을 2~30자 이내로 정확히 입력해주세요."
+      );
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new SupplierAuthError("auth_required", "로그인이 필요합니다.");
+    }
+
+    const { data, error } = await supabase
+      .from("wholesalers")
+      .update({ representative_name: representativeName })
+      .eq("profile_id", user.id)
+      .select("representative_name")
+      .maybeSingle();
+
+    if (error) {
+      throw new Error("대표자 성명 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    if (!data) {
+      throw new SupplierAuthError(
+        "not_a_supplier",
+        "공급사 정보를 찾을 수 없습니다. 온보딩을 먼저 완료해주세요."
+      );
+    }
+
+    revalidatePath("/dashboard", "layout");
+
+    return {
+      success: true,
+      data: { representativeName: data.representative_name as string },
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
  * 사업자등록증 사본 업로드 (공급사 본인).
  *
  * 파일은 Storage 버킷 business-licenses의 "<auth.uid()>/business-license" 경로에

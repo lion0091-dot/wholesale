@@ -45,6 +45,8 @@ export interface SupplierAccount {
   wholesalerId: string | null;
   businessName: string | null;
   businessNumber: string | null;
+  /** 대표자(담당자) 성명 — 국세청 진위확인 API 대조에 쓰인다. null이면 미등록 */
+  representativeName: string | null;
   /** 사업장 주소 — 거래명세서 PDF 발행에 필수. null이면 발행이 막힌다 */
   businessAddress: string | null;
   /** 개업일자 — 국세청 진위확인 API 호출에 필수. null이면 미제출 */
@@ -120,14 +122,14 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
     ? await supabase
         .from("wholesalers")
         .select(
-          "id, profile_id, business_name, business_number, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_thumbnail_url, shop_token, status"
+          "id, profile_id, business_name, business_number, representative_name, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_thumbnail_url, shop_token, status"
         )
         .eq("id", linkedWholesalerId)
         .maybeSingle()
     : await supabase
         .from("wholesalers")
         .select(
-          "id, profile_id, business_name, business_number, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_thumbnail_url, shop_token, status"
+          "id, profile_id, business_name, business_number, representative_name, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_thumbnail_url, shop_token, status"
         )
         .eq("profile_id", user.id)
         .maybeSingle();
@@ -170,6 +172,7 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
     wholesalerId: (wholesaler?.id as string | undefined) ?? null,
     businessName: (wholesaler?.business_name as string | undefined) ?? null,
     businessNumber: (wholesaler?.business_number as string | null | undefined) ?? null,
+    representativeName: (wholesaler?.representative_name as string | null | undefined) ?? null,
     businessAddress: (wholesaler?.business_address as string | null | undefined) ?? null,
     businessStartDate: (wholesaler?.business_start_date as string | null | undefined) ?? null,
     businessLicensePath: (wholesaler?.business_license_path as string | null | undefined) ?? null,
