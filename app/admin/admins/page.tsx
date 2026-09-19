@@ -1,5 +1,4 @@
 import { requireAdminGranter } from "@/lib/auth/admin-granter";
-import { AdminNav } from "@/components/admin-nav";
 import { listAdminsAction } from "./actions";
 import { AdminAdminsClient } from "./admin-admins-client";
 
@@ -33,7 +32,6 @@ export default async function AdminAdminsPage() {
   return (
     <main style={{ maxWidth: "768px", margin: "0 auto", padding: "24px 16px" }}>
       <header style={{ marginBottom: "24px" }}>
-        <AdminNav />
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
           관리자 후보 목록
         </h1>

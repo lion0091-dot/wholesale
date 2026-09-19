@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { isSuperAdminSession } from "@/lib/auth/rbac";
-import { AdminNav } from "@/components/admin-nav";
 import { EventManager, type PlatformEventRow, type SupplierOption } from "./event-manager";
 
 const DEMO_SUPPLIERS: SupplierOption[] = [
@@ -132,7 +131,6 @@ export default async function AdminEventsPage() {
   return (
     <main style={{ maxWidth: "768px", margin: "0 auto", padding: "24px 16px" }}>
       <header style={{ marginBottom: "24px" }}>
-        <AdminNav />
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
           구독료 할인 이벤트
         </h1>

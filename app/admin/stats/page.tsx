@@ -14,7 +14,6 @@ import {
 import { AdminTrendChart } from "@/components/admin-trend-chart";
 import { AdminDateRangeFilter } from "@/components/admin-date-range-filter";
 import { AdminMonthRangeFilter } from "@/components/admin-month-range-filter";
-import { AdminNav } from "@/components/admin-nav";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH_PATTERN = /^\d{4}-\d{2}$/;
@@ -205,7 +204,6 @@ export default async function AdminStatsPage({ searchParams }: PageProps) {
   return (
     <main style={{ maxWidth: "768px", margin: "0 auto", padding: "24px 16px" }}>
       <header style={{ marginBottom: "24px" }}>
-        <AdminNav />
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
           구독자·구독료 추이
         </h1>

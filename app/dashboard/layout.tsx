@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 
 /**
  * 사이드바 메뉴 — 관련 있는 항목끼리 묶어서 순서를 정한다(2026-09-19,
- * components/admin-nav.tsx의 ADMIN_NAV_GROUPS와 같은 원칙). 예전에는 순서에
+ * components/admin-shell.tsx의 ADMIN_NAV_GROUPS와 같은 원칙). 예전에는 순서에
  * 의미가 없어서 미수금 정산이 고객 관리와 팀원 관리 사이 아무 데나 있었다.
  * ① 개요 ② 상품/가격(같이 봐야 하는 카탈로그 작업) ③ 거래·매출(주문이 만들어낸 결과)
  * ④ 거래처(고객 접점 전부) ⑤ 조직/청구(일 운영이 아니라 계정 관리).

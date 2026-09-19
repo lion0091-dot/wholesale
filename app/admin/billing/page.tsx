@@ -4,7 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { isSuperAdminSession } from "@/lib/auth/rbac";
 import type { OutboundSmsQueueRow } from "@/lib/notifications/sms-queue";
-import { AdminNav } from "@/components/admin-nav";
 import { BillingInvoiceList, type InvoiceRow } from "./billing-invoice-list";
 import { InvoiceSmsQueuePanel } from "./invoice-sms-queue-panel";
 
@@ -160,7 +159,6 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
   return (
     <main style={{ maxWidth: "960px", margin: "0 auto", padding: "24px 16px" }}>
       <header style={{ marginBottom: "24px" }}>
-        <AdminNav />
         <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", marginTop: "4px", marginBottom: "8px" }}>
           구독료 청구·수납 관리
         </h1>
