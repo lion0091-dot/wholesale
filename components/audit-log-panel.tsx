@@ -1,11 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import {
-  AUDIT_LOG_PAGE_SIZE,
-  getRowAuditLogAction,
-  type RowAuditEntry,
-} from "@/app/actions/audit-log";
+import { getRowAuditLogAction, type RowAuditEntry } from "@/app/actions/audit-log";
+import { AUDIT_LOG_PAGE_SIZE } from "@/lib/audit-log/pagination";
 
 interface AuditLogPanelProps {
   tableName: "products" | "custom_prices" | "orders";

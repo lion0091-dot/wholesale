@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
+import { AUDIT_LOG_PAGE_SIZE } from "@/lib/audit-log/pagination";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -29,9 +30,6 @@ interface AuditLogRow {
 }
 
 const IGNORED_FIELDS = new Set(["updated_at", "created_at", "updated_by", "created_by"]);
-
-/** 한 번에 불러오는 이력 개수 — "더보기" 클릭마다 이만큼씩 추가로 가져온다. */
-export const AUDIT_LOG_PAGE_SIZE = 10;
 
 export interface AuditLogPage<T> {
   entries: T[];

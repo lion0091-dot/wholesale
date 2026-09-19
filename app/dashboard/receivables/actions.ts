@@ -7,7 +7,8 @@ import { requireOrgRole, RbacError } from "@/lib/auth/rbac";
 import { computeDueAt, isOverdue } from "@/lib/orders/receivables";
 import { sendReceivablesReminderToRetailer } from "@/lib/notifications/alimtalk";
 import type { ActionResult } from "@/app/actions/invite";
-import { AUDIT_LOG_PAGE_SIZE, type AuditLogPage } from "@/app/actions/audit-log";
+import type { AuditLogPage } from "@/app/actions/audit-log";
+import { AUDIT_LOG_PAGE_SIZE } from "@/lib/audit-log/pagination";
 
 /**
  * 선택한 외상 주문들을 정산완료 처리한다.
