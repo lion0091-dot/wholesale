@@ -154,7 +154,7 @@ export default async function DashboardStatsPage({
           {isDemoData && <SampleBadge />}
         </div>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          축종 → 부위 기준으로 판매량/매출을 집계합니다. 취소된 주문은 제외됩니다.
+          축종 → 부위 기준으로 판매량/매출을 집계합니다. 취소된 발주는 제외됩니다.
         </p>
       </header>
 
@@ -169,7 +169,7 @@ export default async function DashboardStatsPage({
             borderRadius: "8px",
           }}
         >
-          ℹ️ 접수된 주문이 없거나 미인증(데모) 상태여서 샘플 데이터를 표시하고 있습니다.
+          ℹ️ 접수된 발주가 없거나 미인증(데모) 상태여서 샘플 데이터를 표시하고 있습니다.
         </div>
       )}
 

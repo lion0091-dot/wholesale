@@ -196,7 +196,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
 
           return {
             success: false,
-            error: "여신 한도를 초과하여 주문할 수 없습니다. 미수금 정산 후 다시 시도해주세요.",
+            error: "여신 한도를 초과하여 발주할 수 없습니다. 미수금 정산 후 다시 시도해주세요.",
           };
         }
       }
@@ -244,7 +244,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
           return {
             success: false,
             error: isCreditLimitExceeded
-              ? "여신 한도를 초과하여 주문할 수 없습니다. 미수금 정산 후 다시 시도해주세요."
+              ? "여신 한도를 초과하여 발주할 수 없습니다. 미수금 정산 후 다시 시도해주세요."
               : "외상 잔액 반영에 실패했습니다. 잠시 후 다시 시도해주세요.",
           };
         }
@@ -314,7 +314,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
       error:
         error instanceof Error
           ? error.message
-          : "주문 처리 중 알 수 없는 오류가 발생했습니다.",
+          : "발주 처리 중 알 수 없는 오류가 발생했습니다.",
     };
   }
 }
@@ -436,7 +436,7 @@ export async function requestOrderCancelAction(
       return {
         success: false,
         error:
-          "취소 요청을 접수하지 못했습니다. 발주 상태가 방금 변경되었을 수 있으니 주문 내역을 새로고침한 뒤 다시 시도해주세요.",
+          "취소 요청을 접수하지 못했습니다. 발주 상태가 방금 변경되었을 수 있으니 발주 내역을 새로고침한 뒤 다시 시도해주세요.",
       };
     }
 

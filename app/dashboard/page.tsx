@@ -26,7 +26,7 @@ const STATUS_LABELS: Record<OrderStatus, { label: string; bg: string; color: str
   delivered: { label: "배송 완료", bg: "#dcfce7", color: "#166534" },
   cancel_requested: { label: "취소 요청", bg: "#ffedd5", color: "#9a3412" },
   cancel_rejected: { label: "취소 반려", bg: "#f1f5f9", color: "#475569" },
-  cancelled: { label: "주문 취소", bg: "#fee2e2", color: "#991b1b" },
+  cancelled: { label: "발주 취소", bg: "#fee2e2", color: "#991b1b" },
 };
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -247,7 +247,7 @@ export default async function DashboardPage() {
 
       <section className="dash-cards">
         <SummaryCard
-          label="오늘의 주문 건수"
+          label="오늘의 발주 건수"
           value={`${todayOrders.length}건`}
           hint={`처리 대기(신규 접수) ${pendingCount}건`}
           accent="#dc2626"
@@ -255,13 +255,13 @@ export default async function DashboardPage() {
         <SummaryCard
           label="오늘 매출"
           value={formatWon(todaySales)}
-          hint="취소 주문 제외 · KST 기준"
+          hint="취소 발주 제외 · KST 기준"
           accent="#0f172a"
         />
         <SummaryCard
           label="이번 달 매출"
           value={formatWon(monthSales)}
-          hint={`누적 주문 ${orders.length}건`}
+          hint={`누적 발주 ${orders.length}건`}
           accent="#2563eb"
         />
       </section>

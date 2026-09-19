@@ -2,42 +2,24 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { DEMO_ORDERS } from "@/lib/demo/supplier-samples";
-import { formatWon, isAlimtalkLiveChannel } from "@/lib/orders/status";
-import { OrderBoard, type OrderRow } from "./order-board";
-import type { OrderItem, OrderStatus } from "@/types/database";
+import { formatWon, ACTIVE_ORDER_STATUSES, HISTORICAL_ORDER_STATUSES } from "@/lib/orders/status";
+import { isAlimtalkConfiguredForWholesaler } from "@/lib/notifications/alimtalk";
+import {
+  ORDER_LIST_SELECT_COLUMNS,
+  mapOrderJoinRow,
+  summarizeItems,
+  type OrderJoinRow,
+  type OrderRow,
+} from "@/lib/orders/order-row";
+import { DEFAULT_ORDER_HISTORY_DAYS, ORDER_HISTORY_PAGE_SIZE } from "@/lib/orders/history-range";
+import { OrderBoard } from "./order-board";
 
 export const metadata = {
-  title: "주문 관리 | 도매업체 통합관리시스템",
+  title: "발주 관리 | 도매업체 통합관리시스템",
 };
 
-/** orders + order_items + retailers 조인 응답 형태 */
-interface OrderJoinRow {
-  id: string;
-  order_number: string;
-  status: OrderStatus;
-  total_amount: number;
-  delivery_address: string;
-  ordered_at: string;
-  order_items: Pick<OrderItem, "product_name" | "quantity">[] | null;
-  retailers: { restaurant_name: string } | { restaurant_name: string }[] | null;
-}
-
-function retailerName(row: OrderJoinRow): string {
-  const retailer = Array.isArray(row.retailers) ? row.retailers[0] : row.retailers;
-
-  return retailer?.restaurant_name ?? "이름 미등록 고객(소매)";
-}
-
-/** "한우 1++ 등심 2 외 2건" 형태의 품목 요약 */
-function summarizeItems(items: Pick<OrderItem, "product_name" | "quantity">[]): string {
-  if (items.length === 0) {
-    return "품목 정보 없음";
-  }
-
-  const [first] = items;
-  const head = `${first.product_name} ${Number(first.quantity)}`;
-
-  return items.length > 1 ? `${head} 외 ${items.length - 1}건` : head;
+function historyCutoffISO(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 export default async function DashboardOrdersPage() {
@@ -47,41 +29,53 @@ export default async function DashboardOrdersPage() {
     return <AdminScopeNotice />;
   }
 
-  let orders: OrderRow[] = [];
+  let activeOrders: OrderRow[] = [];
+  let historicalOrders: OrderRow[] = [];
+  let historyTotalCount = 0;
   let isDemoData = true;
+  /** 배송완료/취소 카드 합계는 목록과 달리 항상 전체 기간 기준이어야 해서 별도 집계로 가져온다. */
+  let activeAmount = 0;
+  /** 이 공급사가 비즈뿌리오 계정을 등록했는지 — 등록 전엔 알림톡이 콘솔 로그로만 남는다. */
+  let isLiveChannel = false;
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
-    const { data } = await supabase
-      .from("orders")
-      .select(
-        "id, order_number, status, total_amount, delivery_address, ordered_at, order_items ( product_name, quantity ), retailers ( restaurant_name )"
-      )
-      .eq("wholesaler_id", scope.wholesalerId)
-      .order("ordered_at", { ascending: false });
 
-    if (data && data.length > 0) {
-      orders = (data as OrderJoinRow[]).map((row) => {
-        const items = row.order_items ?? [];
+    const [{ data: activeData }, { data: historicalData, count: historicalCount }, { data: activeAmountData }, liveChannel] =
+      await Promise.all([
+        supabase
+          .from("orders")
+          .select(ORDER_LIST_SELECT_COLUMNS)
+          .eq("wholesaler_id", scope.wholesalerId)
+          .in("status", ACTIVE_ORDER_STATUSES)
+          .order("ordered_at", { ascending: false }),
+        supabase
+          .from("orders")
+          .select(ORDER_LIST_SELECT_COLUMNS, { count: "exact" })
+          .eq("wholesaler_id", scope.wholesalerId)
+          .in("status", HISTORICAL_ORDER_STATUSES)
+          .gte("ordered_at", historyCutoffISO(DEFAULT_ORDER_HISTORY_DAYS))
+          .order("ordered_at", { ascending: false })
+          .range(0, ORDER_HISTORY_PAGE_SIZE - 1),
+        supabase.rpc("get_order_active_amount", { p_wholesaler_id: scope.wholesalerId }),
+        isAlimtalkConfiguredForWholesaler(scope.wholesalerId),
+      ]);
 
-        return {
-          id: row.id,
-          orderNumber: row.order_number,
-          retailerName: retailerName(row),
-          status: row.status,
-          totalAmount: Number(row.total_amount),
-          itemCount: items.length,
-          itemSummary: summarizeItems(items),
-          orderedAt: row.ordered_at,
-          deliveryAddress: row.delivery_address,
-        };
-      });
+    isLiveChannel = liveChannel;
+
+    const hasAny = (activeData?.length ?? 0) > 0 || (historicalData?.length ?? 0) > 0;
+
+    if (hasAny) {
+      activeOrders = ((activeData ?? []) as OrderJoinRow[]).map(mapOrderJoinRow);
+      historicalOrders = ((historicalData ?? []) as OrderJoinRow[]).map(mapOrderJoinRow);
+      historyTotalCount = historicalCount ?? 0;
+      activeAmount = Number(activeAmountData ?? 0);
       isDemoData = false;
     }
   }
 
   if (isDemoData) {
-    orders = DEMO_ORDERS.map((order) => ({
+    const demoRows: OrderRow[] = DEMO_ORDERS.map((order) => ({
       id: order.id,
       orderNumber: order.order_number,
       retailerName: order.retailer_name,
@@ -92,22 +86,26 @@ export default async function DashboardOrdersPage() {
       orderedAt: order.ordered_at,
       deliveryAddress: order.delivery_address,
     }));
+
+    activeOrders = demoRows.filter((row) => ACTIVE_ORDER_STATUSES.includes(row.status));
+    historicalOrders = demoRows.filter((row) => HISTORICAL_ORDER_STATUSES.includes(row.status));
+    historyTotalCount = historicalOrders.length;
+    activeAmount = demoRows
+      .filter((row) => row.status !== "cancelled")
+      .reduce((sum, row) => sum + row.totalAmount, 0);
   }
 
-  const pendingCount = orders.filter((order) => order.status === "pending").length;
-  const inProgressCount = orders.filter(
+  const pendingCount = activeOrders.filter((order) => order.status === "pending").length;
+  const inProgressCount = activeOrders.filter(
     (order) => order.status === "confirmed" || order.status === "shipping"
   ).length;
-  const activeAmount = orders
-    .filter((order) => order.status !== "cancelled")
-    .reduce((sum, order) => sum + order.totalAmount, 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <header>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>주문 관리</h1>
+        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>발주 관리</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          미니샵으로 접수된 발주서를 상태별로 확인하고 출고·배송 처리를 진행합니다. 알림톡은 주문
+          미니샵으로 접수된 발주서를 상태별로 확인하고 출고·배송 처리를 진행합니다. 알림톡은 발주
           접수 및 상태 변경 시점에 자동 발송됩니다.
         </p>
       </header>
@@ -151,7 +149,15 @@ export default async function DashboardOrdersPage() {
         ))}
       </section>
 
-      <OrderBoard orders={orders} isLiveChannel={isAlimtalkLiveChannel()} isDemo={isDemoData} />
+      <OrderBoard
+        activeOrders={activeOrders}
+        initialHistoricalOrders={historicalOrders}
+        initialHistoryRangeDays={DEFAULT_ORDER_HISTORY_DAYS}
+        initialHistoryTotalCount={historyTotalCount}
+        initialHistoryHasMore={historicalOrders.length < historyTotalCount}
+        isLiveChannel={isLiveChannel}
+        isDemo={isDemoData}
+      />
     </div>
   );
 }

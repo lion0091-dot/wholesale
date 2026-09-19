@@ -26,7 +26,7 @@ const NAV_GROUPS: DashboardNavItem[][] = [
     { label: "맞춤 단가 관리", href: "/dashboard/custom-prices", icon: "🏷️", ready: true },
   ],
   [
-    { label: "주문 관리", href: "/dashboard/orders", icon: "🧾", ready: true },
+    { label: "발주 관리", href: "/dashboard/orders", icon: "🧾", ready: true },
     { label: "판매 통계", href: "/dashboard/stats", icon: "📈", ready: true },
   ],
   [

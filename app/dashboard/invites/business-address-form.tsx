@@ -99,7 +99,7 @@ export function BusinessAddressForm({ currentBusinessAddress }: BusinessAddressF
 
       <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "8px", lineHeight: 1.6 }}>
         거래명세서 PDF의 &quot;공급자&quot; 정보에 그대로 표시됩니다. 등록 전에는 고객(소매)/공급사
-        모두 해당 주문의 거래명세서를 발행할 수 없습니다.
+        모두 해당 발주의 거래명세서를 발행할 수 없습니다.
       </p>
 
       {error && (

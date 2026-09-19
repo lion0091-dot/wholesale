@@ -90,7 +90,7 @@ export function OrderStatusPanel({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-        <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>주문 상태 처리</span>
+        <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>발주 상태 처리</span>
         <span
           style={{
             fontSize: "11px",

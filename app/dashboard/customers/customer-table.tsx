@@ -884,7 +884,7 @@ export function CustomerTable({
                 }}
               />
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                0으로 설정하면 이 거래처는 외상 주문을 선택할 수 없습니다.
+                0으로 설정하면 이 거래처는 외상 발주를 선택할 수 없습니다.
               </p>
             </div>
 
@@ -915,7 +915,7 @@ export function CustomerTable({
                 }}
               />
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                주문일로부터 이 일수가 지나면 미수금 정산 화면에서 연체로 표시됩니다.
+                발주일로부터 이 일수가 지나면 미수금 정산 화면에서 연체로 표시됩니다.
               </p>
             </div>
 

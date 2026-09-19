@@ -175,6 +175,33 @@ type CredentialLoadResult =
   | { state: "not_configured" }
   | { state: "invalid" };
 
+/**
+ * 이 공급사가 비즈뿌리오 자격정보를 등록해뒀는지(=실제로 알림톡이 나가는지)만 가볍게
+ * 확인한다. loadCredentials와 같은 필수 컬럼 기준을 쓰되, 비밀번호 복호화는 하지 않는다
+ * (주문 목록/상세 화면의 "실발송" 배지 표시용 — 실제 발송 시점엔 dispatchAlimtalk가
+ * loadCredentials로 다시 검증하므로 여기서 복호화 실패까지 구분할 필요는 없다).
+ */
+export async function isAlimtalkConfiguredForWholesaler(wholesalerId: string): Promise<boolean> {
+  const supabase = createServiceRoleClient();
+
+  if (!supabase) {
+    return false;
+  }
+
+  const { data } = await supabase
+    .from("wholesalers")
+    .select("alimtalk_account, alimtalk_password_encrypted, alimtalk_sender_key, alimtalk_sender_phone")
+    .eq("id", wholesalerId)
+    .maybeSingle();
+
+  return Boolean(
+    data?.alimtalk_account &&
+      data?.alimtalk_password_encrypted &&
+      data?.alimtalk_sender_key &&
+      data?.alimtalk_sender_phone
+  );
+}
+
 /** 공급사의 알림톡 자격정보를 service_role로 조회하고 비밀번호를 복호화한다. */
 async function loadCredentials(wholesalerId: string): Promise<CredentialLoadResult> {
   const supabase = createServiceRoleClient();

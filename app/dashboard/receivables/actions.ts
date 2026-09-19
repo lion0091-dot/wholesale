@@ -18,7 +18,7 @@ import { AUDIT_LOG_PAGE_SIZE, type AuditLogPage } from "@/app/actions/audit-log"
 export async function settleCreditOrdersAction(orderIds: string[]): Promise<ActionResult> {
   try {
     if (orderIds.length === 0) {
-      return { success: false, error: "정산할 주문을 선택해주세요." };
+      return { success: false, error: "정산할 발주를 선택해주세요." };
     }
 
     try {
@@ -206,7 +206,7 @@ export async function sendReceivablesReminderAction(retailerId: string): Promise
       .maybeSingle();
 
     if (!nearestOrder) {
-      return { success: false, error: "미정산 외상 주문이 없습니다." };
+      return { success: false, error: "미정산 외상 발주가 없습니다." };
     }
 
     const { data: profile } = await supabase

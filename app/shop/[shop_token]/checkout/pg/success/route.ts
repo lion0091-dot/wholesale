@@ -115,7 +115,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       // 결제는 이미 승인됐는데 주문 생성이 실패한 경우 — 돈은 받았으니 절대 조용히
       // 묻으면 안 된다. 공급사 확인이 필요한 상태로 명확히 안내한다.
       return failRedirect(
-        `결제는 완료됐지만 주문 저장에 실패했습니다(결제키: ${confirmed.paymentKey}). 공급사에 문의해주세요.`
+        `결제는 완료됐지만 발주 저장에 실패했습니다(결제키: ${confirmed.paymentKey}). 공급사에 문의해주세요.`
       );
     }
 

@@ -61,7 +61,7 @@ export function TrackingPanel({
 
     const shippedText =
       result.data?.status === "shipping"
-        ? " 주문 상태가 '배송중'으로 자동 전환됩니다."
+        ? " 발주 상태가 '배송중'으로 자동 전환됩니다."
         : "";
     const verificationText =
       result.data?.verification === "skipped_not_configured"

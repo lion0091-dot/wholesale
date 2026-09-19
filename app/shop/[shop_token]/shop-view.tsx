@@ -165,7 +165,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
             textDecoration: "none",
           }}
         >
-          <span>📋 내 발주 내역 · 주문 취소 요청</span>
+          <span>📋 내 발주 내역 · 발주 취소 요청</span>
           <span style={{ color: "#475569" }}>→</span>
         </Link>
       </ShopHeader>

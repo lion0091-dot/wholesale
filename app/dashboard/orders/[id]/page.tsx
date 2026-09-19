@@ -7,9 +7,9 @@ import {
   ORDER_STATUS_BADGES,
   formatOrderedAt,
   formatWon,
-  isAlimtalkLiveChannel,
   resolveAlimtalkStatus,
 } from "@/lib/orders/status";
+import { isAlimtalkConfiguredForWholesaler } from "@/lib/notifications/alimtalk";
 import { OrderStatusPanel } from "./order-status-panel";
 import { TrackingPanel } from "./tracking-panel";
 import { StatementPreviewButton } from "@/components/statement-preview-button";
@@ -22,7 +22,7 @@ import { SampleBadge } from "@/components/sample-badge";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 export const metadata = {
-  title: "주문 상세 | 도매업체 통합관리시스템",
+  title: "발주 상세 | 도매업체 통합관리시스템",
 };
 
 interface PageProps {
@@ -195,7 +195,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
   const { order, isDemoData, wholesalerId } = loaded;
   const badge = ORDER_STATUS_BADGES[order.status];
   const timeline = buildAlimtalkTimeline(order.status);
-  const isLiveChannel = isAlimtalkLiveChannel();
+  const isLiveChannel = wholesalerId ? await isAlimtalkConfiguredForWholesaler(wholesalerId) : false;
 
   // 카카오 인앱 브라우저 "외부에서 열기" 전용 — 세션 쿠키 없이도 인가되는 단발성 토큰.
   // wholesalerId가 없으면(데모) 발급하지 않고, 버튼은 기존 href로 폴백한다.
@@ -227,7 +227,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <header style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         <Link href="/dashboard/orders" style={{ fontSize: "12px", color: "#64748b" }}>
-          ← 주문 목록으로
+          ← 발주 목록으로
         </Link>
 
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
@@ -300,7 +300,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
             <thead>
               <tr>
                 <th>상품명</th>
-                <th>주문 단가</th>
+                <th>발주 단가</th>
                 <th>수량</th>
                 <th>금액</th>
               </tr>
@@ -420,7 +420,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
         {/* 알림톡 발송 상태 */}
         <section style={cardStyle}>
           <div style={cardTitleStyle}>
-            알림톡 발송 상태 {isLiveChannel ? "(실발송)" : "(테스트 발송)"}
+            알림톡 발송 상태 {isLiveChannel ? "(실발송)" : "(미발송·연동 필요)"}
           </div>
 
           <ol style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px" }}>
@@ -459,8 +459,8 @@ export default async function OrderDetailPage({ params }: PageProps) {
 
           {!isLiveChannel && (
             <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "12px", lineHeight: 1.6 }}>
-              ALIMTALK_API_KEY가 설정되지 않아 알림톡이 서버 로그로만 기록됩니다. 운영 환경에서
-              발신 프로필과 승인 템플릿을 등록하면 실발송으로 전환됩니다.
+              이 공급사가 아직 비즈뿌리오 연동을 등록하지 않아 알림톡이 서버 로그로만 기록됩니다.
+              /dashboard/invites에서 비즈뿌리오 계정을 등록하면 실발송으로 전환됩니다.
             </p>
           )}
         </section>

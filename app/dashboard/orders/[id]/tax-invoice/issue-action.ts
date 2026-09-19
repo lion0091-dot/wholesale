@@ -59,7 +59,7 @@ export async function issueTaxInvoiceAction(
     const statementData = await loadStatementDataForSupplier(supabase, orderId, wholesalerId);
 
     if (!statementData) {
-      return { success: false, error: "주문을 찾을 수 없습니다." };
+      return { success: false, error: "발주를 찾을 수 없습니다." };
     }
 
     const row = await issueTaxInvoice(supabase, wholesalerId, orderId, statementData);
@@ -84,7 +84,7 @@ export async function issueTaxInvoiceCorrectionAction(
     const statementData = await loadStatementDataForSupplier(supabase, orderId, wholesalerId);
 
     if (!statementData) {
-      return { success: false, error: "주문을 찾을 수 없습니다." };
+      return { success: false, error: "발주를 찾을 수 없습니다." };
     }
 
     const row = await issueTaxInvoiceCorrection(

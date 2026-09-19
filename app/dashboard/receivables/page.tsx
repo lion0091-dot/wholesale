@@ -172,7 +172,7 @@ export default async function DashboardReceivablesPage() {
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>미수금 정산</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          외상(on_credit)으로 접수된 미정산 주문을 거래처별로 모아 보여줍니다. 정산 완료 처리하면
+          외상(on_credit)으로 접수된 미정산 발주를 거래처별로 모아 보여줍니다. 정산 완료 처리하면
           해당 거래처의 미수금 잔액이 함께 줄어듭니다.
         </p>
       </header>

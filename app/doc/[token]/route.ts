@@ -74,7 +74,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     );
 
     if (!data) {
-      return NextResponse.json({ error: "주문을 찾을 수 없습니다." }, { status: 404 });
+      return NextResponse.json({ error: "발주를 찾을 수 없습니다." }, { status: 404 });
     }
 
     return buildStatementResponse(data, {
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const data = await loadStatementDataForSupplier(supabase, payload.orderId, payload.wholesalerId);
 
   if (!data) {
-    return NextResponse.json({ error: "주문을 찾을 수 없습니다." }, { status: 404 });
+    return NextResponse.json({ error: "발주를 찾을 수 없습니다." }, { status: 404 });
   }
 
   if (payload.kind === "tax-invoice") {

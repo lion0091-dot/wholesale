@@ -1,43 +1,69 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ORDER_STATUS_BADGES,
   ORDER_STATUS_FILTERS,
+  HISTORICAL_ORDER_STATUSES,
   formatOrderedAt,
   formatWon,
   resolveAlimtalkStatus,
 } from "@/lib/orders/status";
+import { ORDER_HISTORY_RANGE_OPTIONS } from "@/lib/orders/history-range";
+import type { OrderRow } from "@/lib/orders/order-row";
 import { SampleBadge } from "@/components/sample-badge";
+import { getHistoricalOrdersAction } from "./actions";
 import type { OrderStatus } from "@/types/database";
 
-/** 목록 테이블 1행에 필요한 최소 정보 */
-export interface OrderRow {
-  id: string;
-  orderNumber: string;
-  retailerName: string;
-  status: OrderStatus;
-  totalAmount: number;
-  itemCount: number;
-  itemSummary: string;
-  orderedAt: string;
-  deliveryAddress: string;
-}
+export type { OrderRow } from "@/lib/orders/order-row";
 
 interface OrderBoardProps {
-  orders: OrderRow[];
-  /** 알림톡 실발송 채널 사용 여부 (미설정 시 테스트 발송으로 표기) */
+  /** 접수대기~취소반려 — 기간 제한 없이 항상 전체를 받는다 */
+  activeOrders: OrderRow[];
+  /** 배송완료/취소 — 최초 로드는 기본 구간(DEFAULT_ORDER_HISTORY_DAYS) 첫 페이지만 받는다 */
+  initialHistoricalOrders: OrderRow[];
+  initialHistoryRangeDays: number;
+  /** 배송완료/취소 전체 개수(지금 구간 기준) — "총 N건" 표시용 */
+  initialHistoryTotalCount: number;
+  initialHistoryHasMore: boolean;
+  /** 이 공급사의 비즈뿌리오 연동 여부 (미연동 시 "미발송(연동 필요)"으로 표기) */
   isLiveChannel: boolean;
   /** 샘플(데모) 발주서 여부 — 각 행/카드에 "샘플" 배지를 붙인다. */
   isDemo?: boolean;
 }
 
-export function OrderBoard({ orders, isLiveChannel, isDemo = false }: OrderBoardProps) {
+export function OrderBoard({
+  activeOrders,
+  initialHistoricalOrders,
+  initialHistoryRangeDays,
+  initialHistoryTotalCount,
+  initialHistoryHasMore,
+  isLiveChannel,
+  isDemo = false,
+}: OrderBoardProps) {
   const [activeFilter, setActiveFilter] = useState<OrderStatus | "all">("all");
   const [keyword, setKeyword] = useState("");
   const filterScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const [historicalOrders, setHistoricalOrders] = useState(initialHistoricalOrders);
+  const [historyRangeDays, setHistoryRangeDays] = useState<number | null>(initialHistoryRangeDays);
+  const [historyTotalCount, setHistoryTotalCount] = useState(initialHistoryTotalCount);
+  const [historyHasMore, setHistoryHasMore] = useState(initialHistoryHasMore);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+
+  // 배송완료/취소는 조회 구간으로 제한되어 있어서, 지금 선택된 탭이 그 구간의 영향을
+  // 받는지(전체 탭도 포함) 여부에 따라 구간 선택 UI를 보여줄지 정한다.
+  const showsHistoricalOrders =
+    activeFilter === "all" || HISTORICAL_ORDER_STATUSES.includes(activeFilter as OrderStatus);
+
+  const orders = useMemo(
+    () =>
+      [...activeOrders, ...historicalOrders].sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1)),
+    [activeOrders, historicalOrders]
+  );
 
   const updateFilterScrollFade = () => {
     const el = filterScrollRef.current;
@@ -50,6 +76,37 @@ export function OrderBoard({ orders, isLiveChannel, isDemo = false }: OrderBoard
     window.addEventListener("resize", updateFilterScrollFade);
     return () => window.removeEventListener("resize", updateFilterScrollFade);
   }, [orders]);
+
+  const handleRangeChange = (days: number | null) => {
+    if (days === historyRangeDays) return;
+
+    setHistoryLoading(true);
+
+    void getHistoricalOrdersAction(days, 0).then((result) => {
+      if (result.success) {
+        setHistoricalOrders(result.data?.entries ?? []);
+        setHistoryTotalCount(result.data?.totalCount ?? 0);
+        setHistoryHasMore(result.data?.hasMore ?? false);
+        setHistoryRangeDays(days);
+      }
+
+      setHistoryLoading(false);
+    });
+  };
+
+  const handleLoadMoreHistory = () => {
+    setHistoryLoadingMore(true);
+
+    void getHistoricalOrdersAction(historyRangeDays, historicalOrders.length).then((result) => {
+      if (result.success) {
+        setHistoricalOrders((prev) => [...prev, ...(result.data?.entries ?? [])]);
+        setHistoryTotalCount(result.data?.totalCount ?? historyTotalCount);
+        setHistoryHasMore(result.data?.hasMore ?? false);
+      }
+
+      setHistoryLoadingMore(false);
+    });
+  };
 
   const normalizedKeyword = keyword.trim().toLowerCase();
 
@@ -149,7 +206,7 @@ export function OrderBoard({ orders, isLiveChannel, isDemo = false }: OrderBoard
           type="search"
           value={keyword}
           onChange={(event) => setKeyword(event.target.value)}
-          placeholder="주문번호 또는 발주처(소매) 상호 검색"
+          placeholder="발주번호 또는 발주처(소매) 상호 검색"
           style={{
             width: "100%",
             padding: "8px 10px",
@@ -159,6 +216,76 @@ export function OrderBoard({ orders, isLiveChannel, isDemo = false }: OrderBoard
           }}
         />
       </div>
+
+      {/* 배송완료/취소는 조회 구간으로 제한돼 있어서, 그 구간이 보이는 탭(완료/취소/전체)일
+          때만 구간 선택을 보여준다. 접수대기~취소반려는 항상 전체가 보이므로 여기 영향 없음. */}
+      {showsHistoricalOrders && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "10px 12px",
+            borderBottom: "1px solid #e2e8f0",
+            backgroundColor: "#f8fafc",
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: "12px", color: "#64748b" }}>배송완료·취소 조회 구간</span>
+          {ORDER_HISTORY_RANGE_OPTIONS.map((option) => {
+            const isSelected = historyRangeDays === option.days;
+
+            return (
+              <button
+                key={option.label}
+                type="button"
+                onClick={() => handleRangeChange(option.days)}
+                disabled={isDemo || (historyLoading && !isSelected)}
+                style={{
+                  fontSize: "12px",
+                  fontWeight: isSelected ? 700 : 500,
+                  padding: "5px 10px",
+                  borderRadius: "999px",
+                  border: isSelected ? "1px solid #0f172a" : "1px solid #cbd5e1",
+                  backgroundColor: isSelected ? "#0f172a" : "#ffffff",
+                  color: isSelected ? "#ffffff" : "#475569",
+                  cursor: isDemo ? "not-allowed" : "pointer",
+                }}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+          {historyLoading && (
+            <span style={{ fontSize: "12px", color: "#94a3b8" }}>불러오는 중...</span>
+          )}
+
+          <span style={{ fontSize: "12px", color: "#94a3b8", marginLeft: "auto" }}>
+            배송완료·취소 총 {historyTotalCount}건 · {historicalOrders.length} /{" "}
+            {historyTotalCount}건 조회됨
+          </span>
+
+          {historyHasMore && (
+            <button
+              type="button"
+              onClick={handleLoadMoreHistory}
+              disabled={historyLoadingMore}
+              style={{
+                fontSize: "12px",
+                fontWeight: 700,
+                padding: "5px 10px",
+                borderRadius: "6px",
+                border: "1px solid #cbd5e1",
+                backgroundColor: "#ffffff",
+                color: "#334155",
+                cursor: historyLoadingMore ? "not-allowed" : "pointer",
+              }}
+            >
+              {historyLoadingMore ? "불러오는 중..." : "다음"}
+            </button>
+          )}
+        </div>
+      )}
 
       {visibleOrders.length === 0 ? (
         <p style={{ padding: "40px 16px", textAlign: "center", fontSize: "13px", color: "#94a3b8" }}>
@@ -170,11 +297,11 @@ export function OrderBoard({ orders, isLiveChannel, isDemo = false }: OrderBoard
           <table className="dash-table">
             <thead>
               <tr>
-                <th>주문번호 / 접수일시</th>
+                <th>발주번호 / 접수일시</th>
                 <th>발주처(소매)</th>
                 <th>발주 품목</th>
                 <th>총 금액</th>
-                <th>주문 상태</th>
+                <th>발주 상태</th>
                 <th>알림톡 발송</th>
                 <th>관리</th>
               </tr>
@@ -244,7 +371,7 @@ export function OrderBoard({ orders, isLiveChannel, isDemo = false }: OrderBoard
                         💬 {alimtalk.label}
                       </span>
                       <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "3px" }}>
-                        {alimtalk.target} · {isLiveChannel ? "실발송" : "테스트 발송"}
+                        {alimtalk.target} · {isLiveChannel ? "실발송" : "미발송(연동 필요)"}
                       </div>
                     </td>
 
@@ -367,7 +494,7 @@ export function OrderBoard({ orders, isLiveChannel, isDemo = false }: OrderBoard
                       💬 {alimtalk.label}
                     </span>
                     <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "3px" }}>
-                      {alimtalk.target} · {isLiveChannel ? "실발송" : "테스트 발송"}
+                      {alimtalk.target} · {isLiveChannel ? "실발송" : "미발송(연동 필요)"}
                     </div>
                   </div>
 

@@ -207,13 +207,13 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               }}
             >
               <div>
-                <strong>주문 번호:</strong> {receipt.orderNumber}
+                <strong>발주 번호:</strong> {receipt.orderNumber}
               </div>
               <div>
                 <strong>발주 내역:</strong> {receipt.itemsSummary}
               </div>
               <div>
-                <strong>총 주문 금액:</strong> {formatWon(receipt.totalAmount)}
+                <strong>총 발주 금액:</strong> {formatWon(receipt.totalAmount)}
               </div>
               <div>
                 <strong>배송지:</strong> {deliveryAddress}
@@ -227,7 +227,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
 
             {receipt.isDemo && (
               <p style={{ fontSize: "11px", color: "#92400e", marginTop: "10px", textAlign: "left" }}>
-                * 시연 모드로 접수되어 알림톡 포맷만 검증되었으며 실제 주문 내역은 저장되지 않았습니다.
+                * 시연 모드로 접수되어 알림톡 포맷만 검증되었으며 실제 발주 내역은 저장되지 않았습니다.
               </p>
             )}
 
@@ -262,7 +262,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
         <ShopHeader
           wholesaler={wholesaler}
           customer={customer}
-          title="주문서 작성"
+          title="발주서 작성"
           backHref={`/shop/${shopToken}/cart`}
         />
 
@@ -307,7 +307,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
       <ShopHeader
         wholesaler={wholesaler}
         customer={customer}
-        title="주문서 작성"
+        title="발주서 작성"
         backHref={`/shop/${shopToken}/cart`}
       />
 
@@ -348,14 +348,14 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               alignItems: "baseline",
             }}
           >
-            <span style={{ fontSize: "14px", fontWeight: 800 }}>총 주문 금액</span>
+            <span style={{ fontSize: "14px", fontWeight: 800 }}>총 발주 금액</span>
             <span style={{ fontSize: "20px", fontWeight: 800, color: "#dc2626" }}>
               {formatWon(totals.totalAmount)}
             </span>
           </div>
 
           <p style={{ fontSize: "13px", color: "#475569", marginTop: "6px" }}>
-            최소 주문 금액 {MIN_ORDER_AMOUNT.toLocaleString()}원 · 부가세 별도
+            최소 발주 금액 {MIN_ORDER_AMOUNT.toLocaleString()}원 · 부가세 별도
           </p>
         </div>
 
@@ -375,7 +375,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 lineHeight: 1.6,
               }}
             >
-              ⚠️ 카카오 계정 정보로만 가입되어 있어요. 아래 상호명·배송지는 이번 주문을
+              ⚠️ 카카오 계정 정보로만 가입되어 있어요. 아래 상호명·배송지는 이번 발주를
               접수하면 앞으로의 기본 정보로 저장됩니다 — 사업자등록번호 등록이나 나중에
               다시 고치는 건{" "}
               <Link href="/my-shops" style={{ fontWeight: 700, color: "#b45309" }}>

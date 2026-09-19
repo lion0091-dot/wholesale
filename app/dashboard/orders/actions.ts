@@ -3,7 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
-import { ORDER_STATUS_TRANSITIONS, isSupplierAssignableStatus } from "@/lib/orders/status";
+import { getSupplierScope } from "@/lib/supplier/scope";
+import { ORDER_STATUS_TRANSITIONS, HISTORICAL_ORDER_STATUSES, isSupplierAssignableStatus } from "@/lib/orders/status";
+import {
+  ORDER_LIST_SELECT_COLUMNS,
+  mapOrderJoinRow,
+  type OrderJoinRow,
+  type OrderRow,
+} from "@/lib/orders/order-row";
+import { ORDER_HISTORY_PAGE_SIZE } from "@/lib/orders/history-range";
 import {
   KOREAN_COURIERS,
   fetchTrackingStatus,
@@ -93,11 +101,11 @@ export async function updateOrderStatusAction(
     const { supabase, context, wholesalerId } = await resolveOrderScope();
 
     if (!UUID_PATTERN.test(orderId)) {
-      throw new RbacError("올바른 주문 식별자가 아닙니다.");
+      throw new RbacError("올바른 발주 식별자가 아닙니다.");
     }
 
     if (!VALID_STATUSES.includes(nextStatus)) {
-      throw new RbacError("변경할 수 없는 주문 상태입니다.");
+      throw new RbacError("변경할 수 없는 발주 상태입니다.");
     }
 
     // 취소 '요청'은 바이어만 생성할 수 있고, 공급사는 승인/반려만 한다.
@@ -193,7 +201,7 @@ async function loadOwnedOrder(orderId: string, wholesalerId: string, isSuperAdmi
   const supabase = await createClient();
 
   if (!UUID_PATTERN.test(orderId)) {
-    throw new RbacError("올바른 주문 식별자가 아닙니다.");
+    throw new RbacError("올바른 발주 식별자가 아닙니다.");
   }
 
   const { data: order } = await supabase
@@ -296,6 +304,62 @@ export async function updateOrderTrackingAction(
     };
   } catch (error) {
     return toResult(error);
+  }
+}
+
+/**
+ * 배송완료/취소 목록의 조회 구간을 바꾸거나("최근 30일"→"전체 기간") "다음"으로
+ * 더 불러올 때 호출한다. "전체 기간"을 고르면 그 자체로도 수백~수천 건이 될 수 있어서
+ * ORDER_HISTORY_PAGE_SIZE(30)개씩 끊어서 가져오고, PostgREST의 count: "exact"로
+ * 같은 요청 안에서 전체 개수도 함께 받는다(별도 count 쿼리 불필요).
+ *
+ * 접수대기~취소반려 같은 진행 중 상태는 페이지 최초 로드 때 항상 전체를 가져오므로
+ * 여기서 다루지 않는다.
+ */
+export async function getHistoricalOrdersAction(
+  rangeDays: number | null,
+  offset = 0
+): Promise<ActionResult<{ entries: OrderRow[]; totalCount: number; hasMore: boolean }>> {
+  try {
+    const scope = await getSupplierScope();
+
+    if (!scope?.wholesalerId) {
+      return { success: false, error: "로그인이 필요합니다." };
+    }
+
+    const supabase = await createClient();
+
+    let query = supabase
+      .from("orders")
+      .select(ORDER_LIST_SELECT_COLUMNS, { count: "exact" })
+      .eq("wholesaler_id", scope.wholesalerId)
+      .in("status", HISTORICAL_ORDER_STATUSES);
+
+    if (rangeDays !== null) {
+      const cutoff = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000).toISOString();
+      query = query.gte("ordered_at", cutoff);
+    }
+
+    const { data, count, error } = await query
+      .order("ordered_at", { ascending: false })
+      .range(offset, offset + ORDER_HISTORY_PAGE_SIZE - 1);
+
+    if (error) {
+      return { success: false, error: "발주서 조회에 실패했습니다." };
+    }
+
+    const entries = ((data ?? []) as OrderJoinRow[]).map(mapOrderJoinRow);
+    const totalCount = count ?? 0;
+
+    return {
+      success: true,
+      data: { entries, totalCount, hasMore: offset + entries.length < totalCount },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "조회 중 오류가 발생했습니다.",
+    };
   }
 }
 

@@ -29,6 +29,24 @@ export const ORDER_STATUS_FILTERS: Array<OrderStatus | "all"> = [
   "cancelled",
 ];
 
+/**
+ * 배송완료/취소처럼 이미 끝난 "과거 기록" 상태. 매일 쌓이기만 하고 절대 줄지 않으므로
+ * 주문 목록 화면에서 조회 구간(기본 최근 30일)으로 제한해서 불러온다.
+ */
+export const HISTORICAL_ORDER_STATUSES: OrderStatus[] = ["delivered", "cancelled"];
+
+/**
+ * 접수대기~취소반려처럼 아직 처리가 필요한 "진행 중" 상태. 처리되는 대로 곧 다음 상태로
+ * 빠져나가서 애초에 무한정 쌓이지 않으므로 기간 제한 없이 항상 전체를 불러온다.
+ */
+export const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
+  "pending",
+  "confirmed",
+  "shipping",
+  "cancel_requested",
+  "cancel_rejected",
+];
+
 /** 상태 전이 규칙 — 각 상태에서 이동 가능한 다음 상태 목록 */
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   pending: ["confirmed", "cancel_requested", "cancelled"],
@@ -73,7 +91,7 @@ export const ORDER_STATUS_ACTIONS: Record<OrderStatus, StatusActionConfig> = {
   delivered: { status: "delivered", label: "배송 완료 처리", tone: "success" },
   cancel_requested: {
     status: "cancel_requested",
-    label: "주문 취소 요청",
+    label: "발주 취소 요청",
     confirmMessage: "이 발주서의 취소를 요청하시겠습니까? 공급사 승인 후 취소가 확정됩니다.",
     tone: "danger",
   },
@@ -85,7 +103,7 @@ export const ORDER_STATUS_ACTIONS: Record<OrderStatus, StatusActionConfig> = {
   },
   cancelled: {
     status: "cancelled",
-    label: "주문 취소",
+    label: "발주 취소",
     confirmMessage: "이 발주서를 취소 처리하시겠습니까? 취소 후에는 되돌릴 수 없습니다.",
     tone: "danger",
   },
@@ -157,14 +175,6 @@ const ALIMTALK_BY_STATUS: Record<OrderStatus, AlimtalkStatus> = {
 
 export function resolveAlimtalkStatus(status: OrderStatus): AlimtalkStatus {
   return ALIMTALK_BY_STATUS[status] ?? ALIMTALK_BY_STATUS.pending;
-}
-
-/**
- * 실제 카카오 알림톡 API 키가 설정되어 있는지 여부.
- * 미설정이면 발송이 콘솔 로그(mock)로만 처리되므로 UI에 '테스트 발송'으로 표기한다.
- */
-export function isAlimtalkLiveChannel(): boolean {
-  return Boolean(process.env.ALIMTALK_API_KEY && process.env.ALIMTALK_SENDER_PHONE);
 }
 
 export function formatOrderedAt(iso: string): string {

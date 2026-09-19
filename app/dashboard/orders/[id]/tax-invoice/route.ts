@@ -80,7 +80,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       : null) ?? buildDemoStatement(id);
 
   if (!data) {
-    return NextResponse.json({ error: "주문을 찾을 수 없습니다." }, { status: 404 });
+    return NextResponse.json({ error: "발주를 찾을 수 없습니다." }, { status: 404 });
   }
 
   const overrides = parseOverrides(request.nextUrl.searchParams, data.orderedAt.slice(0, 10));

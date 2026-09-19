@@ -381,7 +381,7 @@ export function OrderHistoryView({
                     cursor: "pointer",
                   }}
                 >
-                  주문 취소 요청
+                  발주 취소 요청
                 </button>
               )}
 

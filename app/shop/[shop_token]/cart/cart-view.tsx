@@ -228,18 +228,18 @@ export function CartView({ catalog }: CartViewProps) {
                   paddingTop: "10px",
                 }}
               >
-                <span style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>총 주문 금액</span>
+                <span style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>총 발주 금액</span>
                 <span style={{ fontSize: "20px", fontWeight: 800, color: "#dc2626" }}>
                   {formatWon(totals.totalAmount)}
                 </span>
               </div>
 
               <p style={{ fontSize: "13px", color: "#475569", marginTop: "8px" }}>
-                최소 주문 금액 {MIN_ORDER_AMOUNT.toLocaleString()}원 (부가세 별도, 배송비는 공급사 정책에 따름)
+                최소 발주 금액 {MIN_ORDER_AMOUNT.toLocaleString()}원 (부가세 별도, 배송비는 공급사 정책에 따름)
               </p>
             </div>
 
-            {/* 최소 주문 금액/수량·재고 미충족 안내 */}
+            {/* 최소 발주 금액/수량·재고 미충족 안내 */}
             {blockingMessages.length > 0 && (
               <div
                 style={{
@@ -315,7 +315,7 @@ export function CartView({ catalog }: CartViewProps) {
                 textDecoration: "none",
               }}
             >
-              {formatWon(totals.totalAmount)} 주문서 작성하기 →
+              {formatWon(totals.totalAmount)} 발주서 작성하기 →
             </Link>
           ) : (
             <button

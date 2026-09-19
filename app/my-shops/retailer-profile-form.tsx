@@ -121,7 +121,7 @@ export function RetailerProfileForm({
       <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a" }}>내 정보 수정</div>
       <p style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.6, margin: 0 }}>
         여기서 고친 정보는 앞으로 발행되는 거래명세서·계산서(면세)에 그대로 반영됩니다. 이미
-        발생한 주문의 문서를 다시 열람할 때도 최신 정보로 나옵니다.
+        발생한 발주의 문서를 다시 열람할 때도 최신 정보로 나옵니다.
       </p>
 
       <div>

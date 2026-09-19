@@ -19,7 +19,7 @@ export function WithdrawAccountButton() {
   const handleWithdraw = () => {
     if (
       !confirm(
-        "정말 탈퇴하시겠습니까?\n\n이름/연락처 등 개인정보는 즉시 삭제되고, 다시 로그인할 수 없습니다.\n이미 발생한 주문 내역은 법적 보관 의무에 따라 유지됩니다.\n\n이 작업은 되돌릴 수 없습니다."
+        "정말 탈퇴하시겠습니까?\n\n이름/연락처 등 개인정보는 즉시 삭제되고, 다시 로그인할 수 없습니다.\n이미 발생한 발주 내역은 법적 보관 의무에 따라 유지됩니다.\n\n이 작업은 되돌릴 수 없습니다."
       )
     ) {
       return;
@@ -69,7 +69,7 @@ export function WithdrawAccountButton() {
         >
           <p style={{ fontSize: "12px", color: "#991b1b", lineHeight: 1.7, marginBottom: "12px" }}>
             탈퇴하면 이름/연락처 등 개인정보가 즉시 삭제되고 다시 로그인할 수 없습니다. 이미
-            발생한 주문 내역은 법적 보관 의무에 따라 유지됩니다. 되돌릴 수 없는 작업입니다.
+            발생한 발주 내역은 법적 보관 의무에 따라 유지됩니다. 되돌릴 수 없는 작업입니다.
           </p>
           <div style={{ display: "flex", gap: "8px" }}>
             <button
