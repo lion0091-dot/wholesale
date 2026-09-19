@@ -53,6 +53,17 @@ export function InviteSmsQueuePanel({ initialQueue }: InviteSmsQueuePanelProps) 
 
       const { insertedCount, skippedNoPhoneCount } = result.data ?? { insertedCount: 0, skippedNoPhoneCount: 0 };
 
+      if (insertedCount === 0) {
+        // 새로고침하면 이 안내가 뜨자마자 사라져서 아무 반응도 없는 것처럼 보이던 버그가
+        // 있었다 — 추가된 게 없을 때는 새로고침하지 않고 안내만 남긴다.
+        setNotice(
+          skippedNoPhoneCount > 0
+            ? `추가된 항목이 없습니다 — 연락처 미등록 ${skippedNoPhoneCount}곳은 문자를 보낼 수 없어 제외되었습니다.`
+            : "추가할 거래처가 없습니다 — 거래중인 고객이 없거나 이미 전부 큐에 들어가 있습니다."
+        );
+        return;
+      }
+
       setNotice(
         `${insertedCount}건을 큐에 추가했습니다.${
           skippedNoPhoneCount > 0 ? ` (연락처 미등록 ${skippedNoPhoneCount}곳 제외)` : ""

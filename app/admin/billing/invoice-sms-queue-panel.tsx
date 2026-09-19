@@ -53,6 +53,17 @@ export function InvoiceSmsQueuePanel({ initialQueue }: InvoiceSmsQueuePanelProps
 
       const { insertedCount, skippedNoPhoneCount } = result.data ?? { insertedCount: 0, skippedNoPhoneCount: 0 };
 
+      if (insertedCount === 0) {
+        // 새로고침할 필요가 없다(큐에 추가된 게 없으니) — 그리고 새로고침을 하면 이
+        // 안내 문구가 뜨자마자 사라져서 아무 반응도 없는 것처럼 보이던 버그가 있었다.
+        setNotice(
+          skippedNoPhoneCount > 0
+            ? `추가된 항목이 없습니다 — 대표 연락처 미등록 ${skippedNoPhoneCount}건은 문자를 보낼 수 없어 제외되었습니다.`
+            : "추가할 미납 청구서가 없습니다 — 전부 완납 상태이거나 이미 큐에 들어가 있습니다."
+        );
+        return;
+      }
+
       setNotice(
         `${insertedCount}건을 큐에 추가했습니다.${
           skippedNoPhoneCount > 0 ? ` (대표 연락처 미등록 ${skippedNoPhoneCount}건 제외)` : ""
