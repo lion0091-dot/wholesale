@@ -12,20 +12,32 @@ export const metadata: Metadata = {
 };
 
 /**
- * 사이드바 메뉴.
+ * 사이드바 메뉴 — 관련 있는 항목끼리 묶어서 순서를 정한다(2026-09-19,
+ * components/admin-nav.tsx의 ADMIN_NAV_GROUPS와 같은 원칙). 예전에는 순서에
+ * 의미가 없어서 미수금 정산이 고객 관리와 팀원 관리 사이 아무 데나 있었다.
+ * ① 개요 ② 상품/가격(같이 봐야 하는 카탈로그 작업) ③ 거래·매출(주문이 만들어낸 결과)
+ * ④ 거래처(고객 접점 전부) ⑤ 조직/청구(일 운영이 아니라 계정 관리).
  * ready=false 항목은 아직 화면이 없어 '준비중'으로 표시한다.
  */
-const NAV_ITEMS: DashboardNavItem[] = [
-  { label: "대시보드", href: "/dashboard", icon: "📊", ready: true },
-  { label: "상품 관리", href: "/dashboard/products", icon: "🥩", ready: true },
-  { label: "맞춤 단가 관리", href: "/dashboard/custom-prices", icon: "🏷️", ready: true },
-  { label: "주문 관리", href: "/dashboard/orders", icon: "🧾", ready: true },
-  { label: "판매 통계", href: "/dashboard/stats", icon: "📈", ready: true },
-  { label: "고객 관리", href: "/dashboard/customers", icon: "👥", ready: true },
-  { label: "미수금 정산", href: "/dashboard/receivables", icon: "💰", ready: true },
-  { label: "영업 · 초대장", href: "/dashboard/invites", icon: "💬", ready: true },
-  { label: "팀원 관리", href: "/dashboard/team", icon: "🧑‍🤝‍🧑", ready: true },
-  { label: "구독료 청구서", href: "/dashboard/billing", icon: "🧮", ready: true },
+const NAV_GROUPS: DashboardNavItem[][] = [
+  [{ label: "대시보드", href: "/dashboard", icon: "📊", ready: true }],
+  [
+    { label: "상품 관리", href: "/dashboard/products", icon: "🥩", ready: true },
+    { label: "맞춤 단가 관리", href: "/dashboard/custom-prices", icon: "🏷️", ready: true },
+  ],
+  [
+    { label: "주문 관리", href: "/dashboard/orders", icon: "🧾", ready: true },
+    { label: "판매 통계", href: "/dashboard/stats", icon: "📈", ready: true },
+  ],
+  [
+    { label: "고객 관리", href: "/dashboard/customers", icon: "👥", ready: true },
+    { label: "미수금 정산", href: "/dashboard/receivables", icon: "💰", ready: true },
+    { label: "영업 · 초대장", href: "/dashboard/invites", icon: "💬", ready: true },
+  ],
+  [
+    { label: "팀원 관리", href: "/dashboard/team", icon: "🧑‍🤝‍🧑", ready: true },
+    { label: "구독료 청구서", href: "/dashboard/billing", icon: "🧮", ready: true },
+  ],
 ];
 
 const ORG_ROLE_LABELS: Record<string, string> = {
@@ -96,7 +108,7 @@ export default async function DashboardLayout({
 
   return (
     <DashboardShell
-      navItems={NAV_ITEMS}
+      navGroups={NAV_GROUPS}
       organizationName={organizationName}
       displayName={displayName}
       roleLabel={roleLabel}

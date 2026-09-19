@@ -36,7 +36,7 @@ export interface DashboardNavItem {
 }
 
 interface DashboardShellProps {
-  navItems: DashboardNavItem[];
+  navGroups: DashboardNavItem[][];
   organizationName: string;
   /** 표시용 계정 이름 (profiles.name → 카카오 닉네임 → "사용자"). 항상 값이 있다. */
   displayName: string;
@@ -48,7 +48,7 @@ interface DashboardShellProps {
 }
 
 export function DashboardShell({
-  navItems,
+  navGroups,
   organizationName,
   displayName,
   roleLabel,
@@ -66,6 +66,7 @@ export function DashboardShell({
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
+  const navItems = navGroups.flat();
   const currentLabel =
     navItems.find((item) => isActive(item.href))?.label ?? "도매업체 통합관리시스템";
 
@@ -112,43 +113,57 @@ export function DashboardShell({
         </div>
 
         <nav style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-          {navItems.map((item) =>
-            item.ready ? (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="dash-nav-link"
-                data-active={isActive(item.href)}
-              >
-                <span aria-hidden style={navIconStyle}>{item.icon}</span>
-                <span>{item.label}</span>
-              </Link>
-            ) : (
-              <span
-                key={item.href}
-                className="dash-nav-link"
-                data-disabled="true"
-                aria-disabled="true"
-                title="다음 단계에서 구현 예정입니다."
-              >
-                <span aria-hidden style={navIconStyle}>{item.icon}</span>
-                <span>{item.label}</span>
-                <span
+          {navGroups.map((group, groupIndex) => (
+            <div key={groupIndex}>
+              {groupIndex > 0 && (
+                <div
+                  aria-hidden
                   style={{
-                    marginLeft: "auto",
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    color: "#94a3b8",
-                    backgroundColor: "#1e293b",
-                    borderRadius: "4px",
-                    padding: "2px 5px",
+                    height: "1px",
+                    backgroundColor: "#334155",
+                    margin: "8px 10px",
                   }}
-                >
-                  준비중
-                </span>
-              </span>
-            )
-          )}
+                />
+              )}
+              {group.map((item) =>
+                item.ready ? (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="dash-nav-link"
+                    data-active={isActive(item.href)}
+                  >
+                    <span aria-hidden style={navIconStyle}>{item.icon}</span>
+                    <span>{item.label}</span>
+                  </Link>
+                ) : (
+                  <span
+                    key={item.href}
+                    className="dash-nav-link"
+                    data-disabled="true"
+                    aria-disabled="true"
+                    title="다음 단계에서 구현 예정입니다."
+                  >
+                    <span aria-hidden style={navIconStyle}>{item.icon}</span>
+                    <span>{item.label}</span>
+                    <span
+                      style={{
+                        marginLeft: "auto",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        color: "#94a3b8",
+                        backgroundColor: "#1e293b",
+                        borderRadius: "4px",
+                        padding: "2px 5px",
+                      }}
+                    >
+                      준비중
+                    </span>
+                  </span>
+                )
+              )}
+            </div>
+          ))}
         </nav>
 
         <div
