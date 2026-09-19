@@ -7,10 +7,11 @@
  * 기능 자체가 최근에 생겼고, 과거 시점 기준을 되짚기엔 근거 데이터가 마땅치 않다) —
  * "구간별 누진 단가 기준 정가"만 보여준다.
  *
- * 구독자 추이(누적 가입 공급사 수)와 구독료 추이(월별 청구액 합계)는 조회 단위가
- * 다르다 — 구독자는 가입이 하루 단위로 들쭉날쭉해서 일 단위로 봐야 변화가 보이고,
- * 구독료는 애초에 월 단위로 청구되는 값이라 월 단위 조회가 자연스럽다. 그래서
- * 하나의 함수로 묶지 않고 getDailySubscriberStats / getMonthlyFeeStats로 분리한다.
+ * 구독료 추이(월별 청구액 합계)는 애초에 월 단위로 청구되는 값이라 항상 월 단위로만
+ * 조회한다(getMonthlyFeeStats). 구독자 추이(누적 가입 공급사 수)는 가입이 하루
+ * 단위로 들쭉날쭉해서 짧은 기간은 일 단위가, 긴 기간은 월 단위가 더 보기 좋을 수
+ * 있어 화면에서 단위를 고를 수 있게 둘 다 제공한다(getDailySubscriberStats /
+ * getMonthlySubscriberStats).
  */
 
 import type { createClient } from "@/lib/supabase/server";
@@ -126,6 +127,50 @@ export async function getDailySubscriberStats(
     }
 
     return { date: key, cumulativeSupplierCount: cumulative };
+  });
+}
+
+export interface MonthlySubscriberStat {
+  /** 'YYYY-MM' (KST) */
+  month: string;
+  /** 이 달 말 기준 누적 가입 공급사 수 */
+  cumulativeSupplierCount: number;
+}
+
+/** getDailySubscriberStats와 같은 로직을 월 단위로. 긴 구간을 볼 때(예: 1년 이상)
+ *  일 단위는 점이 너무 많아 추이가 잘 안 보이므로 월 단위 옵션도 제공한다. */
+export async function getMonthlySubscriberStats(
+  supabase: SupabaseServerClient,
+  startMonth: string,
+  endMonth: string
+): Promise<MonthlySubscriberStat[]> {
+  const monthKeys = enumerateMonthKeys(startMonth, endMonth);
+
+  if (monthKeys.length === 0) {
+    return [];
+  }
+
+  const rangeEndUtc = monthRangeUtc(monthKeys[monthKeys.length - 1]).endUtc;
+
+  const { data: wholesalers } = await supabase
+    .from("wholesalers")
+    .select("created_at")
+    .lt("created_at", rangeEndUtc);
+
+  const createdMonthKeys = ((wholesalers ?? []) as Array<{ created_at: string }>)
+    .map((row) => monthKeyOf(toKstDate(row.created_at)))
+    .sort();
+
+  let cumulative = 0;
+  let cursor = 0;
+
+  return monthKeys.map((key) => {
+    while (cursor < createdMonthKeys.length && createdMonthKeys[cursor] <= key) {
+      cumulative += 1;
+      cursor += 1;
+    }
+
+    return { month: key, cumulativeSupplierCount: cumulative };
   });
 }
 
