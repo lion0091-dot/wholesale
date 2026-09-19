@@ -12,10 +12,17 @@ export interface MarketPriceSnapshotRow {
   snapshotDate: string;
 }
 
+const MARKET_PRICE_SPECIES: MarketPriceSpecies[] = ["cattle", "pig"];
+
 /**
  * 상품 등록/수정 화면의 시세 참고 위젯이 쓰는 조회.
- * 매일 크론(app/api/cron/market-price-sync)이 채워둔 캐시에서 가장 최근 스냅샷
- * 날짜 하나만 읽는다 — 실시간으로 KAPE API를 직접 호출하지 않는다.
+ * 매일 크론(app/api/cron/market-price-sync)이 채워둔 캐시에서 가장 최근 스냅샷을 읽는다
+ * — 실시간으로 KAPE API를 직접 호출하지 않는다.
+ *
+ * 소/돼지 경매는 실제 운영일이 서로 다를 수 있어(예: 주말 경매 유무가 축종마다 다름)
+ * "가장 최근 날짜"를 테이블 전체 기준 1개로 잡으면 안 된다 — 그러면 그 날짜에 데이터가
+ * 없는 축종은 실제로는 최신 데이터가 있어도 0건으로 보인다. 축종별로 각자의 최신
+ * snapshot_date를 따로 구해서 조회한다.
  *
  * market_price_snapshots는 authenticated 전체에 SELECT RLS가 열려 있어(플랫폼 공용
  * 참고 데이터, 업체별 구분 없음) 일반 세션 클라이언트로 충분하고 별도 권한 체크가
@@ -25,41 +32,45 @@ export async function getLatestMarketPricesAction(): Promise<ActionResult<Market
   try {
     const supabase = await createClient();
 
-    const { data: latest, error: latestError } = await supabase
-      .from("market_price_snapshots")
-      .select("snapshot_date")
-      .order("snapshot_date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const perSpecies = await Promise.all(
+      MARKET_PRICE_SPECIES.map(async (species): Promise<MarketPriceSnapshotRow[]> => {
+        const { data: latest, error: latestError } = await supabase
+          .from("market_price_snapshots")
+          .select("snapshot_date")
+          .eq("species", species)
+          .order("snapshot_date", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-    if (latestError) {
-      return { success: false, error: latestError.message };
-    }
+        if (latestError) {
+          throw new Error(latestError.message);
+        }
 
-    if (!latest) {
-      return { success: true, data: [] };
-    }
+        if (!latest) {
+          return [];
+        }
 
-    const { data, error } = await supabase
-      .from("market_price_snapshots")
-      .select("species, grade, price_per_kg, snapshot_date")
-      .eq("snapshot_date", latest.snapshot_date as string)
-      .order("species", { ascending: true })
-      .order("price_per_kg", { ascending: false });
+        const { data, error } = await supabase
+          .from("market_price_snapshots")
+          .select("species, grade, price_per_kg, snapshot_date")
+          .eq("species", species)
+          .eq("snapshot_date", latest.snapshot_date as string)
+          .order("price_per_kg", { ascending: false });
 
-    if (error) {
-      return { success: false, error: error.message };
-    }
+        if (error) {
+          throw new Error(error.message);
+        }
 
-    return {
-      success: true,
-      data: (data ?? []).map((row) => ({
-        species: row.species as MarketPriceSpecies,
-        grade: row.grade as string,
-        pricePerKg: Number(row.price_per_kg),
-        snapshotDate: row.snapshot_date as string,
-      })),
-    };
+        return (data ?? []).map((row) => ({
+          species: row.species as MarketPriceSpecies,
+          grade: row.grade as string,
+          pricePerKg: Number(row.price_per_kg),
+          snapshotDate: row.snapshot_date as string,
+        }));
+      })
+    );
+
+    return { success: true, data: perSpecies.flat() };
   } catch (error) {
     return {
       success: false,
