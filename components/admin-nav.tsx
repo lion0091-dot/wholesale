@@ -8,14 +8,21 @@ interface AdminNavLink {
   label: string;
 }
 
-const ADMIN_LINKS: AdminNavLink[] = [
-  { href: "/admin/suppliers", label: "공급사 승인" },
-  { href: "/admin/billing", label: "청구·수납" },
-  { href: "/admin/stats", label: "구독 추이" },
-  { href: "/admin/events", label: "할인 이벤트" },
-  { href: "/admin/categories", label: "상품 카테고리" },
-  { href: "/admin/retailer-leads", label: "입점 리드" },
-  { href: "/admin/admins", label: "관리자 관리" },
+// 관련 있는 링크끼리 묶어서 순서를 정한다(2026-09-19) — 예전에는 순서에 별 의미가
+// 없어서 청구·구독 관련 3개가 상품 카테고리/입점 리드 사이에 흩어져 있었다.
+// ① 온보딩(리드 → 승인) ② 상품 ③ 구독료/매출 ④ 시스템.
+const ADMIN_NAV_GROUPS: AdminNavLink[][] = [
+  [
+    { href: "/admin/retailer-leads", label: "입점 리드" },
+    { href: "/admin/suppliers", label: "공급사 승인" },
+  ],
+  [{ href: "/admin/categories", label: "상품 카테고리" }],
+  [
+    { href: "/admin/billing", label: "청구·수납" },
+    { href: "/admin/stats", label: "구독 추이" },
+    { href: "/admin/events", label: "할인 이벤트" },
+  ],
+  [{ href: "/admin/admins", label: "관리자 관리" }],
 ];
 
 /**
@@ -64,29 +71,39 @@ export function AdminNav() {
       >
         ← 메인 허브
       </Link>
-      {ADMIN_LINKS.map((link) => {
-        const active = pathname === link.href;
+      {ADMIN_NAV_GROUPS.map((group, groupIndex) => (
+        <div key={groupIndex} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          {groupIndex > 0 && (
+            <span
+              aria-hidden
+              style={{ width: "1px", height: "16px", backgroundColor: "#e2e8f0", margin: "0 2px" }}
+            />
+          )}
+          {group.map((link) => {
+            const active = pathname === link.href;
 
-        return (
-          <Link
-            key={link.href}
-            href={link.href}
-            aria-current={active ? "page" : undefined}
-            style={{
-              fontSize: "12px",
-              fontWeight: 700,
-              color: active ? "#ffffff" : "#334155",
-              backgroundColor: active ? "#0f172a" : "#f1f5f9",
-              border: `1px solid ${active ? "#0f172a" : "#cbd5e1"}`,
-              borderRadius: "6px",
-              padding: "5px 10px",
-              textDecoration: "none",
-            }}
-          >
-            {link.label}
-          </Link>
-        );
-      })}
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                aria-current={active ? "page" : undefined}
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: active ? "#ffffff" : "#334155",
+                  backgroundColor: active ? "#0f172a" : "#f1f5f9",
+                  border: `1px solid ${active ? "#0f172a" : "#cbd5e1"}`,
+                  borderRadius: "6px",
+                  padding: "5px 10px",
+                  textDecoration: "none",
+                }}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
     </nav>
   );
 }
