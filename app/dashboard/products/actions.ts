@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
 import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
-import { assertOwnedProduct } from "@/lib/products/ownership";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -13,6 +12,7 @@ export interface ActionResult<T = undefined> {
 }
 
 const REVALIDATE_PATH = "/dashboard/products";
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** 상품 관리 권한 — PRD 기준 manager 이상 (staff는 발주 처리만) */
 const PRODUCT_ROLES: OrgRole[] = ["owner", "manager"];
@@ -161,10 +161,10 @@ export async function updateProductAction(
 ): Promise<ActionResult> {
   try {
     const { supabase, context, wholesalerId } = await resolveProductScope();
-    await assertOwnedProduct(supabase, productId, wholesalerId, {
-      isSuperAdmin: context.isSuperAdmin,
-      forbiddenMessage: "다른 공급사의 상품은 수정할 수 없습니다.",
-    });
+
+    if (!UUID_PATTERN.test(productId)) {
+      throw new RbacError("올바른 상품 식별자가 아닙니다.");
+    }
 
     const input = parseProductForm(formData);
     const expectedUpdatedAt = ((formData.get("updated_at") as string) || "").trim();
@@ -173,6 +173,8 @@ export async function updateProductAction(
     // 취급하므로 등록 후에는 셋 다 변경을 막는다(폼에서도 읽기전용). 셋 중 하나라도
     // 다르면 수정이 아니라 신규 상품 등록으로 유도한다. 단위·기본단가·재고 등
     // 나머지 마스터 값만 여기서 갱신한다.
+    // 소유권 확인용 SELECT를 따로 두지 않고, 이 UPDATE 자체에 조직 필터(super_admin은 예외)와
+    // updated_at 일치 조건을 함께 걸어 1회 왕복으로 권한 확인·동시편집 충돌 감지·반영을 처리한다.
     let query = supabase
       .from("products")
       .update({
@@ -187,6 +189,10 @@ export async function updateProductAction(
       })
       .eq("id", productId);
 
+    if (!context.isSuperAdmin) {
+      query = query.eq("wholesaler_id", wholesalerId);
+    }
+
     // 폼을 열어둔 사이 목록의 빠른 토글 등으로 다른 곳에서 먼저 저장됐다면 그 변경을
     // 이 폼의(로드 시점 기준) 값으로 덮어쓰지 않고 충돌로 처리한다.
     if (expectedUpdatedAt) {
@@ -199,11 +205,11 @@ export async function updateProductAction(
       throw new Error(error.message);
     }
 
-    // update()는 RLS가 행을 막거나(SELECT/UPDATE 정책 불일치) updated_at이 어긋나도
-    // 에러 없이 0건 반영으로 "성공"을 반환할 수 있다.
+    // 0건 반영은 상품이 없거나(잘못된 id), 다른 공급사 소유거나, 그 사이 다른 곳에서
+    // 먼저 저장돼 updated_at이 어긋난 경우 전부에 해당할 수 있다 — 구분하지 않고 안내한다.
     if (!data) {
       throw new RbacError(
-        "다른 곳에서 먼저 변경된 상품입니다. 새로고침 후 다시 시도해주세요."
+        "상품을 찾을 수 없거나 다른 곳에서 먼저 변경되었습니다. 새로고침 후 다시 시도해주세요."
       );
     }
 
@@ -225,21 +231,25 @@ export async function toggleProductFlagAction(
 ): Promise<ActionResult> {
   try {
     const { supabase, context, wholesalerId } = await resolveProductScope();
-    await assertOwnedProduct(supabase, productId, wholesalerId, {
-      isSuperAdmin: context.isSuperAdmin,
-      forbiddenMessage: "다른 공급사의 상품은 수정할 수 없습니다.",
-    });
+
+    if (!UUID_PATTERN.test(productId)) {
+      throw new RbacError("올바른 상품 식별자가 아닙니다.");
+    }
 
     if (field !== "is_active") {
       throw new RbacError("변경할 수 없는 항목입니다.");
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("products")
       .update({ [field]: nextValue, updated_at: new Date().toISOString() })
-      .eq("id", productId)
-      .select("id")
-      .maybeSingle();
+      .eq("id", productId);
+
+    if (!context.isSuperAdmin) {
+      query = query.eq("wholesaler_id", wholesalerId);
+    }
+
+    const { data, error } = await query.select("id").maybeSingle();
 
     if (error) {
       throw new Error(error.message);
@@ -265,21 +275,25 @@ export async function updateProductStockAction(
 ): Promise<ActionResult> {
   try {
     const { supabase, context, wholesalerId } = await resolveProductScope();
-    await assertOwnedProduct(supabase, productId, wholesalerId, {
-      isSuperAdmin: context.isSuperAdmin,
-      forbiddenMessage: "다른 공급사의 상품은 수정할 수 없습니다.",
-    });
+
+    if (!UUID_PATTERN.test(productId)) {
+      throw new RbacError("올바른 상품 식별자가 아닙니다.");
+    }
 
     if (!Number.isFinite(nextStock) || nextStock < 0) {
       throw new RbacError("재고 수량은 0 이상의 숫자여야 합니다.");
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("products")
       .update({ stock_quantity: nextStock, updated_at: new Date().toISOString() })
-      .eq("id", productId)
-      .select("id")
-      .maybeSingle();
+      .eq("id", productId);
+
+    if (!context.isSuperAdmin) {
+      query = query.eq("wholesaler_id", wholesalerId);
+    }
+
+    const { data, error } = await query.select("id").maybeSingle();
 
     if (error) {
       throw new Error(error.message);
@@ -302,15 +316,27 @@ export async function updateProductStockAction(
 export async function deleteProductAction(productId: string): Promise<ActionResult> {
   try {
     const { supabase, context, wholesalerId } = await resolveProductScope();
-    await assertOwnedProduct(supabase, productId, wholesalerId, {
-      isSuperAdmin: context.isSuperAdmin,
-      forbiddenMessage: "다른 공급사의 상품은 수정할 수 없습니다.",
-    });
 
-    const { error } = await supabase.from("products").delete().eq("id", productId);
+    if (!UUID_PATTERN.test(productId)) {
+      throw new RbacError("올바른 상품 식별자가 아닙니다.");
+    }
+
+    let query = supabase.from("products").delete().eq("id", productId);
+
+    if (!context.isSuperAdmin) {
+      query = query.eq("wholesaler_id", wholesalerId);
+    }
+
+    const { data, error } = await query.select("id").maybeSingle();
 
     if (error) {
       throw new Error(error.message);
+    }
+
+    // 소유권 확인용 SELECT를 따로 하지 않으므로, 0건 반영(다른 공급사 소유 등)도
+    // 여기서 걸러야 한다 — 그렇지 않으면 조용히 아무 것도 지우지 않고 "성공"을 반환한다.
+    if (!data) {
+      throw new RbacError("삭제 권한이 없거나 해당 상품을 찾을 수 없습니다.");
     }
 
     revalidatePath(REVALIDATE_PATH);

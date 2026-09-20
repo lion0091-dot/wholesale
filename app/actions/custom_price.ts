@@ -122,6 +122,9 @@ export async function setCustomPrice(formData: FormData): Promise<ActionResult<{
           product_id: productId,
           kind,
           custom_price: customPrice,
+          // 꺼져 있던 행을 이 폼으로 다시 저장하면 가격만 바뀌고 꺼진 채로 남는 문제 방지 —
+          // 노출 on/off는 별도 토글로 다루고, 이 폼의 저장은 항상 "켜서 반영"을 의미한다.
+          is_active: true,
         },
         { onConflict: "retailer_id,product_id,kind" }
       )
