@@ -24,6 +24,7 @@ import {
 } from "@/lib/demo/supplier-samples";
 import {
   findCatalogItem,
+  resolveCatalogItem,
   toCartLines,
   type ShopCatalog,
   type ShopCatalogItem,
@@ -106,17 +107,9 @@ function demoCatalog(shopToken: string): ShopCatalog {
     myPrices.filter((price) => price.kind === "custom").map((price) => [price.product_id, Number(price.custom_price)])
   );
 
-  const items: ShopCatalogItem[] = DEMO_PRODUCTS.map((product) => {
-    const hotDeal = hotDealByProduct.get(product.id);
-    const custom = customByProduct.get(product.id);
-
-    return {
-      product,
-      effectivePrice: hotDeal ?? custom ?? Number(product.base_price),
-      isCustomPrice: hotDeal === undefined && custom !== undefined,
-      isHotDeal: hotDeal !== undefined,
-    };
-  });
+  const items: ShopCatalogItem[] = DEMO_PRODUCTS.map((product) =>
+    resolveCatalogItem(product, hotDealByProduct.get(product.id), customByProduct.get(product.id))
+  );
 
   return {
     shopToken,
@@ -246,17 +239,9 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
 
   // 모든 상품은 항상 전체 고객에게 기준 단가로 노출된다. 켜진 핫딜 매핑이 있으면
   // 그 가격이 최우선, 없으면 켜진 맞춤단가 매핑, 둘 다 없으면 기준 단가.
-  const items: ShopCatalogItem[] = products.map((product) => {
-    const hotDealPrice = hotDeal.get(product.id);
-    const customPrice = custom.get(product.id);
-
-    return {
-      product,
-      effectivePrice: hotDealPrice ?? customPrice ?? Number(product.base_price),
-      isCustomPrice: hotDealPrice === undefined && customPrice !== undefined,
-      isHotDeal: hotDealPrice !== undefined,
-    };
-  });
+  const items: ShopCatalogItem[] = products.map((product) =>
+    resolveCatalogItem(product, hotDeal.get(product.id), custom.get(product.id))
+  );
 
   return {
     shopToken,

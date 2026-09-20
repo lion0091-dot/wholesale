@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Product } from "@/types/database";
 import { AuditLogPanel } from "@/components/audit-log-panel";
 import { SampleBadge } from "@/components/sample-badge";
+import { MiniToggle } from "@/components/mini-toggle";
 import { composeProductDisplayName } from "@/lib/products/display-name";
 import {
   deleteProductAction,
@@ -56,72 +57,6 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 function categoryIcon(category: string): string {
   return CATEGORY_ICONS[category] ?? "🍖";
-}
-
-/** 텍스트 버튼처럼 보이던 ON/OFF 토글을 실제 스위치 형태로 — 터치 시 상태가 직관적으로 보이게 한다. */
-function MiniToggle({
-  checked,
-  onLabel,
-  offLabel,
-  onClick,
-  disabled,
-  onColor = "#dc2626",
-  onTextColor = "#b91c1c",
-}: {
-  checked: boolean;
-  onLabel: string;
-  offLabel: string;
-  onClick: () => void;
-  disabled?: boolean;
-  onColor?: string;
-  onTextColor?: string;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "7px",
-        border: "none",
-        background: "none",
-        padding: "4px 2px",
-        cursor: disabled ? "wait" : "pointer",
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          width: "32px",
-          height: "18px",
-          borderRadius: "999px",
-          backgroundColor: checked ? onColor : "#cbd5e1",
-          position: "relative",
-          flexShrink: 0,
-          transition: "background-color 0.15s ease",
-        }}
-      >
-        <span
-          style={{
-            position: "absolute",
-            top: "2px",
-            left: checked ? "16px" : "2px",
-            width: "14px",
-            height: "14px",
-            borderRadius: "50%",
-            backgroundColor: "#ffffff",
-            boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
-            transition: "left 0.15s ease",
-          }}
-        />
-      </span>
-      <span style={{ fontSize: "12px", fontWeight: 600, color: checked ? onTextColor : "#334155" }}>
-        {checked ? onLabel : offLabel}
-      </span>
-    </button>
-  );
 }
 
 export function ProductTable({ products, readOnly = false, memberNames = {} }: ProductTableProps) {

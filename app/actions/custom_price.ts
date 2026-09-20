@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole } from "@/lib/auth/rbac";
+import { assertOwnedProduct } from "@/lib/products/ownership";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -68,27 +69,6 @@ async function resolveOwnerScope(allowed: Array<"owner" | "manager" | "staff">) 
   };
 }
 
-/** 상품이 본인 공급사 소유인지 확인 */
-async function assertOwnedProduct(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  productId: string,
-  wholesalerId: string | null
-) {
-  const { data: product } = await supabase
-    .from("products")
-    .select("id, wholesaler_id")
-    .eq("id", productId)
-    .maybeSingle();
-
-  if (!product) {
-    throw new RbacError("해당 상품을 찾을 수 없습니다.");
-  }
-
-  if (wholesalerId && product.wholesaler_id !== wholesalerId) {
-    throw new RbacError("다른 공급사의 상품에는 단가를 설정할 수 없습니다.");
-  }
-}
-
 // ====================================================================
 // 1. 고객사별 맞춤 단가/핫딜 설정 (신규/변경 = upsert, 종류별로 독립된 행)
 // ====================================================================
@@ -114,7 +94,9 @@ export async function setCustomPrice(formData: FormData): Promise<ActionResult<{
       throw new RbacError("단가는 0 이상의 숫자여야 합니다.");
     }
 
-    await assertOwnedProduct(supabase, productId, wholesalerId);
+    await assertOwnedProduct(supabase, productId, wholesalerId, {
+      forbiddenMessage: "다른 공급사의 상품에는 단가를 설정할 수 없습니다.",
+    });
 
     // 거래 관계가 있는 고객사인지 확인
     if (wholesalerId) {
@@ -163,7 +145,7 @@ export async function setCustomPrice(formData: FormData): Promise<ActionResult<{
 // ====================================================================
 export async function setCustomPriceForAllAction(
   productId: string,
-  kind: string,
+  kind: CustomPriceKind,
   customPrice: number
 ): Promise<ActionResult<{ created: number; skipped: number }>> {
   try {
@@ -186,7 +168,9 @@ export async function setCustomPriceForAllAction(
       throw new RbacError("공급사 정보를 확인할 수 없습니다.");
     }
 
-    await assertOwnedProduct(supabase, productId, wholesalerId);
+    await assertOwnedProduct(supabase, productId, wholesalerId, {
+      forbiddenMessage: "다른 공급사의 상품에는 단가를 설정할 수 없습니다.",
+    });
 
     const [{ data: relations }, { data: existing }] = await Promise.all([
       supabase
@@ -245,7 +229,7 @@ export async function setCustomPriceForAllAction(
 // 3. 맞춤 단가/핫딜 조회 (조직 전체 또는 특정 고객사, 종류별)
 // ====================================================================
 export async function listCustomPrices(
-  kind?: string,
+  kind?: CustomPriceKind,
   retailerId?: string
 ): Promise<ActionResult<CustomPriceRow[]>> {
   try {
@@ -297,27 +281,22 @@ export async function toggleCustomPriceActiveAction(
       throw new RbacError("올바른 단가 식별자가 아닙니다.");
     }
 
-    const { data: target } = await supabase
-      .from("custom_prices")
-      .select("id, organization_id")
-      .eq("id", id)
-      .maybeSingle();
+    // bulkToggleCustomPriceActiveAction과 동일하게 조직 범위 필터를 UPDATE에 직접
+    // 걸어 1회 왕복으로 권한 확인과 반영을 함께 처리한다(super_admin은 조직 무관 허용).
+    let query = supabase.from("custom_prices").update({ is_active: isActive }).eq("id", id);
 
-    if (!target) {
-      throw new RbacError("해당 단가를 찾을 수 없습니다.");
+    if (!context.isSuperAdmin) {
+      query = query.eq("organization_id", organizationId);
     }
 
-    if (!context.isSuperAdmin && target.organization_id !== organizationId) {
-      throw new RbacError("다른 조직의 단가는 변경할 수 없습니다.");
-    }
-
-    const { error } = await supabase
-      .from("custom_prices")
-      .update({ is_active: isActive })
-      .eq("id", id);
+    const { data, error } = await query.select("id").maybeSingle();
 
     if (error) {
       throw new Error(error.message);
+    }
+
+    if (!data) {
+      throw new RbacError("해당 단가를 찾을 수 없거나 변경할 수 없습니다.");
     }
 
     revalidatePath(REVALIDATE_PATH);
@@ -332,12 +311,14 @@ export async function toggleCustomPriceActiveAction(
 // ====================================================================
 export async function bulkToggleCustomPriceActiveAction(
   productId: string,
-  kind: string,
+  kind: CustomPriceKind,
   isActive: boolean
 ): Promise<ActionResult<{ updated: number }>> {
   try {
     const { supabase, organizationId } = await resolveOwnerScope(["owner", "manager"]);
 
+    // Server Action은 HTTP 엔드포인트로도 직접 호출 가능하므로 TS 타입만으로는
+    // 부족하다 — 컴파일 타입 보호와 별개로 런타임 검증을 유지한다.
     assertKind(kind);
 
     if (!UUID_PATTERN.test(productId)) {

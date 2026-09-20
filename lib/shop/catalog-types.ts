@@ -47,6 +47,23 @@ export interface CartEntryInput {
   quantity: number;
 }
 
+/**
+ * 상품 하나의 실제 노출가/가격상태를 결정한다.
+ * 켜진 핫딜 단가 > 켜진 맞춤 단가 > 기준 단가 순으로 우선한다.
+ */
+export function resolveCatalogItem(
+  product: Product,
+  hotDealPrice: number | undefined,
+  customPrice: number | undefined
+): ShopCatalogItem {
+  return {
+    product,
+    effectivePrice: hotDealPrice ?? customPrice ?? Number(product.base_price),
+    isCustomPrice: hotDealPrice === undefined && customPrice !== undefined,
+    isHotDeal: hotDealPrice !== undefined,
+  };
+}
+
 export function findCatalogItem(
   catalog: ShopCatalog,
   productId: string

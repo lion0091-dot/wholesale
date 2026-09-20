@@ -12,6 +12,7 @@ import {
 } from "@/app/actions/custom_price";
 import { SampleBadge } from "@/components/sample-badge";
 import { AuditLogPanel } from "@/components/audit-log-panel";
+import { MiniToggle } from "@/components/mini-toggle";
 
 export interface CustomerOption {
   id: string;
@@ -86,70 +87,6 @@ function discountRate(basePrice: number, customPrice: number) {
   if (!basePrice) return null;
 
   return ((basePrice - customPrice) / basePrice) * 100;
-}
-
-function MiniToggle({
-  checked,
-  onLabel,
-  offLabel,
-  onClick,
-  disabled,
-  accentColor,
-}: {
-  checked: boolean;
-  onLabel: string;
-  offLabel: string;
-  onClick: () => void;
-  disabled?: boolean;
-  accentColor: string;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "6px",
-        border: "none",
-        background: "none",
-        padding: "4px 2px",
-        cursor: disabled ? "wait" : "pointer",
-        flexShrink: 0,
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          width: "30px",
-          height: "17px",
-          borderRadius: "999px",
-          backgroundColor: checked ? accentColor : "#cbd5e1",
-          position: "relative",
-          flexShrink: 0,
-          transition: "background-color 0.15s ease",
-        }}
-      >
-        <span
-          style={{
-            position: "absolute",
-            top: "2px",
-            left: checked ? "15px" : "2px",
-            width: "13px",
-            height: "13px",
-            borderRadius: "50%",
-            backgroundColor: "#ffffff",
-            boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
-            transition: "left 0.15s ease",
-          }}
-        />
-      </span>
-      <span style={{ fontSize: "11px", fontWeight: 700, color: checked ? accentColor : "#94a3b8" }}>
-        {checked ? onLabel : offLabel}
-      </span>
-    </button>
-  );
 }
 
 export function CustomPriceManager({
@@ -677,7 +614,8 @@ export function CustomPriceManager({
                           checked={row.isActive}
                           onLabel="ON"
                           offLabel="OFF"
-                          accentColor={accentColor}
+                          onColor={accentColor}
+                          size="sm"
                           disabled={busyId === row.id}
                           onClick={() => void handleToggleActive(row)}
                         />
@@ -765,7 +703,8 @@ export function CustomPriceManager({
                       checked={row.isActive}
                       onLabel="ON"
                       offLabel="OFF"
-                      accentColor={accentColor}
+                      onColor={accentColor}
+                          size="sm"
                       disabled={busyId === row.id}
                       onClick={() => void handleToggleActive(row)}
                     />
