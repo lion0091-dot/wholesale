@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { getRowAuditLogAction, type AuditLogTable, type RowAuditEntry } from "@/app/actions/audit-log";
 import { AUDIT_LOG_PAGE_SIZE } from "@/lib/audit-log/pagination";
+import { useMediaQuery } from "@/lib/hooks/use-media-query";
 
 interface AuditLogPanelProps {
   tableName: AuditLogTable;
@@ -39,6 +40,11 @@ export function AuditLogPanel({ tableName, rowId, label = "변경 이력", compa
   const [hasMore, setHasMore] = useState(false);
   const [pending, startTransition] = useTransition();
   const [loadingMore, setLoadingMore] = useState(false);
+  // 표(<table>)를 좁은 화면에 그대로 두면 열이 극단적으로 눌려서 한글이
+  // 한 글자씩 줄바꿈되어 세로쓰기처럼 보인다 — 모바일에서는 카드 목록으로 바꾼다.
+  // 이 패널은 상품 목록처럼 행마다 하나씩 마운트되므로, 리스너는 useMediaQuery가
+  // 쿼리 문자열 단위로 공유한다(행 수만큼 리스너가 늘어나지 않게).
+  const isMobile = useMediaQuery("(max-width: 640px)");
 
   const loadPage = (offset: number, append: boolean) => {
     const finish = (result: Awaited<ReturnType<typeof getRowAuditLogAction>>) => {
@@ -117,19 +123,19 @@ export function AuditLogPanel({ tableName, rowId, label = "변경 이력", compa
             zIndex: 60,
             backgroundColor: "rgba(15, 23, 42, 0.82)",
             display: "flex",
-            alignItems: "center",
+            alignItems: isMobile ? "stretch" : "center",
             justifyContent: "center",
-            padding: "16px",
+            padding: isMobile ? 0 : "16px",
           }}
         >
           <div
             style={{
               backgroundColor: "#ffffff",
-              borderRadius: "14px",
-              padding: "20px",
+              borderRadius: isMobile ? 0 : "14px",
+              padding: "16px",
               width: "100%",
-              maxWidth: "720px",
-              maxHeight: "88vh",
+              maxWidth: isMobile ? "100%" : "720px",
+              maxHeight: isMobile ? "100vh" : "88vh",
               overflowY: "auto",
               display: "flex",
               flexDirection: "column",
@@ -167,61 +173,102 @@ export function AuditLogPanel({ tableName, rowId, label = "변경 이력", compa
               <p style={{ fontSize: "12px", color: "#94a3b8" }}>변경 이력이 없습니다.</p>
             ) : (
               <>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid #cbd5e1", color: "#64748b" }}>
-                        <th style={{ textAlign: "left", padding: "6px 8px", whiteSpace: "nowrap" }}>시간</th>
-                        <th style={{ textAlign: "left", padding: "6px 8px", whiteSpace: "nowrap" }}>처리자</th>
-                        <th style={{ textAlign: "left", padding: "6px 8px", whiteSpace: "nowrap" }}>동작</th>
-                        <th style={{ textAlign: "left", padding: "6px 8px" }}>필드</th>
-                        <th style={{ textAlign: "left", padding: "6px 8px" }}>변경 전</th>
-                        <th style={{ textAlign: "left", padding: "6px 8px" }}>변경 후</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {entries.flatMap((entry) => {
-                        const rows = entry.changes.length > 0 ? entry.changes : [null];
+                {isMobile ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {entries.map((entry) => (
+                      <div
+                        key={entry.id}
+                        style={{
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "8px",
+                          padding: "10px",
+                          fontSize: "12px",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", color: "#64748b" }}>
+                          <span>{new Date(entry.createdAt).toLocaleString("ko-KR")}</span>
+                          <span style={{ fontWeight: 700, color: "#334155" }}>{ACTION_LABELS[entry.action]}</span>
+                        </div>
+                        <div style={{ color: "#64748b", marginTop: "2px" }}>{entry.changedByName}</div>
 
-                        return rows.map((change, index) => (
-                          <tr key={`${entry.id}-${index}`} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                            {index === 0 && (
-                              <>
-                                <td
-                                  rowSpan={rows.length}
-                                  style={{ padding: "6px 8px", verticalAlign: "top", whiteSpace: "nowrap" }}
-                                >
-                                  {new Date(entry.createdAt).toLocaleString("ko-KR")}
-                                </td>
-                                <td rowSpan={rows.length} style={{ padding: "6px 8px", verticalAlign: "top" }}>
-                                  {entry.changedByName}
-                                </td>
-                                <td rowSpan={rows.length} style={{ padding: "6px 8px", verticalAlign: "top" }}>
-                                  {ACTION_LABELS[entry.action]}
-                                </td>
-                              </>
-                            )}
-                            {change ? (
-                              <>
-                                <td style={{ padding: "6px 8px" }}>{change.field}</td>
-                                <td style={{ padding: "6px 8px", color: "#94a3b8" }}>
+                        {entry.changes.length > 0 ? (
+                          <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                            {entry.changes.map((change, index) => (
+                              <div key={index} style={{ borderTop: "1px solid #f1f5f9", paddingTop: "6px" }}>
+                                <div style={{ fontWeight: 600, color: "#0f172a" }}>{change.field}</div>
+                                <div style={{ color: "#94a3b8" }}>
                                   {formatValue(change.before)}
+                                  {" → "}
+                                  <span style={{ color: "#0f172a", fontWeight: 600 }}>
+                                    {formatValue(change.after)}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: "6px", color: "#94a3b8" }}>-</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid #cbd5e1", color: "#64748b" }}>
+                          <th style={{ textAlign: "left", padding: "6px 8px", whiteSpace: "nowrap" }}>시간</th>
+                          <th style={{ textAlign: "left", padding: "6px 8px", whiteSpace: "nowrap" }}>처리자</th>
+                          <th style={{ textAlign: "left", padding: "6px 8px", whiteSpace: "nowrap" }}>동작</th>
+                          <th style={{ textAlign: "left", padding: "6px 8px" }}>필드</th>
+                          <th style={{ textAlign: "left", padding: "6px 8px" }}>변경 전</th>
+                          <th style={{ textAlign: "left", padding: "6px 8px" }}>변경 후</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entries.flatMap((entry) => {
+                          const rows = entry.changes.length > 0 ? entry.changes : [null];
+
+                          return rows.map((change, index) => (
+                            <tr key={`${entry.id}-${index}`} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                              {index === 0 && (
+                                <>
+                                  <td
+                                    rowSpan={rows.length}
+                                    style={{ padding: "6px 8px", verticalAlign: "top", whiteSpace: "nowrap" }}
+                                  >
+                                    {new Date(entry.createdAt).toLocaleString("ko-KR")}
+                                  </td>
+                                  <td rowSpan={rows.length} style={{ padding: "6px 8px", verticalAlign: "top" }}>
+                                    {entry.changedByName}
+                                  </td>
+                                  <td rowSpan={rows.length} style={{ padding: "6px 8px", verticalAlign: "top" }}>
+                                    {ACTION_LABELS[entry.action]}
+                                  </td>
+                                </>
+                              )}
+                              {change ? (
+                                <>
+                                  <td style={{ padding: "6px 8px" }}>{change.field}</td>
+                                  <td style={{ padding: "6px 8px", color: "#94a3b8" }}>
+                                    {formatValue(change.before)}
+                                  </td>
+                                  <td style={{ padding: "6px 8px", fontWeight: 600 }}>
+                                    {formatValue(change.after)}
+                                  </td>
+                                </>
+                              ) : (
+                                <td colSpan={3} style={{ padding: "6px 8px", color: "#94a3b8" }}>
+                                  -
                                 </td>
-                                <td style={{ padding: "6px 8px", fontWeight: 600 }}>
-                                  {formatValue(change.after)}
-                                </td>
-                              </>
-                            ) : (
-                              <td colSpan={3} style={{ padding: "6px 8px", color: "#94a3b8" }}>
-                                -
-                              </td>
-                            )}
-                          </tr>
-                        ));
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                              )}
+                            </tr>
+                          ));
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   {hasMore && (
                     <button
