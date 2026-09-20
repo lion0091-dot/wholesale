@@ -14,7 +14,6 @@ import { OrderStatusPanel } from "./order-status-panel";
 import { TrackingPanel } from "./tracking-panel";
 import { StatementPreviewButton } from "@/components/statement-preview-button";
 import { TaxInvoiceDraftPanel } from "@/components/tax-invoice-draft-panel";
-import { AuditLogPanel } from "@/components/audit-log-panel";
 import { isSweetTrackerConfigured } from "@/lib/verification/sweettracker";
 import { isPopbillConfigured } from "@/lib/popbill/client";
 import { signExternalOpenToken } from "@/lib/pdf/external-open-token";
@@ -266,7 +265,6 @@ export default async function OrderDetailPage({ params }: PageProps) {
             externalOpenBaseHref={taxInvoiceExternalOpenHref}
             popbillConfigured={isPopbillConfigured()}
           />
-          <AuditLogPanel tableName="orders" rowId={order.id} />
         </div>
       </header>
 

@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Product } from "@/types/database";
-import { AuditLogPanel } from "@/components/audit-log-panel";
 import { SampleBadge } from "@/components/sample-badge";
 import { MiniToggle } from "@/components/mini-toggle";
 import { composeProductDisplayName } from "@/lib/products/display-name";
@@ -284,9 +283,6 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                               )}
                             </div>
                           )}
-                          <div style={{ marginTop: "4px" }}>
-                            <AuditLogPanel tableName="products" rowId={product.id} label="가격·단위·재고·판매상태 이력" />
-                          </div>
                         </div>
                       </div>
                     </td>
@@ -572,29 +568,26 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                   </div>
                 )}
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <AuditLogPanel tableName="products" rowId={product.id} label="가격·단위·재고·판매상태 이력" />
-                  <div style={{ display: "flex", gap: "6px" }}>
-                    <Link
-                      href={`/dashboard/products/${product.id}/edit`}
-                      style={{ ...chipButtonStyle, display: "inline-block", padding: "7px 11px" }}
-                    >
-                      수정
-                    </Link>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => handleDelete(product)}
-                      style={{
-                        ...chipButtonStyle,
-                        borderColor: "#fecaca",
-                        color: "#dc2626",
-                        padding: "7px 11px",
-                      }}
-                    >
-                      삭제
-                    </button>
-                  </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}>
+                  <Link
+                    href={`/dashboard/products/${product.id}/edit`}
+                    style={{ ...chipButtonStyle, display: "inline-block", padding: "7px 11px" }}
+                  >
+                    수정
+                  </Link>
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => handleDelete(product)}
+                    style={{
+                      ...chipButtonStyle,
+                      borderColor: "#fecaca",
+                      color: "#dc2626",
+                      padding: "7px 11px",
+                    }}
+                  >
+                    삭제
+                  </button>
                 </div>
               </div>
             );

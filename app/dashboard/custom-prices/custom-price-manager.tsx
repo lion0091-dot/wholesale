@@ -11,7 +11,6 @@ import {
   type CustomPriceKind,
 } from "@/app/actions/custom_price";
 import { SampleBadge } from "@/components/sample-badge";
-import { AuditLogPanel } from "@/components/audit-log-panel";
 import { MiniToggle } from "@/components/mini-toggle";
 
 export interface CustomerOption {
@@ -660,7 +659,6 @@ export function CustomPriceManager({
                           >
                             삭제
                           </button>
-                          <AuditLogPanel tableName="custom_prices" rowId={row.id} label="이력" />
                         </div>
                       </td>
                     </tr>
@@ -771,7 +769,6 @@ export function CustomPriceManager({
                     >
                       삭제
                     </button>
-                    <AuditLogPanel tableName="custom_prices" rowId={row.id} label="이력" />
                   </div>
                 </div>
               );

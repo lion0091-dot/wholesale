@@ -38,6 +38,14 @@ const NAV_GROUPS: DashboardNavItem[][] = [
     { label: "팀원 관리", href: "/dashboard/team", icon: "🧑‍🤝‍🧑", ready: true },
     { label: "구독료 청구서", href: "/dashboard/billing", icon: "🧮", ready: true },
   ],
+  // 이력관리 — 각 화면에 흩어져 있던 "이력보기" 버튼을 전용 메뉴로 모았다(2026-09-21).
+  // 대상 찾기(검색) 후 기존 AuditLogPanel을 그대로 재사용해 이력을 보여준다.
+  [
+    { label: "상품 이력", href: "/dashboard/history/products", icon: "📜", ready: true },
+    { label: "핫딜 이력", href: "/dashboard/history/hot-deals", icon: "📜", ready: true },
+    { label: "맞춤단가 이력", href: "/dashboard/history/custom-prices", icon: "📜", ready: true },
+    { label: "발주 이력", href: "/dashboard/history/orders", icon: "📜", ready: true },
+  ],
 ];
 
 const ORG_ROLE_LABELS: Record<string, string> = {
