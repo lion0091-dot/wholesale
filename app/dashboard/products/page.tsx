@@ -31,7 +31,13 @@ export default async function DashboardProductsPage() {
         .from("products")
         .select("*")
         .eq("wholesaler_id", scope.wholesalerId)
-        .order("created_at", { ascending: false }),
+        // created_at만으로는 기본 납품 품목 일괄 등록처럼 한 트랜잭션에서 여러 행을
+        // 동시에 넣으면 값이 전부 같아져서 동률이 생긴다 — 동률 사이 순서가 요청마다
+        // 달라지면 화면상 같은 위치의 행이 새로고침할 때마다 다른 상품으로 바뀌어
+        // 보이는 문제가 생긴다(토글을 두 번 누르면 엉뚱한 상품이 바뀌는 것처럼 보임).
+        // id를 2차 정렬 키로 둬서 순서를 항상 동일하게 고정한다.
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true }),
       supabase.rpc("list_wholesaler_member_names", { p_wholesaler_id: scope.wholesalerId }),
     ]);
 

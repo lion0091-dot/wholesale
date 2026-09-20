@@ -287,15 +287,21 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
       )
     : new Map<string, number>();
 
-  const items: ShopCatalogItem[] = visibleProducts.map((product) => {
-    const custom = customPrices.get(product.id);
+  // 시크릿딜 상품인데 이 손님에게 맞춤단가가 안 잡혀있으면 정가로 노출된다 —
+  // "🔥 특가" 라벨을 달고 할인 없는 정가를 보여주는 오표시라 아예 목록에서 뺀다.
+  // (노출 대상이 지정 안 돼 전체공개 상태여도, 그중 맞춤단가까지 설정된 손님한테만
+  // 실제로 보인다.)
+  const items: ShopCatalogItem[] = visibleProducts
+    .map((product) => {
+      const custom = customPrices.get(product.id);
 
-    return {
-      product,
-      effectivePrice: custom ?? Number(product.base_price),
-      isCustomPrice: custom !== undefined,
-    };
-  });
+      return {
+        product,
+        effectivePrice: custom ?? Number(product.base_price),
+        isCustomPrice: custom !== undefined,
+      };
+    })
+    .filter((item) => !item.product.is_secret_deal || item.isCustomPrice);
 
   return {
     shopToken,
