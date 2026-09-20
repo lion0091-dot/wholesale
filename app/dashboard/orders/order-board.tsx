@@ -341,23 +341,51 @@ export function OrderBoard({
       </div>
 
       <div style={{ padding: "12px", borderBottom: "1px solid #e2e8f0" }}>
-        <input
-          type="search"
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-          placeholder={
-            group === "historical"
-              ? "발주번호 또는 발주처(소매) 상호 검색 (전체 기간 대상)"
-              : "발주번호 또는 발주처(소매) 상호 검색"
-          }
-          style={{
-            width: "100%",
-            padding: "8px 10px",
-            fontSize: "13px",
-            border: "1px solid #cbd5e1",
-            borderRadius: "6px",
-          }}
-        />
+        <div style={{ position: "relative" }}>
+          {/* type="search"는 브라우저 기본 지우기(×) 아이콘을 넣어주는데, 일부 인앱
+              브라우저(카카오 등)에서 그 아이콘이 깨진 이미지(엑박)로 뜨는 문제가 있어서
+              type="text"로 바꾸고 직접 만든 취소 버튼을 쓴다. */}
+          <input
+            type="text"
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder={
+              group === "historical"
+                ? "발주번호 또는 발주처(소매) 상호 검색 (전체 기간 대상)"
+                : "발주번호 또는 발주처(소매) 상호 검색"
+            }
+            style={{
+              width: "100%",
+              padding: keyword ? "8px 60px 8px 10px" : "8px 10px",
+              fontSize: "13px",
+              border: "1px solid #cbd5e1",
+              borderRadius: "6px",
+            }}
+          />
+          {keyword && (
+            <button
+              type="button"
+              onClick={() => setKeyword("")}
+              style={{
+                position: "absolute",
+                right: "6px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                fontSize: "12px",
+                fontWeight: 600,
+                padding: "4px 9px",
+                borderRadius: "6px",
+                border: "1px solid #cbd5e1",
+                backgroundColor: "#ffffff",
+                color: "#334155",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              취소
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 완료·취소 탭에서 검색 중일 땐 조회구간/페이지네이션이 의미가 없어서
@@ -365,9 +393,6 @@ export function OrderBoard({
       {group === "historical" && isHistorySearch && (
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
             padding: "10px 12px",
             borderBottom: "1px solid #e2e8f0",
             backgroundColor: "#f8fafc",
@@ -375,29 +400,9 @@ export function OrderBoard({
             color: "#64748b",
           }}
         >
-          <span>
-            {historySearchLoading
-              ? "검색 중..."
-              : `검색결과 ${visibleOrders.length}건 (전체 기간 중 최대 50건까지 표시)`}
-          </span>
-          <button
-            type="button"
-            onClick={() => setKeyword("")}
-            style={{
-              marginLeft: "auto",
-              fontSize: "12px",
-              fontWeight: 600,
-              padding: "4px 9px",
-              borderRadius: "6px",
-              border: "1px solid #cbd5e1",
-              backgroundColor: "#ffffff",
-              color: "#334155",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            검색 취소
-          </button>
+          {historySearchLoading
+            ? "검색 중..."
+            : `검색결과 ${visibleOrders.length}건 (전체 기간 중 최대 50건까지 표시)`}
         </div>
       )}
 
