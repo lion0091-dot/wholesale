@@ -4,6 +4,7 @@ import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { deleteCustomPrice, setCustomPrice } from "@/app/actions/custom_price";
 import { SampleBadge } from "@/components/sample-badge";
+import { AuditLogPanel } from "@/components/audit-log-panel";
 
 export interface CustomerOption {
   id: string;
@@ -414,7 +415,7 @@ export function CustomPriceManager({
                         {rate === null ? "-" : `${rate.toFixed(1)}%`}
                       </td>
                       <td>
-                        <div style={{ display: "flex", gap: "6px" }}>
+                        <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                           <button
                             type="button"
                             onClick={() => {
@@ -453,6 +454,7 @@ export function CustomPriceManager({
                           >
                             삭제
                           </button>
+                          <AuditLogPanel view="custom_prices" rowId={row.id} label="맞춤단가 이력" />
                         </div>
                       </td>
                     </tr>
@@ -507,6 +509,8 @@ export function CustomPriceManager({
                     style={{
                       display: "flex",
                       gap: "6px",
+                      flexWrap: "wrap",
+                      alignItems: "center",
                       borderTop: "1px solid #f1f5f9",
                       paddingTop: "8px",
                     }}
@@ -549,6 +553,7 @@ export function CustomPriceManager({
                     >
                       삭제
                     </button>
+                    <AuditLogPanel view="custom_prices" rowId={row.id} label="맞춤단가 이력" />
                   </div>
                 </div>
               );

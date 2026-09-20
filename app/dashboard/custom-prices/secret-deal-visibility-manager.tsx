@@ -8,6 +8,7 @@ import {
   removeSecretDealVisibilityAction,
 } from "@/app/actions/secret-deal-visibility";
 import { SampleBadge } from "@/components/sample-badge";
+import { AuditLogPanel } from "@/components/audit-log-panel";
 import type { CustomerOption, ProductOption } from "./custom-price-manager";
 
 export interface SecretDealAssignment {
@@ -304,7 +305,7 @@ export function SecretDealVisibilityManager({
                     지정된 고객 없음 — 거래중인 모든 고객에게 노출 중
                   </p>
                 ) : (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
                     {rows.map((row) => (
                       <span
                         key={row.id}
@@ -339,6 +340,12 @@ export function SecretDealVisibilityManager({
                         >
                           ✕
                         </button>
+                        <AuditLogPanel
+                          view="secret_deal_visibility"
+                          rowId={row.id}
+                          label="이력"
+                          compact
+                        />
                       </span>
                     ))}
                   </div>

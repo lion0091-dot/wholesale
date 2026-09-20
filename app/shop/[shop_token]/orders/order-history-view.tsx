@@ -265,9 +265,31 @@ export function OrderHistoryView({
                       fontSize: "13px",
                     }}
                   >
-                    <span style={{ color: "#334155" }}>
+                    <span
+                      style={{
+                        color: "#334155",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {line.category && (
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            color: "#475569",
+                            backgroundColor: "#f1f5f9",
+                            padding: "1px 5px",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          {line.category}
+                        </span>
+                      )}
                       {line.productName}
-                      <span style={{ color: "#475569" }}> x {line.quantity}</span>
+                      <span style={{ color: "#475569" }}>x {line.quantity}</span>
                     </span>
                     <span style={{ color: "#0f172a", fontWeight: 600, whiteSpace: "nowrap" }}>
                       {formatWon(line.subtotalAmount)}

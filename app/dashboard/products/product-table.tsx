@@ -334,9 +334,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                         </span>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            <div style={{ fontWeight: 700 }}>
-                              {composeProductDisplayName(product.category, product.name)}
-                            </div>
+                            <div style={{ fontWeight: 700 }}>{product.name}</div>
                             {readOnly && <SampleBadge />}
                           </div>
                           <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
@@ -353,7 +351,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                             </div>
                           )}
                           <div style={{ marginTop: "4px" }}>
-                            <AuditLogPanel tableName="products" rowId={product.id} />
+                            <AuditLogPanel view="products" rowId={product.id} label="가격·재고 이력" />
                           </div>
                         </div>
                       </div>
@@ -435,21 +433,24 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                     </td>
 
                     <td>
-                      <MiniToggle
-                        checked={product.is_secret_deal}
-                        onLabel="🔥 시크릿 ON"
-                        offLabel="시크릿 OFF"
-                        disabled={isBusy}
-                        onClick={() =>
-                          void run(product.id, () =>
-                            toggleProductFlagAction(
-                              product.id,
-                              "is_secret_deal",
-                              !product.is_secret_deal
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "flex-start" }}>
+                        <MiniToggle
+                          checked={product.is_secret_deal}
+                          onLabel="🔥 시크릿 ON"
+                          offLabel="시크릿 OFF"
+                          disabled={isBusy}
+                          onClick={() =>
+                            void run(product.id, () =>
+                              toggleProductFlagAction(
+                                product.id,
+                                "is_secret_deal",
+                                !product.is_secret_deal
+                              )
                             )
-                          )
-                        }
-                      />
+                          }
+                        />
+                        <AuditLogPanel view="products_secret_deal" rowId={product.id} label="시크릿딜 이력" />
+                      </div>
                     </td>
 
                     <td>
@@ -535,7 +536,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                       <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>
-                        {composeProductDisplayName(product.category, product.name)}
+                        {product.name}
                       </div>
                       {readOnly && <SampleBadge />}
                     </div>
@@ -634,17 +635,20 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                     paddingTop: "8px",
                   }}
                 >
-                  <MiniToggle
-                    checked={product.is_secret_deal}
-                    onLabel="🔥 시크릿 ON"
-                    offLabel="시크릿 OFF"
-                    disabled={isBusy}
-                    onClick={() =>
-                      void run(product.id, () =>
-                        toggleProductFlagAction(product.id, "is_secret_deal", !product.is_secret_deal)
-                      )
-                    }
-                  />
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "flex-start" }}>
+                    <MiniToggle
+                      checked={product.is_secret_deal}
+                      onLabel="🔥 시크릿 ON"
+                      offLabel="시크릿 OFF"
+                      disabled={isBusy}
+                      onClick={() =>
+                        void run(product.id, () =>
+                          toggleProductFlagAction(product.id, "is_secret_deal", !product.is_secret_deal)
+                        )
+                      }
+                    />
+                    <AuditLogPanel view="products_secret_deal" rowId={product.id} label="시크릿딜 이력" />
+                  </div>
                   <MiniToggle
                     checked={product.is_active}
                     onLabel="판매중"
@@ -670,7 +674,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                 )}
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <AuditLogPanel tableName="products" rowId={product.id} />
+                  <AuditLogPanel view="products" rowId={product.id} label="가격·재고 이력" />
                   <div style={{ display: "flex", gap: "6px" }}>
                     <Link
                       href={`/dashboard/products/${product.id}/edit`}

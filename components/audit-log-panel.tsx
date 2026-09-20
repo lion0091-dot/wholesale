@@ -1,12 +1,16 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { getRowAuditLogAction, type RowAuditEntry } from "@/app/actions/audit-log";
+import { getRowAuditLogAction, type AuditLogView, type RowAuditEntry } from "@/app/actions/audit-log";
 import { AUDIT_LOG_PAGE_SIZE } from "@/lib/audit-log/pagination";
 
 interface AuditLogPanelProps {
-  tableName: "products" | "custom_prices" | "orders";
+  view: AuditLogView;
   rowId: string;
+  /** 버튼 라벨 — 기본 "변경 이력". 시크릿딜/맞춤단가처럼 섹션이 나뉜 곳은 구분되게 지정한다. */
+  label?: string;
+  /** 좁은 칩/배지 안에 끼워 넣을 때(예: 시크릿딜 노출 대상 칩) — 버튼을 작게 줄인다. */
+  compact?: boolean;
 }
 
 function formatValue(value: unknown): string {
@@ -28,7 +32,7 @@ const ACTION_LABELS: Record<RowAuditEntry["action"], string> = {
  * — 다른 화면(customer-table.tsx)의 모달과 같은 스타일(고정 배경+중앙 카드)을 따른다.
  * 버튼 클릭 시 지연 로드하고, AUDIT_LOG_PAGE_SIZE(10)개씩 "더보기"로 이어서 불러온다.
  */
-export function AuditLogPanel({ tableName, rowId }: AuditLogPanelProps) {
+export function AuditLogPanel({ view, rowId, label = "변경 이력", compact = false }: AuditLogPanelProps) {
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<RowAuditEntry[] | null>(null);
   const [totalCount, setTotalCount] = useState(0);
@@ -48,10 +52,10 @@ export function AuditLogPanel({ tableName, rowId }: AuditLogPanelProps) {
 
     if (append) {
       setLoadingMore(true);
-      void getRowAuditLogAction(tableName, rowId, offset).then(finish);
+      void getRowAuditLogAction(view, rowId, offset).then(finish);
     } else {
       startTransition(async () => {
-        finish(await getRowAuditLogAction(tableName, rowId, offset));
+        finish(await getRowAuditLogAction(view, rowId, offset));
       });
     }
   };
@@ -73,31 +77,44 @@ export function AuditLogPanel({ tableName, rowId }: AuditLogPanelProps) {
       <button
         type="button"
         onClick={handleOpen}
-        style={{
-          fontSize: "12px",
-          fontWeight: 700,
-          color: "#334155",
-          backgroundColor: "#ffffff",
-          border: "1px solid #cbd5e1",
-          borderRadius: "6px",
-          padding: "10px 14px",
-          minHeight: "40px",
-          cursor: "pointer",
-        }}
+        style={
+          compact
+            ? {
+                fontSize: "11px",
+                fontWeight: 700,
+                color: "#166534",
+                backgroundColor: "transparent",
+                border: "none",
+                textDecoration: "underline",
+                cursor: "pointer",
+                padding: "0 2px",
+              }
+            : {
+                fontSize: "12px",
+                fontWeight: 700,
+                color: "#334155",
+                backgroundColor: "#ffffff",
+                border: "1px solid #cbd5e1",
+                borderRadius: "6px",
+                padding: "10px 14px",
+                minHeight: "40px",
+                cursor: "pointer",
+              }
+        }
       >
-        변경 이력
+        {label}
       </button>
 
       {open && (
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="변경 이력"
+          aria-label={label}
           style={{
             position: "fixed",
             inset: 0,
             zIndex: 60,
-            backgroundColor: "rgba(15, 23, 42, 0.55)",
+            backgroundColor: "rgba(15, 23, 42, 0.82)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -120,7 +137,7 @@ export function AuditLogPanel({ tableName, rowId }: AuditLogPanelProps) {
           >
             <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
               <div style={{ flex: 1 }}>
-                <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>변경 이력</h2>
+                <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>{label}</h2>
                 {entries && entries.length > 0 && (
                   <p style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>총 {totalCount}건</p>
                 )}

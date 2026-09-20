@@ -18,7 +18,6 @@ import type {
   ShopOrderLine,
 } from "@/lib/shop/order-history-types";
 import type { OrderStatus } from "@/types/database";
-import { composeProductDisplayName } from "@/lib/products/display-name";
 
 /** 미니샵에 노출할 최근 발주 건수 */
 const ORDER_HISTORY_LIMIT = 30;
@@ -118,7 +117,8 @@ export async function loadShopOrderHistory(catalog: ShopCatalog): Promise<ShopOr
 
     lines.push({
       id: item.id,
-      productName: composeProductDisplayName(item.category, item.product_name),
+      category: item.category,
+      productName: item.product_name,
       unitPrice: Number(item.unit_price),
       quantity: Number(item.quantity),
       subtotalAmount: Number(item.subtotal_amount),

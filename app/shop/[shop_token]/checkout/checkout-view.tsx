@@ -18,7 +18,6 @@ import {
 } from "../shop-chrome";
 import { submitOrderAction } from "../actions";
 import { initiatePgPaymentAction } from "./pg/actions";
-import { composeProductDisplayName } from "@/lib/products/display-name";
 import { isRetailerNamePlaceholder } from "@/lib/shop/retailer-placeholder";
 import type { PaymentMethod } from "@/types/database";
 
@@ -325,11 +324,31 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 key={line.productId}
                 style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", gap: "8px" }}
               >
-                <span style={{ color: "#334155" }}>
-                  {composeProductDisplayName(line.category, line.name)} × {line.quantity}
+                <span
+                  style={{
+                    color: "#334155",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#475569",
+                      backgroundColor: "#f1f5f9",
+                      padding: "1px 5px",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    {line.category}
+                  </span>
+                  {line.name} × {line.quantity}
                   {line.unit}
                   {line.isCustomPrice && (
-                    <span style={{ color: "#166534", fontSize: "12px", marginLeft: "4px" }}>맞춤</span>
+                    <span style={{ color: "#166534", fontSize: "12px" }}>맞춤</span>
                   )}
                 </span>
                 <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>

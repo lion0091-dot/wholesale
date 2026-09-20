@@ -17,7 +17,6 @@ import {
   formatWon,
   shopPageStyle,
 } from "../shop-chrome";
-import { composeProductDisplayName } from "@/lib/products/display-name";
 
 interface CartViewProps {
   catalog: ShopCatalog;
@@ -90,14 +89,28 @@ export function CartView({ catalog }: CartViewProps) {
                   <div key={line.productId} style={{ ...cardStyle, padding: "14px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
                       <div>
-                        <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>
-                          {composeProductDisplayName(line.category, line.name)}
-                          {line.isSecretDeal && (
-                            <span style={{ fontSize: "12px", color: "#b91c1c", marginLeft: "6px" }}>
-                              시크릿 특가
-                            </span>
-                          )}
-                        </h3>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              color: "#475569",
+                              backgroundColor: "#f1f5f9",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                            }}
+                          >
+                            {line.category}
+                          </span>
+                          <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>
+                            {line.name}
+                            {line.isSecretDeal && (
+                              <span style={{ fontSize: "12px", color: "#b91c1c", marginLeft: "6px" }}>
+                                시크릿 특가
+                              </span>
+                            )}
+                          </h3>
+                        </div>
                         <p style={{ fontSize: "13px", color: "#334155", marginTop: "3px" }}>
                           {formatWon(line.unitPrice)} / {line.unit}
                           {line.isCustomPrice && (

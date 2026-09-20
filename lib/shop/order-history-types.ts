@@ -14,6 +14,7 @@ export const CANCEL_REASON_MAX_LENGTH = 200;
 
 export interface ShopOrderLine {
   id: string;
+  category: string | null;
   productName: string;
   unitPrice: number;
   quantity: number;

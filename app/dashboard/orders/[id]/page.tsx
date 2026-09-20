@@ -19,7 +19,6 @@ import { isSweetTrackerConfigured } from "@/lib/verification/sweettracker";
 import { isPopbillConfigured } from "@/lib/popbill/client";
 import { signExternalOpenToken } from "@/lib/pdf/external-open-token";
 import { SampleBadge } from "@/components/sample-badge";
-import { composeProductDisplayName } from "@/lib/products/display-name";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 export const metadata = {
@@ -267,7 +266,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
             externalOpenBaseHref={taxInvoiceExternalOpenHref}
             popbillConfigured={isPopbillConfigured()}
           />
-          <AuditLogPanel tableName="orders" rowId={order.id} />
+          <AuditLogPanel view="orders" rowId={order.id} />
         </div>
       </header>
 
@@ -310,7 +309,20 @@ export default async function OrderDetailPage({ params }: PageProps) {
               {order.items.map((item) => (
                 <tr key={item.id}>
                   <td style={{ fontWeight: 600 }}>
-                    {composeProductDisplayName(item.category, item.product_name)}
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "#475569",
+                        backgroundColor: "#f1f5f9",
+                        padding: "1px 5px",
+                        borderRadius: "4px",
+                        marginRight: "6px",
+                      }}
+                    >
+                      {item.category}
+                    </span>
+                    {item.product_name}
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>{formatWon(item.unit_price)}</td>
                   <td style={{ whiteSpace: "nowrap" }}>{Number(item.quantity)}</td>
@@ -336,8 +348,20 @@ export default async function OrderDetailPage({ params }: PageProps) {
                 gap: "4px",
               }}
             >
-              <div style={{ fontWeight: 700, fontSize: "14px" }}>
-                {composeProductDisplayName(item.category, item.product_name)}
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: "#475569",
+                    backgroundColor: "#f1f5f9",
+                    padding: "1px 5px",
+                    borderRadius: "4px",
+                  }}
+                >
+                  {item.category}
+                </span>
+                <div style={{ fontWeight: 700, fontSize: "14px" }}>{item.product_name}</div>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#64748b" }}>
                 <span>{formatWon(item.unit_price)} × {Number(item.quantity)}</span>
