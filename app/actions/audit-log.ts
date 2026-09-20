@@ -29,7 +29,21 @@ interface AuditLogRow {
   total_count: number;
 }
 
-const IGNORED_FIELDS = new Set(["updated_at", "created_at", "updated_by", "created_by"]);
+/**
+ * products/custom_prices/orders 세 테이블 모두 id/wholesaler_id/retailer_id/product_id 같은
+ * 식별자·외래키 컬럼을 갖는다. 이런 값은 사용자가 "편집"한 필드가 아니라 행의 정체성/맥락일
+ * 뿐이라, INSERT 때 null→UUID로 바뀐 것처럼 보여 화면에 알아볼 수 없는 값만 늘어놓게 된다.
+ */
+const IGNORED_FIELDS = new Set([
+  "updated_at",
+  "created_at",
+  "updated_by",
+  "created_by",
+  "id",
+  "wholesaler_id",
+  "retailer_id",
+  "product_id",
+]);
 
 export interface AuditLogPage<T> {
   entries: T[];

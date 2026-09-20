@@ -11,6 +11,7 @@ interface AuditLogPanelProps {
 
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) return "-";
+  if (typeof value === "boolean") return value ? "예" : "아니오";
   if (typeof value === "number") return value.toLocaleString("ko-KR");
   return String(value);
 }
