@@ -30,20 +30,39 @@ interface AuditLogRow {
 }
 
 /**
- * products/custom_prices/orders 세 테이블 모두 id/wholesaler_id/retailer_id/product_id 같은
- * 식별자·외래키 컬럼을 갖는다. 이런 값은 사용자가 "편집"한 필드가 아니라 행의 정체성/맥락일
- * 뿐이라, INSERT 때 null→UUID로 바뀐 것처럼 보여 화면에 알아볼 수 없는 값만 늘어놓게 된다.
+ * 도매업자가 실제로 궁금해할 사업적 의미가 있는 필드만 화이트리스트로 열거한다.
+ * id/wholesaler_id 같은 식별자, pg_payment_key 같은 결제사 내부 토큰, updated_at 같은
+ * 시스템 타임스탬프는 사람이 알아볼 수 없는 "전산적 데이터"라 애초에 후보에서 뺀다 —
+ * 컬럼이 나중에 더 추가돼도 화이트리스트에 없으면 자동으로 숨겨지는 게 안전하다.
  */
-const IGNORED_FIELDS = new Set([
-  "updated_at",
-  "created_at",
-  "updated_by",
-  "created_by",
-  "id",
-  "wholesaler_id",
-  "retailer_id",
-  "product_id",
-]);
+const FIELD_LABELS: Record<string, Record<string, string>> = {
+  products: {
+    name: "상품명",
+    category: "축종",
+    subcategory: "부위",
+    origin: "원산지",
+    grade: "등급",
+    base_price: "가격",
+    unit: "단위",
+    stock_quantity: "재고",
+    is_secret_deal: "시크릿딜",
+    is_active: "판매 상태",
+    description: "설명",
+  },
+  custom_prices: {
+    custom_price: "맞춤 단가",
+  },
+  orders: {
+    status: "발주 상태",
+    total_amount: "총 금액",
+    delivery_address: "배송지",
+    delivery_notes: "배송 메모",
+    cancel_reason: "취소 사유",
+    courier_code: "택배사",
+    tracking_number: "운송장번호",
+    payment_status: "결제 상태",
+  },
+};
 
 export interface AuditLogPage<T> {
   entries: T[];
@@ -53,20 +72,23 @@ export interface AuditLogPage<T> {
 }
 
 function diffFields(
+  tableName: string,
   oldData: Record<string, unknown> | null,
   newData: Record<string, unknown> | null
 ): Array<{ field: string; before: unknown; after: unknown }> {
+  const labels = FIELD_LABELS[tableName] ?? {};
   const keys = new Set([...Object.keys(oldData ?? {}), ...Object.keys(newData ?? {})]);
   const changes: Array<{ field: string; before: unknown; after: unknown }> = [];
 
   for (const key of keys) {
-    if (IGNORED_FIELDS.has(key)) continue;
+    const label = labels[key];
+    if (!label) continue;
 
     const before = oldData?.[key] ?? null;
     const after = newData?.[key] ?? null;
 
     if (JSON.stringify(before) !== JSON.stringify(after)) {
-      changes.push({ field: key, before, after });
+      changes.push({ field: label, before, after });
     }
   }
 
@@ -124,7 +146,7 @@ export async function getRowAuditLogAction(
       id: row.id,
       action: row.action,
       changedByName: row.changed_by ? (nameMap.get(row.changed_by) ?? "알 수 없음") : "시스템",
-      changes: diffFields(row.old_data, row.new_data),
+      changes: diffFields(tableName, row.old_data, row.new_data),
       createdAt: row.created_at,
     }));
 
