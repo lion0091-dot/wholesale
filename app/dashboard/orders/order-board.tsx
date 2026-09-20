@@ -12,6 +12,7 @@ import {
 } from "@/lib/orders/status";
 import { ORDER_HISTORY_RANGE_OPTIONS } from "@/lib/orders/history-range";
 import type { OrderRow } from "@/lib/orders/order-row";
+import { useDebouncedSearch } from "@/lib/orders/use-debounced-search";
 import { SampleBadge } from "@/components/sample-badge";
 import { getHistoricalOrdersAction, searchHistoricalOrdersAction } from "./actions";
 import type { OrderStatus } from "@/types/database";
@@ -87,7 +88,6 @@ export function OrderBoard({
   // 완료·취소=기간 제한+페이지네이션) 하나의 목록으로 섞지 않고 탭으로 분리한다.
   const [group, setGroup] = useState<OrderGroup>("active");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
-  const [keyword, setKeyword] = useState("");
   const filterScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
@@ -99,9 +99,22 @@ export function OrderBoard({
   const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
 
   // 완료·취소 탭 검색 — 조회 구간(30일/3개월)에 갇히면 예전 발주를 못 찾으므로
-  // 전체 기간을 서버에서 재조회한다. null = 검색 중이 아님(구간 뷰 표시).
-  const [historySearchResults, setHistorySearchResults] = useState<OrderRow[] | null>(null);
-  const [historySearchLoading, setHistorySearchLoading] = useState(false);
+  // 전체 기간을 서버에서 재조회한다. 데모는 실제 DB가 없어 서버 검색을 탈 수
+  // 없으므로 그럴 땐 검색을 호출하지 않고 빈 결과로 응답해 클라이언트 필터로
+  // 대체한다(데이터 양이 적어 성능 문제 없음). keyword는 진행중 탭의 클라이언트
+  // 필터에도 그대로 쓰이므로 group과 무관하게 하나의 입력창을 공유한다.
+  const {
+    keyword,
+    setKeyword,
+    results: historySearchResults,
+    loading: historySearchLoading,
+  } = useDebouncedSearch<OrderRow>(async (trimmed) => {
+    if (group !== "historical" || isDemo) {
+      return { success: true, data: { entries: [] } };
+    }
+
+    return searchHistoricalOrdersAction(trimmed);
+  });
 
   const normalizedKeyword = keyword.trim().toLowerCase();
   const isHistorySearch = group === "historical" && normalizedKeyword.length > 0 && !isDemo;
@@ -113,33 +126,7 @@ export function OrderBoard({
     setGroup(nextGroup);
     setStatusFilter("all");
     setKeyword("");
-    setHistorySearchResults(null);
   };
-
-  // 데모는 실제 DB가 없어 서버 검색을 탈 수 없으므로, 완료·취소 탭도 클라이언트에서
-  // 필터링한다(데이터 양이 적어 성능 문제 없음).
-  useEffect(() => {
-    if (group !== "historical" || isDemo) return;
-
-    const trimmed = keyword.trim();
-
-    if (!trimmed) {
-      setHistorySearchResults(null);
-      setHistorySearchLoading(false);
-      return;
-    }
-
-    setHistorySearchLoading(true);
-
-    const timer = setTimeout(() => {
-      void searchHistoricalOrdersAction(trimmed).then((result) => {
-        setHistorySearchResults(result.success ? result.data?.entries ?? [] : []);
-        setHistorySearchLoading(false);
-      });
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [group, keyword, isDemo]);
 
   const baseOrders =
     group === "active"

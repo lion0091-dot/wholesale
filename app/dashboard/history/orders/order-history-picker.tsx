@@ -1,15 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
 import { ORDER_STATUS_BADGES, formatOrderedAt, formatWon } from "@/lib/orders/status";
 import { ORDER_HISTORY_RANGE_OPTIONS } from "@/lib/orders/history-range";
 import type { OrderRow } from "@/lib/orders/order-row";
 import { useOrderHistoryPagination } from "@/lib/orders/use-order-history-pagination";
+import { useDebouncedSearch } from "@/lib/orders/use-debounced-search";
 import { AuditLogPanel } from "@/components/audit-log-panel";
 import { listOrdersForHistoryAction, searchOrdersForHistoryAction } from "./actions";
-
-/** 검색어 입력이 멈추고 이만큼 지나야 서버에 물어본다 — 매 글자마다 요청하지 않기 위함. */
-const SEARCH_DEBOUNCE_MS = 300;
 
 interface OrderHistoryPickerProps {
   initialEntries: OrderRow[];
@@ -41,7 +38,6 @@ export function OrderHistoryPicker({
     moreLoading,
     isBusy,
     errorMessage,
-    setErrorMessage,
     changeRange,
     loadMore,
   } = useOrderHistoryPagination(
@@ -50,52 +46,14 @@ export function OrderHistoryPicker({
     listOrdersForHistoryAction
   );
 
-  const [keyword, setKeyword] = useState("");
-  const [searchResults, setSearchResults] = useState<OrderRow[] | null>(null);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const isSearching = keyword.trim().length > 0;
-
-  // 요청 순서가 뒤바뀌어 도착해도(빨리 친 나중 검색어 응답이 먼저 옴) 최신 요청의
-  // 응답만 반영하기 위한 카운터 — 검색어를 바꿀 때마다 증가시켜 이전 요청을 무효화한다.
-  const searchRequestId = useRef(0);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const runSearch = async (trimmed: string) => {
-    const requestId = ++searchRequestId.current;
-
-    setSearchLoading(true);
-    const result = await searchOrdersForHistoryAction(trimmed);
-
-    if (requestId !== searchRequestId.current) return; // 이미 다음 검색어로 바뀜 — 무시
-
-    setSearchLoading(false);
-
-    if (result.success && result.data) {
-      setSearchResults(result.data.entries);
-    } else {
-      setErrorMessage(result.error ?? "검색에 실패했습니다.");
-      setSearchResults([]);
-    }
-  };
-
-  const handleKeywordChange = (value: string) => {
-    setKeyword(value);
-
-    // 진행 중이던 디바운스/요청을 무효화 — 방금 요청이 늦게 도착해도 위 requestId
-    // 비교에서 걸러진다.
-    searchRequestId.current += 1;
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-
-    const trimmed = value.trim();
-
-    if (!trimmed) {
-      setSearchResults(null);
-      setSearchLoading(false);
-      return;
-    }
-
-    debounceTimer.current = setTimeout(() => void runSearch(trimmed), SEARCH_DEBOUNCE_MS);
-  };
+  const {
+    keyword,
+    setKeyword,
+    results: searchResults,
+    loading: searchLoading,
+    error: searchError,
+    isSearching,
+  } = useDebouncedSearch<OrderRow>(searchOrdersForHistoryAction);
 
   const rows = isSearching ? searchResults ?? [] : entries;
 
@@ -104,7 +62,7 @@ export function OrderHistoryPicker({
       <input
         type="text"
         value={keyword}
-        onChange={(event) => handleKeywordChange(event.target.value)}
+        onChange={(event) => setKeyword(event.target.value)}
         placeholder="발주번호 또는 거래처명으로 검색 (전체 기간)"
         style={{
           width: "100%",
@@ -153,7 +111,9 @@ export function OrderHistoryPicker({
         </div>
       )}
 
-      {errorMessage && <p style={{ fontSize: "12px", color: "#b91c1c" }}>{errorMessage}</p>}
+      {(isSearching ? searchError : errorMessage) && (
+        <p style={{ fontSize: "12px", color: "#b91c1c" }}>{isSearching ? searchError : errorMessage}</p>
+      )}
 
       {!hasWholesaler ? (
         <p style={{ fontSize: "13px", color: "#94a3b8", padding: "20px 0", textAlign: "center" }}>
