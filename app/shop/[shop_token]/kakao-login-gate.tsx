@@ -76,7 +76,7 @@ export function KakaoLoginGate({
         </h1>
 
         <p style={{ fontSize: "13px", color: "#475569", lineHeight: 1.7, marginBottom: "24px" }}>
-          계약 단가와 시크릿 특가는 <strong>인증된 단골 거래처</strong>에게만 공개됩니다.
+          계약 단가와 핫딜 특가는 <strong>인증된 단골 거래처</strong>에게만 공개됩니다.
           <br />
           카카오 로그인 한 번이면 다음부터는 바로 발주할 수 있습니다.
         </p>

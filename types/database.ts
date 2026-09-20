@@ -101,7 +101,6 @@ export interface Product {
   base_price: number;
   unit: string;
   stock_quantity: number;
-  is_secret_deal: boolean;
   is_active: boolean;
   description: string | null;
   created_at: string;

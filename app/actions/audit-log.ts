@@ -35,13 +35,10 @@ interface AuditLogRow {
  * 시스템 타임스탬프는 사람이 알아볼 수 없는 "전산적 데이터"라 애초에 후보에서 뺀다 —
  * 컬럼이 나중에 더 추가돼도 화이트리스트에 없으면 자동으로 숨겨지는 게 안전하다.
  *
- * 시크릿딜의 on/off 플래그 자체는 "누가 언제 어느 거래처에게 얼마에" 정보가 없어
- * 별도 이력을 안 둔다 — 그건 누구에게 노출했는지(secret_deal_visibility)와 얼마에
- * 팔았는지(custom_prices)로 이미 답이 나온다. secret_deal_visibility는 노출
- * 대상 지정/해제 전용이라 컬럼이 식별자뿐이라 FIELD_LABELS는 비워두고 등록/삭제
- * 액션과 시간·처리자만 보여준다(가격은 맞춤단가 이력에서 확인).
+ * custom_prices의 kind(custom/hot_deal)는 등록 시 고정되고 안 바뀌는 값이라
+ * 변경 이력에 넣을 의미가 없어 제외한다 — is_active(노출 on/off)만 보여준다.
  */
-export type AuditLogTable = "products" | "custom_prices" | "orders" | "secret_deal_visibility";
+export type AuditLogTable = "products" | "custom_prices" | "orders";
 
 const FIELD_LABELS: Record<AuditLogTable, Record<string, string>> = {
   products: {
@@ -51,9 +48,9 @@ const FIELD_LABELS: Record<AuditLogTable, Record<string, string>> = {
     is_active: "판매 상태",
   },
   custom_prices: {
-    custom_price: "맞춤 단가",
+    custom_price: "단가",
+    is_active: "노출 여부",
   },
-  secret_deal_visibility: {},
   orders: {
     status: "발주 상태",
     total_amount: "총 금액",

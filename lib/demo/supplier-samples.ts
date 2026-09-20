@@ -23,7 +23,6 @@ export const DEMO_PRODUCTS: Product[] = [
     base_price: 85000,
     unit: "kg",
     stock_quantity: 12.5,
-    is_secret_deal: false,
     is_active: true,
     description: "최고급 마블링 냉장 숙성 등심, 진공포장 출고",
     created_at: now(),
@@ -42,7 +41,6 @@ export const DEMO_PRODUCTS: Product[] = [
     base_price: 18500,
     unit: "kg",
     stock_quantity: 45,
-    is_secret_deal: false,
     is_active: true,
     description: "미추리 선별 완료, 탕박 A급 규격돈",
     created_at: now(),
@@ -61,7 +59,6 @@ export const DEMO_PRODUCTS: Product[] = [
     base_price: 29000,
     unit: "kg",
     stock_quantity: 2,
-    is_secret_deal: true,
     is_active: true,
     description: "국거리 및 육수용 당일 한정 수량 소진 특가 (단골 전용)",
     created_at: now(),
@@ -140,6 +137,9 @@ export interface DemoCustomPrice {
   retailer_id: string;
   product_id: string;
   custom_price: number;
+  /** 'custom'(우수 단골 맞춤단가) 또는 'hot_deal'(재고처분 핫딜) — 같은 고객+상품도 종류별로 별도 행 */
+  kind: "custom" | "hot_deal";
+  is_active: boolean;
   updated_at: string;
 }
 
@@ -149,6 +149,8 @@ export const DEMO_CUSTOM_PRICES: DemoCustomPrice[] = [
     retailer_id: "demo-retailer-1",
     product_id: "sample-1",
     custom_price: 79000,
+    kind: "custom",
+    is_active: true,
     updated_at: now(),
   },
   {
@@ -156,6 +158,17 @@ export const DEMO_CUSTOM_PRICES: DemoCustomPrice[] = [
     retailer_id: "demo-retailer-2",
     product_id: "sample-2",
     custom_price: 17800,
+    kind: "custom",
+    is_active: true,
+    updated_at: now(),
+  },
+  {
+    id: "demo-cp-3",
+    retailer_id: "demo-retailer-1",
+    product_id: "sample-3",
+    custom_price: 29000,
+    kind: "hot_deal",
+    is_active: true,
     updated_at: now(),
   },
 ];

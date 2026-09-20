@@ -4,10 +4,10 @@
  * /shop/<shop_token> 및 하위 cart·checkout 경로가 공통으로 사용한다.
  * - 공급사(도매) 식별 및 활성 상태 확인
  * - 접속 고객(식당) 바인딩 및 거래 관계 확인
- * - 상품 목록에 해당 식당 전용 맞춤 단가 적용
- * - 시크릿 딜은 거래 관계가 확인된 단골 고객에게만 노출 (미연결 고객에게는 응답에서 제외).
- *   추가로 특정 고객만 지정(secret_deal_visibility)했다면 그 목록으로 더 좁혀진다 —
- *   지정이 하나도 없는 시크릿 딜 상품은 기존과 동일하게 거래중인 전체 고객에게 노출된다.
+ * - 모든 상품은 항상 전체 고객에게 기준 단가로 노출된다("숨겨진 상품" 개념 없음).
+ *   그 고객에게 켜진(is_active) custom_prices 매핑이 있으면 그 가격으로 대체된다 —
+ *   kind='hot_deal' 매핑이 있으면 그 가격이 최우선, 없으면 kind='custom' 매핑, 둘 다
+ *   없거나 꺼져 있으면 기준 단가.
  *
  * Supabase 미설정/데이터 미존재 시 백오피스와 동일한 데모 모드 샘플로 대체한다.
  *
@@ -96,19 +96,25 @@ function demoCustomer(): ShopCustomer {
 
 function demoCatalog(shopToken: string): ShopCatalog {
   const customer = demoCustomer();
-  const customPrices = new Map(
-    DEMO_CUSTOM_PRICES.filter((price) => price.retailer_id === customer.retailerId).map(
-      (price) => [price.product_id, Number(price.custom_price)]
-    )
+  const myPrices = DEMO_CUSTOM_PRICES.filter(
+    (price) => price.retailer_id === customer.retailerId && price.is_active
+  );
+  const hotDealByProduct = new Map(
+    myPrices.filter((price) => price.kind === "hot_deal").map((price) => [price.product_id, Number(price.custom_price)])
+  );
+  const customByProduct = new Map(
+    myPrices.filter((price) => price.kind === "custom").map((price) => [price.product_id, Number(price.custom_price)])
   );
 
   const items: ShopCatalogItem[] = DEMO_PRODUCTS.map((product) => {
-    const custom = customPrices.get(product.id);
+    const hotDeal = hotDealByProduct.get(product.id);
+    const custom = customByProduct.get(product.id);
 
     return {
       product,
-      effectivePrice: custom ?? Number(product.base_price),
-      isCustomPrice: custom !== undefined,
+      effectivePrice: hotDeal ?? custom ?? Number(product.base_price),
+      isCustomPrice: hotDeal === undefined && custom !== undefined,
+      isHotDeal: hotDeal !== undefined,
     };
   });
 
@@ -117,7 +123,6 @@ function demoCatalog(shopToken: string): ShopCatalog {
     wholesaler: demoWholesaler(shopToken),
     items,
     customer,
-    canViewSecretDeals: customer.isLinked,
     isDemo: true,
   };
 }
@@ -157,60 +162,39 @@ async function resolveCustomer(
   };
 }
 
-/**
- * 시크릿 딜 상품별 지정 노출 대상 조회. product_id → 지정된 retailer_id 집합.
- * 지정이 없는 상품은 이 맵에 키 자체가 없다 — 호출부에서 "전체 노출"로 취급한다.
- */
-async function loadSecretDealVisibility(
-  supabase: SupabaseServerClient,
-  wholesalerId: string,
-  secretDealProductIds: string[]
-): Promise<Map<string, Set<string>>> {
-  if (secretDealProductIds.length === 0) {
-    return new Map();
-  }
-
-  const { data } = await supabase
-    .from("secret_deal_visibility")
-    .select("product_id, retailer_id")
-    .eq("wholesaler_id", wholesalerId)
-    .in("product_id", secretDealProductIds);
-
-  const map = new Map<string, Set<string>>();
-
-  for (const row of data ?? []) {
-    const productId = row.product_id as string;
-    const retailerId = row.retailer_id as string;
-
-    if (!map.has(productId)) {
-      map.set(productId, new Set());
-    }
-
-    map.get(productId)!.add(retailerId);
-  }
-
-  return map;
+interface EffectivePriceMaps {
+  /** product_id → 켜진 핫딜(kind='hot_deal') 단가 */
+  hotDeal: Map<string, number>;
+  /** product_id → 켜진 맞춤단가(kind='custom') 단가 */
+  custom: Map<string, number>;
 }
 
-/** 식당 전용 맞춤 단가 조회 (retailer_id + product_id 단위) */
+/** 식당 전용 맞춤단가·핫딜 조회 (kind별로 분리, is_active=true만) */
 async function loadCustomPrices(
   supabase: SupabaseServerClient,
   retailerId: string,
   productIds: string[]
-): Promise<Map<string, number>> {
+): Promise<EffectivePriceMaps> {
   if (productIds.length === 0) {
-    return new Map();
+    return { hotDeal: new Map(), custom: new Map() };
   }
 
   const { data } = await supabase
     .from("custom_prices")
-    .select("product_id, custom_price")
+    .select("product_id, custom_price, kind")
     .eq("retailer_id", retailerId)
+    .eq("is_active", true)
     .in("product_id", productIds);
 
-  return new Map(
-    (data ?? []).map((row) => [row.product_id as string, Number(row.custom_price)])
-  );
+  const hotDeal = new Map<string, number>();
+  const custom = new Map<string, number>();
+
+  for (const row of data ?? []) {
+    const target = row.kind === "hot_deal" ? hotDeal : custom;
+    target.set(row.product_id as string, Number(row.custom_price));
+  }
+
+  return { hotDeal, custom };
 }
 
 /**
@@ -240,7 +224,6 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
     .select("*")
     .eq("wholesaler_id", wholesaler.id)
     .eq("is_active", true)
-    .order("is_secret_deal", { ascending: true })
     .order("name", { ascending: true });
 
   const products = (productsData ?? []) as Product[];
@@ -250,65 +233,34 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
   }
 
   const customer = await resolveCustomer(supabase, wholesaler.id);
-  const canViewSecretDeals = customer.isLinked;
 
-  const secretDealVisibility = canViewSecretDeals
-    ? await loadSecretDealVisibility(
-        supabase,
-        wholesaler.id,
-        products.filter((product) => product.is_secret_deal).map((product) => product.id)
-      )
-    : new Map<string, Set<string>>();
-
-  const visibleProducts = products.filter((product) => {
-    if (!product.is_secret_deal) {
-      return true;
-    }
-
-    if (!canViewSecretDeals) {
-      return false;
-    }
-
-    const allowedRetailers = secretDealVisibility.get(product.id);
-
-    // 지정된 고객이 없으면(맵에 키 없음) 기존 동작대로 전체 노출
-    if (!allowedRetailers) {
-      return true;
-    }
-
-    return customer.retailerId !== null && allowedRetailers.has(customer.retailerId);
-  });
-
-  const customPrices = customer.retailerId
+  const { hotDeal, custom } = customer.retailerId
     ? await loadCustomPrices(
         supabase,
         customer.retailerId,
-        visibleProducts.map((product) => product.id)
+        products.map((product) => product.id)
       )
-    : new Map<string, number>();
+    : { hotDeal: new Map<string, number>(), custom: new Map<string, number>() };
 
-  // 시크릿딜 상품인데 이 손님에게 맞춤단가가 안 잡혀있으면 정가로 노출된다 —
-  // "🔥 특가" 라벨을 달고 할인 없는 정가를 보여주는 오표시라 아예 목록에서 뺀다.
-  // (노출 대상이 지정 안 돼 전체공개 상태여도, 그중 맞춤단가까지 설정된 손님한테만
-  // 실제로 보인다.)
-  const items: ShopCatalogItem[] = visibleProducts
-    .map((product) => {
-      const custom = customPrices.get(product.id);
+  // 모든 상품은 항상 전체 고객에게 기준 단가로 노출된다. 켜진 핫딜 매핑이 있으면
+  // 그 가격이 최우선, 없으면 켜진 맞춤단가 매핑, 둘 다 없으면 기준 단가.
+  const items: ShopCatalogItem[] = products.map((product) => {
+    const hotDealPrice = hotDeal.get(product.id);
+    const customPrice = custom.get(product.id);
 
-      return {
-        product,
-        effectivePrice: custom ?? Number(product.base_price),
-        isCustomPrice: custom !== undefined,
-      };
-    })
-    .filter((item) => !item.product.is_secret_deal || item.isCustomPrice);
+    return {
+      product,
+      effectivePrice: hotDealPrice ?? customPrice ?? Number(product.base_price),
+      isCustomPrice: hotDealPrice === undefined && customPrice !== undefined,
+      isHotDeal: hotDealPrice !== undefined,
+    };
+  });
 
   return {
     shopToken,
     wholesaler,
     items,
     customer,
-    canViewSecretDeals,
     isDemo: false,
   };
 }

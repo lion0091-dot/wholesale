@@ -80,6 +80,7 @@ function ToggleField({
 }) {
   const [showHelp, setShowHelp] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const helpButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!showHelp) return;
@@ -100,7 +101,14 @@ function ToggleField({
         role="switch"
         aria-checked={checked}
         tabIndex={0}
-        onClick={() => onChange(!checked)}
+        onClick={(event) => {
+          // "?" 버튼 클릭이 전파돼 올라온 경우 토글이 같이 바뀌는 문제가 있어,
+          // 클릭 대상이 도움말 버튼이면 무조건 무시한다.
+          if (helpButtonRef.current && helpButtonRef.current.contains(event.target as Node)) {
+            return;
+          }
+          onChange(!checked);
+        }}
         onKeyDown={(event) => {
           if (event.key === " " || event.key === "Enter") {
             event.preventDefault();
@@ -123,6 +131,7 @@ function ToggleField({
           {label}
           {help && (
             <button
+              ref={helpButtonRef}
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
@@ -381,7 +390,6 @@ export function ProductFormView({
   const [basePrice, setBasePrice] = useState(product ? String(product.base_price) : "");
   const [purchasePrice, setPurchasePrice] = useState("");
   const [isActive, setIsActive] = useState(product ? product.is_active : true);
-  const [isSecretDeal, setIsSecretDeal] = useState(product?.is_secret_deal ?? false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -673,21 +681,16 @@ export function ProductFormView({
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <ToggleField
-            label="🔥 시크릿 딜(단골 전용 마감 특가) 상품"
-            checked={isSecretDeal}
-            onChange={setIsSecretDeal}
-            accentColor="#b91c1c"
-            help="단골 고객에게만 특가로 노출됩니다."
-          />
-          <ToggleField
             label="미니샵에 판매중으로 노출"
             checked={isActive}
             onChange={setIsActive}
           />
           {/* 토글은 폼 필드가 아니라서, 실제 제출값은 hidden input으로 싣는다. */}
-          <input type="hidden" name="is_secret_deal" value={isSecretDeal ? "on" : "off"} />
           <input type="hidden" name="is_active" value={isActive ? "on" : "off"} />
         </div>
+        <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "-4px" }}>
+          맞춤단가·핫딜(재고처분 특가) 지정은 등록 후 맞춤단가관리 화면에서 고객별로 설정합니다.
+        </p>
 
         <div>
           <label htmlFor="description" style={labelStyle}>

@@ -74,7 +74,6 @@ interface ProductInput {
   base_price: number;
   unit: string;
   stock_quantity: number;
-  is_secret_deal: boolean;
   is_active: boolean;
   description: string | null;
 }
@@ -121,7 +120,6 @@ function parseProductForm(formData: FormData): ProductInput {
     base_price: basePrice,
     unit,
     stock_quantity: stockQuantity,
-    is_secret_deal: formData.get("is_secret_deal") === "on",
     is_active: formData.get("is_active") !== "off",
     description,
   };
@@ -205,7 +203,6 @@ export async function updateProductAction(
         base_price: input.base_price,
         unit: input.unit,
         stock_quantity: input.stock_quantity,
-        is_secret_deal: input.is_secret_deal,
         is_active: input.is_active,
         description: input.description,
         updated_at: new Date().toISOString(),
@@ -233,18 +230,18 @@ export async function updateProductAction(
 }
 
 // ====================================================================
-// 3. 판매 상태 / 시크릿 딜 토글
+// 3. 판매 상태 토글
 // ====================================================================
 export async function toggleProductFlagAction(
   productId: string,
-  field: "is_active" | "is_secret_deal",
+  field: "is_active",
   nextValue: boolean
 ): Promise<ActionResult> {
   try {
     const { supabase, context, wholesalerId } = await resolveProductScope();
     await assertOwnedProduct(supabase, productId, wholesalerId, context.isSuperAdmin);
 
-    if (field !== "is_active" && field !== "is_secret_deal") {
+    if (field !== "is_active") {
       throw new RbacError("변경할 수 없는 항목입니다.");
     }
 

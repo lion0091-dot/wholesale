@@ -21,7 +21,7 @@ const MAIN_CATEGORIES = ["소", "돼지", "닭/오리"];
 
 export function ShopView({ catalog, authMessage }: ShopViewProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"normal" | "secret">("normal");
+  const [activeTab, setActiveTab] = useState<"normal" | "hotdeal">("normal");
   const [selectedCategory, setSelectedCategory] = useState<string>("전체");
   const [isPending, startTransition] = useTransition();
   const [sessionError, setSessionError] = useState<string | null>(authMessage ?? null);
@@ -33,23 +33,24 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
     [catalog, entries]
   );
 
-  // 탭별 품목(기본 납품 품목 / 시크릿 딜)을 먼저 분리해 카운트와 목록에 함께 사용한다.
-  const { normalItems, secretItems } = useMemo(() => {
+  // 탭별 품목(기본 납품 품목 / 핫딜)을 먼저 분리해 카운트와 목록에 함께 사용한다.
+  // 핫딜은 상품 속성이 아니라 "지금 이 고객에게 켜진 핫딜 매핑이 있는지"로 갈린다.
+  const { normalItems, hotDealItems } = useMemo(() => {
     const normal: ShopCatalogItem[] = [];
-    const secret: ShopCatalogItem[] = [];
+    const hotdeal: ShopCatalogItem[] = [];
 
     for (const item of catalog.items) {
-      if (item.product.is_secret_deal) {
-        secret.push(item);
+      if (item.isHotDeal) {
+        hotdeal.push(item);
       } else {
         normal.push(item);
       }
     }
 
-    return { normalItems: normal, secretItems: secret };
+    return { normalItems: normal, hotDealItems: hotdeal };
   }, [catalog.items]);
 
-  const tabItems = activeTab === "normal" ? normalItems : secretItems;
+  const tabItems = activeTab === "normal" ? normalItems : hotDealItems;
 
   const displayedItems = tabItems.filter((item) => {
     if (selectedCategory === "전체") {
@@ -81,7 +82,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
 
   // 탭 전환 시 카테고리 필터를 초기화한다.
   // (이전 탭에만 있던 카테고리가 남아 목록이 비어 보이는 문제 방지)
-  const handleTabChange = (tab: "normal" | "secret") => {
+  const handleTabChange = (tab: "normal" | "hotdeal") => {
     setActiveTab(tab);
     setSelectedCategory("전체");
   };
@@ -109,7 +110,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
   return (
     <div style={{ ...shopPageStyle, paddingBottom: totals.itemCount > 0 ? "100px" : "20px" }}>
       <ShopHeader wholesaler={catalog.wholesaler} customer={catalog.customer}>
-        {/* 일반 상품 / 시크릿 딜 탭 */}
+        {/* 일반 상품 / 핫딜 탭 */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "16px" }}>
           <button
             type="button"
@@ -130,8 +131,8 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
           </button>
           <button
             type="button"
-            aria-pressed={activeTab === "secret"}
-            onClick={() => handleTabChange("secret")}
+            aria-pressed={activeTab === "hotdeal"}
+            onClick={() => handleTabChange("hotdeal")}
             style={{
               padding: "10px",
               borderRadius: "8px",
@@ -139,11 +140,11 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
               fontSize: "14px",
               fontWeight: 700,
               cursor: "pointer",
-              backgroundColor: activeTab === "secret" ? "#dc2626" : "#fee2e2",
-              color: activeTab === "secret" ? "#ffffff" : "#b91c1c",
+              backgroundColor: activeTab === "hotdeal" ? "#dc2626" : "#fee2e2",
+              color: activeTab === "hotdeal" ? "#ffffff" : "#b91c1c",
             }}
           >
-            🔥 시크릿 특가 룸
+            🔥 핫딜 {hotDealItems.length}
           </button>
         </div>
 
@@ -203,7 +204,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
           </div>
         )}
 
-        {activeTab === "secret" && !catalog.canViewSecretDeals ? (
+        {activeTab === "hotdeal" && !catalog.customer.isLinked ? (
           <div
             style={{
               ...cardStyle,
@@ -213,12 +214,13 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
               marginTop: "20px",
             }}
           >
-            <div style={{ fontSize: "32px", marginBottom: "12px" }}>🔒</div>
+            <div style={{ fontSize: "32px", marginBottom: "12px" }}>🔥</div>
             <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#991b1b", marginBottom: "6px" }}>
-              고객(소매) 전용 시크릿 딜 룸
+              고객(소매) 전용 핫딜
             </h3>
             <p style={{ fontSize: "13px", color: "#475569", lineHeight: 1.6, marginBottom: "20px" }}>
-              정규 시장 가격 붕괴를 방지하기 위해 <strong>인증된 단골 거래처</strong>에게만 한정 수량 당일 마감 특가가 공개됩니다.
+              재고처분 등 한정 수량 특가는 <strong>단골로 등록된 거래처</strong>에게 개별적으로 열립니다.
+              먼저 단골로 등록해주세요.
             </p>
 
             {sessionError && (
@@ -283,7 +285,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
                   {tabItems.length === 0
                     ? activeTab === "normal"
                       ? "공급사가 아직 기본 납품 품목을 등록하지 않았습니다."
-                      : "현재 공개된 시크릿 특가 품목이 없습니다."
+                      : "현재 지정된 핫딜 상품이 없습니다."
                     : `'${selectedCategory}' 카테고리에 해당하는 품목이 없습니다.`}
                 </p>
 
@@ -387,7 +389,7 @@ interface ProductCardProps {
 }
 
 function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProps) {
-  const { product, effectivePrice, isCustomPrice } = item;
+  const { product, effectivePrice, isCustomPrice, isHotDeal } = item;
   const stock = Number(product.stock_quantity);
   const isSoldOut = stock <= 0;
   const step = quantityStepFor(product.unit);
@@ -407,8 +409,8 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
               style={{
                 fontSize: "12px",
                 fontWeight: 700,
-                color: product.is_secret_deal ? "#b91c1c" : "#475569",
-                backgroundColor: product.is_secret_deal ? "#fee2e2" : "#f1f5f9",
+                color: isHotDeal ? "#b91c1c" : "#475569",
+                backgroundColor: isHotDeal ? "#fee2e2" : "#f1f5f9",
                 padding: "2px 6px",
                 borderRadius: "4px",
               }}
@@ -439,7 +441,7 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
         </div>
 
         <div style={{ textAlign: "right", flexShrink: 0 }}>
-          {isCustomPrice && (
+          {(isCustomPrice || isHotDeal) && (
             <div
               style={{
                 fontSize: "12px",
@@ -454,7 +456,7 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
             style={{
               fontSize: "17px",
               fontWeight: 800,
-              color: product.is_secret_deal || isCustomPrice ? "#dc2626" : "#0f172a",
+              color: isHotDeal || isCustomPrice ? "#dc2626" : "#0f172a",
             }}
           >
             {formatWon(effectivePrice)}
@@ -475,21 +477,38 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
         </div>
       </div>
 
-      {isCustomPrice && (
+      {isHotDeal ? (
         <div
           style={{
             display: "inline-block",
             fontSize: "12px",
             fontWeight: 700,
-            color: "#166534",
-            backgroundColor: "#dcfce7",
+            color: "#b91c1c",
+            backgroundColor: "#fee2e2",
             padding: "2px 6px",
             borderRadius: "4px",
             marginTop: "8px",
           }}
         >
-          단골 맞춤 단가 적용
+          🔥 핫딜 특가 적용
         </div>
+      ) : (
+        isCustomPrice && (
+          <div
+            style={{
+              display: "inline-block",
+              fontSize: "12px",
+              fontWeight: 700,
+              color: "#166534",
+              backgroundColor: "#dcfce7",
+              padding: "2px 6px",
+              borderRadius: "4px",
+              marginTop: "8px",
+            }}
+          >
+            단골 맞춤 단가 적용
+          </div>
+        )
       )}
 
       {product.description && (

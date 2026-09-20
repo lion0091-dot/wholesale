@@ -302,7 +302,6 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                 <th>상품</th>
                 <th>기본 단가</th>
                 <th>재고 상태</th>
-                <th>시크릿 딜</th>
                 <th>판매 상태</th>
                 <th>관리</th>
               </tr>
@@ -430,24 +429,6 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                           </button>
                         </div>
                       )}
-                    </td>
-
-                    <td>
-                      <MiniToggle
-                        checked={product.is_secret_deal}
-                        onLabel="🔥 시크릿 ON"
-                        offLabel="시크릿 OFF"
-                        disabled={isBusy}
-                        onClick={() =>
-                          void run(product.id, () =>
-                            toggleProductFlagAction(
-                              product.id,
-                              "is_secret_deal",
-                              !product.is_secret_deal
-                            )
-                          )
-                        }
-                      />
                     </td>
 
                     <td>
@@ -626,23 +607,12 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                 <div
                   style={{
                     display: "flex",
-                    justifyContent: "space-between",
+                    justifyContent: "flex-start",
                     alignItems: "center",
                     borderTop: "1px solid #f1f5f9",
                     paddingTop: "8px",
                   }}
                 >
-                  <MiniToggle
-                    checked={product.is_secret_deal}
-                    onLabel="🔥 시크릿 ON"
-                    offLabel="시크릿 OFF"
-                    disabled={isBusy}
-                    onClick={() =>
-                      void run(product.id, () =>
-                        toggleProductFlagAction(product.id, "is_secret_deal", !product.is_secret_deal)
-                      )
-                    }
-                  />
                   <MiniToggle
                     checked={product.is_active}
                     onLabel="판매중"

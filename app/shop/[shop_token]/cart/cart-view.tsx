@@ -104,9 +104,9 @@ export function CartView({ catalog }: CartViewProps) {
                           </span>
                           <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>
                             {line.name}
-                            {line.isSecretDeal && (
+                            {line.isHotDeal && (
                               <span style={{ fontSize: "12px", color: "#b91c1c", marginLeft: "6px" }}>
-                                시크릿 특가
+                                🔥 핫딜
                               </span>
                             )}
                           </h3>

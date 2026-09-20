@@ -7,9 +7,9 @@ import { AUDIT_LOG_PAGE_SIZE } from "@/lib/audit-log/pagination";
 interface AuditLogPanelProps {
   tableName: AuditLogTable;
   rowId: string;
-  /** 버튼 라벨 — 기본 "변경 이력". 시크릿딜/맞춤단가처럼 섹션이 나뉜 곳은 구분되게 지정한다. */
+  /** 버튼 라벨 — 기본 "변경 이력". 맞춤단가/핫딜처럼 섹션이 나뉜 곳은 구분되게 지정한다. */
   label?: string;
-  /** 좁은 칩/배지 안에 끼워 넣을 때(예: 시크릿딜 노출 대상 칩) — 버튼을 작게 줄인다. */
+  /** 좁은 칩/배지 안에 끼워 넣을 때 — 버튼을 작게 줄인다. */
   compact?: boolean;
 }
 

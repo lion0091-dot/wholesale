@@ -50,7 +50,7 @@ export interface CartLine {
   quantity: number;
   stockQuantity: number;
   isCustomPrice: boolean;
-  isSecretDeal: boolean;
+  isHotDeal: boolean;
 }
 
 export interface CartTotals {

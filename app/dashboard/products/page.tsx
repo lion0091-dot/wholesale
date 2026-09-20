@@ -58,7 +58,6 @@ export default async function DashboardProductsPage() {
     products = DEMO_PRODUCTS;
   }
 
-  const secretDealCount = products.filter((product) => product.is_secret_deal).length;
   const lowStockCount = products.filter((product) => Number(product.stock_quantity) <= 3).length;
 
   return (
@@ -75,7 +74,7 @@ export default async function DashboardProductsPage() {
         <div>
           <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>상품 관리</h1>
           <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-            미니샵에 노출되는 육류 품목, 기본 단가, 재고 및 시크릿 딜 여부를 관리합니다.
+            미니샵에 노출되는 육류 품목, 기본 단가, 재고를 관리합니다. 맞춤단가·핫딜은 맞춤단가관리에서 설정합니다.
           </p>
         </div>
 
@@ -107,7 +106,6 @@ export default async function DashboardProductsPage() {
       <section className="dash-cards">
         {[
           { label: "전체 상품", value: `${products.length}개`, accent: "#0f172a" },
-          { label: "시크릿 딜", value: `${secretDealCount}개`, accent: "#b91c1c" },
           { label: "재고 부족 (3 이하)", value: `${lowStockCount}개`, accent: "#ea580c" },
         ].map((card) => (
           <div

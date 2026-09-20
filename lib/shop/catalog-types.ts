@@ -11,9 +11,12 @@ import type { Product, Wholesaler } from "@/types/database";
 
 export interface ShopCatalogItem {
   product: Product;
-  /** 맞춤 단가가 있으면 맞춤 단가, 없으면 기준 단가 */
+  /** 켜진 핫딜 단가 > 켜진 맞춤 단가 > 기준 단가 순으로 결정된 실제 가격 */
   effectivePrice: number;
+  /** 켜진 맞춤단가(kind='custom') 매핑이 적용됐는지 — 핫딜이 적용된 경우엔 false */
   isCustomPrice: boolean;
+  /** 켜진 핫딜(kind='hot_deal') 매핑이 적용됐는지 */
+  isHotDeal: boolean;
 }
 
 export interface ShopCustomer {
@@ -35,8 +38,6 @@ export interface ShopCatalog {
   wholesaler: Wholesaler;
   items: ShopCatalogItem[];
   customer: ShopCustomer;
-  /** 시크릿 딜 열람 권한 */
-  canViewSecretDeals: boolean;
   /** Supabase 미설정/미등록 상태의 시연 데이터 여부 */
   isDemo: boolean;
 }
@@ -86,7 +87,7 @@ export function toCartLines(catalog: ShopCatalog, entries: CartEntryInput[]): Ca
       quantity,
       stockQuantity: Number(item.product.stock_quantity),
       isCustomPrice: item.isCustomPrice,
-      isSecretDeal: item.product.is_secret_deal,
+      isHotDeal: item.isHotDeal,
     });
 
     return lines;
