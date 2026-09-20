@@ -79,6 +79,14 @@ export async function setCustomPrice(formData: FormData): Promise<ActionResult<{
       "manager",
     ]);
 
+    // wholesalerId가 비어있으면 assertOwnedProduct의 소유권 검증과 아래 거래관계
+    // 확인이 둘 다 건너뛰어져(assertOwnedProduct/if(wholesalerId) 모두 falsy 스킵),
+    // 남의 상품에 남의 거래처를 대상으로 단가를 심을 수 있었다 —
+    // setCustomPriceForAllAction과 동일하게 여기서 먼저 막는다.
+    if (!wholesalerId) {
+      throw new RbacError("공급사 정보를 확인할 수 없습니다.");
+    }
+
     const retailerId = ((formData.get("retailer_id") as string) || "").trim();
     const productId = ((formData.get("product_id") as string) || "").trim();
     const kind = ((formData.get("kind") as string) || "custom").trim();
@@ -99,17 +107,15 @@ export async function setCustomPrice(formData: FormData): Promise<ActionResult<{
     });
 
     // 거래 관계가 있는 고객사인지 확인
-    if (wholesalerId) {
-      const { data: relation } = await supabase
-        .from("wholesaler_retailers")
-        .select("id, status")
-        .eq("wholesaler_id", wholesalerId)
-        .eq("retailer_id", retailerId)
-        .maybeSingle();
+    const { data: relation } = await supabase
+      .from("wholesaler_retailers")
+      .select("id, status")
+      .eq("wholesaler_id", wholesalerId)
+      .eq("retailer_id", retailerId)
+      .maybeSingle();
 
-      if (!relation || relation.status !== "active") {
-        throw new RbacError("거래 중인 고객사가 아닙니다.");
-      }
+    if (!relation || relation.status !== "active") {
+      throw new RbacError("거래 중인 고객사가 아닙니다.");
     }
 
     const { data, error } = await supabase
