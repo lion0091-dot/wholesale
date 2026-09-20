@@ -234,7 +234,9 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
 
   const customer = await resolveCustomer(supabase, wholesaler.id);
 
-  const { hotDeal, custom } = customer.retailerId
+  // isLinked가 아니면(거래중지 등) retailerId가 있어도 핫딜/맞춤단가를 계산하지 않는다 —
+  // 그렇지 않으면 정지된 고객에게 여전히 핫딜 가격·배지가 노출된다.
+  const { hotDeal, custom } = customer.isLinked && customer.retailerId
     ? await loadCustomPrices(
         supabase,
         customer.retailerId,

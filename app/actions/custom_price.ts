@@ -196,21 +196,25 @@ export async function setCustomPriceForAllAction(
         .eq("status", "active"),
       supabase
         .from("custom_prices")
-        .select("retailer_id")
+        .select("retailer_id, is_active")
         .eq("product_id", productId)
         .eq("kind", kind),
     ]);
 
-    const existingRetailerIds = new Set((existing ?? []).map((row) => row.retailer_id as string));
+    // 이미 켜져 있는 고객만 "건드리지 않음"으로 간주한다. 꺼져 있는 고객은 옛 가격이
+    // 남아있으므로 새로 켤 때 이번 가격으로 재활성화해야 한다.
+    const existingActiveRetailerIds = new Set(
+      (existing ?? []).filter((row) => row.is_active).map((row) => row.retailer_id as string)
+    );
     const targetRetailerIds = ((relations ?? []) as Array<{ retailer_id: string }>)
       .map((row) => row.retailer_id)
-      .filter((id) => !existingRetailerIds.has(id));
+      .filter((id) => !existingActiveRetailerIds.has(id));
 
     if (targetRetailerIds.length === 0) {
-      return { success: true, data: { created: 0, skipped: existingRetailerIds.size } };
+      return { success: true, data: { created: 0, skipped: existingActiveRetailerIds.size } };
     }
 
-    const { error } = await supabase.from("custom_prices").insert(
+    const { error } = await supabase.from("custom_prices").upsert(
       targetRetailerIds.map((retailerId) => ({
         organization_id: organizationId,
         wholesaler_id: wholesalerId,
@@ -218,7 +222,9 @@ export async function setCustomPriceForAllAction(
         product_id: productId,
         kind,
         custom_price: customPrice,
-      }))
+        is_active: true,
+      })),
+      { onConflict: "retailer_id,product_id,kind" }
     );
 
     if (error) {
@@ -228,7 +234,7 @@ export async function setCustomPriceForAllAction(
     revalidatePath(REVALIDATE_PATH);
     return {
       success: true,
-      data: { created: targetRetailerIds.length, skipped: existingRetailerIds.size },
+      data: { created: targetRetailerIds.length, skipped: existingActiveRetailerIds.size },
     };
   } catch (error) {
     return toResult(error);

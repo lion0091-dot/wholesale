@@ -190,12 +190,13 @@ export async function updateProductAction(
     await assertOwnedProduct(supabase, productId, wholesalerId, context.isSuperAdmin);
 
     const input = parseProductForm(formData);
+    const expectedUpdatedAt = ((formData.get("updated_at") as string) || "").trim();
 
     // 축종/상품명/원산지는 상품 마스터의 정체성 키다 — 이 셋이 같으면 같은 상품으로
     // 취급하므로 등록 후에는 셋 다 변경을 막는다(폼에서도 읽기전용). 셋 중 하나라도
     // 다르면 수정이 아니라 신규 상품 등록으로 유도한다. 단위·기본단가·재고 등
     // 나머지 마스터 값만 여기서 갱신한다.
-    const { data, error } = await supabase
+    let query = supabase
       .from("products")
       .update({
         subcategory: input.subcategory,
@@ -207,18 +208,26 @@ export async function updateProductAction(
         description: input.description,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", productId)
-      .select("id")
-      .maybeSingle();
+      .eq("id", productId);
+
+    // 폼을 열어둔 사이 목록의 빠른 토글 등으로 다른 곳에서 먼저 저장됐다면 그 변경을
+    // 이 폼의(로드 시점 기준) 값으로 덮어쓰지 않고 충돌로 처리한다.
+    if (expectedUpdatedAt) {
+      query = query.eq("updated_at", expectedUpdatedAt);
+    }
+
+    const { data, error } = await query.select("id").maybeSingle();
 
     if (error) {
       throw new Error(error.message);
     }
 
-    // update()는 RLS가 행을 막아도 에러 없이 0건 반영으로 "성공"을 반환할 수 있다
-    // (assertOwnedProduct의 SELECT 정책과 실제 UPDATE 정책이 다르면 여기서만 걸릴 수 있음).
+    // update()는 RLS가 행을 막거나(SELECT/UPDATE 정책 불일치) updated_at이 어긋나도
+    // 에러 없이 0건 반영으로 "성공"을 반환할 수 있다.
     if (!data) {
-      throw new RbacError("변경 권한이 없어 저장되지 않았습니다. 새로고침 후 다시 시도해주세요.");
+      throw new RbacError(
+        "다른 곳에서 먼저 변경된 상품입니다. 새로고침 후 다시 시도해주세요."
+      );
     }
 
     revalidatePath(REVALIDATE_PATH);

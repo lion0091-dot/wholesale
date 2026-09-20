@@ -687,6 +687,8 @@ export function ProductFormView({
           />
           {/* 토글은 폼 필드가 아니라서, 실제 제출값은 hidden input으로 싣는다. */}
           <input type="hidden" name="is_active" value={isActive ? "on" : "off"} />
+          {/* 폼을 열어둔 사이 목록의 빠른 토글 등으로 다른 곳에서 먼저 저장되면 감지용 */}
+          {product && <input type="hidden" name="updated_at" value={product.updated_at} />}
         </div>
         <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "-4px" }}>
           맞춤단가·핫딜(재고처분 특가) 지정은 등록 후 맞춤단가관리 화면에서 고객별로 설정합니다.
