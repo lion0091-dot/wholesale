@@ -212,20 +212,46 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
           flexWrap: "nowrap",
         }}
       >
-        <input
-          type="search"
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-          placeholder="상품명 검색"
-          style={{
-            flex: "1 1 auto",
-            minWidth: 0,
-            padding: "8px 10px",
-            fontSize: "13px",
-            border: "1px solid #cbd5e1",
-            borderRadius: "6px",
-          }}
-        />
+        <div style={{ position: "relative", flex: "1 1 auto", minWidth: 0 }}>
+          {/* type="search"의 브라우저 기본 지우기(×) 아이콘이 카카오 인앱 브라우저 등에서
+              깨진 이미지(엑박)로 뜨는 문제가 있어 type="text" + 커스텀 취소 버튼을 쓴다. */}
+          <input
+            type="text"
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="상품명 검색"
+            style={{
+              width: "100%",
+              padding: keyword ? "8px 60px 8px 10px" : "8px 10px",
+              fontSize: "13px",
+              border: "1px solid #cbd5e1",
+              borderRadius: "6px",
+            }}
+          />
+          {keyword && (
+            <button
+              type="button"
+              onClick={() => setKeyword("")}
+              style={{
+                position: "absolute",
+                right: "6px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                fontSize: "12px",
+                fontWeight: 600,
+                padding: "4px 9px",
+                borderRadius: "6px",
+                border: "1px solid #cbd5e1",
+                backgroundColor: "#ffffff",
+                color: "#334155",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              취소
+            </button>
+          )}
+        </div>
         <select
           value={category}
           onChange={(event) => setCategory(event.target.value)}
