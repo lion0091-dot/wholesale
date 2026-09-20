@@ -97,20 +97,61 @@ export function AuditLogPanel({ tableName, rowId }: AuditLogPanelProps) {
           ) : (
             <>
               <p style={{ color: "#94a3b8", marginBottom: "4px" }}>총 {totalCount}건</p>
-              {entries.map((entry) => (
-                <div key={entry.id} style={{ marginBottom: "4px" }}>
-                  <strong>{new Date(entry.createdAt).toLocaleString("ko-KR")}</strong> ·{" "}
-                  {entry.changedByName} · {ACTION_LABELS[entry.action]}
-                  {entry.changes.length > 0 && (
-                    <span>
-                      {" — "}
-                      {entry.changes
-                        .map((c) => `${c.field}: ${formatValue(c.before)} → ${formatValue(c.after)}`)
-                        .join(", ")}
-                    </span>
-                  )}
-                </div>
-              ))}
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #cbd5e1", color: "#64748b" }}>
+                      <th style={{ textAlign: "left", padding: "4px 6px", whiteSpace: "nowrap" }}>시간</th>
+                      <th style={{ textAlign: "left", padding: "4px 6px", whiteSpace: "nowrap" }}>처리자</th>
+                      <th style={{ textAlign: "left", padding: "4px 6px", whiteSpace: "nowrap" }}>동작</th>
+                      <th style={{ textAlign: "left", padding: "4px 6px" }}>필드</th>
+                      <th style={{ textAlign: "left", padding: "4px 6px" }}>변경 전</th>
+                      <th style={{ textAlign: "left", padding: "4px 6px" }}>변경 후</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entries.flatMap((entry) => {
+                      const rows = entry.changes.length > 0 ? entry.changes : [null];
+
+                      return rows.map((change, index) => (
+                        <tr key={`${entry.id}-${index}`} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          {index === 0 && (
+                            <>
+                              <td
+                                rowSpan={rows.length}
+                                style={{ padding: "4px 6px", verticalAlign: "top", whiteSpace: "nowrap" }}
+                              >
+                                {new Date(entry.createdAt).toLocaleString("ko-KR")}
+                              </td>
+                              <td rowSpan={rows.length} style={{ padding: "4px 6px", verticalAlign: "top" }}>
+                                {entry.changedByName}
+                              </td>
+                              <td rowSpan={rows.length} style={{ padding: "4px 6px", verticalAlign: "top" }}>
+                                {ACTION_LABELS[entry.action]}
+                              </td>
+                            </>
+                          )}
+                          {change ? (
+                            <>
+                              <td style={{ padding: "4px 6px" }}>{change.field}</td>
+                              <td style={{ padding: "4px 6px", color: "#94a3b8" }}>
+                                {formatValue(change.before)}
+                              </td>
+                              <td style={{ padding: "4px 6px", fontWeight: 600 }}>
+                                {formatValue(change.after)}
+                              </td>
+                            </>
+                          ) : (
+                            <td colSpan={3} style={{ padding: "4px 6px", color: "#94a3b8" }}>
+                              -
+                            </td>
+                          )}
+                        </tr>
+                      ));
+                    })}
+                  </tbody>
+                </table>
+              </div>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "6px" }}>
                 {hasMore && (
                   <button

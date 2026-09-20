@@ -193,13 +193,21 @@ export async function updateProductAction(
 
     const input = parseProductForm(formData);
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("products")
       .update({ ...input, updated_at: new Date().toISOString() })
-      .eq("id", productId);
+      .eq("id", productId)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       throw new Error(error.message);
+    }
+
+    // update()는 RLS가 행을 막아도 에러 없이 0건 반영으로 "성공"을 반환할 수 있다
+    // (assertOwnedProduct의 SELECT 정책과 실제 UPDATE 정책이 다르면 여기서만 걸릴 수 있음).
+    if (!data) {
+      throw new RbacError("변경 권한이 없어 저장되지 않았습니다. 새로고침 후 다시 시도해주세요.");
     }
 
     revalidatePath(REVALIDATE_PATH);
@@ -226,13 +234,19 @@ export async function toggleProductFlagAction(
       throw new RbacError("변경할 수 없는 항목입니다.");
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("products")
       .update({ [field]: nextValue, updated_at: new Date().toISOString() })
-      .eq("id", productId);
+      .eq("id", productId)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       throw new Error(error.message);
+    }
+
+    if (!data) {
+      throw new RbacError("변경 권한이 없어 저장되지 않았습니다. 새로고침 후 다시 시도해주세요.");
     }
 
     revalidatePath(REVALIDATE_PATH);
@@ -257,13 +271,19 @@ export async function updateProductStockAction(
       throw new RbacError("재고 수량은 0 이상의 숫자여야 합니다.");
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("products")
       .update({ stock_quantity: nextStock, updated_at: new Date().toISOString() })
-      .eq("id", productId);
+      .eq("id", productId)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       throw new Error(error.message);
+    }
+
+    if (!data) {
+      throw new RbacError("변경 권한이 없어 저장되지 않았습니다. 새로고침 후 다시 시도해주세요.");
     }
 
     revalidatePath(REVALIDATE_PATH);
