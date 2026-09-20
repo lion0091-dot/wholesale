@@ -228,7 +228,7 @@ export function CustomPriceManager({
         text:
           skipped > 0
             ? `${created}곳에 새로 생성했습니다 (이미 지정된 ${skipped}곳은 건드리지 않았습니다).`
-            : `거래중인 ${created}곳 전원에게 생성했습니다.`,
+            : `거래중인 고객 ${created}곳에 생성했습니다.`,
       });
       router.refresh();
       return;
@@ -568,7 +568,9 @@ export function CustomPriceManager({
               backgroundColor: "#f8fafc",
             }}
           >
-            <span style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>상품 단위 일괄 켜기/끄기:</span>
+            <span style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>
+              {kind === "hot_deal" ? "핫딜단가 일괄 켜기/끄기" : "맞춤단가 일괄 켜기/끄기"}:
+            </span>
             <select
               value={bulkToggleProductId}
               onChange={(event) => setBulkToggleProductId(event.target.value)}
