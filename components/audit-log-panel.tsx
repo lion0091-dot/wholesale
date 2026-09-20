@@ -82,12 +82,13 @@ export function AuditLogPanel({ tableName, rowId, label = "변경 이력", compa
             ? {
                 fontSize: "11px",
                 fontWeight: 700,
-                color: "#166534",
-                backgroundColor: "transparent",
-                border: "none",
-                textDecoration: "underline",
+                color: "#0f172a",
+                backgroundColor: "#ffffff",
+                border: "1px solid #94a3b8",
+                borderRadius: "999px",
                 cursor: "pointer",
-                padding: "0 2px",
+                padding: "2px 8px",
+                whiteSpace: "nowrap",
               }
             : {
                 fontSize: "12px",
