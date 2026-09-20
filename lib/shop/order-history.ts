@@ -17,12 +17,16 @@ import type {
   ShopOrderHistory,
   ShopOrderLine,
 } from "@/lib/shop/order-history-types";
+import { ORDER_HISTORY_PAGE_SIZE } from "@/lib/orders/history-range";
 import type { OrderStatus } from "@/types/database";
 
-/** 미니샵에 노출할 최근 발주 건수 */
-const ORDER_HISTORY_LIMIT = 30;
-
-const EMPTY_HISTORY: ShopOrderHistory = { orders: [], notice: null, requiresLink: false };
+const EMPTY_HISTORY: ShopOrderHistory = {
+  orders: [],
+  notice: null,
+  requiresLink: false,
+  totalCount: 0,
+  hasMore: false,
+};
 
 export type {
   ShopOrder,
@@ -55,51 +59,75 @@ type OrderItemRow = {
   subtotal_amount: number | string;
 };
 
+export interface LoadShopOrderHistoryOptions {
+  /** null이면 전체 기간. 생략 시 기본 구간(DEFAULT_ORDER_HISTORY_DAYS)을 호출부가 넘긴다. */
+  rangeDays?: number | null;
+  offset?: number;
+}
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+interface FetchOrderPageResult {
+  orders: ShopOrder[];
+  totalCount: number;
+  hasMore: boolean;
+  /** 조회 자체가 실패한 경우에만 채워진다 — "0건"과 "조회 실패"를 구분하는 용도. */
+  error: string | null;
+}
+
+/** null(전체 기간) 또는 유효한 양의 정수만 허용 — 그 외(NaN, 음수 등)는 전체 기간으로 취급한다. */
+function sanitizeRangeDays(rangeDays: number | null): number | null {
+  if (rangeDays === null) return null;
+
+  return Number.isFinite(rangeDays) && rangeDays > 0 ? Math.floor(rangeDays) : null;
+}
+
 /**
- * 접속 고객의 주문 내역 조회.
- * 고객 식별은 항상 서버(카탈로그 로더)가 해석한 값만 사용한다.
+ * 조회 구간/더보기 페이지 단위로 발주 목록 + 품목을 가져온다.
+ * 최초 로드(loadShopOrderHistory)와 "구간 변경/더보기" 클라이언트 액션
+ * (app/shop/[shop_token]/actions.ts의 loadShopOrderHistoryPageAction)이 공용으로 쓴다.
  */
-export async function loadShopOrderHistory(catalog: ShopCatalog): Promise<ShopOrderHistory> {
-  if (!catalog.customer.retailerId) {
-    return {
-      ...EMPTY_HISTORY,
-      notice: "주문 내역은 공급사에서 받은 초대 링크로 단골 인증을 완료한 뒤 확인할 수 있습니다.",
-      requiresLink: true,
-    };
-  }
+export async function fetchShopOrderPage(
+  supabase: SupabaseServerClient,
+  wholesalerId: string,
+  retailerId: string,
+  { rangeDays = null, offset = 0 }: LoadShopOrderHistoryOptions = {}
+): Promise<FetchOrderPageResult> {
+  const safeRangeDays = sanitizeRangeDays(rangeDays);
 
-  if (catalog.isDemo) {
-    return {
-      ...EMPTY_HISTORY,
-      notice: "시연(데모) 카탈로그에서는 주문 내역이 조회되지 않습니다. 실제 공급사 링크로 접속해주세요.",
-    };
-  }
-
-  const supabase = await createClient();
-
-  const { data: orderRows, error } = await supabase
+  let query = supabase
     .from("orders")
     .select(
-      "id, order_number, status, total_amount, delivery_address, delivery_notes, ordered_at, cancel_reason, cancel_requested_at, cancel_resolved_at, courier_code, tracking_number"
+      "id, order_number, status, total_amount, delivery_address, delivery_notes, ordered_at, cancel_reason, cancel_requested_at, cancel_resolved_at, courier_code, tracking_number",
+      { count: "exact" }
     )
-    .eq("wholesaler_id", catalog.wholesaler.id)
-    .eq("retailer_id", catalog.customer.retailerId)
+    .eq("wholesaler_id", wholesalerId)
+    .eq("retailer_id", retailerId);
+
+  if (safeRangeDays !== null) {
+    const cutoff = new Date(Date.now() - safeRangeDays * 24 * 60 * 60 * 1000).toISOString();
+    query = query.gte("ordered_at", cutoff);
+  }
+
+  const { data: orderRows, count, error } = await query
     .order("ordered_at", { ascending: false })
-    .limit(ORDER_HISTORY_LIMIT);
+    .range(offset, offset + ORDER_HISTORY_PAGE_SIZE - 1);
 
   if (error) {
     console.error("[Shop Order History ERROR]", error);
-
     return {
-      ...EMPTY_HISTORY,
-      notice: "주문 내역을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.",
+      orders: [],
+      totalCount: 0,
+      hasMore: false,
+      error: "주문 내역을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.",
     };
   }
 
   const rows = (orderRows ?? []) as OrderRow[];
+  const totalCount = count ?? 0;
 
   if (rows.length === 0) {
-    return { ...EMPTY_HISTORY, notice: "아직 접수된 발주서가 없습니다." };
+    return { orders: [], totalCount, hasMore: false, error: null };
   }
 
   const { data: itemRows } = await supabase
@@ -143,5 +171,62 @@ export async function loadShopOrderHistory(catalog: ShopCatalog): Promise<ShopOr
     lines: linesByOrder.get(row.id) ?? [],
   }));
 
-  return { orders, notice: null, requiresLink: false };
+  return { orders, totalCount, hasMore: offset + orders.length < totalCount, error: null };
+}
+
+/**
+ * 접속 고객의 주문 내역 조회(최초 페이지 로드용).
+ * 고객 식별은 항상 서버(카탈로그 로더)가 해석한 값만 사용한다.
+ *
+ * 오래 거래한 단골일수록 발주 건수가 무한정 쌓일 수 있어(예전엔 최근 30건 고정 상한) 공급사
+ * 쪽 발주 관리(app/dashboard/orders)와 동일하게 조회 구간(30일/3개월/전체)과
+ * ORDER_HISTORY_PAGE_SIZE 단위 더보기로 바꾼다.
+ */
+export async function loadShopOrderHistory(
+  catalog: ShopCatalog,
+  options: LoadShopOrderHistoryOptions = {}
+): Promise<ShopOrderHistory> {
+  if (!catalog.customer.retailerId) {
+    return {
+      ...EMPTY_HISTORY,
+      notice: "주문 내역은 공급사에서 받은 초대 링크로 단골 인증을 완료한 뒤 확인할 수 있습니다.",
+      requiresLink: true,
+    };
+  }
+
+  if (catalog.isDemo) {
+    return {
+      ...EMPTY_HISTORY,
+      notice: "시연(데모) 카탈로그에서는 주문 내역이 조회되지 않습니다. 실제 공급사 링크로 접속해주세요.",
+    };
+  }
+
+  const supabase = await createClient();
+  const { orders, totalCount, hasMore, error } = await fetchShopOrderPage(
+    supabase,
+    catalog.wholesaler.id,
+    catalog.customer.retailerId,
+    options
+  );
+
+  if (error) {
+    return { ...EMPTY_HISTORY, notice: error };
+  }
+
+  if (orders.length === 0) {
+    const { rangeDays = null } = options;
+
+    return {
+      ...EMPTY_HISTORY,
+      // 구간이 지정된 상태에서 0건이면 "그 구간엔 없다"는 뜻이라 다른 구간을 안내하고,
+      // 전체 기간(rangeDays=null)까지 0건이면 애초에 발주 이력이 없는 것이다.
+      notice:
+        rangeDays !== null
+          ? `최근 ${rangeDays}일간 발주 내역이 없습니다. 다른 기간을 선택해보세요.`
+          : "아직 접수된 발주서가 없습니다.",
+      totalCount,
+    };
+  }
+
+  return { orders, notice: null, requiresLink: false, totalCount, hasMore };
 }

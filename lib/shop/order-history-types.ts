@@ -43,6 +43,9 @@ export interface ShopOrderHistory {
   notice: string | null;
   /** 단골 인증이 필요한 상태 여부 */
   requiresLink: boolean;
+  /** 지금 조회 구간(rangeDays) 기준 전체 건수 — "총 N건" 표시 및 더보기 판단용 */
+  totalCount: number;
+  hasMore: boolean;
 }
 
 /**

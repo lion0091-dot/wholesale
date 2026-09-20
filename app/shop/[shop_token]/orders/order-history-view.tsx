@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ORDER_STATUS_BADGES, canRequestCancel, formatOrderedAt } from "@/lib/orders/status";
+import { ORDER_HISTORY_RANGE_OPTIONS } from "@/lib/orders/history-range";
 import type { ShopCatalog } from "@/lib/shop/catalog-types";
 import {
   CANCEL_REASON_MAX_LENGTH,
@@ -21,7 +21,11 @@ import {
   labelStyle,
   shopPageStyle,
 } from "../shop-chrome";
-import { fetchBuyerTrackingStatusAction, requestOrderCancelAction } from "../actions";
+import {
+  fetchBuyerTrackingStatusAction,
+  loadShopOrderHistoryPageAction,
+  requestOrderCancelAction,
+} from "../actions";
 import { StatementPreviewButton } from "@/components/statement-preview-button";
 import { SampleBadge } from "@/components/sample-badge";
 import { courierLabel, type TrackingResult } from "@/lib/verification/sweettracker";
@@ -29,6 +33,8 @@ import { courierLabel, type TrackingResult } from "@/lib/verification/sweettrack
 interface OrderHistoryViewProps {
   catalog: ShopCatalog;
   history: ShopOrderHistory;
+  /** 최초 로드 시 적용된 조회 구간(일) — 범위 선택 버튼의 초기 선택 상태 */
+  initialRangeDays: number;
   /** 스위트트래커 API 키 미설정 시 배송 조회 버튼 자체를 숨긴다. */
   sweetTrackerConfigured: boolean;
   /** 주문 ID별 카카오 인앱 "외부에서 열기" 전용 토큰 경로(/doc/[token]). 없으면 기존 href로 폴백. */
@@ -102,10 +108,10 @@ const REASON_PRESETS = [
 export function OrderHistoryView({
   catalog,
   history,
+  initialRangeDays,
   sweetTrackerConfigured,
   statementExternalOpenHrefByOrderId,
 }: OrderHistoryViewProps) {
-  const router = useRouter();
   const { wholesaler, customer, shopToken } = catalog;
 
   /** 취소 사유 입력창이 열린 주문 ID */
@@ -114,6 +120,70 @@ export function OrderHistoryView({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submittingOrderId, setSubmittingOrderId] = useState<string | null>(null);
   const [completedOrderId, setCompletedOrderId] = useState<string | null>(null);
+
+  // 조회 구간(30일/3개월/전체) + 더보기 — 미인증/데모 상태(history.requiresLink,
+  // catalog.isDemo)에서는 애초에 조회할 데이터가 없으므로 아래 상태는 그 경우엔 쓰이지 않는다.
+  const canPaginate = !history.requiresLink && !catalog.isDemo;
+  const [orders, setOrders] = useState<ShopOrder[]>(history.orders);
+  const [rangeDays, setRangeDays] = useState<number | null>(initialRangeDays);
+  const [totalCount, setTotalCount] = useState(history.totalCount);
+  const [hasMore, setHasMore] = useState(history.hasMore);
+  const [emptyNotice, setEmptyNotice] = useState<string | null>(
+    orders.length === 0 ? history.notice : null
+  );
+  const [externalOpenHrefs, setExternalOpenHrefs] = useState(statementExternalOpenHrefByOrderId);
+  const [rangeLoading, setRangeLoading] = useState(false);
+  const [moreLoading, setMoreLoading] = useState(false);
+  // 구간 변경과 더보기가 동시에 나가면 먼저 온 응답이 나중 응답에 덮어써질 수 있어
+  // (예: 더보기 중에 구간을 바꾸면 옛 구간의 더보기 결과가 새 구간 목록 뒤에 붙음)
+  // 서로의 로딩 중에는 상대 조작을 막는다.
+  const isBusy = rangeLoading || moreLoading;
+
+  const handleRangeChange = async (nextRangeDays: number | null) => {
+    if (nextRangeDays === rangeDays || isBusy) return;
+
+    setRangeLoading(true);
+    setRangeDays(nextRangeDays);
+
+    const result = await loadShopOrderHistoryPageAction(shopToken, nextRangeDays, 0);
+    setRangeLoading(false);
+
+    if (!result.success || !result.data) {
+      setOrders([]);
+      setTotalCount(0);
+      setHasMore(false);
+      setEmptyNotice(result.error ?? "주문 내역을 불러오지 못했습니다.");
+      return;
+    }
+
+    setOrders(result.data.orders);
+    setTotalCount(result.data.totalCount);
+    setHasMore(result.data.hasMore);
+    setExternalOpenHrefs((prev) => ({ ...prev, ...result.data!.statementExternalOpenHrefByOrderId }));
+    setEmptyNotice(
+      result.data.orders.length === 0
+        ? nextRangeDays !== null
+          ? `최근 ${nextRangeDays}일간 발주 내역이 없습니다. 다른 기간을 선택해보세요.`
+          : "아직 접수된 발주서가 없습니다."
+        : null
+    );
+  };
+
+  const handleLoadMore = async () => {
+    if (isBusy) return;
+
+    setMoreLoading(true);
+    const result = await loadShopOrderHistoryPageAction(shopToken, rangeDays, orders.length);
+    setMoreLoading(false);
+
+    if (!result.success || !result.data) {
+      return;
+    }
+
+    setOrders((prev) => [...prev, ...result.data!.orders]);
+    setHasMore(result.data.hasMore);
+    setExternalOpenHrefs((prev) => ({ ...prev, ...result.data!.statementExternalOpenHrefByOrderId }));
+  };
 
   const openCancelForm = (orderId: string) => {
     setActiveOrderId(orderId);
@@ -149,8 +219,21 @@ export function OrderHistoryView({
       if (result.success) {
         setCompletedOrderId(order.id);
         closeCancelForm();
-        // 서버 컴포넌트를 다시 불러 상태 배지/요청 사유를 최신값으로 교체한다.
-        router.refresh();
+        // orders는 이제 클라이언트 상태(구간/더보기)로 관리되므로 router.refresh()로
+        // 내려오는 새 서버 props가 반영되지 않는다 — 응답으로 받은 최신 상태를
+        // 해당 주문에 직접 반영한다.
+        setOrders((prev) =>
+          prev.map((entry) =>
+            entry.id === order.id
+              ? {
+                  ...entry,
+                  status: result.status ?? "cancel_requested",
+                  cancelReason: reason,
+                  cancelRequestedAt: result.requestedAt ?? new Date().toISOString(),
+                }
+              : entry
+          )
+        );
       } else {
         setErrorMessage(result.error ?? "취소 요청 접수에 실패했습니다.");
       }
@@ -171,7 +254,7 @@ export function OrderHistoryView({
       />
 
       <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
-        {history.notice && (
+        {!canPaginate && history.notice && (
           <div style={{ ...cardStyle, padding: "28px 20px", textAlign: "center" }}>
             <div style={{ fontSize: "32px", marginBottom: "10px" }}>
               {history.requiresLink ? "🔒" : "📋"}
@@ -197,7 +280,51 @@ export function OrderHistoryView({
           </div>
         )}
 
-        {history.orders.map((order) => {
+        {canPaginate && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "8px",
+            }}
+          >
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              {ORDER_HISTORY_RANGE_OPTIONS.map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => void handleRangeChange(option.days)}
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    padding: "6px 10px",
+                    borderRadius: "999px",
+                    border: rangeDays === option.days ? "1px solid #0f172a" : "1px solid #cbd5e1",
+                    backgroundColor: rangeDays === option.days ? "#0f172a" : "#ffffff",
+                    color: rangeDays === option.days ? "#ffffff" : "#334155",
+                    cursor: isBusy ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <span style={{ fontSize: "12px", color: "#64748b" }}>총 {totalCount}건</span>
+          </div>
+        )}
+
+        {canPaginate && emptyNotice && (
+          <div style={{ ...cardStyle, padding: "20px", textAlign: "center" }}>
+            <p style={{ fontSize: "13px", color: "#475569", lineHeight: 1.6 }}>
+              {rangeLoading ? "불러오는 중..." : emptyNotice}
+            </p>
+          </div>
+        )}
+
+        {orders.map((order) => {
           const badge = ORDER_STATUS_BADGES[order.status];
           const progress = describeCancelProgress(order);
           const isCancelable = canRequestCancel(order.status);
@@ -318,7 +445,7 @@ export function OrderHistoryView({
                 <StatementPreviewButton
                   href={`/shop/${shopToken}/orders/${order.id}/statement`}
                   label="거래명세서"
-                  externalOpenHref={statementExternalOpenHrefByOrderId[order.id] ?? null}
+                  externalOpenHref={externalOpenHrefs[order.id] ?? null}
                 />
                 {sweetTrackerConfigured && order.courierCode && order.trackingNumber && (
                   <TrackingLookupButton shopToken={shopToken} order={order} />
@@ -537,6 +664,27 @@ export function OrderHistoryView({
             </article>
           );
         })}
+
+        {canPaginate && hasMore && (
+          <button
+            type="button"
+            onClick={() => void handleLoadMore()}
+            disabled={isBusy}
+            style={{
+              alignSelf: "center",
+              fontSize: "13px",
+              fontWeight: 700,
+              color: "#334155",
+              backgroundColor: "#ffffff",
+              border: "1px solid #cbd5e1",
+              borderRadius: "8px",
+              padding: "10px 20px",
+              cursor: isBusy ? "not-allowed" : "pointer",
+            }}
+          >
+            {moreLoading ? "불러오는 중..." : "더보기"}
+          </button>
+        )}
       </div>
 
       <ShopFooter businessName={wholesaler.business_name} />

@@ -1,5 +1,6 @@
 import { loadShopCatalog } from "@/lib/shop/catalog";
 import { loadShopOrderHistory } from "@/lib/shop/order-history";
+import { DEFAULT_ORDER_HISTORY_DAYS } from "@/lib/orders/history-range";
 import { requireBuyerConsent } from "@/lib/auth/buyer-auth";
 import { isSweetTrackerConfigured } from "@/lib/verification/sweettracker";
 import { signExternalOpenToken } from "@/lib/pdf/external-open-token";
@@ -17,7 +18,7 @@ export default async function ShopOrderHistoryPage({ params }: PageProps) {
   await requireBuyerConsent(shop_token);
 
   const catalog = await loadShopCatalog(shop_token);
-  const history = await loadShopOrderHistory(catalog);
+  const history = await loadShopOrderHistory(catalog, { rangeDays: DEFAULT_ORDER_HISTORY_DAYS });
 
   // 카카오 인앱 브라우저 "외부에서 열기" 전용 — 세션 쿠키 없이도 인가되는 단발성 토큰.
   // 데모/미연결 고객은 발급하지 않고, 버튼은 기존 href로 폴백한다.
@@ -42,6 +43,7 @@ export default async function ShopOrderHistoryPage({ params }: PageProps) {
     <OrderHistoryView
       catalog={catalog}
       history={history}
+      initialRangeDays={DEFAULT_ORDER_HISTORY_DAYS}
       sweetTrackerConfigured={isSweetTrackerConfigured()}
       statementExternalOpenHrefByOrderId={statementExternalOpenHrefByOrderId}
     />

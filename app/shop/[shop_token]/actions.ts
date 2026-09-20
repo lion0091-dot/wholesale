@@ -11,12 +11,14 @@ import {
 } from "@/lib/notifications/alimtalk";
 import { canRequestCancel } from "@/lib/orders/status";
 import { loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
-import { validateCancelReason } from "@/lib/shop/order-history-types";
+import { fetchShopOrderPage } from "@/lib/shop/order-history";
+import { validateCancelReason, type ShopOrder } from "@/lib/shop/order-history-types";
 import { validateCart } from "@/lib/shop/order-policy";
 import { isRetailerNamePlaceholder } from "@/lib/shop/retailer-placeholder";
 import { createOrderWithItems, buildOrderNumber } from "@/lib/orders/create-order";
 import { fetchTrackingStatus, type TrackingResult } from "@/lib/verification/sweettracker";
 import { composeProductDisplayName } from "@/lib/products/display-name";
+import { signExternalOpenToken } from "@/lib/pdf/external-open-token";
 import type { OrderStatus, PaymentMethod } from "@/types/database";
 
 export interface SubmitOrderInput {
@@ -545,6 +547,84 @@ export async function fetchBuyerTrackingStatusAction(
     return {
       success: false,
       error: error instanceof Error ? error.message : "배송 조회 중 오류가 발생했습니다.",
+    };
+  }
+}
+
+// ====================================================================
+// 주문 내역 조회 구간 변경 / 더보기 — 바이어
+// ====================================================================
+
+export interface LoadShopOrderHistoryPageResult {
+  success: boolean;
+  error?: string;
+  data?: {
+    orders: ShopOrder[];
+    totalCount: number;
+    hasMore: boolean;
+    /** 카카오 인앱 브라우저 "외부에서 열기" 전용 토큰 경로(/doc/[token]). 발급 안 되면 생략(기존 href 폴백). */
+    statementExternalOpenHrefByOrderId: Record<string, string>;
+  };
+}
+
+/**
+ * 초기 페이지 로드(order-history.ts의 loadShopOrderHistory) 이후, 조회 구간(30일/3개월/전체)을
+ * 바꾸거나 "더보기"를 누를 때 클라이언트에서 호출한다. shopToken으로 재확인한 본인 발주만
+ * 조회되므로 남의 발주서를 offset/rangeDays 조작으로 엿볼 수 없다.
+ */
+export async function loadShopOrderHistoryPageAction(
+  shopToken: string,
+  rangeDays: number | null,
+  offset = 0
+): Promise<LoadShopOrderHistoryPageResult> {
+  try {
+    if (!UUID_PATTERN.test(shopToken ?? "")) {
+      return { success: false, error: "올바른 미니샵 주소가 아닙니다." };
+    }
+
+    const supabase = await createClient();
+    const buyer = await requireLinkedBuyer(supabase, shopToken);
+
+    const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
+
+    const { orders, totalCount, hasMore, error } = await fetchShopOrderPage(
+      supabase,
+      buyer.wholesalerId,
+      buyer.retailerId,
+      { rangeDays, offset: safeOffset }
+    );
+
+    if (error) {
+      return { success: false, error };
+    }
+
+    const statementExternalOpenHrefByOrderId: Record<string, string> = {};
+
+    for (const order of orders) {
+      const token = signExternalOpenToken({
+        kind: "buyer-statement",
+        orderId: order.id,
+        wholesalerId: buyer.wholesalerId,
+        retailerId: buyer.retailerId,
+      });
+
+      if (token) {
+        statementExternalOpenHrefByOrderId[order.id] = `/doc/${token}`;
+      }
+    }
+
+    return {
+      success: true,
+      data: { orders, totalCount, hasMore, statementExternalOpenHrefByOrderId },
+    };
+  } catch (error: unknown) {
+    if (error instanceof BuyerAuthError) {
+      return { success: false, error: error.message };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "주문 내역 조회 중 오류가 발생했습니다.",
     };
   }
 }
