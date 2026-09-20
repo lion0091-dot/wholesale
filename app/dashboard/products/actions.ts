@@ -193,9 +193,21 @@ export async function updateProductAction(
 
     const input = parseProductForm(formData);
 
+    // 축종/상품명/원산지는 상품 마스터의 정체성 키다 — 이 셋이 같으면 같은 상품으로
+    // 취급하므로 등록 후에는 셋 다 변경을 막는다(폼에서도 읽기전용). 셋 중 하나라도
+    // 다르면 수정이 아니라 신규 상품 등록으로 유도한다. 단위·기본단가·재고 등
+    // 나머지 마스터 값만 여기서 갱신한다.
     const { data, error } = await supabase
       .from("products")
-      .update({ ...input, updated_at: new Date().toISOString() })
+      .update({
+        subcategory: input.subcategory,
+        grade: input.grade,
+        base_price: input.base_price,
+        unit: input.unit,
+        stock_quantity: input.stock_quantity,
+        description: input.description,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", productId)
       .select("id")
       .maybeSingle();

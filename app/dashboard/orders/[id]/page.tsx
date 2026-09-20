@@ -19,6 +19,7 @@ import { isSweetTrackerConfigured } from "@/lib/verification/sweettracker";
 import { isPopbillConfigured } from "@/lib/popbill/client";
 import { signExternalOpenToken } from "@/lib/pdf/external-open-token";
 import { SampleBadge } from "@/components/sample-badge";
+import { composeProductDisplayName } from "@/lib/products/display-name";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 export const metadata = {
@@ -308,7 +309,9 @@ export default async function OrderDetailPage({ params }: PageProps) {
             <tbody>
               {order.items.map((item) => (
                 <tr key={item.id}>
-                  <td style={{ fontWeight: 600 }}>{item.product_name}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    {composeProductDisplayName(item.category, item.product_name)}
+                  </td>
                   <td style={{ whiteSpace: "nowrap" }}>{formatWon(item.unit_price)}</td>
                   <td style={{ whiteSpace: "nowrap" }}>{Number(item.quantity)}</td>
                   <td style={{ whiteSpace: "nowrap", fontWeight: 700 }}>
@@ -333,7 +336,9 @@ export default async function OrderDetailPage({ params }: PageProps) {
                 gap: "4px",
               }}
             >
-              <div style={{ fontWeight: 700, fontSize: "14px" }}>{item.product_name}</div>
+              <div style={{ fontWeight: 700, fontSize: "14px" }}>
+                {composeProductDisplayName(item.category, item.product_name)}
+              </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#64748b" }}>
                 <span>{formatWon(item.unit_price)} × {Number(item.quantity)}</span>
                 <span style={{ fontWeight: 700, color: "#0f172a" }}>{formatWon(item.subtotal_amount)}</span>

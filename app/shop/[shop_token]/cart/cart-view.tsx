@@ -17,6 +17,7 @@ import {
   formatWon,
   shopPageStyle,
 } from "../shop-chrome";
+import { composeProductDisplayName } from "@/lib/products/display-name";
 
 interface CartViewProps {
   catalog: ShopCatalog;
@@ -90,7 +91,7 @@ export function CartView({ catalog }: CartViewProps) {
                     <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
                       <div>
                         <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>
-                          {line.name}
+                          {composeProductDisplayName(line.category, line.name)}
                           {line.isSecretDeal && (
                             <span style={{ fontSize: "12px", color: "#b91c1c", marginLeft: "6px" }}>
                               시크릿 특가

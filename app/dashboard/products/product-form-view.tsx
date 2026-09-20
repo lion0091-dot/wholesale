@@ -56,6 +56,14 @@ const fieldStyle: CSSProperties = {
   wordBreak: "keep-all",
 };
 
+/** 등록 후 잠기는 정체성 필드(상품명/원산지)에 쓰는 읽기 전용 스타일 — 축종의 disabled 상태와 시각적으로 맞춘다. */
+const readOnlyFieldStyle: CSSProperties = {
+  ...fieldStyle,
+  backgroundColor: "#f1f5f9",
+  color: "#64748b",
+  cursor: "not-allowed",
+};
+
 /** 체크박스 대신 쓰는 토글 스위치 — 행 전체가 터치 영역, 옵션명 옆 "?"로 짧은 설명을 띄운다. */
 function ToggleField({
   label,
@@ -458,11 +466,17 @@ export function ProductFormView({
               type="text"
               required
               minLength={2}
+              readOnly={isEdit}
               defaultValue={product?.name}
-              placeholder="예: 한우 1++ 등심"
+              placeholder="예: 등심"
               autoComplete="off"
-              style={fieldStyle}
+              style={isEdit ? readOnlyFieldStyle : fieldStyle}
             />
+            <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+              {isEdit
+                ? "등록 후에는 상품명을 바꿀 수 없어요. 축종·상품명·원산지가 이 상품의 정체성이라 셋 중 하나라도 다르면 새 상품으로 등록해주세요."
+                : "축종은 아래에서 따로 고르면 화면에 자동으로 앞에 붙어요. 여기엔 부위/상세 설명만 적으면 됩니다."}
+            </p>
           </div>
 
           <div>
@@ -475,8 +489,14 @@ export function ProductFormView({
               label="축종/카테고리"
               value={selectedCategory}
               onChange={handleCategoryChange}
+              disabled={isEdit}
               options={categoryOptions.map((item) => ({ value: item, label: item }))}
             />
+            {isEdit && (
+              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+                등록 후에는 축종을 바꿀 수 없어요. 축종이 다른 상품이면 새로 등록해주세요.
+              </p>
+            )}
           </div>
         </div>
 
@@ -508,11 +528,17 @@ export function ProductFormView({
               name="origin"
               type="text"
               required
+              readOnly={isEdit}
               defaultValue={product?.origin}
               placeholder="예: 국내산, 미국산"
               autoComplete="off"
-              style={fieldStyle}
+              style={isEdit ? readOnlyFieldStyle : fieldStyle}
             />
+            {isEdit && (
+              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+                등록 후에는 원산지를 바꿀 수 없어요.
+              </p>
+            )}
           </div>
 
           <div>

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Product } from "@/types/database";
 import { AuditLogPanel } from "@/components/audit-log-panel";
 import { SampleBadge } from "@/components/sample-badge";
+import { composeProductDisplayName } from "@/lib/products/display-name";
 import {
   deleteProductAction,
   toggleProductFlagAction,
@@ -187,7 +188,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
   };
 
   const handleDelete = (product: Product) => {
-    if (!window.confirm(`'${product.name}' 상품을 삭제하시겠습니까?`)) {
+    if (!window.confirm(`'${composeProductDisplayName(product.category, product.name)}' 상품을 삭제하시겠습니까?`)) {
       return;
     }
 
@@ -333,7 +334,9 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                         </span>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            <div style={{ fontWeight: 700 }}>{product.name}</div>
+                            <div style={{ fontWeight: 700 }}>
+                              {composeProductDisplayName(product.category, product.name)}
+                            </div>
                             {readOnly && <SampleBadge />}
                           </div>
                           <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
@@ -532,7 +535,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                       <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>
-                        {product.name}
+                        {composeProductDisplayName(product.category, product.name)}
                       </div>
                       {readOnly && <SampleBadge />}
                     </div>

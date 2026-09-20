@@ -6,6 +6,7 @@ import { decryptCredential, CredentialCryptoError } from "@/lib/security/credent
 import { createOrderWithItems, buildOrderNumber } from "@/lib/orders/create-order";
 import { sendOrderNotificationToWholesaler } from "@/lib/notifications/alimtalk";
 import type { CartLine } from "@/lib/shop/order-policy";
+import { composeProductDisplayName } from "@/lib/products/display-name";
 
 // 토스 결제 승인 API는 Node crypto(lib/security/credential-crypto.ts)를 쓰므로 Edge에서 못 돈다.
 export const runtime = "nodejs";
@@ -126,10 +127,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .maybeSingle();
 
     const [firstLine] = lines;
+    const firstLineDisplayName = composeProductDisplayName(firstLine.category, firstLine.name);
     const itemsSummary =
       lines.length > 1
-        ? `${firstLine.name} ${firstLine.quantity}${firstLine.unit} 외 ${lines.length - 1}건`
-        : `${firstLine.name} ${firstLine.quantity}${firstLine.unit}`;
+        ? `${firstLineDisplayName} ${firstLine.quantity}${firstLine.unit} 외 ${lines.length - 1}건`
+        : `${firstLineDisplayName} ${firstLine.quantity}${firstLine.unit}`;
 
     await sendOrderNotificationToWholesaler({
       wholesalerId: pending.wholesaler_id as string,

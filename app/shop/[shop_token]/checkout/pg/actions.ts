@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { BuyerAuthError, requireLinkedBuyer } from "@/lib/auth/buyer-auth";
 import { loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
 import { validateCart } from "@/lib/shop/order-policy";
+import { composeProductDisplayName } from "@/lib/products/display-name";
 
 /**
  * PG(토스페이먼츠) 결제 시작 — "결제 확정 후에만 실제 주문 생성" 원칙에 따라
@@ -110,8 +111,9 @@ export async function initiatePgPaymentAction(
     }
 
     const [firstLine] = lines;
+    const firstLineDisplayName = composeProductDisplayName(firstLine.category, firstLine.name);
     const orderName =
-      lines.length > 1 ? `${firstLine.name} 외 ${lines.length - 1}건` : firstLine.name;
+      lines.length > 1 ? `${firstLineDisplayName} 외 ${lines.length - 1}건` : firstLineDisplayName;
 
     return {
       success: true,

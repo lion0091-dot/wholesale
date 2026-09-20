@@ -12,6 +12,7 @@
 
 import type { createClient } from "@/lib/supabase/server";
 import type { OrderStatus } from "@/types/database";
+import { composeProductDisplayName } from "@/lib/products/display-name";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -57,6 +58,7 @@ type OrderRow = {
 
 type OrderItemRow = {
   product_name: string;
+  category: string | null;
   unit_price: number | string;
   quantity: number | string;
   subtotal_amount: number | string;
@@ -108,7 +110,7 @@ async function fetchOrderCore(
 
   const { data: items } = await supabase
     .from("order_items")
-    .select("product_name, unit_price, quantity, subtotal_amount")
+    .select("product_name, category, unit_price, quantity, subtotal_amount")
     .eq("order_id", orderId)
     .order("created_at", { ascending: true });
 
@@ -183,7 +185,7 @@ function toStatementData(
     deliveryNotes: order.delivery_notes,
     totalAmount: Number(order.total_amount),
     items: items.map((item) => ({
-      productName: item.product_name,
+      productName: composeProductDisplayName(item.category, item.product_name),
       unitPrice: Number(item.unit_price),
       quantity: Number(item.quantity),
       subtotalAmount: Number(item.subtotal_amount),

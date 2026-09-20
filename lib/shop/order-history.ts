@@ -18,6 +18,7 @@ import type {
   ShopOrderLine,
 } from "@/lib/shop/order-history-types";
 import type { OrderStatus } from "@/types/database";
+import { composeProductDisplayName } from "@/lib/products/display-name";
 
 /** 미니샵에 노출할 최근 발주 건수 */
 const ORDER_HISTORY_LIMIT = 30;
@@ -49,6 +50,7 @@ type OrderItemRow = {
   id: string;
   order_id: string;
   product_name: string;
+  category: string | null;
   unit_price: number | string;
   quantity: number | string;
   subtotal_amount: number | string;
@@ -103,7 +105,7 @@ export async function loadShopOrderHistory(catalog: ShopCatalog): Promise<ShopOr
 
   const { data: itemRows } = await supabase
     .from("order_items")
-    .select("id, order_id, product_name, unit_price, quantity, subtotal_amount")
+    .select("id, order_id, product_name, category, unit_price, quantity, subtotal_amount")
     .in(
       "order_id",
       rows.map((row) => row.id)
@@ -116,7 +118,7 @@ export async function loadShopOrderHistory(catalog: ShopCatalog): Promise<ShopOr
 
     lines.push({
       id: item.id,
-      productName: item.product_name,
+      productName: composeProductDisplayName(item.category, item.product_name),
       unitPrice: Number(item.unit_price),
       quantity: Number(item.quantity),
       subtotalAmount: Number(item.subtotal_amount),

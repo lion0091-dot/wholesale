@@ -5,6 +5,7 @@ import { loadStatementDataForSupplier, type StatementData } from "@/lib/orders/s
 import { buildTaxInvoiceResponse } from "@/lib/pdf/tax-invoice-response";
 import type { TaxInvoiceOverrides } from "@/lib/pdf/tax-invoice";
 import { DEMO_ORDERS, DEMO_RETAILERS } from "@/lib/demo/supplier-samples";
+import { composeProductDisplayName } from "@/lib/products/display-name";
 
 // @react-pdf/renderer는 Node.js API(fs 등)에 의존해 Edge 런타임에서 동작하지 않는다.
 export const runtime = "nodejs";
@@ -32,7 +33,7 @@ function buildDemoStatement(orderId: string): StatementData | null {
     deliveryNotes: order.delivery_notes,
     totalAmount: Number(order.total_amount),
     items: order.items.map((item) => ({
-      productName: item.product_name,
+      productName: composeProductDisplayName(item.category, item.product_name),
       unitPrice: Number(item.unit_price),
       quantity: Number(item.quantity),
       subtotalAmount: Number(item.subtotal_amount),

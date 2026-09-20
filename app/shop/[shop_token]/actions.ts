@@ -16,6 +16,7 @@ import { validateCart } from "@/lib/shop/order-policy";
 import { isRetailerNamePlaceholder } from "@/lib/shop/retailer-placeholder";
 import { createOrderWithItems, buildOrderNumber } from "@/lib/orders/create-order";
 import { fetchTrackingStatus, type TrackingResult } from "@/lib/verification/sweettracker";
+import { composeProductDisplayName } from "@/lib/products/display-name";
 import type { OrderStatus, PaymentMethod } from "@/types/database";
 
 export interface SubmitOrderInput {
@@ -251,12 +252,13 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
       }
     }
 
-    // 4) 알림톡 품목 요약 ("한우 1++ 등심 2kg 외 1건")
+    // 4) 알림톡 품목 요약 ("소 한우 1++ 등심 2kg 외 1건")
     const [firstLine] = lines;
+    const firstLineDisplayName = composeProductDisplayName(firstLine.category, firstLine.name);
     const itemsSummary =
       lines.length > 1
-        ? `${firstLine.name} ${firstLine.quantity}${firstLine.unit} 외 ${lines.length - 1}건`
-        : `${firstLine.name} ${firstLine.quantity}${firstLine.unit}`;
+        ? `${firstLineDisplayName} ${firstLine.quantity}${firstLine.unit} 외 ${lines.length - 1}건`
+        : `${firstLineDisplayName} ${firstLine.quantity}${firstLine.unit}`;
 
     // 5) 공급사 대표 연락처 조회 후 카카오 알림톡 발송
     let wholesalerPhone: string | undefined;

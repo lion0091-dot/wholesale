@@ -9,6 +9,7 @@ import { cartTotals, quantityStepFor } from "@/lib/shop/order-policy";
 import { toCartLines, type ShopCatalog, type ShopCatalogItem } from "@/lib/shop/catalog-types";
 import { ShopFooter, ShopHeader, cardStyle, formatWon, shopPageStyle } from "./shop-chrome";
 import { SampleBadge } from "@/components/sample-badge";
+import { composeProductDisplayName } from "@/lib/products/display-name";
 
 interface ShopViewProps {
   catalog: ShopCatalog;
@@ -429,7 +430,9 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
                 {product.subcategory}
               </span>
             )}
-            <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>{product.name}</h3>
+            <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>
+              {composeProductDisplayName(product.category, product.name)}
+            </h3>
             {isDemo && <SampleBadge />}
           </div>
           <p style={{ fontSize: "12px", color: "#334155", marginTop: "4px" }}>
