@@ -205,6 +205,8 @@ export async function updateProductAction(
         base_price: input.base_price,
         unit: input.unit,
         stock_quantity: input.stock_quantity,
+        is_secret_deal: input.is_secret_deal,
+        is_active: input.is_active,
         description: input.description,
         updated_at: new Date().toISOString(),
       })

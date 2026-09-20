@@ -341,7 +341,7 @@ export function SecretDealVisibilityManager({
                           ✕
                         </button>
                         <AuditLogPanel
-                          view="secret_deal_visibility"
+                          tableName="secret_deal_visibility"
                           rowId={row.id}
                           label="이력"
                           compact

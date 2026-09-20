@@ -454,7 +454,7 @@ export function CustomPriceManager({
                           >
                             삭제
                           </button>
-                          <AuditLogPanel view="custom_prices" rowId={row.id} label="맞춤단가 이력" />
+                          <AuditLogPanel tableName="custom_prices" rowId={row.id} label="맞춤단가 이력" />
                         </div>
                       </td>
                     </tr>
@@ -553,7 +553,7 @@ export function CustomPriceManager({
                     >
                       삭제
                     </button>
-                    <AuditLogPanel view="custom_prices" rowId={row.id} label="맞춤단가 이력" />
+                    <AuditLogPanel tableName="custom_prices" rowId={row.id} label="맞춤단가 이력" />
                   </div>
                 </div>
               );

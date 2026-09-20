@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { getRowAuditLogAction, type AuditLogView, type RowAuditEntry } from "@/app/actions/audit-log";
+import { getRowAuditLogAction, type AuditLogTable, type RowAuditEntry } from "@/app/actions/audit-log";
 import { AUDIT_LOG_PAGE_SIZE } from "@/lib/audit-log/pagination";
 
 interface AuditLogPanelProps {
-  view: AuditLogView;
+  tableName: AuditLogTable;
   rowId: string;
   /** 버튼 라벨 — 기본 "변경 이력". 시크릿딜/맞춤단가처럼 섹션이 나뉜 곳은 구분되게 지정한다. */
   label?: string;
@@ -32,7 +32,7 @@ const ACTION_LABELS: Record<RowAuditEntry["action"], string> = {
  * — 다른 화면(customer-table.tsx)의 모달과 같은 스타일(고정 배경+중앙 카드)을 따른다.
  * 버튼 클릭 시 지연 로드하고, AUDIT_LOG_PAGE_SIZE(10)개씩 "더보기"로 이어서 불러온다.
  */
-export function AuditLogPanel({ view, rowId, label = "변경 이력", compact = false }: AuditLogPanelProps) {
+export function AuditLogPanel({ tableName, rowId, label = "변경 이력", compact = false }: AuditLogPanelProps) {
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<RowAuditEntry[] | null>(null);
   const [totalCount, setTotalCount] = useState(0);
@@ -52,10 +52,10 @@ export function AuditLogPanel({ view, rowId, label = "변경 이력", compact = 
 
     if (append) {
       setLoadingMore(true);
-      void getRowAuditLogAction(view, rowId, offset).then(finish);
+      void getRowAuditLogAction(tableName, rowId, offset).then(finish);
     } else {
       startTransition(async () => {
-        finish(await getRowAuditLogAction(view, rowId, offset));
+        finish(await getRowAuditLogAction(tableName, rowId, offset));
       });
     }
   };

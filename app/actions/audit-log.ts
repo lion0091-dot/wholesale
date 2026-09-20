@@ -35,39 +35,20 @@ interface AuditLogRow {
  * 시스템 타임스탬프는 사람이 알아볼 수 없는 "전산적 데이터"라 애초에 후보에서 뺀다 —
  * 컬럼이 나중에 더 추가돼도 화이트리스트에 없으면 자동으로 숨겨지는 게 안전하다.
  *
- * "뷰" 키는 실제 DB 테이블과 1:1이 아니다. products_secret_deal은 products 테이블의
- * is_secret_deal 컬럼만 따로 떼어 보여주는 화면 전용 구분자로, 실제 조회는 products
- * 테이블 이력에서 한다(TABLE_NAME_BY_VIEW로 매핑) — 가격/재고 이력(상품관리 리스트)과
- * 시크릿딜 on/off 이력(시크릿딜 섹션)을 같은 products 로우인데도 서로 안 섞이게 분리.
- * secret_deal_visibility는 시크릿딜 노출 대상 지정/해제(누가 언제 어느 거래처를
- * 추가·해제했는지) 전용 — 컬럼이 식별자뿐이라 FIELD_LABELS는 비워두고 등록/삭제
- * 액션과 시간·처리자만 보여준다(가격은 별도로 맞춤단가 이력에서 확인).
+ * 시크릿딜의 on/off 플래그 자체는 "누가 언제 어느 거래처에게 얼마에" 정보가 없어
+ * 별도 이력을 안 둔다 — 그건 누구에게 노출했는지(secret_deal_visibility)와 얼마에
+ * 팔았는지(custom_prices)로 이미 답이 나온다. secret_deal_visibility는 노출
+ * 대상 지정/해제 전용이라 컬럼이 식별자뿐이라 FIELD_LABELS는 비워두고 등록/삭제
+ * 액션과 시간·처리자만 보여준다(가격은 맞춤단가 이력에서 확인).
  */
-export type AuditLogView =
-  | "products"
-  | "products_secret_deal"
-  | "custom_prices"
-  | "orders"
-  | "secret_deal_visibility";
+export type AuditLogTable = "products" | "custom_prices" | "orders" | "secret_deal_visibility";
 
-const TABLE_NAME_BY_VIEW: Record<
-  AuditLogView,
-  "products" | "custom_prices" | "orders" | "secret_deal_visibility"
-> = {
-  products: "products",
-  products_secret_deal: "products",
-  custom_prices: "custom_prices",
-  orders: "orders",
-  secret_deal_visibility: "secret_deal_visibility",
-};
-
-const FIELD_LABELS: Record<AuditLogView, Record<string, string>> = {
+const FIELD_LABELS: Record<AuditLogTable, Record<string, string>> = {
   products: {
     base_price: "가격",
+    unit: "단위",
     stock_quantity: "재고",
-  },
-  products_secret_deal: {
-    is_secret_deal: "시크릿딜",
+    is_active: "판매 상태",
   },
   custom_prices: {
     custom_price: "맞춤 단가",
@@ -93,11 +74,11 @@ export interface AuditLogPage<T> {
 }
 
 function diffFields(
-  view: AuditLogView,
+  tableName: AuditLogTable,
   oldData: Record<string, unknown> | null,
   newData: Record<string, unknown> | null
 ): Array<{ field: string; before: unknown; after: unknown }> {
-  const labels = FIELD_LABELS[view] ?? {};
+  const labels = FIELD_LABELS[tableName] ?? {};
   const keys = new Set([...Object.keys(oldData ?? {}), ...Object.keys(newData ?? {})]);
   const changes: Array<{ field: string; before: unknown; after: unknown }> = [];
 
@@ -125,7 +106,7 @@ function diffFields(
  * offset + 이번에 받은 개수 < totalCount 로 "더 남았는지"를 판단한다(별도 count 쿼리 불필요).
  */
 export async function getRowAuditLogAction(
-  view: AuditLogView,
+  tableName: AuditLogTable,
   rowId: string,
   offset = 0
 ): Promise<ActionResult<AuditLogPage<RowAuditEntry>>> {
@@ -141,7 +122,7 @@ export async function getRowAuditLogAction(
     const [{ data, error }, { data: members }] = await Promise.all([
       supabase.rpc("get_row_audit_log", {
         p_wholesaler_id: scope.wholesalerId,
-        p_table_name: TABLE_NAME_BY_VIEW[view],
+        p_table_name: tableName,
         p_row_id: rowId,
         p_limit: AUDIT_LOG_PAGE_SIZE,
         p_offset: offset,
@@ -167,7 +148,7 @@ export async function getRowAuditLogAction(
       id: row.id,
       action: row.action,
       changedByName: row.changed_by ? (nameMap.get(row.changed_by) ?? "알 수 없음") : "시스템",
-      changes: diffFields(view, row.old_data, row.new_data),
+      changes: diffFields(tableName, row.old_data, row.new_data),
       createdAt: row.created_at,
     }));
 

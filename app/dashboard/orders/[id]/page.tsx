@@ -266,7 +266,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
             externalOpenBaseHref={taxInvoiceExternalOpenHref}
             popbillConfigured={isPopbillConfigured()}
           />
-          <AuditLogPanel view="orders" rowId={order.id} />
+          <AuditLogPanel tableName="orders" rowId={order.id} />
         </div>
       </header>
 
@@ -309,19 +309,21 @@ export default async function OrderDetailPage({ params }: PageProps) {
               {order.items.map((item) => (
                 <tr key={item.id}>
                   <td style={{ fontWeight: 600 }}>
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        color: "#475569",
-                        backgroundColor: "#f1f5f9",
-                        padding: "1px 5px",
-                        borderRadius: "4px",
-                        marginRight: "6px",
-                      }}
-                    >
-                      {item.category}
-                    </span>
+                    {item.category && (
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#475569",
+                          backgroundColor: "#f1f5f9",
+                          padding: "1px 5px",
+                          borderRadius: "4px",
+                          marginRight: "6px",
+                        }}
+                      >
+                        {item.category}
+                      </span>
+                    )}
                     {item.product_name}
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>{formatWon(item.unit_price)}</td>
@@ -349,18 +351,20 @@ export default async function OrderDetailPage({ params }: PageProps) {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    color: "#475569",
-                    backgroundColor: "#f1f5f9",
-                    padding: "1px 5px",
-                    borderRadius: "4px",
-                  }}
-                >
-                  {item.category}
-                </span>
+                {item.category && (
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#475569",
+                      backgroundColor: "#f1f5f9",
+                      padding: "1px 5px",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    {item.category}
+                  </span>
+                )}
                 <div style={{ fontWeight: 700, fontSize: "14px" }}>{item.product_name}</div>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#64748b" }}>

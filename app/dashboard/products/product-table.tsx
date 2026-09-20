@@ -351,7 +351,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                             </div>
                           )}
                           <div style={{ marginTop: "4px" }}>
-                            <AuditLogPanel view="products" rowId={product.id} label="가격·재고 이력" />
+                            <AuditLogPanel tableName="products" rowId={product.id} label="가격·단위·재고·판매상태 이력" />
                           </div>
                         </div>
                       </div>
@@ -433,24 +433,21 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                     </td>
 
                     <td>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "flex-start" }}>
-                        <MiniToggle
-                          checked={product.is_secret_deal}
-                          onLabel="🔥 시크릿 ON"
-                          offLabel="시크릿 OFF"
-                          disabled={isBusy}
-                          onClick={() =>
-                            void run(product.id, () =>
-                              toggleProductFlagAction(
-                                product.id,
-                                "is_secret_deal",
-                                !product.is_secret_deal
-                              )
+                      <MiniToggle
+                        checked={product.is_secret_deal}
+                        onLabel="🔥 시크릿 ON"
+                        offLabel="시크릿 OFF"
+                        disabled={isBusy}
+                        onClick={() =>
+                          void run(product.id, () =>
+                            toggleProductFlagAction(
+                              product.id,
+                              "is_secret_deal",
+                              !product.is_secret_deal
                             )
-                          }
-                        />
-                        <AuditLogPanel view="products_secret_deal" rowId={product.id} label="시크릿딜 이력" />
-                      </div>
+                          )
+                        }
+                      />
                     </td>
 
                     <td>
@@ -635,20 +632,17 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                     paddingTop: "8px",
                   }}
                 >
-                  <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "flex-start" }}>
-                    <MiniToggle
-                      checked={product.is_secret_deal}
-                      onLabel="🔥 시크릿 ON"
-                      offLabel="시크릿 OFF"
-                      disabled={isBusy}
-                      onClick={() =>
-                        void run(product.id, () =>
-                          toggleProductFlagAction(product.id, "is_secret_deal", !product.is_secret_deal)
-                        )
-                      }
-                    />
-                    <AuditLogPanel view="products_secret_deal" rowId={product.id} label="시크릿딜 이력" />
-                  </div>
+                  <MiniToggle
+                    checked={product.is_secret_deal}
+                    onLabel="🔥 시크릿 ON"
+                    offLabel="시크릿 OFF"
+                    disabled={isBusy}
+                    onClick={() =>
+                      void run(product.id, () =>
+                        toggleProductFlagAction(product.id, "is_secret_deal", !product.is_secret_deal)
+                      )
+                    }
+                  />
                   <MiniToggle
                     checked={product.is_active}
                     onLabel="판매중"
@@ -674,7 +668,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                 )}
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <AuditLogPanel view="products" rowId={product.id} label="가격·재고 이력" />
+                  <AuditLogPanel tableName="products" rowId={product.id} label="가격·단위·재고·판매상태 이력" />
                   <div style={{ display: "flex", gap: "6px" }}>
                     <Link
                       href={`/dashboard/products/${product.id}/edit`}
