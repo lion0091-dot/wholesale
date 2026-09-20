@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ORDER_STATUS_BADGES, formatOrderedAt, formatWon } from "@/lib/orders/status";
 import { ORDER_HISTORY_RANGE_OPTIONS } from "@/lib/orders/history-range";
 import type { OrderRow } from "@/lib/orders/order-row";
+import { useOrderHistoryPagination } from "@/lib/orders/use-order-history-pagination";
 import { AuditLogPanel } from "@/components/audit-log-panel";
 import { listOrdersForHistoryAction, searchOrdersForHistoryAction } from "./actions";
+
+/** 검색어 입력이 멈추고 이만큼 지나야 서버에 물어본다 — 매 글자마다 요청하지 않기 위함. */
+const SEARCH_DEBOUNCE_MS = 300;
 
 interface OrderHistoryPickerProps {
   initialEntries: OrderRow[];
@@ -18,8 +22,8 @@ interface OrderHistoryPickerProps {
 
 /**
  * 발주이력 "대상 찾기" — 상태 무관 전체 발주를 대상으로 조회 구간(30일/3개월/전체)
- * + 더보기, 그리고 발주번호/거래처명 검색(구간과 무관하게 전체 기간에서 찾음)을 제공한다.
- * app/dashboard/orders/order-board.tsx의 완료·취소 탭과 같은 UX 패턴이다.
+ * + 더보기(useOrderHistoryPagination 공용 로직), 그리고 발주번호/거래처명 검색
+ * (구간과 무관하게 전체 기간에서 찾음)을 제공한다.
  */
 export function OrderHistoryPicker({
   initialEntries,
@@ -28,28 +32,42 @@ export function OrderHistoryPicker({
   initialRangeDays,
   hasWholesaler,
 }: OrderHistoryPickerProps) {
-  const [entries, setEntries] = useState(initialEntries);
-  const [rangeDays, setRangeDays] = useState<number | null>(initialRangeDays);
-  const [totalCount, setTotalCount] = useState(initialTotalCount);
-  const [hasMore, setHasMore] = useState(initialHasMore);
-  const [rangeLoading, setRangeLoading] = useState(false);
-  const [moreLoading, setMoreLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const isBusy = rangeLoading || moreLoading;
+  const {
+    entries,
+    rangeDays,
+    totalCount,
+    hasMore,
+    rangeLoading,
+    moreLoading,
+    isBusy,
+    errorMessage,
+    setErrorMessage,
+    changeRange,
+    loadMore,
+  } = useOrderHistoryPagination(
+    { entries: initialEntries, totalCount: initialTotalCount, hasMore: initialHasMore },
+    initialRangeDays,
+    listOrdersForHistoryAction
+  );
 
   const [keyword, setKeyword] = useState("");
   const [searchResults, setSearchResults] = useState<OrderRow[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const isSearching = keyword.trim().length > 0;
 
-  const runSearch = async (nextKeyword: string) => {
-    if (!nextKeyword.trim()) {
-      setSearchResults(null);
-      return;
-    }
+  // 요청 순서가 뒤바뀌어 도착해도(빨리 친 나중 검색어 응답이 먼저 옴) 최신 요청의
+  // 응답만 반영하기 위한 카운터 — 검색어를 바꿀 때마다 증가시켜 이전 요청을 무효화한다.
+  const searchRequestId = useRef(0);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const runSearch = async (trimmed: string) => {
+    const requestId = ++searchRequestId.current;
 
     setSearchLoading(true);
-    const result = await searchOrdersForHistoryAction(nextKeyword);
+    const result = await searchOrdersForHistoryAction(trimmed);
+
+    if (requestId !== searchRequestId.current) return; // 이미 다음 검색어로 바뀜 — 무시
+
     setSearchLoading(false);
 
     if (result.success && result.data) {
@@ -62,46 +80,21 @@ export function OrderHistoryPicker({
 
   const handleKeywordChange = (value: string) => {
     setKeyword(value);
-    void runSearch(value);
-  };
 
-  const handleRangeChange = async (nextRangeDays: number | null) => {
-    if (nextRangeDays === rangeDays || isBusy) return;
+    // 진행 중이던 디바운스/요청을 무효화 — 방금 요청이 늦게 도착해도 위 requestId
+    // 비교에서 걸러진다.
+    searchRequestId.current += 1;
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
 
-    setRangeLoading(true);
-    setRangeDays(nextRangeDays);
-    setErrorMessage(null);
+    const trimmed = value.trim();
 
-    const result = await listOrdersForHistoryAction(nextRangeDays, 0);
-    setRangeLoading(false);
-
-    if (!result.success || !result.data) {
-      setEntries([]);
-      setTotalCount(0);
-      setHasMore(false);
-      setErrorMessage(result.error ?? "발주 조회에 실패했습니다.");
+    if (!trimmed) {
+      setSearchResults(null);
+      setSearchLoading(false);
       return;
     }
 
-    setEntries(result.data.entries);
-    setTotalCount(result.data.totalCount);
-    setHasMore(result.data.hasMore);
-  };
-
-  const handleLoadMore = async () => {
-    if (isBusy) return;
-
-    setMoreLoading(true);
-    const result = await listOrdersForHistoryAction(rangeDays, entries.length);
-    setMoreLoading(false);
-
-    if (!result.success || !result.data) {
-      setErrorMessage(result.error ?? "발주 조회에 실패했습니다.");
-      return;
-    }
-
-    setEntries((prev) => [...prev, ...result.data!.entries]);
-    setHasMore(result.data.hasMore);
+    debounceTimer.current = setTimeout(() => void runSearch(trimmed), SEARCH_DEBOUNCE_MS);
   };
 
   const rows = isSearching ? searchResults ?? [] : entries;
@@ -140,7 +133,7 @@ export function OrderHistoryPicker({
                 key={option.label}
                 type="button"
                 disabled={isBusy}
-                onClick={() => void handleRangeChange(option.days)}
+                onClick={() => void changeRange(option.days)}
                 style={{
                   fontSize: "12px",
                   fontWeight: 700,
@@ -160,83 +153,40 @@ export function OrderHistoryPicker({
         </div>
       )}
 
-      {errorMessage && (
-        <p style={{ fontSize: "12px", color: "#b91c1c" }}>{errorMessage}</p>
-      )}
+      {errorMessage && <p style={{ fontSize: "12px", color: "#b91c1c" }}>{errorMessage}</p>}
 
       {!hasWholesaler ? (
         <p style={{ fontSize: "13px", color: "#94a3b8", padding: "20px 0", textAlign: "center" }}>
           공급사 업체 정보가 없어 조회할 수 없습니다.
         </p>
-      ) : searchLoading ? (
-        <p style={{ fontSize: "13px", color: "#94a3b8", padding: "20px 0", textAlign: "center" }}>
-          검색 중...
-        </p>
+      ) : isSearching ? (
+        searchLoading ? (
+          <p style={{ fontSize: "13px", color: "#94a3b8", padding: "20px 0", textAlign: "center" }}>
+            검색 중...
+          </p>
+        ) : rows.length === 0 ? (
+          <p style={{ fontSize: "13px", color: "#94a3b8", padding: "20px 0", textAlign: "center" }}>
+            검색 결과가 없습니다.
+          </p>
+        ) : (
+          <OrderHistoryRows rows={rows} />
+        )
       ) : rangeLoading ? (
         <p style={{ fontSize: "13px", color: "#94a3b8", padding: "20px 0", textAlign: "center" }}>
           불러오는 중...
         </p>
       ) : rows.length === 0 ? (
         <p style={{ fontSize: "13px", color: "#94a3b8", padding: "20px 0", textAlign: "center" }}>
-          {isSearching ? "검색 결과가 없습니다." : "해당 조건의 발주가 없습니다."}
+          해당 조건의 발주가 없습니다.
         </p>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {rows.map((order) => {
-            const badge = ORDER_STATUS_BADGES[order.status];
-
-            return (
-              <div
-                key={order.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "10px",
-                  flexWrap: "wrap",
-                  backgroundColor: "#ffffff",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: "10px",
-                  padding: "12px 14px",
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                    <span style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a" }}>
-                      {order.orderNumber}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        backgroundColor: badge.bg,
-                        color: badge.color,
-                        padding: "2px 7px",
-                        borderRadius: "10px",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {badge.label}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px" }}>
-                    {order.retailerName} · {order.itemSummary} · {formatWon(order.totalAmount)}
-                  </div>
-                  <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
-                    {formatOrderedAt(order.orderedAt)} 접수
-                  </div>
-                </div>
-                <AuditLogPanel tableName="orders" rowId={order.id} label="이력보기" />
-              </div>
-            );
-          })}
-        </div>
+        <OrderHistoryRows rows={rows} />
       )}
 
       {!isSearching && hasMore && (
         <button
           type="button"
-          onClick={() => void handleLoadMore()}
+          onClick={() => void loadMore()}
           disabled={isBusy}
           style={{
             alignSelf: "center",
@@ -253,6 +203,61 @@ export function OrderHistoryPicker({
           {moreLoading ? "불러오는 중..." : "더보기"}
         </button>
       )}
+    </div>
+  );
+}
+
+function OrderHistoryRows({ rows }: { rows: OrderRow[] }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      {rows.map((order) => {
+        const badge = ORDER_STATUS_BADGES[order.status];
+
+        return (
+          <div
+            key={order.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "10px",
+              flexWrap: "wrap",
+              backgroundColor: "#ffffff",
+              border: "1px solid #e2e8f0",
+              borderRadius: "10px",
+              padding: "12px 14px",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a" }}>
+                  {order.orderNumber}
+                </span>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    backgroundColor: badge.bg,
+                    color: badge.color,
+                    padding: "2px 7px",
+                    borderRadius: "10px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {badge.label}
+                </span>
+              </div>
+              <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px" }}>
+                {order.retailerName} · {order.itemSummary} · {formatWon(order.totalAmount)}
+              </div>
+              <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
+                {formatOrderedAt(order.orderedAt)} 접수
+              </div>
+            </div>
+            <AuditLogPanel tableName="orders" rowId={order.id} label="이력보기" />
+          </div>
+        );
+      })}
     </div>
   );
 }

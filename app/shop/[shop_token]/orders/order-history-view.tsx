@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ORDER_STATUS_BADGES, canRequestCancel, formatOrderedAt } from "@/lib/orders/status";
 import { ORDER_HISTORY_RANGE_OPTIONS } from "@/lib/orders/history-range";
+import { useOrderHistoryPagination } from "@/lib/orders/use-order-history-pagination";
 import type { ShopCatalog } from "@/lib/shop/catalog-types";
 import {
   CANCEL_REASON_MAX_LENGTH,
@@ -124,66 +125,54 @@ export function OrderHistoryView({
   // 조회 구간(30일/3개월/전체) + 더보기 — 미인증/데모 상태(history.requiresLink,
   // catalog.isDemo)에서는 애초에 조회할 데이터가 없으므로 아래 상태는 그 경우엔 쓰이지 않는다.
   const canPaginate = !history.requiresLink && !catalog.isDemo;
-  const [orders, setOrders] = useState<ShopOrder[]>(history.orders);
-  const [rangeDays, setRangeDays] = useState<number | null>(initialRangeDays);
-  const [totalCount, setTotalCount] = useState(history.totalCount);
-  const [hasMore, setHasMore] = useState(history.hasMore);
-  const [emptyNotice, setEmptyNotice] = useState<string | null>(
-    orders.length === 0 ? history.notice : null
-  );
   const [externalOpenHrefs, setExternalOpenHrefs] = useState(statementExternalOpenHrefByOrderId);
-  const [rangeLoading, setRangeLoading] = useState(false);
-  const [moreLoading, setMoreLoading] = useState(false);
-  // 구간 변경과 더보기가 동시에 나가면 먼저 온 응답이 나중 응답에 덮어써질 수 있어
-  // (예: 더보기 중에 구간을 바꾸면 옛 구간의 더보기 결과가 새 구간 목록 뒤에 붙음)
-  // 서로의 로딩 중에는 상대 조작을 막는다.
-  const isBusy = rangeLoading || moreLoading;
+  const [emptyNotice, setEmptyNotice] = useState<string | null>(
+    history.orders.length === 0 ? history.notice : null
+  );
 
-  const handleRangeChange = async (nextRangeDays: number | null) => {
-    if (nextRangeDays === rangeDays || isBusy) return;
+  const {
+    entries: orders,
+    setEntries: setOrders,
+    rangeDays,
+    totalCount,
+    hasMore,
+    rangeLoading,
+    moreLoading,
+    isBusy,
+    errorMessage: rangeErrorMessage,
+    changeRange,
+    loadMore,
+  } = useOrderHistoryPagination(
+    { entries: history.orders, totalCount: history.totalCount, hasMore: history.hasMore },
+    initialRangeDays,
+    async (nextRangeDays, offset) => {
+      const result = await loadShopOrderHistoryPageAction(shopToken, nextRangeDays, offset);
 
-    setRangeLoading(true);
-    setRangeDays(nextRangeDays);
+      if (!result.success || !result.data) {
+        return { success: false, error: result.error };
+      }
 
-    const result = await loadShopOrderHistoryPageAction(shopToken, nextRangeDays, 0);
-    setRangeLoading(false);
-
-    if (!result.success || !result.data) {
-      setOrders([]);
-      setTotalCount(0);
-      setHasMore(false);
-      setEmptyNotice(result.error ?? "주문 내역을 불러오지 못했습니다.");
-      return;
+      return {
+        success: true,
+        data: {
+          entries: result.data.orders,
+          totalCount: result.data.totalCount,
+          hasMore: result.data.hasMore,
+          statementExternalOpenHrefByOrderId: result.data.statementExternalOpenHrefByOrderId,
+        },
+      };
+    },
+    (data, appliedRangeDays) => {
+      setExternalOpenHrefs((prev) => ({ ...prev, ...data.statementExternalOpenHrefByOrderId }));
+      setEmptyNotice(
+        data.entries.length === 0
+          ? appliedRangeDays !== null
+            ? `최근 ${appliedRangeDays}일간 발주 내역이 없습니다. 다른 기간을 선택해보세요.`
+            : "아직 접수된 발주서가 없습니다."
+          : null
+      );
     }
-
-    setOrders(result.data.orders);
-    setTotalCount(result.data.totalCount);
-    setHasMore(result.data.hasMore);
-    setExternalOpenHrefs((prev) => ({ ...prev, ...result.data!.statementExternalOpenHrefByOrderId }));
-    setEmptyNotice(
-      result.data.orders.length === 0
-        ? nextRangeDays !== null
-          ? `최근 ${nextRangeDays}일간 발주 내역이 없습니다. 다른 기간을 선택해보세요.`
-          : "아직 접수된 발주서가 없습니다."
-        : null
-    );
-  };
-
-  const handleLoadMore = async () => {
-    if (isBusy) return;
-
-    setMoreLoading(true);
-    const result = await loadShopOrderHistoryPageAction(shopToken, rangeDays, orders.length);
-    setMoreLoading(false);
-
-    if (!result.success || !result.data) {
-      return;
-    }
-
-    setOrders((prev) => [...prev, ...result.data!.orders]);
-    setHasMore(result.data.hasMore);
-    setExternalOpenHrefs((prev) => ({ ...prev, ...result.data!.statementExternalOpenHrefByOrderId }));
-  };
+  );
 
   const openCancelForm = (orderId: string) => {
     setActiveOrderId(orderId);
@@ -296,7 +285,7 @@ export function OrderHistoryView({
                   key={option.label}
                   type="button"
                   disabled={isBusy}
-                  onClick={() => void handleRangeChange(option.days)}
+                  onClick={() => void changeRange(option.days)}
                   style={{
                     fontSize: "12px",
                     fontWeight: 700,
@@ -316,7 +305,11 @@ export function OrderHistoryView({
           </div>
         )}
 
-        {canPaginate && emptyNotice && (
+        {canPaginate && rangeErrorMessage && (
+          <p style={{ fontSize: "12px", color: "#b91c1c" }}>{rangeErrorMessage}</p>
+        )}
+
+        {canPaginate && orders.length === 0 && (
           <div style={{ ...cardStyle, padding: "20px", textAlign: "center" }}>
             <p style={{ fontSize: "13px", color: "#475569", lineHeight: 1.6 }}>
               {rangeLoading ? "불러오는 중..." : emptyNotice}
@@ -668,7 +661,7 @@ export function OrderHistoryView({
         {canPaginate && hasMore && (
           <button
             type="button"
-            onClick={() => void handleLoadMore()}
+            onClick={() => void loadMore()}
             disabled={isBusy}
             style={{
               alignSelf: "center",
