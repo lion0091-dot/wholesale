@@ -8,8 +8,11 @@ import {
   recordOutboundScanAction,
   getOutboundProgressAction,
   getPickingListAction,
+  previewShipmentAction,
+  finalizeShipmentAction,
   type OutboundProgressRow,
   type PickingRow,
+  type ShipmentPreviewRow,
 } from "./actions";
 
 export interface ShippableOrder {
@@ -35,6 +38,9 @@ export function OutboundScanView({ orders }: Props) {
   const [traceNo, setTraceNo] = useState("");
   const [progress, setProgress] = useState<OutboundProgressRow[]>([]);
   const [picking, setPicking] = useState<PickingRow[]>([]);
+  // 마감 확인 대화상자. null 이면 닫힌 상태.
+  const [confirming, setConfirming] = useState<ShipmentPreviewRow[] | null>(null);
+  const [finalizing, setFinalizing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +121,51 @@ export function OutboundScanView({ orders }: Props) {
     router.refresh();
   };
 
+  /**
+   * 출고 마감. 주문보다 덜 나갔으면 DB가 SHIPMENT_SHORT 를 던지므로,
+   * 그때 차이를 보여주고 사람이 확인하면 다시 부른다.
+   */
+  const finalize = async (confirmShort: boolean) => {
+    if (!orderId || finalizing) {
+      return;
+    }
+
+    setFinalizing(true);
+    setError(null);
+
+    const result = await finalizeShipmentAction(orderId, confirmShort);
+
+    if (!result.success) {
+      if (result.error === "SHIPMENT_SHORT") {
+        const preview = await previewShipmentAction(orderId);
+        setFinalizing(false);
+
+        if (preview.success) {
+          setConfirming(preview.data ?? []);
+        } else {
+          setError(preview.error ?? "출고 내역을 불러오지 못했습니다.");
+        }
+
+        return;
+      }
+
+      setFinalizing(false);
+      setError(result.error ?? "출고 마감에 실패했습니다.");
+      return;
+    }
+
+    setFinalizing(false);
+    setConfirming(null);
+    setMessage(
+      result.data?.wasShort
+        ? `출고 마감. 실제 중량 기준 ${result.data.totalAmount.toLocaleString()}원으로 확정했습니다.`
+        : "출고 마감했습니다."
+    );
+
+    await loadProgress(orderId);
+    router.refresh();
+  };
+
   const allDone =
     progress.length > 0 && progress.every((row) => row.scannedQty >= row.orderedQty);
 
@@ -182,6 +233,112 @@ export function OutboundScanView({ orders }: Props) {
         )}
         {error && <div style={{ ...noticeStyle, backgroundColor: "#fee2e2", color: "#991b1b" }}>{error}</div>}
       </section>
+
+      {confirming && (
+        <section
+          style={{
+            ...panelStyle,
+            border: "2px solid #f59e0b",
+            backgroundColor: "#fffbeb",
+          }}
+        >
+          <div style={{ fontSize: "14px", fontWeight: 700, color: "#92400e", marginBottom: "4px" }}>
+            ⚠️ 주문보다 적게 나갔습니다
+          </div>
+          <div style={{ fontSize: "12px", color: "#92400e", marginBottom: "10px" }}>
+            이대로 마감하면 <strong>실제 나간 중량 기준으로 금액이 확정</strong>됩니다.
+            거래명세서에도 실제 중량이 찍힙니다.
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {confirming.map((row) => {
+              const short = row.diffQty < 0;
+
+              return (
+                <div
+                  key={row.productId}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: "8px",
+                    backgroundColor: "#fff",
+                    border: "1px solid #fde68a",
+                  }}
+                >
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>
+                    {row.productName}
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#475569", marginTop: "2px" }}>
+                    주문 {row.orderedQty}
+                    {row.unit} / 실제 {row.shippedQty}
+                    {row.unit}
+                    {short && (
+                      <strong style={{ color: "#b45309" }}>
+                        {" "}
+                        ({row.diffQty}
+                        {row.unit})
+                      </strong>
+                    )}
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#475569" }}>
+                    {row.orderedAmount.toLocaleString()}원
+                    {short && (
+                      <>
+                        {" → "}
+                        <strong style={{ color: "#b45309" }}>
+                          {row.shippedAmount.toLocaleString()}원
+                        </strong>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+            <button
+              type="button"
+              onClick={() => void finalize(true)}
+              disabled={finalizing}
+              style={{
+                flex: 1,
+                padding: "10px",
+                fontSize: "13px",
+                fontWeight: 700,
+                borderRadius: "6px",
+                border: "none",
+                backgroundColor: finalizing ? "#94a3b8" : "#b45309",
+                color: "#fff",
+                cursor: finalizing ? "default" : "pointer",
+              }}
+            >
+              {finalizing ? "처리 중…" : "이대로 마감"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setConfirming(null);
+                traceInputRef.current?.focus();
+              }}
+              disabled={finalizing}
+              style={{
+                flex: 1,
+                padding: "10px",
+                fontSize: "13px",
+                fontWeight: 600,
+                borderRadius: "6px",
+                border: "1px solid #cbd5e1",
+                backgroundColor: "#fff",
+                color: "#334155",
+                cursor: finalizing ? "default" : "pointer",
+              }}
+            >
+              더 스캔하기
+            </button>
+          </div>
+        </section>
+      )}
 
       {picking.length > 0 && (
         <section style={panelStyle}>
@@ -282,6 +439,24 @@ export function OutboundScanView({ orders }: Props) {
             >
               소분 라벨 인쇄
             </Link>
+
+            <button
+              type="button"
+              onClick={() => void finalize(false)}
+              disabled={finalizing}
+              style={{
+                padding: "7px 12px",
+                fontSize: "12px",
+                fontWeight: 700,
+                borderRadius: "6px",
+                border: "none",
+                backgroundColor: finalizing ? "#94a3b8" : "#0f172a",
+                color: "#fff",
+                cursor: finalizing ? "default" : "pointer",
+              }}
+            >
+              {finalizing ? "처리 중…" : "출고 마감"}
+            </button>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>

@@ -61,6 +61,7 @@ type OrderItemRow = {
   category: string | null;
   unit_price: number | string;
   quantity: number | string;
+  shipped_quantity: number | string | null;
   subtotal_amount: number | string;
 };
 
@@ -110,7 +111,7 @@ async function fetchOrderCore(
 
   const { data: items } = await supabase
     .from("order_items")
-    .select("product_name, category, unit_price, quantity, subtotal_amount")
+    .select("product_name, category, unit_price, quantity, shipped_quantity, subtotal_amount")
     .eq("order_id", orderId)
     .order("created_at", { ascending: true });
 
@@ -187,7 +188,9 @@ function toStatementData(
     items: items.map((item) => ({
       productName: composeProductDisplayName(item.category, item.product_name),
       unitPrice: Number(item.unit_price),
-      quantity: Number(item.quantity),
+      // 출고 마감이 끝났으면 실제 나간 양을 찍는다. 금액(subtotal_amount)도
+      // 그때 같이 확정되므로 단가 × 수량이 항상 맞는다.
+      quantity: Number(item.shipped_quantity ?? item.quantity),
       subtotalAmount: Number(item.subtotal_amount),
     })),
     supplier: parties.supplier,

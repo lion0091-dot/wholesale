@@ -234,3 +234,112 @@ export async function getPickingListAction(
     return toResult(error);
   }
 }
+
+export interface ShipmentPreviewRow {
+  productId: string;
+  productName: string;
+  unit: string;
+  unitPrice: number;
+  orderedQty: number;
+  shippedQty: number;
+  /** 음수면 주문보다 덜 나갔다. */
+  diffQty: number;
+  orderedAmount: number;
+  shippedAmount: number;
+}
+
+export interface FinalizeResult {
+  wasShort: boolean;
+  prevAmount: number;
+  totalAmount: number;
+}
+
+/** 마감 전 미리보기 — 주문 대비 실제 출고량과 금액 변화. 아무것도 바꾸지 않는다. */
+export async function previewShipmentAction(
+  orderId: string
+): Promise<ActionResult<ShipmentPreviewRow[]>> {
+  try {
+    const { supabase } = await resolveOutboundScope();
+
+    const { data, error } = await supabase.rpc("preview_order_shipment", {
+      p_order_id: orderId,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return {
+      success: true,
+      data: ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+        productId: String(row.product_id),
+        productName: String(row.product_name ?? ""),
+        unit: String(row.unit ?? "kg"),
+        unitPrice: Number(row.unit_price ?? 0),
+        orderedQty: Number(row.ordered_qty ?? 0),
+        shippedQty: Number(row.shipped_qty ?? 0),
+        diffQty: Number(row.diff_qty ?? 0),
+        orderedAmount: Number(row.ordered_amount ?? 0),
+        shippedAmount: Number(row.shipped_amount ?? 0),
+      })),
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
+ * 출고 마감 — 실제 중량으로 금액을 확정하고 배송 상태로 넘긴다.
+ *
+ * 주문보다 덜 나갔으면 confirmShort 없이는 DB가 SHIPMENT_SHORT 를 던진다.
+ * 화면이 차이를 보여주고 사람이 누른 뒤에 다시 부른다.
+ */
+export async function finalizeShipmentAction(
+  orderId: string,
+  confirmShort = false
+): Promise<ActionResult<FinalizeResult>> {
+  try {
+    const { supabase } = await resolveOutboundScope();
+
+    const { data, error } = await supabase.rpc("finalize_order_shipment", {
+      p_order_id: orderId,
+      p_confirm_short: confirmShort,
+    });
+
+    if (error) {
+      if (error.message.includes("SHIPMENT_SHORT")) {
+        throw new RbacError("SHIPMENT_SHORT");
+      }
+
+      if (error.message.includes("ALREADY_FINALIZED")) {
+        throw new RbacError("이미 마감된 발주서입니다.");
+      }
+
+      if (error.message.includes("ORDER_NOT_SHIPPABLE")) {
+        throw new RbacError("확정 상태의 발주서만 마감할 수 있습니다.");
+      }
+
+      if (error.message.includes("ORDER_NOT_FOUND")) {
+        throw new RbacError("발주서를 찾을 수 없습니다.");
+      }
+
+      throw new Error(error.message);
+    }
+
+    const row = (data ?? {}) as Record<string, unknown>;
+
+    revalidatePath(REVALIDATE_PATH);
+    revalidatePath("/dashboard/orders");
+
+    return {
+      success: true,
+      data: {
+        wasShort: Boolean(row.was_short),
+        prevAmount: Number(row.prev_amount ?? 0),
+        totalAmount: Number(row.total_amount ?? 0),
+      },
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
