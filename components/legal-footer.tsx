@@ -7,7 +7,7 @@ import Link from "next/link";
  * 전자상거래법·정보통신망법상 의무 표시 사항을 담는 공통 푸터.
  * 실제 사업자 정보는 환경변수로 주입하고, 미설정 시 플레이스홀더를 노출한다.
  */
-const PLATFORM = {
+export const PLATFORM = {
   companyName: process.env.NEXT_PUBLIC_COMPANY_NAME || "미트 파트너스",
   representative: process.env.NEXT_PUBLIC_COMPANY_REPRESENTATIVE || "홍길동",
   businessNumber: process.env.NEXT_PUBLIC_COMPANY_BUSINESS_NUMBER || "220-88-00000",

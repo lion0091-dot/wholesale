@@ -1,11 +1,13 @@
 import Link from "next/link";
+import { PLATFORM } from "@/components/legal-footer";
 
 /**
  * 서비스 이용약관.
  *
- * ⚠️ 초안입니다. []로 표시된 자리표시자(사업자 정보, 기한 등)는 실제 값으로
- * 채워야 하고, 정식 게시 전 변호사 검토를 받아야 합니다. 특히 결제/환불/해지
+ * ⚠️ 초안입니다. 정식 게시 전 변호사 검토를 받아야 합니다. 특히 결제/환불/해지
  * 조항(5~7조)은 실제 운영 방식(계좌이체 수기 확인)에 맞춰 검증이 필요합니다.
+ * 사업자 정보는 legal-footer.tsx와 같은 환경변수(NEXT_PUBLIC_COMPANY_*)를 쓴다 —
+ * 이 페이지만 따로 하드코딩돼 있던 걸 통일함.
  */
 export default function TermsPage() {
   return (
@@ -157,13 +159,13 @@ export default function TermsPage() {
         }}
       >
         <div style={{ fontWeight: 700, color: "#334155", marginBottom: "6px" }}>사업자 정보</div>
-        상호: 미트 파트너스 | 대표자: [대표자명]
+        상호: {PLATFORM.companyName} | 대표자: {PLATFORM.representative}
         <br />
-        사업자등록번호: [사업자등록번호] | 통신판매업 신고번호: [통신판매업 신고번호]
+        사업자등록번호: {PLATFORM.businessNumber} | 통신판매업 신고번호: {PLATFORM.mailOrderNumber}
         <br />
-        사업장 소재지: [사업장 소재지]
+        사업장 소재지: {PLATFORM.address}
         <br />
-        고객센터: [이메일 주소] / [전화번호]
+        고객센터: {PLATFORM.supportEmail} / {PLATFORM.supportPhone}
       </footer>
     </main>
   );
