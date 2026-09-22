@@ -1,26 +1,10 @@
 /**
- * 바코드 파서 동작 확인 (의존성 설치 없이 돌아가도록 타입 표기만 걷어내고 평가한다).
+ * 바코드 파서 동작 확인 (의존성 설치 없이 실행).
  *   node scripts/test-barcode-parser.mjs
  */
-import { readFileSync } from "node:fs";
+import { evaluateModules } from "./lib-strip-types.mjs";
 
-const src = readFileSync("lib/livestock/barcode-parser.ts", "utf8");
-const js = src
-  .replace(/^import[^;]+;$/gm, "")
-  .replace(/export (type|interface)[\s\S]*?\n}\n/g, "")
-  .replace(/export type [^;]+;/g, "")
-  .replace(/: ParsedBarcode\b/g, "")
-  .replace(/: Partial<ParsedBarcode>/g, "")
-  .replace(/: BarcodeFormat/g, "")
-  .replace(/: Record<string, number>/g, "")
-  .replace(/: string \| null/g, "")
-  .replace(/: number \| null/g, "")
-  .replace(/: string\b/g, "")
-  .replace(/: number\b/g, "")
-  .replace(/: boolean\b/g, "")
-  .replace(/export /g, "");
-
-const parseBarcode = new Function(`${js}; return parseBarcode;`)();
+const parseBarcode = evaluateModules(["lib/livestock/barcode-parser.ts"], "parseBarcode");
 
 const cases = [
   { label: "순수 이력번호", input: "002123456789", traceNo: "002123456789", weightKg: null },

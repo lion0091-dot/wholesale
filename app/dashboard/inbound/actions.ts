@@ -306,6 +306,225 @@ export async function voidScanAction(scanId: string, reason?: string): Promise<A
   }
 }
 
+// ====================================================================
+// 엑셀 대량 입고
+//
+// Vercel Hobby는 크론이 2개(이미 소진)뿐이고 하루 1회라 큐를 배치로 소화할 수
+// 없다. 그래서 브라우저가 청크를 반복 호출하는 구조로 간다 — 요청 하나가 짧아
+// 실행시간 제한을 안 건드리고, 진행률이 보이며, 창을 닫아도 job이 DB에 남아
+// 이어서 처리된다.
+// ====================================================================
+
+export interface ImportJobProgress {
+  jobId: string;
+  total: number;
+  done: number;
+  failed: number;
+  finished: boolean;
+}
+
+/** 한 번 호출에서 쓸 시간 예산. 이력 조회가 붙은 행은 느려서 건수보다 시간으로 끊는다. */
+const CHUNK_TIME_BUDGET_MS = 6_000;
+
+/** 시간 예산 안이라도 이만큼 처리하면 한 번 끊고 진행률을 갱신한다. */
+const CHUNK_MAX_ROWS = 25;
+
+export async function createImportJobAction(input: {
+  fileName: string;
+  rows: Array<{ rowNo: number; traceNo: string; weight: number }>;
+}): Promise<ActionResult<ImportJobProgress>> {
+  try {
+    const { supabase, wholesalerId, context } = await resolveInboundScope();
+
+    const rows = input.rows.filter((row) => row.traceNo && row.weight > 0);
+
+    if (rows.length === 0) {
+      throw new RbacError("처리할 행이 없습니다.");
+    }
+
+    if (rows.length > 5_000) {
+      throw new RbacError("한 번에 5,000행까지만 올릴 수 있습니다. 파일을 나눠주세요.");
+    }
+
+    const { data: job, error: jobError } = await supabase
+      .from("inbound_import_jobs")
+      .insert({
+        wholesaler_id: wholesalerId,
+        file_name: input.fileName.slice(0, 200),
+        total_rows: rows.length,
+        status: "PENDING",
+        created_by: context.userId,
+      })
+      .select("id")
+      .single();
+
+    if (jobError || !job) {
+      throw new Error(jobError?.message ?? "업로드 작업을 만들지 못했습니다.");
+    }
+
+    const { error: rowsError } = await supabase.from("inbound_import_rows").insert(
+      rows.map((row) => ({
+        job_id: job.id as string,
+        row_no: row.rowNo,
+        trace_no: row.traceNo,
+        weight: row.weight,
+      }))
+    );
+
+    if (rowsError) {
+      throw new Error(rowsError.message);
+    }
+
+    return {
+      success: true,
+      data: { jobId: job.id as string, total: rows.length, done: 0, failed: 0, finished: false },
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
+ * 대기 중인 행을 시간 예산만큼 처리한다. 브라우저가 finished가 될 때까지 반복 호출한다.
+ *
+ * 개별 스캔과 달리 중복 확인창을 띄울 수 없으므로(행마다 물어볼 수 없다)
+ * DB 쪽에서 EXCEL 경로는 중복 검사를 건너뛴다.
+ */
+export async function processImportChunkAction(
+  jobId: string
+): Promise<ActionResult<ImportJobProgress>> {
+  try {
+    const { supabase, wholesalerId } = await resolveInboundScope();
+
+    const { data: job } = await supabase
+      .from("inbound_import_jobs")
+      .select("id, wholesaler_id, total_rows, done_rows, failed_rows, status")
+      .eq("id", jobId)
+      .maybeSingle();
+
+    if (!job || job.wholesaler_id !== wholesalerId) {
+      throw new RbacError("업로드 작업을 찾을 수 없습니다.");
+    }
+
+    const { data: pendingRows } = await supabase
+      .from("inbound_import_rows")
+      .select("id, row_no, trace_no, weight")
+      .eq("job_id", jobId)
+      .eq("status", "PENDING")
+      .order("row_no", { ascending: true })
+      .limit(CHUNK_MAX_ROWS);
+
+    const rows = (pendingRows ?? []) as Array<Record<string, unknown>>;
+
+    if (rows.length === 0) {
+      await supabase
+        .from("inbound_import_jobs")
+        .update({ status: "DONE", updated_at: new Date().toISOString() })
+        .eq("id", jobId);
+
+      return {
+        success: true,
+        data: {
+          jobId,
+          total: Number(job.total_rows),
+          done: Number(job.done_rows),
+          failed: Number(job.failed_rows),
+          finished: true,
+        },
+      };
+    }
+
+    const startedAt = Date.now();
+    let done = Number(job.done_rows);
+    let failed = Number(job.failed_rows);
+
+    for (const row of rows) {
+      // 시간 예산을 넘기면 남은 행은 다음 호출로 넘긴다.
+      if (Date.now() - startedAt > CHUNK_TIME_BUDGET_MS) {
+        break;
+      }
+
+      const traceNo = String(row.trace_no);
+      const result = await recordScanAction({
+        traceNo,
+        weight: Number(row.weight),
+        scanType: "EXCEL",
+        confirmDuplicate: true,
+      });
+
+      const scanned = result.success && result.data && "scanId" in result.data ? result.data : null;
+
+      if (scanned) {
+        done += 1;
+        await supabase
+          .from("inbound_import_rows")
+          .update({ status: "DONE", scan_id: scanned.scanId, error_detail: null })
+          .eq("id", String(row.id));
+      } else {
+        failed += 1;
+        await supabase
+          .from("inbound_import_rows")
+          .update({ status: "FAILED", error_detail: result.error ?? "처리 실패" })
+          .eq("id", String(row.id));
+      }
+    }
+
+    await supabase
+      .from("inbound_import_jobs")
+      .update({
+        done_rows: done,
+        failed_rows: failed,
+        status: "PROCESSING",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", jobId);
+
+    const finished = done + failed >= Number(job.total_rows);
+
+    revalidatePath(REVALIDATE_PATH);
+
+    return {
+      success: true,
+      data: { jobId, total: Number(job.total_rows), done, failed, finished },
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** 새로고침 후 이어서 처리할 미완료 작업을 찾는다. */
+export async function findUnfinishedImportJobAction(): Promise<ActionResult<ImportJobProgress | null>> {
+  try {
+    const { supabase, wholesalerId } = await resolveInboundScope();
+
+    const { data } = await supabase
+      .from("inbound_import_jobs")
+      .select("id, total_rows, done_rows, failed_rows")
+      .eq("wholesaler_id", wholesalerId)
+      .in("status", ["PENDING", "PROCESSING"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!data) {
+      return { success: true, data: null };
+    }
+
+    return {
+      success: true,
+      data: {
+        jobId: data.id as string,
+        total: Number(data.total_rows),
+        done: Number(data.done_rows),
+        failed: Number(data.failed_rows),
+        finished: false,
+      },
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
 /** 스캔 화면에서 "이력 조회가 켜져 있는지" 안내하기 위한 상태. */
 export async function getInboundConfigAction(): Promise<ActionResult<{ traceLookupEnabled: boolean }>> {
   try {

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { InboundScanView, type InboundScanRow, type ScanProductOption } from "./inbound-scan-view";
+import { InboundImportPanel } from "./inbound-import-panel";
 import { isMtraceConfigured, configuredTraceSources } from "@/lib/livestock/mtrace-client";
 
 /** 이력 조회 기관 표기 — 설정 안내 문구에 쓴다. */
@@ -93,6 +94,8 @@ export default async function InboundPage() {
           이력 조회 가능: {configured.map((source) => SOURCE_LABELS[source] ?? source).join(" · ")}
         </div>
       )}
+
+      <InboundImportPanel />
 
       <InboundScanView initialScans={scans} products={products} />
     </div>
