@@ -37,6 +37,8 @@ function buildDemoStatement(orderId: string): StatementData | null {
       quantity: Number(item.quantity),
       subtotalAmount: Number(item.subtotal_amount),
     })),
+    // 데모 주문은 실제 입고 스캔 이력이 없다 — 이력번호 없이 발행한다.
+    traces: [],
     supplier: {
       name: "마장동 태양축산 (테스트 도매)",
       representativeName: "김도매",

@@ -29,6 +29,7 @@ export const DEMO_PRODUCTS: Product[] = [
     updated_at: now(),
     created_by: null,
     updated_by: null,
+    archived_at: null,
   },
   {
     id: "sample-2",
@@ -47,6 +48,7 @@ export const DEMO_PRODUCTS: Product[] = [
     updated_at: now(),
     created_by: null,
     updated_by: null,
+    archived_at: null,
   },
   {
     id: "sample-3",
@@ -65,6 +67,7 @@ export const DEMO_PRODUCTS: Product[] = [
     updated_at: now(),
     created_by: null,
     updated_by: null,
+    archived_at: null,
   },
 ];
 

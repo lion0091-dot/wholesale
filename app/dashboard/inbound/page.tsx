@@ -35,8 +35,7 @@ export default async function InboundPage() {
       supabase
         .from("inbound_scans")
         .select(
-          "id, trace_no, product_id, weight, unit, scan_type, status, remaining_weight, created_at, " +
-            "labeled_weight, weight_variance, purchase_unit_price, purchase_amount, purchase_supplier"
+          "id, trace_no, product_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_unit_price, purchase_amount, purchase_supplier"
         )
         .eq("wholesaler_id", scope.wholesalerId)
         .order("created_at", { ascending: false })
