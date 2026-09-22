@@ -91,7 +91,15 @@ export function InboundScanView({ initialScans, products }: Props) {
   }, [initialScans]);
 
   const submitScan = useCallback(
-    async (rawTraceNo: string, rawWeight: string, scanType: ScanType, confirmDuplicate = false) => {
+    async (
+      rawTraceNo: string,
+      rawWeight: string,
+      scanType: ScanType,
+      confirmDuplicate = false,
+      // 중복 확인으로 다시 부를 때는 순수 이력번호만 넘어와 바코드가 사라진다 —
+      // 처음 읽은 유통기한을 들고 다시 들어온다.
+      carriedBestBefore: string | null = null
+    ) => {
       // 스캐너가 보낸 값은 순수 이력번호일 수도, GS1-128 물류 바코드일 수도,
       // 소비자용 QR(URL)일 수도 있다. 한 곳에서 해석해 이력번호를 뽑는다.
       const parsed = parseBarcode(rawTraceNo);
@@ -125,11 +133,14 @@ export function InboundScanView({ initialScans, products }: Props) {
       setWeight("");
       traceInputRef.current?.focus();
 
+      const bestBefore = parsed.bestBefore ?? carriedBestBefore;
+
       const result = await recordScanAction({
         traceNo: value,
         weight: parsedWeight,
         scanType,
         confirmDuplicate,
+        bestBefore,
       });
 
       setPending((prev) => prev.filter((item) => item.key !== key));
@@ -147,14 +158,22 @@ export function InboundScanView({ initialScans, products }: Props) {
         );
 
         if (confirmed) {
-          await submitScan(value, String(parsedWeight), scanType, true);
+          await submitScan(value, String(parsedWeight), scanType, true, bestBefore);
         }
 
         return;
       }
 
       if (data && "status" in data) {
-        if (data.autoCreated) {
+        // 기한이 지난 물건도 입고는 받는다 — 안 받으면 반품·폐기 근거가 안 남는다.
+        // 대신 그 자리에서 알린다.
+        if (data.daysLeft !== null && data.daysLeft < 0) {
+          setError(
+            `유통기한이 ${-data.daysLeft}일 지난 박스입니다 (${data.bestBefore}). 입고는 기록했지만 출고되지 않습니다.`
+          );
+        } else if (data.daysLeft !== null && data.daysLeft <= 3) {
+          setNotice(`유통기한이 ${data.daysLeft}일 남았습니다 (${data.bestBefore}). 먼저 내보내세요.`);
+        } else if (data.autoCreated) {
           setNotice(
             `'${data.autoCreated.productName}' 상품을 새로 만들어 입고했습니다.` +
               " 상품 관리에서 판매가를 넣고 '판매중'으로 바꿔야 고객에게 보입니다."

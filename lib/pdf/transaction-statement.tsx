@@ -137,6 +137,19 @@ const styles = StyleSheet.create({
     color: "#92400e",
     fontSize: 8.5,
   },
+  traceBox: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 6,
+    padding: 8,
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  traceTitle: { fontSize: 9, fontWeight: 700, color: "#0f172a", marginBottom: 4 },
+  traceRow: { flexDirection: "row", paddingVertical: 2.5, fontSize: 8 },
+  traceName: { width: 110, color: "#334155" },
+  traceNo: { width: 96, color: "#0f172a" },
+  traceQty: { width: 54, textAlign: "right", color: "#334155" },
+  traceMeta: { flex: 1, paddingLeft: 8, color: "#64748b" },
   disclaimer: {
     marginTop: "auto",
     borderTop: "1px solid #e2e8f0",
@@ -216,6 +229,24 @@ function TransactionStatementDocument({ data }: { data: StatementData }) {
           <Text style={styles.totalLabel}>합계금액</Text>
           <Text style={styles.totalValue}>{formatWon(data.totalAmount)}</Text>
         </View>
+
+        {data.traces.length > 0 && (
+          <View style={styles.traceBox}>
+            <Text style={styles.traceTitle}>축산물 이력번호 (실제 출고 박스 기준)</Text>
+            {data.traces.map((trace, index) => (
+              <View key={`${trace.traceNo}-${index}`} style={styles.traceRow}>
+                <Text style={styles.traceName}>{trace.productName}</Text>
+                <Text style={styles.traceNo}>{trace.traceNo}</Text>
+                <Text style={styles.traceQty}>{trace.quantity}</Text>
+                <Text style={styles.traceMeta}>
+                  {[trace.grade, trace.slaughterDate, trace.butcheryPlace]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         <View style={styles.partyBox}>
           <Text style={styles.partyLabel}>배송지</Text>

@@ -38,6 +38,9 @@ export interface OutboundScanResult {
   partMismatch: boolean;
   tracePart: string | null;
   productPart: string | null;
+  /** 바코드에 유통기한이 실려 있던 박스만 값이 있다. */
+  bestBefore: string | null;
+  daysLeft: number | null;
 }
 
 export interface PickingRow {
@@ -53,6 +56,8 @@ export interface PickingRow {
   slaughterDate: string | null;
   /** 이미 출고 스캔을 마친 박스. 목록에서 빼지 않고 표시만 한다. */
   alreadyPicked: boolean;
+  bestBefore: string | null;
+  daysLeft: number | null;
 }
 
 /** DB가 던지는 코드를 현장에서 읽을 문장으로 바꾼다. */
@@ -136,6 +141,15 @@ export async function recordOutboundScanAction(
         throw new RbacError(SCAN_ERRORS[matched]);
       }
 
+      // 기한 경과는 확인 버튼으로 넘길 수 없다 — 날짜를 짚어 알려주고 끝낸다.
+      const expired = error.message.match(/BOX_EXPIRED:(\d{4}-\d{2}-\d{2})/);
+
+      if (expired) {
+        throw new RbacError(
+          `유통기한이 지난 박스입니다 (${expired[1]}). 출고할 수 없습니다 — 폐기 또는 반품 처리해주세요.`
+        );
+      }
+
       if (error.message.includes("ORDER_NOT_SHIPPABLE")) {
         throw new RbacError("확정 또는 배송중 상태의 발주서만 출고할 수 있습니다.");
       }
@@ -160,6 +174,9 @@ export async function recordOutboundScanAction(
         partMismatch: Boolean(row.part_mismatch),
         tracePart: (row.trace_part as string | null) ?? null,
         productPart: (row.product_part as string | null) ?? null,
+        bestBefore: (row.best_before as string | null) ?? null,
+        daysLeft:
+          row.days_left === null || row.days_left === undefined ? null : Number(row.days_left),
       },
     };
   } catch (error) {
@@ -228,6 +245,9 @@ export async function getPickingListAction(
         grade: (row.grade as string | null) ?? null,
         slaughterDate: (row.slaughter_date as string | null) ?? null,
         alreadyPicked: Boolean(row.already_picked),
+        bestBefore: (row.best_before as string | null) ?? null,
+        daysLeft:
+          row.days_left === null || row.days_left === undefined ? null : Number(row.days_left),
       })),
     };
   } catch (error) {

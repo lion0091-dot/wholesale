@@ -111,6 +111,13 @@ export function OutboundScanView({ orders }: Props) {
       );
     }
 
+    if (data.daysLeft !== null && data.daysLeft <= 3) {
+      setWarning(
+        (data.partMismatch ? `${data.tracePart}/${data.productPart} 부위 확인 필요. ` : "") +
+          `이 박스는 유통기한이 ${data.daysLeft}일 남았습니다 (${data.bestBefore}).`
+      );
+    }
+
     setMessage(
       data.remainingNeeded > 0
         ? `${data.productName} ${data.taken}kg 출고. ${data.remainingNeeded}kg 더 필요합니다.`
@@ -380,6 +387,12 @@ export function OutboundScanView({ orders }: Props) {
                     <div style={{ fontSize: "11px", color: "#94a3b8" }}>
                       도축 {row.slaughterDate} · 박스 {row.boxWeight}
                       {row.unit}
+                    </div>
+                  )}
+                  {row.daysLeft !== null && row.daysLeft <= 3 && (
+                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#b45309" }}>
+                      유통기한 {row.daysLeft < 0 ? `${-row.daysLeft}일 지남` : `${row.daysLeft}일 남음`} (
+                      {row.bestBefore})
                     </div>
                   )}
                 </div>

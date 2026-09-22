@@ -35,6 +35,10 @@ export interface ScanResult {
   grade: string | null;
   slaughterDate: string | null;
   packingDate: string | null;
+  /** 바코드에 실려 온 유통기한(GS1-128 AI 15/17). 없는 바코드도 많다. */
+  bestBefore: string | null;
+  /** 남은 일수. 음수면 이미 지났다 — 입고는 받되 화면이 경고한다. */
+  daysLeft: number | null;
   /** 이력 정보로 상품을 새로 만든 경우 — 화면에서 "가격을 넣어달라"고 안내한다. */
   autoCreated: { productName: string; needsPrice: boolean } | null;
 }
@@ -105,6 +109,8 @@ export async function recordScanAction(input: {
   productId?: string | null;
   memo?: string | null;
   confirmDuplicate?: boolean;
+  /** 바코드에서 읽은 유통기한(YYYY-MM-DD). 없으면 null. */
+  bestBefore?: string | null;
 }): Promise<ActionResult<ScanResult | { duplicate: DuplicateWarning }>> {
   try {
     const { supabase } = await resolveInboundScope();
@@ -178,6 +184,7 @@ export async function recordScanAction(input: {
       p_import_row_id: null,
       p_memo: input.memo ?? null,
       p_confirm_duplicate: input.confirmDuplicate ?? false,
+      p_best_before: input.bestBefore ?? null,
     });
 
     if (error) {
@@ -233,6 +240,8 @@ export async function recordScanAction(input: {
         grade: (row.grade as string | null) ?? null,
         slaughterDate: (row.slaughter_date as string | null) ?? null,
         packingDate: (row.packing_date as string | null) ?? null,
+        bestBefore: (row.best_before as string | null) ?? null,
+        daysLeft: row.days_left === null || row.days_left === undefined ? null : Number(row.days_left),
         autoCreated,
       },
     };
