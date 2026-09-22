@@ -68,8 +68,14 @@ function stockBadge(quantity: number, unit: string) {
 
 /** 재고 숫자 밑에 붙는 "도축 25.09.18 · 4일 경과 · 박스 3" 한 줄 */
 function StockFreshness({ summary }: { summary?: StockSummary }) {
+  // 스캔으로 들어온 박스가 없으면 보여줄 도축일 자체가 없다. 빈칸으로 두면
+  // "왜 안 보이지?"가 되므로 이유를 한 줄로 밝힌다.
   if (!summary || !summary.box_count) {
-    return null;
+    return (
+      <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "3px" }}>
+        이력 미등록 · 입고 스캔 시 도축일·포장일이 표시됩니다
+      </div>
+    );
   }
 
   const slaughter = freshnessInfo(summary.oldest_slaughter_date);
