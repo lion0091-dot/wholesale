@@ -9,11 +9,12 @@
  * 소스만 시도하고, 미설정 소스는 조용히 건너뛴다 — 소·돼지만 취급하는 업체는
  * MTRACE_API_KEY 하나만 넣으면 된다.
  *
- * ⚠️ 이 파일 작성 시점에 인증키가 하나도 없다. 엔드포인트 주소·파라미터명·응답
- * 필드명이 전부 문서 기준 추정이므로, 키가 발급되면 실제 응답으로 재검증할 것.
- * 특히 **부위(部位)가 응답에 실제로 오는지** — 국내산 소의 개체식별번호(12자리)는
- * 소 한 마리를 가리키므로 부위가 없을 가능성이 크다. 없으면 스캔이
- * PENDING_MAPPING으로 남고 사용자에게 한 번 되묻는다.
+ * 국내산(①②)은 2026-09-23에 공식 활용가이드(축산물품질평가원_축산물통합이력정보조회
+ * v2.10)로 실주소·파라미터·응답 구조를 확인했다 — 아래 KAPE_ANIMAL_TRACE_ENDPOINT
+ * 참고. **부위(部位) 필드는 실제로 없다** — 가이드의 응답 필드 목록에 아예 없어
+ * 예상대로 확인됨. 개체번호는 소 한 마리를 가리킬 뿐이라 그렇다. 스캔은
+ * PENDING_MAPPING으로 남고 사용자에게 한 번 되묻는다(잠긴 설계 결정 4번).
+ * 수입 축산물(②)은 여전히 미확인이다.
  *
  * 파싱은 정확한 XML 경로에 의존하지 않고 트리를 재귀 탐색해 후보 키를 찾는다
  * (kape-client.ts와 같은 전략). 원본 응답은 master_livestock.raw_payload에
@@ -48,20 +49,21 @@ interface SourceConfig {
 }
 
 /**
- * 축산물품질평가원(KAPE) 오픈API 서비스 기본 경로.
- * 이미 동작 중인 경락가 API가 `${KAPE_SERVICE_BASE}/auct/cattle` 형태이므로,
- * 이력 조회도 같은 기본 경로 아래 다른 오퍼레이션일 것으로 본다.
+ * 축산물품질평가원(KAPE) "축산물통합이력정보조회" 서비스(data.go.kr 개발계정
+ * "축산물품질평가원_축산물통합이력정보", 서비스ID SC-OA-21-09)의 실제 주소·파라미터.
+ *
+ * 사장님이 다운로드한 공식 활용가이드(v2.10)로 2026-09-23에 확인함 — 예전에 웹 검색으로
+ * 찾았던 "쇠고기이력정보"(15056898, /mtrace/breeding/cattle, cattleNo 파라미터)는
+ * 완전히 다른(더 좁은) 상품이었고 틀렸다. 이 주소 하나로 **소·돼지·닭·오리·계란**
+ * 개체/묶음번호를 전부 조회한다(응답의 traceNoType으로 구분됨) — 품목별로 주소를
+ * 나눌 필요가 없다.
+ *
+ * 파라미터: traceNo(이력/묶음번호), optionNo(9=전 구간 정보 — 예제가 전부 9를 씀),
+ * corpNo(묶음 구성업소 사업자번호, 옵션). ServiceKey 대소문자는 가이드 예제에서도
+ * 섞여 쓰여 서버가 구분하지 않는 것으로 보인다.
  */
-const KAPE_SERVICE_BASE = "http://data.ekape.or.kr/openapi-data/service/user/grade";
-
-/**
- * data.go.kr 상품 페이지("축산물품질평가원_쇠고기이력정보", data.go.kr/data/15056898)에서
- * 확인한 실제 소 개체정보 조회 주소. 파라미터명도 이 상품 고유의 `cattleNo`다(callUrl 참고).
- * 경락가와 같은 계정 인증키를 쓰지만 이 상품은 **별도 활용신청(자동승인)이 필요**하다 — 승인
- * 전에는 이 주소도 다른 후보처럼 빈 응답/오류로 남는다.
- */
-const KAPE_CATTLE_TRACE_ENDPOINT =
-  "http://data.ekape.or.kr/openapi-data/service/user/mtrace/breeding/cattle";
+const KAPE_ANIMAL_TRACE_ENDPOINT =
+  "http://data.ekape.or.kr/openapi-data/service/user/animalTrace/traceNoSearch";
 
 /**
  * 소·돼지 이력은 축산물품질평가원(KAPE)이 운영한다 — 이미 동작 중인 경락가 API
@@ -95,23 +97,19 @@ function sourceConfig(source: TraceSource): SourceConfig {
         apiKey: process.env.MEATWATCH_API_KEY ?? fallbackDataGoKrKey(),
       };
     case "poultry":
+      // 공식 가이드(v2.10)에 닭/오리/계란(FOWL·DUCK·EGG)도 같은 animalTrace
+      // 엔드포인트로 조회된다고 나와 있다 — 별도 주소가 아니다.
       return {
         label: "poultry_trace",
-        endpoints: candidates(process.env.POULTRY_TRACE_API_ENDPOINT, [
-          `${KAPE_SERVICE_BASE}/poultry/traceNoSearch`,
-          `${KAPE_SERVICE_BASE}/confirm/poultry`,
-        ]),
+        endpoints: candidates(process.env.POULTRY_TRACE_API_ENDPOINT, [KAPE_ANIMAL_TRACE_ENDPOINT]),
         apiKey: process.env.POULTRY_TRACE_API_KEY ?? fallbackDataGoKrKey(),
       };
     default:
       return {
         label: "mtrace_livestock",
-        // 소는 data.go.kr 상품 페이지(15056898)로 실주소·파라미터명이 확인됐다(위 상수 참고).
-        // 예전에 남겨뒀던 추측 주소 4개(confirm/cattle 등)는 전부 지웠다 — 실주소가 아닌 게
-        // 확인됐고(25단계), 그중 하나가 애매한 200 응답을 주면 진짜 주소의 진짜 오류가
-        // "이력 없음"으로 가려지는 부작용까지 있었다(2026-09-22 실사용 중 발견).
-        // 돼지 전용 상품은 데이터포털 검색으로 못 찾아 여전히 미확인 — 찾으면 여기 추가.
-        endpoints: candidates(process.env.MTRACE_API_ENDPOINT, [KAPE_CATTLE_TRACE_ENDPOINT]),
+        // 공식 활용가이드(v2.10, 2026-09-23 확인)로 실주소·파라미터가 확정됐다(위 상수 참고).
+        // 소·돼지 둘 다 이 주소 하나로 처리된다.
+        endpoints: candidates(process.env.MTRACE_API_ENDPOINT, [KAPE_ANIMAL_TRACE_ENDPOINT]),
         apiKey: process.env.MTRACE_API_KEY ?? fallbackDataGoKrKey(),
       };
   }
@@ -283,11 +281,14 @@ const resolvedEndpoint = new Map<TraceSource, string>();
 
 async function callUrl(endpoint: string, apiKey: string, traceNo: string): Promise<unknown> {
   const url = new URL(endpoint);
+  // 공식 가이드 예제는 ServiceKey/serviceKey 대소문자가 섞여 있다 — 서버가 구분하지
+  // 않는 것으로 보이지만, 혹시 몰라 소문자 쪽으로 보낸다(URLSearchParams 관례와도 맞다).
   url.searchParams.set("serviceKey", apiKey);
   url.searchParams.set("traceNo", traceNo);
-  // 확인된 실제 소 이력조회 상품(15056898)은 파라미터명이 `cattleNo`다. 나머지 후보는
-  // 파라미터명이 미확인이라, 모르는 파라미터를 무시하는 공공 API 관례에 기대어 둘 다 보낸다.
-  url.searchParams.set("cattleNo", traceNo);
+  // optionNo=9 — 공식 가이드 예제가 개체·묶음 조회 전부 9를 써서 여러 구간
+  // (출생·이동·도축·포장 등) 정보를 한 번에 받는다. 우리는 축종·부위·등급만 있으면
+  // 되지만 값을 좁혀서 얻는 이득이 없어 예제와 동일하게 맞춘다.
+  url.searchParams.set("optionNo", "9");
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
