@@ -14,12 +14,44 @@ import {
   STOCK_ADJUST_REASONS,
 } from "./actions";
 
+/** get_product_stock_summary() 한 행 — 상품 하나를 채우고 있는 박스들의 요약 */
+export interface StockSummary {
+  product_id: string;
+  box_count: number;
+  /** 가장 오래된 박스의 도축일. 선입선출 관리에서 실제로 봐야 하는 값이다. */
+  oldest_slaughter_date: string | null;
+  latest_slaughter_date: string | null;
+  oldest_packing_date: string | null;
+  /** 이 상품에 섞여 있는 등급들 (예: "1+, 1++") */
+  grades: string | null;
+}
+
+/** 도축일로부터 며칠 지났는지. 30일을 넘으면 경고색으로 표시한다. */
+function freshnessInfo(dateText: string | null): { label: string; days: number; tone: string } | null {
+  if (!dateText) {
+    return null;
+  }
+
+  const days = Math.floor((Date.now() - new Date(dateText).getTime()) / 86_400_000);
+
+  if (!Number.isFinite(days)) {
+    return null;
+  }
+
+  return {
+    label: dateText.slice(2).replace(/-/g, "."),
+    days,
+    tone: days >= 30 ? "#b91c1c" : days >= 14 ? "#b45309" : "#475569",
+  };
+}
+
 interface ProductTableProps {
   products: Product[];
   /** 데모(샘플) 데이터일 때는 변경 버튼을 비활성화한다. */
   readOnly?: boolean;
   /** user_id → 표시 이름. 등록자/수정자 표시용 (여러 직원이 쓰는 백오피스) */
   memberNames?: Record<string, string>;
+  stockSummaries?: Record<string, StockSummary>;
 }
 
 function stockBadge(quantity: number, unit: string) {
@@ -32,6 +64,43 @@ function stockBadge(quantity: number, unit: string) {
   }
 
   return { label: "정상", bg: "#dcfce7", color: "#166534", text: `${quantity} ${unit}` };
+}
+
+/** 재고 숫자 밑에 붙는 "도축 25.09.18 · 4일 경과 · 박스 3" 한 줄 */
+function StockFreshness({ summary }: { summary?: StockSummary }) {
+  // 스캔으로 들어온 박스가 없으면 보여줄 도축일 자체가 없다. 빈칸으로 두면
+  // "왜 안 보이지?"가 되므로 이유를 한 줄로 밝힌다.
+  if (!summary || !summary.box_count) {
+    return (
+      <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "3px" }}>
+        이력 미등록 · 입고 스캔 시 도축일·포장일이 표시됩니다
+      </div>
+    );
+  }
+
+  const slaughter = freshnessInfo(summary.oldest_slaughter_date);
+  const packing = freshnessInfo(summary.oldest_packing_date);
+
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", fontSize: "11px", marginTop: "3px" }}>
+      {slaughter ? (
+        <span style={{ color: slaughter.tone }} title="가장 오래된 재고의 도축일">
+          도축 {slaughter.label} · {slaughter.days}일
+        </span>
+      ) : null}
+      {packing ? (
+        <span style={{ color: "#64748b" }} title="가장 오래된 재고의 포장처리일">
+          포장 {packing.label}
+        </span>
+      ) : null}
+      {summary.grades ? (
+        <span style={{ color: "#64748b" }} title="재고에 섞여 있는 등급">
+          {summary.grades}
+        </span>
+      ) : null}
+      <span style={{ color: "#94a3b8" }}>박스 {summary.box_count}</span>
+    </div>
+  );
 }
 
 const chipButtonStyle: React.CSSProperties = {
@@ -59,7 +128,12 @@ function categoryIcon(category: string): string {
   return CATEGORY_ICONS[category] ?? "🍖";
 }
 
-export function ProductTable({ products, readOnly = false, memberNames = {} }: ProductTableProps) {
+export function ProductTable({
+  products,
+  readOnly = false,
+  memberNames = {},
+  stockSummaries = {},
+}: ProductTableProps) {
   const router = useRouter();
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState("all");
@@ -355,6 +429,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                           </button>
                         </div>
                       ) : (
+                        <div>
                         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                           <span
                             style={{
@@ -385,6 +460,8 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                           >
                             {stock.text} ✏️
                           </button>
+                        </div>
+                        <StockFreshness summary={stockSummaries[product.id]} />
                         </div>
                       )}
                     </td>
@@ -580,6 +657,8 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                     </button>
                   )}
                 </div>
+
+                <StockFreshness summary={stockSummaries[product.id]} />
 
                 <div
                   style={{

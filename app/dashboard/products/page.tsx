@@ -4,7 +4,7 @@ import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { DEMO_PRODUCTS } from "@/lib/demo/supplier-samples";
 import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
-import { ProductTable } from "./product-table";
+import { ProductTable, type StockSummary } from "./product-table";
 import { MarketPricePanel } from "./market-price-panel";
 import { SeedDefaultProductsButton } from "./seed-default-products-button";
 import { DemoNoticeBanner } from "./demo-notice-banner";
@@ -24,10 +24,13 @@ export default async function DashboardProductsPage() {
   let products: Product[] = [];
   let isDemoData = true;
   let memberNames: Record<string, string> = {};
+  // 상품별 재고 신선도 요약(도축일/포장일/박스수). 목록에서 상품마다 따로 조회하면
+  // N+1이 되므로 한 번에 집계해 받아 상품 id로 매핑한다.
+  let stockSummaries: Record<string, StockSummary> = {};
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
-    const [{ data }, { data: members }] = await Promise.all([
+    const [{ data }, { data: members }, { data: summaries }] = await Promise.all([
       supabase
         .from("products")
         .select("*")
@@ -40,12 +43,17 @@ export default async function DashboardProductsPage() {
         .order("created_at", { ascending: false })
         .order("id", { ascending: true }),
       supabase.rpc("list_wholesaler_member_names", { p_wholesaler_id: scope.wholesalerId }),
+      supabase.rpc("get_product_stock_summary", { p_wholesaler_id: scope.wholesalerId }),
     ]);
 
     if (data && data.length > 0) {
       products = data as Product[];
       isDemoData = false;
     }
+
+    stockSummaries = Object.fromEntries(
+      ((summaries ?? []) as StockSummary[]).map((summary) => [summary.product_id, summary])
+    );
 
     memberNames = Object.fromEntries(
       ((members ?? []) as Array<{ user_id: string; name: string | null }>).map((member) => [
@@ -128,7 +136,12 @@ export default async function DashboardProductsPage() {
 
       <MarketPricePanel />
 
-      <ProductTable products={products} readOnly={isDemoData} memberNames={memberNames} />
+      <ProductTable
+        products={products}
+        readOnly={isDemoData}
+        memberNames={memberNames}
+        stockSummaries={stockSummaries}
+      />
     </div>
   );
 }
