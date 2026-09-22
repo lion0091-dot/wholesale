@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { composeProductDisplayName } from "@/lib/products/display-name";
 import { recordScanAction, resolveMappingAction, voidScanAction, type ScanType } from "./actions";
+import { parseBarcode } from "@/lib/livestock/barcode-parser";
 
 export interface ScanProductOption {
   id: string;
@@ -91,13 +92,20 @@ export function InboundScanView({ initialScans, products }: Props) {
 
   const submitScan = useCallback(
     async (rawTraceNo: string, rawWeight: string, scanType: ScanType, confirmDuplicate = false) => {
-      const value = rawTraceNo.trim();
-      const parsedWeight = Number.parseFloat(rawWeight);
+      // 스캐너가 보낸 값은 순수 이력번호일 수도, GS1-128 물류 바코드일 수도,
+      // 소비자용 QR(URL)일 수도 있다. 한 곳에서 해석해 이력번호를 뽑는다.
+      const parsed = parseBarcode(rawTraceNo);
+      const value = parsed.traceNo ?? rawTraceNo.trim();
 
       if (!value) {
         setError("이력번호를 입력해주세요.");
         return;
       }
+
+      // GS1-128에는 중량이 들어 있다 — 손으로 안 쳐도 되게 바코드 값을 우선한다.
+      const typedWeight = Number.parseFloat(rawWeight);
+      const parsedWeight =
+        Number.isFinite(typedWeight) && typedWeight > 0 ? typedWeight : parsed.weightKg ?? NaN;
 
       if (!Number.isFinite(parsedWeight) || parsedWeight <= 0) {
         setError("중량을 입력해주세요.");
@@ -171,7 +179,10 @@ export function InboundScanView({ initialScans, products }: Props) {
 
     event.preventDefault();
 
-    if (!weight.trim()) {
+    // GS1-128처럼 바코드 자체에 중량이 실려 있으면 중량 입력을 건너뛴다.
+    const parsed = parseBarcode(traceNo);
+
+    if (!weight.trim() && !parsed.weightKg) {
       weightInputRef.current?.focus();
       return;
     }
@@ -348,6 +359,7 @@ export function InboundScanView({ initialScans, products }: Props) {
 
         <p style={{ fontSize: "11px", color: "#94a3b8", margin: "8px 0 0" }}>
           바코드를 찍으면 중량 칸으로 넘어가고, 중량 입력 후 Enter를 누르면 등록됩니다.
+          물류 바코드(GS1-128)처럼 중량이 들어 있으면 그대로 등록됩니다.
           {!cameraSupported && " (이 브라우저는 카메라 스캔을 지원하지 않아 스캐너/수동 입력만 가능합니다)"}
         </p>
 
