@@ -11,6 +11,7 @@ import {
   deleteProductAction,
   toggleProductFlagAction,
   updateProductStockAction,
+  STOCK_ADJUST_REASONS,
 } from "./actions";
 
 interface ProductTableProps {
@@ -66,6 +67,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
   const [error, setError] = useState<string | null>(null);
   const [editingStockId, setEditingStockId] = useState<string | null>(null);
   const [stockInput, setStockInput] = useState("");
+  const [stockReason, setStockReason] = useState<string>(STOCK_ADJUST_REASONS[0].code);
 
   const categories = useMemo(
     () => Array.from(new Set(products.map((product) => product.category))),
@@ -110,8 +112,13 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
       return;
     }
 
+    if (!stockReason) {
+      setError("조정 사유를 선택해주세요.");
+      return;
+    }
+
     void run(product.id, async () => {
-      const result = await updateProductStockAction(product.id, nextStock);
+      const result = await updateProductStockAction(product.id, nextStock, stockReason);
 
       if (result.success) {
         setEditingStockId(null);
@@ -297,7 +304,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
 
                     <td>
                       {editingStockId === product.id ? (
-                        <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                        <div style={{ display: "flex", gap: "4px", alignItems: "center", flexWrap: "wrap" }}>
                           <input
                             type="number"
                             min="0"
@@ -312,6 +319,25 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                               borderRadius: "4px",
                             }}
                           />
+                          {/* 조정 사유는 원장에 그대로 남는다 — 나중에 왜 줄었는지 추적하기 위해서다. */}
+                          <select
+                            value={stockReason}
+                            onChange={(event) => setStockReason(event.target.value)}
+                            aria-label="재고 조정 사유"
+                            style={{
+                              padding: "4px 6px",
+                              fontSize: "12px",
+                              border: "1px solid #94a3b8",
+                              borderRadius: "4px",
+                              backgroundColor: "#fff",
+                            }}
+                          >
+                            {STOCK_ADJUST_REASONS.map((reason) => (
+                              <option key={reason.code} value={reason.code}>
+                                {reason.label}
+                              </option>
+                            ))}
+                          </select>
                           <button
                             type="button"
                             disabled={isBusy}
@@ -347,6 +373,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                             onClick={() => {
                               setEditingStockId(product.id);
                               setStockInput(String(product.stock_quantity));
+                              setStockReason(STOCK_ADJUST_REASONS[0].code);
                             }}
                             style={{
                               ...chipButtonStyle,
@@ -354,7 +381,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                               backgroundColor: "#f8fafc",
                               padding: "6px 10px",
                             }}
-                            title="클릭하여 재고 수정"
+                            title="클릭하여 재고 조정"
                           >
                             {stock.text} ✏️
                           </button>
@@ -467,7 +494,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                   </span>
 
                   {editingStockId === product.id ? (
-                    <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: "4px", alignItems: "center", flexWrap: "wrap" }}>
                       <input
                         type="number"
                         min="0"
@@ -482,6 +509,24 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                           borderRadius: "4px",
                         }}
                       />
+                      <select
+                        value={stockReason}
+                        onChange={(event) => setStockReason(event.target.value)}
+                        aria-label="재고 조정 사유"
+                        style={{
+                          padding: "6px",
+                          fontSize: "12px",
+                          border: "1px solid #94a3b8",
+                          borderRadius: "4px",
+                          backgroundColor: "#fff",
+                        }}
+                      >
+                        {STOCK_ADJUST_REASONS.map((reason) => (
+                          <option key={reason.code} value={reason.code}>
+                            {reason.label}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         type="button"
                         disabled={isBusy}
@@ -504,6 +549,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                       onClick={() => {
                         setEditingStockId(product.id);
                         setStockInput(String(product.stock_quantity));
+                        setStockReason(STOCK_ADJUST_REASONS[0].code);
                       }}
                       style={{
                         display: "flex",

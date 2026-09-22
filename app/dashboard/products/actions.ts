@@ -267,14 +267,33 @@ export async function toggleProductFlagAction(
 }
 
 // ====================================================================
-// 4. 재고 수량 변경
+// 4. 재고 조정 (예전 "재고 수량 변경")
+//
+// stock_quantity를 직접 UPDATE하면 안 된다 — 재고는 이제 stock_ledger 합계로
+// 파생되므로, 덮어쓴 값이 다음 입고/출고 때 recalc_product_stock()에 의해
+// 조용히 되돌아간다. 대신 adjust_product_stock() RPC가 차이분을 원장 행으로
+// 남기고, 왜 바뀌었는지(실사/폐기/파손/반품)를 함께 기록한다.
 // ====================================================================
+export const STOCK_ADJUST_REASONS = [
+  { code: "STOCKTAKE", label: "재고 실사" },
+  { code: "DISPOSAL", label: "폐기" },
+  { code: "DAMAGE", label: "파손·손실" },
+  { code: "RETURN", label: "반품 입고" },
+  { code: "OTHER", label: "기타" },
+] as const;
+
+export type StockAdjustReasonCode = (typeof STOCK_ADJUST_REASONS)[number]["code"];
+
+const STOCK_ADJUST_REASON_CODES: string[] = STOCK_ADJUST_REASONS.map((reason) => reason.code);
+
 export async function updateProductStockAction(
   productId: string,
-  nextStock: number
+  nextStock: number,
+  reasonCode: string,
+  reasonNote?: string
 ): Promise<ActionResult> {
   try {
-    const { supabase, context, wholesalerId } = await resolveProductScope();
+    const { supabase } = await resolveProductScope();
 
     if (!UUID_PATTERN.test(productId)) {
       throw new RbacError("올바른 상품 식별자가 아닙니다.");
@@ -284,23 +303,23 @@ export async function updateProductStockAction(
       throw new RbacError("재고 수량은 0 이상의 숫자여야 합니다.");
     }
 
-    let query = supabase
-      .from("products")
-      .update({ stock_quantity: nextStock, updated_at: new Date().toISOString() })
-      .eq("id", productId);
-
-    if (!context.isSuperAdmin) {
-      query = query.eq("wholesaler_id", wholesalerId);
+    if (!STOCK_ADJUST_REASON_CODES.includes(reasonCode)) {
+      throw new RbacError("조정 사유를 선택해주세요.");
     }
 
-    const { data, error } = await query.select("id").maybeSingle();
+    const { error } = await supabase.rpc("adjust_product_stock", {
+      p_product_id: productId,
+      p_new_quantity: nextStock,
+      p_reason_code: reasonCode,
+      p_reason_note: reasonNote?.trim() || null,
+    });
 
     if (error) {
-      throw new Error(error.message);
-    }
+      if (error.message.includes("PRODUCT_NOT_FOUND")) {
+        throw new RbacError("변경 권한이 없어 저장되지 않았습니다. 새로고침 후 다시 시도해주세요.");
+      }
 
-    if (!data) {
-      throw new RbacError("변경 권한이 없어 저장되지 않았습니다. 새로고침 후 다시 시도해주세요.");
+      throw new Error(error.message);
     }
 
     revalidatePath(REVALIDATE_PATH);
