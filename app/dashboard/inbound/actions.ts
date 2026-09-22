@@ -136,7 +136,7 @@ export async function recordScanAction(input: {
   purchaseSupplier?: string | null;
 }): Promise<ActionResult<ScanResult | { duplicate: DuplicateWarning }>> {
   try {
-    const { supabase, wholesalerId } = await resolveInboundScope();
+    const { supabase } = await resolveInboundScope();
 
     const traceNo = input.traceNo.trim().toUpperCase();
 
@@ -176,15 +176,7 @@ export async function recordScanAction(input: {
         failDetail = "이력 조회 인증키가 설정되지 않았습니다.";
       } else {
         try {
-          // corpNo — 공식 가이드 예제는 개체 조회에도 항상 값을 넣는다. 우리 사업자번호를
-          // 보내는 게 맞는지는 실호출로만 확인 가능해 우선 이걸로 시도한다(2026-09-23).
-          const { data: wholesaler } = await supabase
-            .from("wholesalers")
-            .select("business_number")
-            .eq("id", wholesalerId)
-            .maybeSingle();
-
-          const record = await fetchTraceRecord(traceNo, wholesaler?.business_number ?? null);
+          const record = await fetchTraceRecord(traceNo);
 
           if (record) {
             const { error: upsertError } = await supabase.rpc("upsert_master_livestock", {

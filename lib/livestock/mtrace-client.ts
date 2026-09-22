@@ -279,27 +279,18 @@ const parser = new XMLParser({ ignoreAttributes: false, parseTagValue: false });
  */
 const resolvedEndpoint = new Map<TraceSource, string>();
 
-async function callUrl(
-  endpoint: string,
-  apiKey: string,
-  traceNo: string,
-  corpNo: string | null
-): Promise<unknown> {
+async function callUrl(endpoint: string, apiKey: string, traceNo: string): Promise<unknown> {
   const url = new URL(endpoint);
   // 공식 가이드 예제는 ServiceKey/serviceKey 대소문자가 섞여 있다 — 서버가 구분하지
   // 않는 것으로 보이지만, 혹시 몰라 소문자 쪽으로 보낸다(URLSearchParams 관례와도 맞다).
   url.searchParams.set("serviceKey", apiKey);
   url.searchParams.set("traceNo", traceNo);
-  // optionNo=9 — 공식 가이드 예제가 개체·묶음 조회 전부 9를 써서 여러 구간
-  // (출생·이동·도축·포장 등) 정보를 한 번에 받는다. 우리는 축종·부위·등급만 있으면
-  // 되지만 값을 좁혀서 얻는 이득이 없어 예제와 동일하게 맞춘다.
-  url.searchParams.set("optionNo", "9");
-  // corpNo — 가이드는 "옵션"으로 표시하지만 개체 조회 예제에도 항상 값이 들어있다.
-  // 실호출에서 이게 없으면 결과가 빈 채로 오는 걸 확인해(2026-09-23) 우리 사업자번호를
-  // 넣어본다. 하이픈은 API 예제에 없어 제거한다.
-  if (corpNo) {
-    url.searchParams.set("corpNo", corpNo.replace(/-/g, ""));
-  }
+  // optionNo·corpNo는 일부러 안 보낸다 — 실호출로 확인함(2026-09-23):
+  //  - optionNo=9(가이드 예제가 쓰던 값)는 개체 조회에서 빈 결과만 왔다.
+  //  - optionNo를 아예 생략하면 출생·이동·도축·포장·백신 정보가 전부 한 번에 온다
+  //    (문서에 안 나온 실제 기본 동작). 콤마로 여러 값을 묶어 보내면 서버 500(Oracle
+  //    바인드 오류)이 난다 — 단일값 또는 생략만 된다.
+  //  - corpNo도 있으나 없으나 결과가 같았다(개체 조회 기준).
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -334,7 +325,7 @@ async function callUrl(
  * 후보 주소를 순서대로 시도해 실제 이력이 담긴 응답을 찾는다.
  * 주소가 틀리면 보통 404/빈 응답이라 빠르게 넘어간다.
  */
-async function callSource(source: TraceSource, traceNo: string, corpNo: string | null): Promise<unknown | null> {
+async function callSource(source: TraceSource, traceNo: string): Promise<unknown | null> {
   const config = sourceConfig(source);
 
   if (!config.apiKey) {
@@ -353,7 +344,7 @@ async function callSource(source: TraceSource, traceNo: string, corpNo: string |
 
   for (const endpoint of endpoints) {
     try {
-      const tree = await callUrl(endpoint, config.apiKey, traceNo, corpNo);
+      const tree = await callUrl(endpoint, config.apiKey, traceNo);
       // resultCode가 실패를 가리키면 "이력 없음"이 아니라 진짜 오류다 — sawSuccessfulResponse를
       // 세우지 않고 다음 후보로 넘어간다. 전부 이렇게 끝나면 아래에서 이 오류가 그대로 올라간다.
       checkResultCode(tree);
@@ -478,10 +469,7 @@ function toRecord(
  * 없으면 null을 돌려주고, 호출 자체가 실패하면 MtraceError를 던진다.
  * 호출부(스캔 처리)는 이 둘을 구분해서 NOT_FOUND / API_ERROR로 나눠 기록한다.
  */
-export async function fetchTraceRecord(
-  traceNoInput: string,
-  corpNo: string | null = null
-): Promise<MtraceRecord | null> {
+export async function fetchTraceRecord(traceNoInput: string): Promise<MtraceRecord | null> {
   const traceNo = traceNoInput.trim().toUpperCase();
 
   if (!isPlausibleTraceNo(traceNo)) {
@@ -512,7 +500,7 @@ export async function fetchTraceRecord(
     attempted += 1;
 
     try {
-      const tree = await callSource(attempt.source, traceNo, corpNo);
+      const tree = await callSource(attempt.source, traceNo);
 
       if (tree !== null) {
         return toRecord(traceNo, attempt.kind, attempt.source, tree);
