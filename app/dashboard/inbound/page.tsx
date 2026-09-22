@@ -34,7 +34,10 @@ export default async function InboundPage() {
     const [{ data: scanRows }, { data: productRows }] = await Promise.all([
       supabase
         .from("inbound_scans")
-        .select("id, trace_no, product_id, weight, unit, scan_type, status, remaining_weight, created_at")
+        .select(
+          "id, trace_no, product_id, weight, unit, scan_type, status, remaining_weight, created_at, " +
+            "labeled_weight, weight_variance, purchase_unit_price, purchase_amount, purchase_supplier"
+        )
         .eq("wholesaler_id", scope.wholesalerId)
         .order("created_at", { ascending: false })
         .limit(100),
@@ -61,6 +64,11 @@ export default async function InboundPage() {
       status: String(row.status) as InboundScanRow["status"],
       remainingWeight: Number(row.remaining_weight),
       createdAt: String(row.created_at),
+      labeledWeight: row.labeled_weight === null ? null : Number(row.labeled_weight),
+      weightVariance: row.weight_variance === null ? null : Number(row.weight_variance),
+      purchaseUnitPrice: row.purchase_unit_price === null ? null : Number(row.purchase_unit_price),
+      purchaseAmount: row.purchase_amount === null ? null : Number(row.purchase_amount),
+      purchaseSupplier: (row.purchase_supplier as string | null) ?? null,
     }));
   }
 
@@ -71,7 +79,8 @@ export default async function InboundPage() {
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>입고 스캔</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>
-          바코드를 찍고 중량을 입력하면 이력번호를 공공 이력제와 대조해 재고에 반영합니다.
+          바코드를 찍고 저울에 찍힌 <strong>실중량</strong>을 입력하면, 이력번호를 공공 이력제와
+          대조해 재고에 반영하고 표기중량과의 차이·매입금액까지 함께 기록합니다.
         </p>
       </header>
 

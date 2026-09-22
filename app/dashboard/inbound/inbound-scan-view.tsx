@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 import { composeProductDisplayName } from "@/lib/products/display-name";
 import { recordScanAction, resolveMappingAction, voidScanAction, type ScanType } from "./actions";
 import { parseBarcode } from "@/lib/livestock/barcode-parser";
+import {
+  calcPurchaseAmount,
+  evaluateWeightVariance,
+  formatVarianceRatio,
+  formatVarianceWeight,
+} from "@/lib/livestock/weight-variance";
+import { formatWon } from "@/lib/orders/status";
 
 export interface ScanProductOption {
   id: string;
@@ -26,6 +33,12 @@ export interface InboundScanRow {
   status: "NORMAL" | "PENDING_MAPPING" | "EXCEPTION" | "VOIDED";
   remainingWeight: number;
   createdAt: string;
+  /** 바코드·라벨에 적힌 표기중량. weight는 저울에 찍힌 실중량이다. */
+  labeledWeight: number | null;
+  weightVariance: number | null;
+  purchaseUnitPrice: number | null;
+  purchaseAmount: number | null;
+  purchaseSupplier: string | null;
 }
 
 const STATUS_BADGE: Record<InboundScanRow["status"], { label: string; bg: string; color: string }> = {
@@ -68,7 +81,13 @@ export function InboundScanView({ initialScans, products }: Props) {
   const router = useRouter();
 
   const [traceNo, setTraceNo] = useState("");
+  // 저울에 찍힌 실중량. 재고·매입금액의 기준이 되는 값이다.
   const [weight, setWeight] = useState("");
+  // 바코드(GS1-128)에 실려 온 표기중량. 사람이 고칠 수도 있다.
+  const [labeledWeight, setLabeledWeight] = useState("");
+  // 매입단가·매입처는 한 차에 들어오는 물건이 대체로 같아서 스캔 후에도 비우지 않는다.
+  const [unitPrice, setUnitPrice] = useState("");
+  const [supplier, setSupplier] = useState("");
   const [rows, setRows] = useState<InboundScanRow[]>(initialScans);
   const [pending, setPending] = useState<PendingRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -97,8 +116,9 @@ export function InboundScanView({ initialScans, products }: Props) {
       scanType: ScanType,
       confirmDuplicate = false,
       // 중복 확인으로 다시 부를 때는 순수 이력번호만 넘어와 바코드가 사라진다 —
-      // 처음 읽은 유통기한을 들고 다시 들어온다.
-      carriedBestBefore: string | null = null
+      // 처음 읽은 유통기한과 표기중량을 들고 다시 들어온다.
+      carriedBestBefore: string | null = null,
+      carriedLabeled: number | null = null
     ) => {
       // 스캐너가 보낸 값은 순수 이력번호일 수도, GS1-128 물류 바코드일 수도,
       // 소비자용 QR(URL)일 수도 있다. 한 곳에서 해석해 이력번호를 뽑는다.
@@ -110,16 +130,27 @@ export function InboundScanView({ initialScans, products }: Props) {
         return;
       }
 
-      // GS1-128에는 중량이 들어 있다 — 손으로 안 쳐도 되게 바코드 값을 우선한다.
+      // 표기중량 — 바코드(GS1-128 AI 3103)에 실려 오거나 사람이 라벨을 보고 적는다.
+      const typedLabeled = Number.parseFloat(labeledWeight);
+      const labeled =
+        Number.isFinite(typedLabeled) && typedLabeled > 0
+          ? typedLabeled
+          : carriedLabeled ?? parsed.weightKg ?? null;
+
+      // 실중량 — 저울에 찍힌 값. 재고와 매입금액은 언제나 이 값을 쓴다.
+      // 비어 있으면 표기중량을 그대로 인정한다(저울을 안 쓰는 품목도 있다).
       const typedWeight = Number.parseFloat(rawWeight);
       const parsedWeight =
-        Number.isFinite(typedWeight) && typedWeight > 0 ? typedWeight : parsed.weightKg ?? NaN;
+        Number.isFinite(typedWeight) && typedWeight > 0 ? typedWeight : labeled ?? NaN;
 
       if (!Number.isFinite(parsedWeight) || parsedWeight <= 0) {
-        setError("중량을 입력해주세요.");
+        setError("저울에 찍힌 실중량을 입력해주세요.");
         weightInputRef.current?.focus();
         return;
       }
+
+      const typedPrice = Number.parseFloat(unitPrice);
+      const purchaseUnitPrice = Number.isFinite(typedPrice) && typedPrice >= 0 ? typedPrice : null;
 
       setError(null);
       setNotice(null);
@@ -129,8 +160,10 @@ export function InboundScanView({ initialScans, products }: Props) {
       setPending((prev) => [{ key, traceNo: value, weight: parsedWeight }, ...prev]);
 
       // 다음 박스를 바로 찍을 수 있게 입력칸을 즉시 비운다.
+      // 단가·매입처는 한 차 분량이 대체로 같으므로 남겨둔다.
       setTraceNo("");
       setWeight("");
+      setLabeledWeight("");
       traceInputRef.current?.focus();
 
       const bestBefore = parsed.bestBefore ?? carriedBestBefore;
@@ -141,6 +174,9 @@ export function InboundScanView({ initialScans, products }: Props) {
         scanType,
         confirmDuplicate,
         bestBefore,
+        labeledWeight: labeled,
+        purchaseUnitPrice,
+        purchaseSupplier: supplier.trim() || null,
       });
 
       setPending((prev) => prev.filter((item) => item.key !== key));
@@ -158,13 +194,22 @@ export function InboundScanView({ initialScans, products }: Props) {
         );
 
         if (confirmed) {
-          await submitScan(value, String(parsedWeight), scanType, true, bestBefore);
+          await submitScan(value, String(parsedWeight), scanType, true, bestBefore, labeled);
         }
 
         return;
       }
 
       if (data && "status" in data) {
+        // 표기중량과 실중량이 크게 다르면 돈이 새는 자리다. 막지는 않고 크게 알린다.
+        if (data.varianceExceeded && data.weightVariance !== null && data.varianceRatio !== null) {
+          setError(
+            `⚠️ 표기 ${data.labeledWeight}kg / 실측 ${parsedWeight}kg — ` +
+              `${formatVarianceWeight(data.weightVariance)} (${formatVarianceRatio(data.varianceRatio)}) 차이가 납니다. ` +
+              "입고는 실중량으로 기록했습니다. 매입처에 확인하세요."
+          );
+        }
+
         // 기한이 지난 물건도 입고는 받는다 — 안 받으면 반품·폐기 근거가 안 남는다.
         // 대신 그 자리에서 알린다.
         if (data.daysLeft !== null && data.daysLeft < 0) {
@@ -182,25 +227,48 @@ export function InboundScanView({ initialScans, products }: Props) {
           setNotice("이력을 찾지 못해 '이력 확인 필요'로 기록했습니다. 입고 자체는 저장됐습니다.");
         } else if (data.status === "PENDING_MAPPING") {
           setNotice("부위를 알 수 없어 자동 등록이 안 됩니다. 아래 목록에서 상품을 한 번만 지정해주세요.");
+        } else if (data.purchaseAmount !== null) {
+          setNotice(
+            `매입 ${formatWon(data.purchaseAmount)} (실중량 ${parsedWeight}kg × ${formatWon(
+              data.purchaseUnitPrice ?? 0
+            )}) 로 기록했습니다.`
+          );
+        } else {
+          setNotice("매입단가가 없어 금액은 비워뒀습니다. 매입 정산 화면에서 채울 수 있습니다.");
         }
       }
 
       router.refresh();
     },
-    [router]
+    [router, labeledWeight, unitPrice, supplier]
   );
 
-  /** 스캐너(HID)는 이력번호를 입력하고 Enter를 보낸다 — 중량이 비었으면 중량칸으로 넘긴다. */
+  /**
+   * 스캐너(HID)는 이력번호를 입력하고 Enter를 보낸다 — 그다음은 저울이다.
+   *
+   * 바코드에 중량이 실려 있어도 **바로 등록하지 않는다**. 그 값은 표기중량이고,
+   * 재고·매입금액의 기준은 저울에 찍힌 실중량이어야 한다(24단계 설계 결정 1번).
+   * 대신 실중량 칸에 미리 채워 선택해두므로, 저울 값이 같으면 Enter 한 번으로 끝난다.
+   */
   const handleTraceKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Enter") return;
 
     event.preventDefault();
 
-    // GS1-128처럼 바코드 자체에 중량이 실려 있으면 중량 입력을 건너뛴다.
     const parsed = parseBarcode(traceNo);
 
-    if (!weight.trim() && !parsed.weightKg) {
+    if (parsed.weightKg && !labeledWeight.trim()) {
+      setLabeledWeight(String(parsed.weightKg));
+
+      if (!weight.trim()) {
+        setWeight(String(parsed.weightKg));
+      }
+    }
+
+    if (!weight.trim()) {
       weightInputRef.current?.focus();
+      // 값이 채워진 뒤에 선택해야 저울 값으로 덮어쓰기가 편하다.
+      window.setTimeout(() => weightInputRef.current?.select(), 0);
       return;
     }
 
@@ -319,6 +387,13 @@ export function InboundScanView({ initialScans, products }: Props) {
     router.refresh();
   };
 
+  // 저장 전에 화면에서 미리 보여준다 — DB와 같은 규칙(lib/livestock/weight-variance.ts).
+  const liveVariance = evaluateWeightVariance(
+    Number.parseFloat(labeledWeight),
+    Number.parseFloat(weight)
+  );
+  const liveAmount = calcPurchaseAmount(Number.parseFloat(weight), Number.parseFloat(unitPrice));
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <section style={panelStyle}>
@@ -340,20 +415,66 @@ export function InboundScanView({ initialScans, products }: Props) {
             />
           </div>
 
+          <div style={{ width: "110px" }}>
+            <label htmlFor="labeled_weight" style={labelStyle}>
+              표기중량 (kg)
+            </label>
+            <input
+              id="labeled_weight"
+              type="number"
+              min="0"
+              step="0.001"
+              value={labeledWeight}
+              onChange={(event) => setLabeledWeight(event.target.value)}
+              placeholder="라벨 값"
+              style={{ ...inputStyle, backgroundColor: "#f8fafc" }}
+            />
+          </div>
+
           <div style={{ width: "120px" }}>
-            <label htmlFor="weight" style={labelStyle}>
-              중량 (kg)
+            <label htmlFor="weight" style={{ ...labelStyle, color: "#0f172a", fontWeight: 700 }}>
+              실중량 (kg) ⚖️
             </label>
             <input
               ref={weightInputRef}
               id="weight"
               type="number"
               min="0"
-              step="0.01"
+              step="0.001"
               value={weight}
               onChange={(event) => setWeight(event.target.value)}
               onKeyDown={handleWeightKeyDown}
-              placeholder="8.2"
+              placeholder="19.800"
+              style={{ ...inputStyle, borderColor: "#0f172a" }}
+            />
+          </div>
+
+          <div style={{ width: "120px" }}>
+            <label htmlFor="unit_price" style={labelStyle}>
+              매입단가 (원/kg)
+            </label>
+            <input
+              id="unit_price"
+              type="number"
+              min="0"
+              step="100"
+              value={unitPrice}
+              onChange={(event) => setUnitPrice(event.target.value)}
+              placeholder="상품 기본값"
+              style={inputStyle}
+            />
+          </div>
+
+          <div style={{ width: "130px" }}>
+            <label htmlFor="purchase_supplier" style={labelStyle}>
+              매입처
+            </label>
+            <input
+              id="purchase_supplier"
+              value={supplier}
+              onChange={(event) => setSupplier(event.target.value)}
+              placeholder="도축장·거래처"
+              autoComplete="off"
               style={inputStyle}
             />
           </div>
@@ -383,9 +504,25 @@ export function InboundScanView({ initialScans, products }: Props) {
           )}
         </div>
 
+        {liveVariance && (
+          <div
+            style={{
+              ...messageStyle,
+              backgroundColor: liveVariance.exceeded ? "#fef3c7" : "#f1f5f9",
+              color: liveVariance.exceeded ? "#92400e" : "#475569",
+            }}
+          >
+            표기 {labeledWeight}kg / 실측 {weight}kg → {formatVarianceWeight(liveVariance.variance)} (
+            {formatVarianceRatio(liveVariance.ratio)})
+            {liveVariance.exceeded ? " · 허용 오차(±2%)를 넘습니다" : ""}
+            {liveAmount !== null ? ` · 매입 ${formatWon(liveAmount)}` : ""}
+          </div>
+        )}
+
         <p style={{ fontSize: "11px", color: "#94a3b8", margin: "8px 0 0" }}>
-          바코드를 찍으면 중량 칸으로 넘어가고, 중량 입력 후 Enter를 누르면 등록됩니다.
-          물류 바코드(GS1-128)처럼 중량이 들어 있으면 그대로 등록됩니다.
+          바코드를 찍으면 표기중량이 자동으로 채워지고 실중량 칸으로 넘어갑니다. 저울 값을 입력하고
+          Enter를 누르면 등록됩니다 — 재고와 매입금액은 <strong>실중량</strong> 기준입니다.
+          단가·매입처는 다음 박스에도 그대로 남습니다.
           {!cameraSupported && " (이 브라우저는 카메라 스캔을 지원하지 않아 스캐너/수동 입력만 가능합니다)"}
         </p>
 
@@ -436,10 +573,34 @@ export function InboundScanView({ initialScans, products }: Props) {
                     <span style={{ fontSize: "11px", color: "#94a3b8" }}>{formatTime(scan.createdAt)}</span>
                     <span style={{ fontFamily: "monospace", fontSize: "13px" }}>{scan.traceNo}</span>
                     <span style={{ fontWeight: 600 }}>{scan.productName ?? "상품 미지정"}</span>
-                    <span>
+                    <span style={{ fontWeight: 600 }}>
                       {scan.weight}
                       {scan.unit}
                     </span>
+
+                    {scan.labeledWeight !== null && scan.weightVariance !== null && (
+                      <span
+                        title={`표기 ${scan.labeledWeight}${scan.unit} → 실측 ${scan.weight}${scan.unit}`}
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          borderRadius: "4px",
+                          padding: "3px 6px",
+                          ...(evaluateWeightVariance(scan.labeledWeight, scan.weight)?.exceeded
+                            ? { backgroundColor: "#fef3c7", color: "#92400e" }
+                            : { backgroundColor: "#f1f5f9", color: "#64748b" }),
+                        }}
+                      >
+                        표기 {scan.labeledWeight} / {formatVarianceWeight(scan.weightVariance)}
+                      </span>
+                    )}
+
+                    {scan.purchaseAmount !== null && (
+                      <span style={{ fontSize: "11px", color: "#475569" }}>
+                        매입 {formatWon(scan.purchaseAmount)}
+                        {scan.purchaseSupplier ? ` · ${scan.purchaseSupplier}` : ""}
+                      </span>
+                    )}
                     <span
                       style={{
                         fontSize: "11px",

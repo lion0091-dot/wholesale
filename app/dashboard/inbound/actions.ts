@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
+import { parseBarcode } from "@/lib/livestock/barcode-parser";
 import {
   fetchTraceRecord,
   isMtraceConfigured,
@@ -39,6 +40,17 @@ export interface ScanResult {
   bestBefore: string | null;
   /** 남은 일수. 음수면 이미 지났다 — 입고는 받되 화면이 경고한다. */
   daysLeft: number | null;
+  /** 바코드·라벨에 적힌 표기중량. 저울 값(weight)과 대조한다. */
+  labeledWeight: number | null;
+  /** 실중량 - 표기중량. 표기중량이 없으면 null. */
+  weightVariance: number | null;
+  varianceRatio: number | null;
+  /** 허용 오차(±2%)를 넘었나. 막지는 않고 화면에서 크게 알린다. */
+  varianceExceeded: boolean;
+  purchaseUnitPrice: number | null;
+  /** 실중량 × 단가 (원). 단가가 없으면 null. */
+  purchaseAmount: number | null;
+  purchaseSupplier: string | null;
   /** 이력 정보로 상품을 새로 만든 경우 — 화면에서 "가격을 넣어달라"고 안내한다. */
   autoCreated: { productName: string; needsPrice: boolean } | null;
 }
@@ -81,6 +93,10 @@ async function resolveInboundScope() {
   return { supabase, context, wholesalerId };
 }
 
+function toNumberOrNull(value: unknown): number | null {
+  return value === null || value === undefined ? null : Number(value);
+}
+
 function toResult(error: unknown): ActionResult<never> {
   if (error instanceof RbacError) {
     return { success: false, error: error.message };
@@ -111,6 +127,11 @@ export async function recordScanAction(input: {
   confirmDuplicate?: boolean;
   /** 바코드에서 읽은 유통기한(YYYY-MM-DD). 없으면 null. */
   bestBefore?: string | null;
+  /** 바코드·라벨의 표기중량. weight는 저울에 찍힌 실중량이다. */
+  labeledWeight?: number | null;
+  /** 건별 매입단가. 비우면 상품별 기본 매입단가가 따라 들어간다. */
+  purchaseUnitPrice?: number | null;
+  purchaseSupplier?: string | null;
 }): Promise<ActionResult<ScanResult | { duplicate: DuplicateWarning }>> {
   try {
     const { supabase } = await resolveInboundScope();
@@ -119,6 +140,13 @@ export async function recordScanAction(input: {
 
     if (!isPlausibleTraceNo(traceNo)) {
       throw new RbacError("이력번호 형식이 올바르지 않습니다. 다시 스캔해주세요.");
+    }
+
+    // 자체 세트번호는 우리가 발행한 박스 식별자라 공공 이력에 없다. 여기서 찍으면
+    // 조회 실패로 예외만 쌓이고 같은 세트가 또 만들어진다 — 세트는 '세트 상품'
+    // 화면에서 제작하고 출고 스캔에서 찍는다.
+    if (parseBarcode(traceNo).format === "bundle") {
+      throw new RbacError("세트 박스 번호입니다. 세트는 '세트 상품' 화면에서 제작해주세요.");
     }
 
     if (!Number.isFinite(input.weight) || input.weight <= 0) {
@@ -185,6 +213,9 @@ export async function recordScanAction(input: {
       p_memo: input.memo ?? null,
       p_confirm_duplicate: input.confirmDuplicate ?? false,
       p_best_before: input.bestBefore ?? null,
+      p_labeled_weight: input.labeledWeight ?? null,
+      p_purchase_unit_price: input.purchaseUnitPrice ?? null,
+      p_purchase_supplier: input.purchaseSupplier ?? null,
     });
 
     if (error) {
@@ -242,6 +273,13 @@ export async function recordScanAction(input: {
         packingDate: (row.packing_date as string | null) ?? null,
         bestBefore: (row.best_before as string | null) ?? null,
         daysLeft: row.days_left === null || row.days_left === undefined ? null : Number(row.days_left),
+        labeledWeight: toNumberOrNull(row.labeled_weight),
+        weightVariance: toNumberOrNull(row.weight_variance),
+        varianceRatio: toNumberOrNull(row.variance_ratio),
+        varianceExceeded: Boolean(row.variance_exceeded),
+        purchaseUnitPrice: toNumberOrNull(row.purchase_unit_price),
+        purchaseAmount: toNumberOrNull(row.purchase_amount),
+        purchaseSupplier: (row.purchase_supplier as string | null) ?? null,
         autoCreated,
       },
     };

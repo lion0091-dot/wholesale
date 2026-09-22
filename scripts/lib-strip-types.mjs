@@ -21,6 +21,8 @@ const TYPE_PATTERNS = [
   /: string \| number \| null/g,
   /: Record<string, number>/g,
   /: Partial<ParsedBarcode>/g,
+  /: number \| null \| undefined/g,
+  /: WeightVariance \| null/g,
   /: string \| null/g,
   /: number \| null/g,
 

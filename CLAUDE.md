@@ -63,3 +63,7 @@
 ## 자체 세트 상품(BOM) + 이력 역추적 (축산물 이력 입고 시스템 위, 23단계)
 
 - [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) 23단계 — 도매업체가 임의로 묶은 세트에 자체 상품코드(`BND-0001`)와 세트번호(`SET-YYMMDD-NNN`)를 발행하고, 그 박스에 실제로 들어간 정부 이력번호를 1:N으로 묶어 남긴다(`bundle_assembly_sources`). 잠긴 결정 8가지(세트 상품도 그냥 `products` 한 행, 세트 박스도 `inbound_scans` 한 행, 재고 단위는 kg이 아닌 "세트 1개", 이력번호 없는 재고로는 세트를 못 만든다, 기한 지난 박스 제외, 중첩 세트 금지). 거래명세서·라벨은 세트를 구성 이력번호로 전개한다. DB 테스트 19종 통과, 실계정 미검증.
+
+## 입고 실중량 검수 + 매입금액 자동 산정 (24단계)
+
+- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) 24단계 — 표기중량(바코드)과 실중량(저울)을 따로 받아 차이를 기록하고, 매입금액을 실중량 기준으로 자동 산정한다. 허용 오차 ±2%(`inbound_weight_tolerance()` ↔ `lib/livestock/weight-variance.ts`), 매입금액은 GENERATED 컬럼, 원가라 바이어에게 열지 않는다. `/dashboard/purchases` 매입 정산 화면. DB 테스트 12종 통과. **저울 직접 연동은 미구현(사람이 입력)**, npm 차단으로 타입체크 미실행.
