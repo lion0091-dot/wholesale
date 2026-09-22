@@ -163,12 +163,17 @@ export async function recordScanAction(input: {
       .maybeSingle();
 
     let failReason: string | null = null;
+    // 실패 사유의 실제 메시지 — NOT_FOUND(호출은 성공, 결과 없음)면 비워둔다.
+    // API_ERROR일 때만 채워서 DB만 보고도 "승인 미반영"인지 "진짜 오류"인지 구분한다
+    // (2026-09-22 — resultCode 오류가 NOT_FOUND로 오인되던 문제 수정 이후 도입).
+    let failDetail: string | null = null;
 
     // 2) 캐시에 없으면 공공 API 호출 → 마스터 적재
     if (!cached) {
       if (!isMtraceConfigured()) {
         // 인증키 미발급 상태. 물건은 실제로 들어왔으므로 막지 않고 예외로 남긴다.
         failReason = "API_ERROR";
+        failDetail = "이력 조회 인증키가 설정되지 않았습니다.";
       } else {
         try {
           const record = await fetchTraceRecord(traceNo);
@@ -199,11 +204,10 @@ export async function recordScanAction(input: {
           }
         } catch (error) {
           // 조회 실패로 현장 입고를 막지 않는다 — 예외로 남기고 나중에 보정한다.
-          // 실패 사유는 DB에는 API_ERROR로만 남지만(스키마 변경 없이), 진짜 메시지는 서버
-          // 로그에 남겨야 "활용신청 미승인"인지 "번호가 진짜 없음"인지 구분할 수 있다
-          // (2026-09-22 — resultCode 오류가 NOT_FOUND로 오인되던 문제 수정 참고).
-          console.error(`[mtrace] ${traceNo} 이력 조회 실패:`, error instanceof Error ? error.message : error);
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`[mtrace] ${traceNo} 이력 조회 실패:`, message);
           failReason = "API_ERROR";
+          failDetail = message.slice(0, 500);
         }
       }
     }
@@ -215,6 +219,7 @@ export async function recordScanAction(input: {
       p_scan_type: input.scanType,
       p_product_id: input.productId ?? null,
       p_fail_reason: failReason,
+      p_fail_detail: failDetail,
       p_import_row_id: null,
       p_memo: input.memo ?? null,
       p_confirm_duplicate: input.confirmDuplicate ?? false,
