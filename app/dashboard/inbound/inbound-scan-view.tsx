@@ -306,17 +306,23 @@ export function InboundScanView({ initialScans, products }: Props) {
       });
 
       streamRef.current = stream;
-      setCameraOn(true);
       setError(null);
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+      // <video> 태그는 cameraOn이 true일 때만 렌더링되므로, 이 시점엔 아직 DOM에
+      // 없어 videoRef.current가 null이다 — 스트림 연결은 아래 useEffect(마운트 후)가 한다.
+      setCameraOn(true);
     } catch {
       setError("카메라를 열 수 없습니다. 권한을 허용했는지 확인해주세요.");
     }
   }, []);
+
+  // <video> 태그가 실제로 마운트된 뒤에 스트림을 연결한다 (마운트 전에 연결하면
+  // 화면이 검게만 보이는 버그가 됨 — 실계정 테스트에서 발견).
+  useEffect(() => {
+    if (!cameraOn || !videoRef.current || !streamRef.current) return;
+
+    videoRef.current.srcObject = streamRef.current;
+    void videoRef.current.play();
+  }, [cameraOn]);
 
   // 카메라가 켜져 있는 동안 주기적으로 프레임에서 바코드를 찾는다.
   useEffect(() => {
