@@ -4,7 +4,12 @@ import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { DEMO_PRODUCTS } from "@/lib/demo/supplier-samples";
 import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
-import { ProductTable } from "./product-table";
+import { ProductTable, type StockSummary } from "./product-table";
+import { getLatestMarketPricesAction } from "@/app/actions/market-price";
+import { buildMarketPriceIndex, findMarketPrice, type MarketPriceIndex } from "@/lib/market-price/product-match";
+import { PriceBulkPanel } from "./price-bulk-panel";
+import type { PriceCsvProduct } from "@/lib/products/price-import";
+
 import { SeedDefaultProductsButton } from "./seed-default-products-button";
 import { DemoNoticeBanner } from "./demo-notice-banner";
 import type { Product } from "@/types/database";
@@ -23,10 +28,16 @@ export default async function DashboardProductsPage() {
   let products: Product[] = [];
   let isDemoData = true;
   let memberNames: Record<string, string> = {};
+  // 상품별 재고 신선도 요약(도축일/포장일/박스수). 목록에서 상품마다 따로 조회하면
+  // N+1이 되므로 한 번에 집계해 받아 상품 id로 매핑한다.
+  let stockSummaries: Record<string, StockSummary> = {};
+  // 상품마다 시세를 따로 조회하면 N+1이라, 최신 스냅샷을 한 번만 읽어 맵으로 만든다.
+  // 고객 계정에서는 RLS가 0건을 돌려주므로 여기서 별도 권한 체크가 필요 없다.
+  let marketPrices: MarketPriceIndex = new Map();
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
-    const [{ data }, { data: members }] = await Promise.all([
+    const [{ data }, { data: members }, { data: summaries }] = await Promise.all([
       supabase
         .from("products")
         .select("*")
@@ -39,11 +50,22 @@ export default async function DashboardProductsPage() {
         .order("created_at", { ascending: false })
         .order("id", { ascending: true }),
       supabase.rpc("list_wholesaler_member_names", { p_wholesaler_id: scope.wholesalerId }),
+      supabase.rpc("get_product_stock_summary", { p_wholesaler_id: scope.wholesalerId }),
     ]);
 
     if (data && data.length > 0) {
       products = data as Product[];
       isDemoData = false;
+    }
+
+    stockSummaries = Object.fromEntries(
+      ((summaries ?? []) as StockSummary[]).map((summary) => [summary.product_id, summary])
+    );
+
+    const marketPriceResult = await getLatestMarketPricesAction();
+
+    if (marketPriceResult.success) {
+      marketPrices = buildMarketPriceIndex(marketPriceResult.data ?? []);
     }
 
     memberNames = Object.fromEntries(
@@ -57,6 +79,22 @@ export default async function DashboardProductsPage() {
   if (isDemoData) {
     products = DEMO_PRODUCTS;
   }
+
+  const unpricedProducts: PriceCsvProduct[] = isDemoData
+    ? []
+    : products
+        .filter((product) => !product.archived_at && Number(product.base_price) <= 0)
+        .map((product) => ({
+          id: product.id,
+          name: product.name,
+          category: product.category,
+          subcategory: product.subcategory,
+          grade: product.grade,
+          unit: product.unit,
+          basePrice: Number(product.base_price),
+          marketPrice:
+            findMarketPrice(marketPrices, product.category, product.grade)?.pricePerKg ?? null,
+        }));
 
   const lowStockCount = products.filter((product) => Number(product.stock_quantity) <= 3).length;
 
@@ -125,7 +163,17 @@ export default async function DashboardProductsPage() {
         ))}
       </section>
 
-      <ProductTable products={products} readOnly={isDemoData} memberNames={memberNames} />
+      {/* 스캔으로 자동 등록된 상품은 판매가가 0원이라 고객에게 안 보인다 —
+          수십 개를 하나씩 고치지 않게 CSV로 내려받아 채워 올리는 경로를 둔다. */}
+      <PriceBulkPanel unpricedProducts={unpricedProducts} />
+
+      <ProductTable
+        products={products}
+        readOnly={isDemoData}
+        memberNames={memberNames}
+        stockSummaries={stockSummaries}
+        marketPrices={marketPrices}
+      />
     </div>
   );
 }

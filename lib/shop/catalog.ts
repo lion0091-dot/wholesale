@@ -217,6 +217,10 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
     .select("*")
     .eq("wholesaler_id", wholesaler.id)
     .eq("is_active", true)
+    // 판매가를 아직 안 정한 상품(0원)은 고객에게 내보내지 않는다. RLS 정책에도
+    // 같은 조건이 있지만(20260930000058), 공급사 본인이 자기 미니샵을 열어보는
+    // 경우엔 RLS의 "소유자" 분기를 타서 통과하므로 여기서도 한 번 더 거른다.
+    .gt("base_price", 0)
     .order("name", { ascending: true });
 
   const products = (productsData ?? []) as Product[];

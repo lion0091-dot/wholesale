@@ -23,6 +23,21 @@ export interface StatementItem {
   subtotalAmount: number;
 }
 
+/**
+ * 명세서에 찍을 이력번호 1줄 = 실제로 나간 박스 하나.
+ *
+ * 축산물이력제상 판매 시 이력번호를 알려야 하는데, 지금까지는 출고 스캔으로
+ * 어느 박스가 나갔는지 다 알면서도 명세서에는 안 찍혔다.
+ */
+export interface StatementTrace {
+  productName: string;
+  traceNo: string;
+  quantity: number;
+  grade: string | null;
+  slaughterDate: string | null;
+  butcheryPlace: string | null;
+}
+
 export interface StatementParty {
   name: string;
   representativeName: string | null;
@@ -40,6 +55,8 @@ export interface StatementData {
   deliveryNotes: string | null;
   totalAmount: number;
   items: StatementItem[];
+  /** 출고 스캔이 없었으면 확정 때 자동 배정된 박스가 들어온다. 없으면 빈 배열. */
+  traces: StatementTrace[];
   supplier: StatementParty;
   buyer: StatementParty;
 }
@@ -61,6 +78,7 @@ type OrderItemRow = {
   category: string | null;
   unit_price: number | string;
   quantity: number | string;
+  shipped_quantity: number | string | null;
   subtotal_amount: number | string;
 };
 
@@ -110,7 +128,7 @@ async function fetchOrderCore(
 
   const { data: items } = await supabase
     .from("order_items")
-    .select("product_name, category, unit_price, quantity, subtotal_amount")
+    .select("product_name, category, unit_price, quantity, shipped_quantity, subtotal_amount")
     .eq("order_id", orderId)
     .order("created_at", { ascending: true });
 
@@ -171,10 +189,41 @@ async function fetchParties(
   };
 }
 
+/**
+ * 실제로 나간 박스의 이력번호.
+ *
+ * 어느 박스가 나갔는지 고르는 기준(출고 스캔이 있으면 그것, 없으면 자동 배정)은
+ * DB 함수가 갖고 있다 — 명세서와 화면이 서로 다른 답을 내지 않도록 한 곳에 둔다.
+ * 인가도 그 함수 안에서 공급사/바이어 양쪽을 본다.
+ */
+async function fetchTraces(
+  supabase: SupabaseServerClient,
+  orderId: string
+): Promise<StatementTrace[]> {
+  const { data, error } = await supabase.rpc("get_order_trace_numbers", {
+    p_order_id: orderId,
+  });
+
+  // 이력번호는 명세서의 부가 정보라, 못 불러왔다고 발행 자체를 막지는 않는다.
+  if (error) {
+    return [];
+  }
+
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    productName: String(row.product_name ?? ""),
+    traceNo: String(row.trace_no ?? ""),
+    quantity: Number(row.quantity ?? 0),
+    grade: (row.grade as string | null) ?? null,
+    slaughterDate: (row.slaughter_date as string | null) ?? null,
+    butcheryPlace: (row.butchery_place as string | null) ?? null,
+  }));
+}
+
 function toStatementData(
   order: OrderRow,
   items: OrderItemRow[],
-  parties: { supplier: StatementParty; buyer: StatementParty }
+  parties: { supplier: StatementParty; buyer: StatementParty },
+  traces: StatementTrace[]
 ): StatementData {
   return {
     orderId: order.id,
@@ -187,9 +236,12 @@ function toStatementData(
     items: items.map((item) => ({
       productName: composeProductDisplayName(item.category, item.product_name),
       unitPrice: Number(item.unit_price),
-      quantity: Number(item.quantity),
+      // 출고 마감이 끝났으면 실제 나간 양을 찍는다. 금액(subtotal_amount)도
+      // 그때 같이 확정되므로 단가 × 수량이 항상 맞는다.
+      quantity: Number(item.shipped_quantity ?? item.quantity),
       subtotalAmount: Number(item.subtotal_amount),
     })),
+    traces,
     supplier: parties.supplier,
     buyer: parties.buyer,
   };
@@ -207,9 +259,12 @@ export async function loadStatementDataForSupplier(
     return null;
   }
 
-  const parties = await fetchParties(supabase, wholesalerId, core.order.retailer_id);
+  const [parties, traces] = await Promise.all([
+    fetchParties(supabase, wholesalerId, core.order.retailer_id),
+    fetchTraces(supabase, orderId),
+  ]);
 
-  return toStatementData(core.order, core.items, parties);
+  return toStatementData(core.order, core.items, parties, traces);
 }
 
 /**
@@ -261,7 +316,10 @@ export async function loadStatementDataForBuyer(
     return null;
   }
 
-  const parties = await fetchParties(supabase, wholesalerId, retailerId);
+  const [parties, traces] = await Promise.all([
+    fetchParties(supabase, wholesalerId, retailerId),
+    fetchTraces(supabase, orderId),
+  ]);
 
-  return toStatementData(core.order, core.items, parties);
+  return toStatementData(core.order, core.items, parties, traces);
 }

@@ -7,11 +7,45 @@ import type { Product } from "@/types/database";
 import { SampleBadge } from "@/components/sample-badge";
 import { MiniToggle } from "@/components/mini-toggle";
 import { composeProductDisplayName } from "@/lib/products/display-name";
+import { findMarketPrice, type MarketPriceIndex } from "@/lib/market-price/product-match";
 import {
   deleteProductAction,
   toggleProductFlagAction,
   updateProductStockAction,
+  setProductArchivedAction,
 } from "./actions";
+import { STOCK_ADJUST_REASONS } from "@/lib/products/stock-adjust-reasons";
+
+/** get_product_stock_summary() 한 행 — 상품 하나를 채우고 있는 박스들의 요약 */
+export interface StockSummary {
+  product_id: string;
+  box_count: number;
+  /** 가장 오래된 박스의 도축일. 선입선출 관리에서 실제로 봐야 하는 값이다. */
+  oldest_slaughter_date: string | null;
+  latest_slaughter_date: string | null;
+  oldest_packing_date: string | null;
+  /** 이 상품에 섞여 있는 등급들 (예: "1+, 1++") */
+  grades: string | null;
+}
+
+/** 도축일로부터 며칠 지났는지. 30일을 넘으면 경고색으로 표시한다. */
+function freshnessInfo(dateText: string | null): { label: string; days: number; tone: string } | null {
+  if (!dateText) {
+    return null;
+  }
+
+  const days = Math.floor((Date.now() - new Date(dateText).getTime()) / 86_400_000);
+
+  if (!Number.isFinite(days)) {
+    return null;
+  }
+
+  return {
+    label: dateText.slice(2).replace(/-/g, "."),
+    days,
+    tone: days >= 30 ? "#b91c1c" : days >= 14 ? "#b45309" : "#475569",
+  };
+}
 
 interface ProductTableProps {
   products: Product[];
@@ -19,6 +53,9 @@ interface ProductTableProps {
   readOnly?: boolean;
   /** user_id → 표시 이름. 등록자/수정자 표시용 (여러 직원이 쓰는 백오피스) */
   memberNames?: Record<string, string>;
+  stockSummaries?: Record<string, StockSummary>;
+  /** 축종+등급 → 공공 경락가. 상품 줄마다 내 판매가와 나란히 보여준다. */
+  marketPrices?: MarketPriceIndex;
 }
 
 function stockBadge(quantity: number, unit: string) {
@@ -31,6 +68,85 @@ function stockBadge(quantity: number, unit: string) {
   }
 
   return { label: "정상", bg: "#dcfce7", color: "#166534", text: `${quantity} ${unit}` };
+}
+
+/** 재고 숫자 밑에 붙는 "도축 25.09.18 · 4일 경과 · 박스 3" 한 줄 */
+function StockFreshness({ summary }: { summary?: StockSummary }) {
+  // 스캔으로 들어온 박스가 없으면 보여줄 도축일 자체가 없다. 빈칸으로 두면
+  // "왜 안 보이지?"가 되므로 이유를 한 줄로 밝힌다.
+  if (!summary || !summary.box_count) {
+    return (
+      <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "3px" }}>
+        이력 미등록 · 입고 스캔 시 도축일·포장일이 표시됩니다
+      </div>
+    );
+  }
+
+  const slaughter = freshnessInfo(summary.oldest_slaughter_date);
+  const packing = freshnessInfo(summary.oldest_packing_date);
+
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", fontSize: "11px", marginTop: "3px" }}>
+      {slaughter ? (
+        <span style={{ color: slaughter.tone }} title="가장 오래된 재고의 도축일">
+          도축 {slaughter.label} · {slaughter.days}일
+        </span>
+      ) : null}
+      {packing ? (
+        <span style={{ color: "#64748b" }} title="가장 오래된 재고의 포장처리일">
+          포장 {packing.label}
+        </span>
+      ) : null}
+      {summary.grades ? (
+        <span style={{ color: "#64748b" }} title="재고에 섞여 있는 등급">
+          {summary.grades}
+        </span>
+      ) : null}
+      <span style={{ color: "#94a3b8" }}>박스 {summary.box_count}</span>
+    </div>
+  );
+}
+
+/**
+ * 내 판매가 밑에 붙는 "공공 26,980원/kg" 한 줄. 공급사 전용이다 —
+ * 고객(미니샵)에는 이 컴포넌트를 쓰지 않고, DB 권한으로도 막혀 있다.
+ */
+function MarketPriceHint({
+  category,
+  grade,
+  index,
+}: {
+  category: string;
+  grade: string | null;
+  index: MarketPriceIndex;
+}) {
+  const matched = findMarketPrice(index, category, grade);
+
+  if (!matched) {
+    return null;
+  }
+
+  return (
+    <div
+      style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}
+      title={`공공 경락가 (${matched.snapshotDate} 기준)`}
+    >
+      공공 {Math.round(matched.pricePerKg).toLocaleString("ko-KR")}원/kg
+    </div>
+  );
+}
+
+/** 판매가를 아직 안 정한 상품은 고객에게 안 보인다 — 공급사에게 이유를 밝힌다. */
+function UnpricedBadge({ basePrice }: { basePrice: number }) {
+  if (Number(basePrice) > 0) {
+    return null;
+  }
+
+  return (
+    <div style={{ fontSize: "11px", color: "#b45309", fontWeight: 600, marginTop: "2px" }}>
+      판매가 미설정 · 고객 비노출
+    </div>
+  );
 }
 
 const chipButtonStyle: React.CSSProperties = {
@@ -58,14 +174,26 @@ function categoryIcon(category: string): string {
   return CATEGORY_ICONS[category] ?? "🍖";
 }
 
-export function ProductTable({ products, readOnly = false, memberNames = {} }: ProductTableProps) {
+export function ProductTable({
+  products,
+  readOnly = false,
+  memberNames = {},
+  stockSummaries = {},
+  marketPrices = new Map(),
+}: ProductTableProps) {
   const router = useRouter();
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState("all");
+  /**
+   * 상태 필터. 자동 생성된 상품은 판매가 0원·판매중지로 들어오므로, 그대로 두면
+   * 진짜 파는 상품이 그 사이에 묻힌다. 기본은 보관을 제외한 전체를 보여준다.
+   */
+  const [status, setStatus] = useState<"all" | "selling" | "unpriced" | "archived">("all");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingStockId, setEditingStockId] = useState<string | null>(null);
   const [stockInput, setStockInput] = useState("");
+  const [stockReason, setStockReason] = useState<string>(STOCK_ADJUST_REASONS[0].code);
 
   const categories = useMemo(
     () => Array.from(new Set(products.map((product) => product.category))),
@@ -78,8 +206,25 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
       : true;
     const matchesCategory = category === "all" ? true : product.category === category;
 
-    return matchesKeyword && matchesCategory;
+    const isArchived = Boolean(product.archived_at);
+    const isUnpriced = Number(product.base_price) <= 0;
+
+    const matchesStatus =
+      status === "archived"
+        ? isArchived
+        : status === "selling"
+          ? !isArchived && product.is_active && !isUnpriced
+          : status === "unpriced"
+            ? !isArchived && isUnpriced
+            // 'all'은 보관을 뺀 전체다 — 보관은 치운 상품이라 기본 목록에 섞이면 안 된다.
+            : !isArchived;
+
+    return matchesKeyword && matchesCategory && matchesStatus;
   });
+
+  const unpricedCount = products.filter(
+    (product) => !product.archived_at && Number(product.base_price) <= 0
+  ).length;
 
   const run = async (productId: string, task: () => Promise<{ success: boolean; error?: string }>) => {
     if (readOnly) {
@@ -110,8 +255,13 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
       return;
     }
 
+    if (!stockReason) {
+      setError("조정 사유를 선택해주세요.");
+      return;
+    }
+
     void run(product.id, async () => {
-      const result = await updateProductStockAction(product.id, nextStock);
+      const result = await updateProductStockAction(product.id, nextStock, stockReason);
 
       if (result.success) {
         setEditingStockId(null);
@@ -119,6 +269,14 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
 
       return result;
     });
+  };
+
+  const handleArchive = (product: Product, archived: boolean) => {
+    if (archived && !window.confirm(`'${product.name}'을(를) 보관하시겠습니까?\n목록과 미니샵에서 빠지고, 입출고 기록은 그대로 남습니다.`)) {
+      return;
+    }
+
+    void run(product.id, () => setProductArchivedAction(product.id, archived));
   };
 
   const handleDelete = (product: Product) => {
@@ -206,6 +364,27 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
             </option>
           ))}
         </select>
+
+        {/* 자동 생성 상품은 판매가 0원·판매중지로 들어온다 — 그대로 두면 진짜 파는
+            상품이 묻히므로 상태로 걸러 볼 수 있게 한다. */}
+        <select
+          value={status}
+          onChange={(event) => setStatus(event.target.value as typeof status)}
+          aria-label="상태 필터"
+          style={{
+            flex: "0 1 130px",
+            minWidth: "96px",
+            padding: "8px 6px",
+            fontSize: "13px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "6px",
+          }}
+        >
+          <option value="all">전체 (보관 제외)</option>
+          <option value="selling">판매중만</option>
+          <option value="unpriced">판매가 미설정{unpricedCount > 0 ? ` (${unpricedCount})` : ""}</option>
+          <option value="archived">보관함</option>
+        </select>
       </div>
 
       {error && (
@@ -268,6 +447,20 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                             <div style={{ fontWeight: 700 }}>{product.name}</div>
+                            {product.archived_at && (
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  fontWeight: 700,
+                                  backgroundColor: "#f1f5f9",
+                                  color: "#64748b",
+                                  borderRadius: "4px",
+                                  padding: "2px 6px",
+                                }}
+                              >
+                                보관됨
+                              </span>
+                            )}
                             {readOnly && <SampleBadge />}
                           </div>
                           <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
@@ -293,11 +486,17 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                         {" "}
                         / {product.unit}
                       </span>
+                      <MarketPriceHint
+                        category={product.category}
+                        grade={product.grade}
+                        index={marketPrices}
+                      />
+                      <UnpricedBadge basePrice={product.base_price} />
                     </td>
 
                     <td>
                       {editingStockId === product.id ? (
-                        <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                        <div style={{ display: "flex", gap: "4px", alignItems: "center", flexWrap: "wrap" }}>
                           <input
                             type="number"
                             min="0"
@@ -312,6 +511,25 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                               borderRadius: "4px",
                             }}
                           />
+                          {/* 조정 사유는 원장에 그대로 남는다 — 나중에 왜 줄었는지 추적하기 위해서다. */}
+                          <select
+                            value={stockReason}
+                            onChange={(event) => setStockReason(event.target.value)}
+                            aria-label="재고 조정 사유"
+                            style={{
+                              padding: "4px 6px",
+                              fontSize: "12px",
+                              border: "1px solid #94a3b8",
+                              borderRadius: "4px",
+                              backgroundColor: "#fff",
+                            }}
+                          >
+                            {STOCK_ADJUST_REASONS.map((reason) => (
+                              <option key={reason.code} value={reason.code}>
+                                {reason.label}
+                              </option>
+                            ))}
+                          </select>
                           <button
                             type="button"
                             disabled={isBusy}
@@ -329,6 +547,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                           </button>
                         </div>
                       ) : (
+                        <div>
                         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                           <span
                             style={{
@@ -347,6 +566,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                             onClick={() => {
                               setEditingStockId(product.id);
                               setStockInput(String(product.stock_quantity));
+                              setStockReason(STOCK_ADJUST_REASONS[0].code);
                             }}
                             style={{
                               ...chipButtonStyle,
@@ -354,10 +574,12 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                               backgroundColor: "#f8fafc",
                               padding: "6px 10px",
                             }}
-                            title="클릭하여 재고 수정"
+                            title="클릭하여 재고 조정"
                           >
                             {stock.text} ✏️
                           </button>
+                        </div>
+                        <StockFreshness summary={stockSummaries[product.id]} />
                         </div>
                       )}
                     </td>
@@ -386,6 +608,19 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                         >
                           수정
                         </Link>
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => handleArchive(product, !product.archived_at)}
+                          style={chipButtonStyle}
+                          title={
+                            product.archived_at
+                              ? "다시 목록으로 꺼냅니다"
+                              : "목록과 미니샵에서 감춥니다 (입출고 기록은 남습니다)"
+                          }
+                        >
+                          {product.archived_at ? "복원" : "보관"}
+                        </button>
                         <button
                           type="button"
                           disabled={isBusy}
@@ -464,10 +699,16 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                       {" "}
                       / {product.unit}
                     </span>
+                    <MarketPriceHint
+                      category={product.category}
+                      grade={product.grade}
+                      index={marketPrices}
+                    />
+                    <UnpricedBadge basePrice={product.base_price} />
                   </span>
 
                   {editingStockId === product.id ? (
-                    <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: "4px", alignItems: "center", flexWrap: "wrap" }}>
                       <input
                         type="number"
                         min="0"
@@ -482,6 +723,24 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                           borderRadius: "4px",
                         }}
                       />
+                      <select
+                        value={stockReason}
+                        onChange={(event) => setStockReason(event.target.value)}
+                        aria-label="재고 조정 사유"
+                        style={{
+                          padding: "6px",
+                          fontSize: "12px",
+                          border: "1px solid #94a3b8",
+                          borderRadius: "4px",
+                          backgroundColor: "#fff",
+                        }}
+                      >
+                        {STOCK_ADJUST_REASONS.map((reason) => (
+                          <option key={reason.code} value={reason.code}>
+                            {reason.label}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         type="button"
                         disabled={isBusy}
@@ -504,6 +763,7 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                       onClick={() => {
                         setEditingStockId(product.id);
                         setStockInput(String(product.stock_quantity));
+                        setStockReason(STOCK_ADJUST_REASONS[0].code);
                       }}
                       style={{
                         display: "flex",
@@ -534,6 +794,8 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                     </button>
                   )}
                 </div>
+
+                <StockFreshness summary={stockSummaries[product.id]} />
 
                 <div
                   style={{
@@ -575,6 +837,14 @@ export function ProductTable({ products, readOnly = false, memberNames = {} }: P
                   >
                     수정
                   </Link>
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => handleArchive(product, !product.archived_at)}
+                    style={{ ...chipButtonStyle, padding: "7px 11px" }}
+                  >
+                    {product.archived_at ? "복원" : "보관"}
+                  </button>
                   <button
                     type="button"
                     disabled={isBusy}

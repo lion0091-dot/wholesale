@@ -54,3 +54,16 @@
 ## Downloads 폴더 패치 3개 보류 (2026-09-16, Vercel 배포 우선 진행 중)
 
 - [docs/deferred-drive-patches.md](docs/deferred-drive-patches.md) — 이전 세션 산출물 패치 3개(PRD/ROADMAP 8번 섹션 추가, wholesaler 구버전 화면 삭제, KNOWN_GAPS.md 신규 생성) 검토 결과 전부 stale로 판정, 적용 보류. Vercel 배포 완료 후 재검토 예정.
+
+## 축산물 이력 입고 시스템 (바코드 스캔 + 박스 단위 재고) (별도 기능)
+
+- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) — 이력번호 바코드/카메라 스캔 → 공공 API 대조 검증 → 박스 단위 입고. 스택 결정(별도 백엔드 대신 기존 Next.js+Supabase에 얹음, RLS가 이유), 잠긴 설계 결정 8가지(재고 단위는 이력번호가 아닌 박스, 원장 파생 재고, `products` 스키마 무변경, 출고 박스 단위 추적, Hobby 크론 제약 우회), 입고 9종 + 출고 6종 로컬 DB 테스트 통과. **출고 자동 차감까지 완료** — 주문 확정 시 `orders` 트리거가 선입선출로 박스에서 차감하고 취소 시 원복, 재고 부족이면 확정 자체를 막는다. 원장 첫 편입 시 기존 수동 재고를 `OPENING_BALANCE`로 이관해 증발을 막는다. 공공 API 인증키 미발급이라 실호출 전무, npm 프록시 차단으로 타입체크 미실행.
+
+
+## 자체 세트 상품(BOM) + 이력 역추적 (축산물 이력 입고 시스템 위, 23단계)
+
+- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) 23단계 — 도매업체가 임의로 묶은 세트에 자체 상품코드(`BND-0001`)와 세트번호(`SET-YYMMDD-NNN`)를 발행하고, 그 박스에 실제로 들어간 정부 이력번호를 1:N으로 묶어 남긴다(`bundle_assembly_sources`). 잠긴 결정 8가지(세트 상품도 그냥 `products` 한 행, 세트 박스도 `inbound_scans` 한 행, 재고 단위는 kg이 아닌 "세트 1개", 이력번호 없는 재고로는 세트를 못 만든다, 기한 지난 박스 제외, 중첩 세트 금지). 거래명세서·라벨은 세트를 구성 이력번호로 전개한다. DB 테스트 19종 통과, 실계정 미검증.
+
+## 입고 실중량 검수 + 매입금액 자동 산정 (24단계)
+
+- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) 24단계 — 표기중량(바코드)과 실중량(저울)을 따로 받아 차이를 기록하고, 매입금액을 실중량 기준으로 자동 산정한다. 허용 오차 ±2%(`inbound_weight_tolerance()` ↔ `lib/livestock/weight-variance.ts`), 매입금액은 GENERATED 컬럼, 원가라 바이어에게 열지 않는다. `/dashboard/purchases` 매입 정산 화면. DB 테스트 12종 통과. **저울 직접 연동은 미구현(사람이 입력)**, npm 차단으로 타입체크 미실행.

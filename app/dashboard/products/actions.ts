@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
 import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
+import { STOCK_ADJUST_REASON_CODES } from "@/lib/products/stock-adjust-reasons";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -182,7 +183,9 @@ export async function updateProductAction(
         grade: input.grade,
         base_price: input.base_price,
         unit: input.unit,
-        stock_quantity: input.stock_quantity,
+        // stock_quantity는 여기서 갱신하지 않는다 — 재고는 stock_ledger 합계로
+        // 파생되므로 여기서 덮어쓰면 다음 입고/출고 때 recalc_product_stock()에
+        // 의해 조용히 되돌아간다. 수정은 목록의 "재고 조정"(사유 기록)으로만 한다.
         is_active: input.is_active,
         description: input.description,
         updated_at: new Date().toISOString(),
@@ -267,14 +270,23 @@ export async function toggleProductFlagAction(
 }
 
 // ====================================================================
-// 4. 재고 수량 변경
+// 4. 재고 조정 (예전 "재고 수량 변경")
+//
+// stock_quantity를 직접 UPDATE하면 안 된다 — 재고는 이제 stock_ledger 합계로
+// 파생되므로, 덮어쓴 값이 다음 입고/출고 때 recalc_product_stock()에 의해
+// 조용히 되돌아간다. 대신 adjust_product_stock() RPC가 차이분을 원장 행으로
+// 남기고, 왜 바뀌었는지(실사/폐기/파손/반품)를 함께 기록한다.
 // ====================================================================
+
+
 export async function updateProductStockAction(
   productId: string,
-  nextStock: number
+  nextStock: number,
+  reasonCode: string,
+  reasonNote?: string
 ): Promise<ActionResult> {
   try {
-    const { supabase, context, wholesalerId } = await resolveProductScope();
+    const { supabase } = await resolveProductScope();
 
     if (!UUID_PATTERN.test(productId)) {
       throw new RbacError("올바른 상품 식별자가 아닙니다.");
@@ -284,23 +296,23 @@ export async function updateProductStockAction(
       throw new RbacError("재고 수량은 0 이상의 숫자여야 합니다.");
     }
 
-    let query = supabase
-      .from("products")
-      .update({ stock_quantity: nextStock, updated_at: new Date().toISOString() })
-      .eq("id", productId);
-
-    if (!context.isSuperAdmin) {
-      query = query.eq("wholesaler_id", wholesalerId);
+    if (!STOCK_ADJUST_REASON_CODES.includes(reasonCode)) {
+      throw new RbacError("조정 사유를 선택해주세요.");
     }
 
-    const { data, error } = await query.select("id").maybeSingle();
+    const { error } = await supabase.rpc("adjust_product_stock", {
+      p_product_id: productId,
+      p_new_quantity: nextStock,
+      p_reason_code: reasonCode,
+      p_reason_note: reasonNote?.trim() || null,
+    });
 
     if (error) {
-      throw new Error(error.message);
-    }
+      if (error.message.includes("PRODUCT_NOT_FOUND")) {
+        throw new RbacError("변경 권한이 없어 저장되지 않았습니다. 새로고침 후 다시 시도해주세요.");
+      }
 
-    if (!data) {
-      throw new RbacError("변경 권한이 없어 저장되지 않았습니다. 새로고침 후 다시 시도해주세요.");
+      throw new Error(error.message);
     }
 
     revalidatePath(REVALIDATE_PATH);
@@ -319,6 +331,20 @@ export async function deleteProductAction(productId: string): Promise<ActionResu
 
     if (!UUID_PATTERN.test(productId)) {
       throw new RbacError("올바른 상품 식별자가 아닙니다.");
+    }
+
+    // 입출고 기록이 있으면 삭제가 아예 불가능하다 — stock_ledger.product_id가
+    // ON DELETE RESTRICT다(입출고 기록은 지우면 안 되는 자료). DB가 막기 전에
+    // 먼저 확인해 "보관하세요"라고 안내한다. 그냥 두면 외래키 위반 메시지가
+    // 그대로 노출된다.
+    const { data: hasHistory } = await supabase.rpc("product_has_stock_history", {
+      p_product_id: productId,
+    });
+
+    if (hasHistory) {
+      throw new RbacError(
+        "입출고 기록이 있는 상품은 삭제할 수 없습니다. 기록을 남겨야 하기 때문입니다 — 대신 '보관'으로 목록에서 감출 수 있습니다."
+      );
     }
 
     let query = supabase.from("products").delete().eq("id", productId);
@@ -347,13 +373,47 @@ export async function deleteProductAction(productId: string): Promise<ActionResu
 }
 
 // ====================================================================
-// 6. 기본 납품 품목 일괄 생성 (온보딩)
+// 6. 상품 보관 / 복원
+//
+// 입출고 기록이 있는 상품은 지울 수 없으므로(위 참고) 목록에서 치우는 수단이
+// 따로 필요하다. 보관하면 상품 목록과 고객 카탈로그 양쪽에서 빠지고, 기록은
+// 그대로 남는다. 보관 시 판매도 함께 내린다 — 목록에서 감췄는데 미니샵에
+// 남아 있으면 사고다.
 // ====================================================================
-/**
- * 상품이 한 건도 없는 공급사에 기본 납품 품목 세트를 생성한다.
- * 이미 상품이 있으면 중복 생성을 막기 위해 거부한다.
- * 성공 시 미니샵(/shop/<shop_token>)도 함께 무효화하여 데모 카탈로그를 벗어나게 한다.
- */
+export async function setProductArchivedAction(
+  productId: string,
+  archived: boolean
+): Promise<ActionResult> {
+  try {
+    const { supabase } = await resolveProductScope();
+
+    if (!UUID_PATTERN.test(productId)) {
+      throw new RbacError("올바른 상품 식별자가 아닙니다.");
+    }
+
+    const { error } = await supabase.rpc("set_product_archived", {
+      p_product_id: productId,
+      p_archived: archived,
+    });
+
+    if (error) {
+      if (error.message.includes("PRODUCT_NOT_FOUND")) {
+        throw new RbacError("권한이 없거나 해당 상품을 찾을 수 없습니다.");
+      }
+
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+// ====================================================================
+// 7. 기본 납품 품목 일괄 등록
+// ====================================================================
 export async function seedDefaultProductsAction(): Promise<ActionResult<{ created: number }>> {
   try {
     const { supabase, wholesalerId } = await resolveProductScope();
@@ -398,6 +458,63 @@ export async function seedDefaultProductsAction(): Promise<ActionResult<{ create
     }
 
     return { success: true, data: { created: data?.length ?? 0 } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+// ====================================================================
+// 8. 판매가 일괄 등록
+//
+// 스캔으로 자동 등록된 상품은 판매가가 0원이라 고객에게 안 보인다. 수십 개를
+// 화면에서 하나씩 고치는 건 고통스러워서, 목록을 CSV로 내려받아 엑셀에서 값을
+// 채우고 다시 올리는 경로를 둔다. 상품 식별은 UUID로만 한다 — 이름으로 맞추면
+// 엑셀에서 이름을 고친 순간 엉뚱한 상품 가격이 바뀐다.
+// ====================================================================
+export interface BulkPriceResult {
+  updated: number;
+  /** 값을 안 채운 줄 */
+  skipped: number;
+  /** ID가 없거나 내 상품이 아니거나 보관된 줄 */
+  notFound: number;
+}
+
+export async function bulkUpdateProductPricesAction(
+  updates: Array<{ id: string; price: number }>,
+  activate: boolean
+): Promise<ActionResult<BulkPriceResult>> {
+  try {
+    const { supabase } = await resolveProductScope();
+
+    if (updates.length === 0) {
+      throw new RbacError("반영할 판매가가 없습니다.");
+    }
+
+    if (updates.length > 5_000) {
+      throw new RbacError("한 번에 5,000행까지만 올릴 수 있습니다.");
+    }
+
+    const { data, error } = await supabase.rpc("bulk_update_product_prices", {
+      p_updates: updates.map((row) => ({ id: row.id, price: String(row.price) })),
+      p_activate: activate,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const row = (data ?? {}) as Record<string, unknown>;
+
+    revalidatePath(REVALIDATE_PATH);
+
+    return {
+      success: true,
+      data: {
+        updated: Number(row.updated ?? 0),
+        skipped: Number(row.skipped ?? 0),
+        notFound: Number(row.not_found ?? 0),
+      },
+    };
   } catch (error) {
     return toResult(error);
   }

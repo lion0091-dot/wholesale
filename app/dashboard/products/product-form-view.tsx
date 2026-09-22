@@ -19,7 +19,9 @@ interface ProductFormViewProps {
 }
 
 const FALLBACK_CATEGORIES = ["소", "돼지", "닭/오리", "양", "가공육"];
-const UNITS = ["kg", "박스", "마리", "팩"];
+// '세트'는 자체 세트 상품용이다(23단계). 목록에서 빠지면 세트 상품을 폼으로 열 때
+// 단위가 비어 보이고 저장 시 kg으로 떨어진다 — DB 트리거가 되돌리지만 화면이 거짓말을 한다.
+const UNITS = ["kg", "박스", "마리", "팩", "세트"];
 const FORM_ID = "product-form";
 const QUICK_ADD_AMOUNTS = [1000, 5000, 10000, 50000];
 
@@ -622,7 +624,7 @@ export function ProductFormView({
 
           <div>
             <label htmlFor="stock_quantity" style={labelStyle}>
-              재고 수량 *
+              {product ? "재고 수량 (여기서 수정 불가)" : "최초 재고 수량 *"}
             </label>
             <input
               id="stock_quantity"
@@ -630,10 +632,23 @@ export function ProductFormView({
               type="number"
               min="0"
               step="0.1"
-              required
+              required={!product}
+              // 수정 모드에서는 읽기전용이다. 재고는 입출고 원장 합계로 파생되므로
+              // 이 폼에서 덮어쓰면 다음 입고/출고 때 사라진다. 조정은 상품 목록의
+              // "재고 조정"(사유가 원장에 남는 경로)에서만 한다.
+              readOnly={Boolean(product)}
               defaultValue={product ? String(product.stock_quantity) : "10"}
-              style={fieldStyle}
+              style={
+                product
+                  ? { ...fieldStyle, backgroundColor: "#f1f5f9", color: "#64748b", cursor: "not-allowed" }
+                  : fieldStyle
+              }
             />
+            <p style={{ fontSize: "11px", color: "#94a3b8", margin: "4px 0 0" }}>
+              {product
+                ? "재고 변경은 상품 목록의 재고 조정(사유 기록)에서 하세요. 입고·출고는 자동 반영됩니다."
+                : "등록 후에는 입고·출고로 자동 관리되며, 수동 변경은 상품 목록의 재고 조정에서 합니다."}
+            </p>
           </div>
         </div>
 
