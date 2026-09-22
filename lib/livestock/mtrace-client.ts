@@ -37,6 +37,13 @@ interface SourceConfig {
 }
 
 /**
+ * 축산물품질평가원(KAPE) 오픈API 서비스 기본 경로.
+ * 이미 동작 중인 경락가 API가 `${KAPE_SERVICE_BASE}/auct/cattle` 형태이므로,
+ * 이력 조회도 같은 기본 경로 아래 다른 오퍼레이션일 것으로 본다.
+ */
+const KAPE_SERVICE_BASE = "http://data.ekape.or.kr/openapi-data/service/user/grade";
+
+/**
  * 소·돼지 이력은 축산물품질평가원(KAPE)이 운영한다 — 이미 동작 중인 경락가 API
  * (`data.ekape.or.kr`, KAPE_MARKET_PRICE_API_KEY)와 같은 기관이다. data.go.kr은
  * 계정당 공용 인증키를 주므로, 전용 키를 안 넣었으면 그 키로 먼저 시도한다.
@@ -65,17 +72,19 @@ function sourceConfig(source: TraceSource): SourceConfig {
         label: "poultry_trace",
         endpoint:
           process.env.POULTRY_TRACE_API_ENDPOINT ??
-          "http://data.ekape.or.kr/openapi-data/service/user/poultry/trace/traceNoSearch",
+          `${KAPE_SERVICE_BASE}/poultry/traceNoSearch`,
         apiKey: process.env.POULTRY_TRACE_API_KEY ?? fallbackDataGoKrKey(),
       };
     default:
       return {
         label: "mtrace_livestock",
-        // KAPE 경락가 API와 같은 도메인 체계를 기본값으로 둔다 — 같은 기관이
-        // 운영하므로 가장 가능성이 높다. 실제 주소가 확인되면 .env로 덮어쓴다.
+        // 서비스 기본 경로는 경락가 API와 동일한 것으로 확인됐다
+        // (http://data.ekape.or.kr/openapi-data/service/user/grade).
+        // 그 뒤에 붙는 오퍼레이션 이름(경락가의 auct/cattle 자리)은 아직 미확인이라
+        // 추정값을 둔다 — data.go.kr 상세 화면에서 확인되면 .env로 덮어쓴다.
         endpoint:
           process.env.MTRACE_API_ENDPOINT ??
-          "http://data.ekape.or.kr/openapi-data/service/user/animal/trace/traceNoSearch",
+          `${KAPE_SERVICE_BASE}/trace/traceNoSearch`,
         apiKey: process.env.MTRACE_API_KEY ?? fallbackDataGoKrKey(),
       };
   }
