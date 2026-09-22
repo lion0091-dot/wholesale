@@ -1,34 +1,74 @@
 /**
- * 축산물이력제(mtrace.go.kr) 오픈API 클라이언트 — 이력번호 조회.
+ * 축산물 이력 조회 클라이언트 — 품목별로 운영 기관이 달라 3갈래로 라우팅한다.
  *
- * ⚠️ 이 파일 작성 시점에 실제 인증키가 없다. 요청/응답 형식을 공개 스펙 문서
- * 기준으로만 작성했으므로, 키가 발급되면 반드시 실제 XML 응답으로 재검증할 것:
- *   - 오퍼레이션 경로와 파라미터명 (traceNo / traceNoType 등)
- *   - 응답 필드명 — 특히 **부위(部位)가 응답에 실제로 오는지**. 국내산 소의
- *     개체식별번호(12자리)는 소 한 마리를 가리키므로 부위가 없을 가능성이 크다.
- *     없으면 record_inbound_scan이 PENDING_MAPPING으로 남기고 사용자에게 되묻는다.
- *   - 묶음번호(15자리) 응답이 구성 개체를 배열로 주는지
+ *   ① 국내산 소·돼지   → 축산물이력제 (mtrace.go.kr, 축산물품질평가원)
+ *   ② 수입 축산물       → 수입축산물 이력관리시스템 (meatwatch.go.kr)
+ *   ③ 닭·오리·계란      → 가금류 이력관리시스템
  *
- * 그래서 파싱은 정확한 XML 경로에 의존하지 않고, 트리 전체를 재귀 탐색해
- * 알려진 후보 키들을 찾는 방식으로 방어적으로 짰다(kape-client.ts와 같은 전략).
- * 원본 응답 전문은 master_livestock.raw_payload에 그대로 보관하므로, 나중에
- * 실제 필드명이 확인되면 캐시를 버리지 않고 파서만 고치면 된다.
+ * 세 시스템은 인증키도 따로 발급받아야 할 수 있어 환경변수를 분리했다. 설정된
+ * 소스만 시도하고, 미설정 소스는 조용히 건너뛴다 — 소·돼지만 취급하는 업체는
+ * MTRACE_API_KEY 하나만 넣으면 된다.
+ *
+ * ⚠️ 이 파일 작성 시점에 인증키가 하나도 없다. 엔드포인트 주소·파라미터명·응답
+ * 필드명이 전부 문서 기준 추정이므로, 키가 발급되면 실제 응답으로 재검증할 것.
+ * 특히 **부위(部位)가 응답에 실제로 오는지** — 국내산 소의 개체식별번호(12자리)는
+ * 소 한 마리를 가리키므로 부위가 없을 가능성이 크다. 없으면 스캔이
+ * PENDING_MAPPING으로 남고 사용자에게 한 번 되묻는다.
+ *
+ * 파싱은 정확한 XML 경로에 의존하지 않고 트리를 재귀 탐색해 후보 키를 찾는다
+ * (kape-client.ts와 같은 전략). 원본 응답은 master_livestock.raw_payload에
+ * 통째로 보관하므로, 실제 필드명이 확인되면 캐시를 버리지 않고 파서만 고치면 된다.
  */
 
 import { XMLParser } from "fast-xml-parser";
 
-/** 국내산 소·돼지 이력정보 조회 */
-const LIVESTOCK_ENDPOINT =
-  "http://data.mtrace.go.kr/openapi-data/service/user/animal/trace/traceNoSearch";
+/**
+ * 이력 조회 소스 — 품목별 운영 기관이 다르다.
+ * 엔드포인트는 전부 추정값이므로 환경변수로 덮어쓸 수 있게 해뒀다(실호출로 확인한
+ * 주소가 생기면 코드 수정 없이 .env만 고치면 된다).
+ */
+export type TraceSource = "mtrace" | "meatwatch" | "poultry";
 
-/** 수입 쇠고기 유통이력 조회 */
-const IMPORTED_ENDPOINT =
-  "http://data.mtrace.go.kr/openapi-data/service/user/imported/trace/traceNoSearch";
+interface SourceConfig {
+  /** master_livestock.source에 기록되는 값 */
+  label: string;
+  endpoint: string;
+  apiKey: string | undefined;
+}
+
+function sourceConfig(source: TraceSource): SourceConfig {
+  switch (source) {
+    case "meatwatch":
+      return {
+        label: "meatwatch_imported",
+        endpoint:
+          process.env.MEATWATCH_API_ENDPOINT ??
+          "http://data.meatwatch.go.kr/openapi-data/service/user/imported/trace/traceNoSearch",
+        apiKey: process.env.MEATWATCH_API_KEY,
+      };
+    case "poultry":
+      return {
+        label: "poultry_trace",
+        endpoint:
+          process.env.POULTRY_TRACE_API_ENDPOINT ??
+          "http://data.mtrace.go.kr/openapi-data/service/user/poultry/trace/traceNoSearch",
+        apiKey: process.env.POULTRY_TRACE_API_KEY,
+      };
+    default:
+      return {
+        label: "mtrace_livestock",
+        endpoint:
+          process.env.MTRACE_API_ENDPOINT ??
+          "http://data.mtrace.go.kr/openapi-data/service/user/animal/trace/traceNoSearch",
+        apiKey: process.env.MTRACE_API_KEY,
+      };
+  }
+}
 
 const REQUEST_TIMEOUT_MS = 8_000;
 
-/** 이력번호 종류 — 자릿수로 1차 판별한다. */
-export type TraceKind = "individual" | "group" | "imported";
+/** 이력번호 종류 — 자릿수/접두어로 1차 판별한다. */
+export type TraceKind = "individual" | "group" | "imported" | "poultry";
 
 export interface MtraceRecord {
   traceNo: string;
@@ -54,9 +94,18 @@ export interface MtraceRecord {
 
 export class MtraceError extends Error {}
 
-/** MTRACE_API_KEY 설정 여부 — 미설정이면 스캔 화면이 "이력 조회 미설정"으로 안전하게 빠진다. */
+/** 어느 소스든 하나라도 키가 있으면 이력 조회가 동작한다. */
 export function isMtraceConfigured(): boolean {
-  return Boolean(process.env.MTRACE_API_KEY);
+  return (["mtrace", "meatwatch", "poultry"] as TraceSource[]).some(
+    (source) => Boolean(sourceConfig(source).apiKey)
+  );
+}
+
+/** 설정된 소스 목록 — 설정 화면에서 "어디까지 조회되는지" 안내할 때 쓴다. */
+export function configuredTraceSources(): TraceSource[] {
+  return (["mtrace", "meatwatch", "poultry"] as TraceSource[]).filter(
+    (source) => Boolean(sourceConfig(source).apiKey)
+  );
 }
 
 /**
@@ -70,15 +119,29 @@ export function isMtraceConfigured(): boolean {
 export function detectTraceKind(traceNo: string): TraceKind | null {
   const value = traceNo.trim().toUpperCase();
 
+  // 국내산 소 개체식별번호: 12자리 숫자
   if (/^\d{12}$/.test(value)) {
     return "individual";
   }
 
+  // 묶음번호: L + 14자리, 또는 15자리 숫자
   if (/^L\d{14}$/.test(value) || /^\d{15}$/.test(value)) {
     return "group";
   }
 
+  // 수입 유통식별번호는 영문 접두어가 붙는 경우가 많다(체계 미확정).
+  if (/^[A-Z]{1,3}\d{8,}$/.test(value)) {
+    return "imported";
+  }
+
   return null;
+}
+
+/** 판별 결과를 어느 기관 API로 보낼지로 옮긴다. */
+function sourceForKind(kind: TraceKind): TraceSource {
+  if (kind === "imported") return "meatwatch";
+  if (kind === "poultry") return "poultry";
+  return "mtrace";
 }
 
 /** 이력번호로 쓸 수 있는 형태인지 — 스캔 오입력(빈 값, 너무 짧음)을 걸러낸다. */
@@ -159,15 +222,15 @@ function normalizeDate(value: string | null): string | null {
  */
 const parser = new XMLParser({ ignoreAttributes: false, parseTagValue: false });
 
-async function callEndpoint(endpoint: string, traceNo: string): Promise<unknown> {
-  const apiKey = process.env.MTRACE_API_KEY;
+async function callSource(source: TraceSource, traceNo: string): Promise<unknown> {
+  const config = sourceConfig(source);
 
-  if (!apiKey) {
-    throw new MtraceError("MTRACE_API_KEY 미설정");
+  if (!config.apiKey) {
+    throw new MtraceError(`${source} 인증키 미설정`);
   }
 
-  const url = new URL(endpoint);
-  url.searchParams.set("serviceKey", apiKey);
+  const url = new URL(config.endpoint);
+  url.searchParams.set("serviceKey", config.apiKey);
   url.searchParams.set("traceNo", traceNo);
 
   const controller = new AbortController();
@@ -207,17 +270,28 @@ function hasRecord(tree: unknown): boolean {
   );
 }
 
-function toRecord(traceNo: string, traceKind: TraceKind, tree: unknown): MtraceRecord {
-  const isImported = traceKind === "imported";
-
+function toRecord(
+  traceNo: string,
+  traceKind: TraceKind,
+  source: TraceSource,
+  tree: unknown
+): MtraceRecord {
   const species = pick(tree, ["lsTypeNm", "lsType", "species", "animalKindNm"]);
+
+  const speciesGroup =
+    source === "meatwatch"
+      ? // 수입은 쇠고기·돈육이 섞여 들어온다 — 원문 축종으로 가르고, 못 가르면 null.
+        normalizeSpeciesGroup(species)
+      : source === "poultry"
+        ? "닭/오리"
+        : normalizeSpeciesGroup(species);
 
   return {
     traceNo,
     traceKind,
-    source: isImported ? "mtrace_imported" : "mtrace_livestock",
+    source: sourceConfig(source).label,
     species,
-    speciesGroup: isImported ? "소" : normalizeSpeciesGroup(species),
+    speciesGroup,
     // 부위는 국내산 개체번호 응답에 없을 가능성이 크다 — 없으면 null로 두고
     // 스캔 처리 쪽에서 사용자에게 한 번 물어본다.
     partName: pick(tree, ["partNm", "partName", "cutMeatNm", "itemNm"]),
@@ -248,27 +322,41 @@ export async function fetchTraceRecord(traceNoInput: string): Promise<MtraceReco
 
   const detected = detectTraceKind(traceNo);
 
-  const attempts: Array<{ endpoint: string; kind: TraceKind }> =
-    detected === null
-      ? [
-          { endpoint: LIVESTOCK_ENDPOINT, kind: "individual" },
-          { endpoint: IMPORTED_ENDPOINT, kind: "imported" },
-        ]
-      : [{ endpoint: LIVESTOCK_ENDPOINT, kind: detected }];
+  // 형식으로 갈렸으면 해당 기관만, 아니면 설정된 기관을 순서대로 시도한다.
+  // 소·돼지만 취급하는 업체는 MTRACE_API_KEY만 있으므로 한 번만 호출된다.
+  const attempts: Array<{ source: TraceSource; kind: TraceKind }> =
+    detected !== null
+      ? [{ source: sourceForKind(detected), kind: detected }]
+      : [
+          { source: "mtrace", kind: "individual" },
+          { source: "meatwatch", kind: "imported" },
+          { source: "poultry", kind: "poultry" },
+        ];
 
   let lastError: MtraceError | null = null;
+  let attempted = 0;
 
   for (const attempt of attempts) {
+    if (!sourceConfig(attempt.source).apiKey) {
+      continue; // 키가 없는 기관은 건너뛴다(오류로 치지 않는다).
+    }
+
+    attempted += 1;
+
     try {
-      const tree = await callEndpoint(attempt.endpoint, traceNo);
+      const tree = await callSource(attempt.source, traceNo);
 
       if (hasRecord(tree)) {
-        return toRecord(traceNo, attempt.kind, tree);
+        return toRecord(traceNo, attempt.kind, attempt.source, tree);
       }
     } catch (error) {
       // 순차 폴백 중 한쪽이 실패해도 다음을 시도한다. 전부 실패하면 마지막 오류를 던진다.
       lastError = error instanceof MtraceError ? error : new MtraceError(String(error));
     }
+  }
+
+  if (attempted === 0) {
+    throw new MtraceError("이력 조회 인증키가 설정되지 않았습니다.");
   }
 
   if (lastError) {
