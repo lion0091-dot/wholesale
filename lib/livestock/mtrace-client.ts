@@ -32,7 +32,18 @@ export type TraceSource = "mtrace" | "meatwatch" | "poultry";
 interface SourceConfig {
   /** master_livestock.source에 기록되는 값 */
   label: string;
-  endpoint: string;
+  /**
+   * 시도할 요청 주소 목록.
+   *
+   * data.go.kr에서 받은 End Point는 서비스 기본 경로까지만이고
+   * (`.../user/grade`), 그 뒤에 붙는 오퍼레이션 이름은 활용가이드 문서를 봐야
+   * 안다. 문서 확인 전에도 굴러가도록 후보를 순서대로 시도하고, 한 번 성공한
+   * 주소는 프로세스가 사는 동안 기억해 두 번 다시 헤매지 않는다.
+   *
+   * 정확한 주소를 알게 되면 *_API_ENDPOINT 환경변수로 고정하는 게 좋다 —
+   * 후보 탐색이 사라져 첫 호출이 빨라진다.
+   */
+  endpoints: string[];
   apiKey: string | undefined;
 }
 
@@ -49,6 +60,13 @@ const KAPE_SERVICE_BASE = "http://data.ekape.or.kr/openapi-data/service/user/gra
  * 계정당 공용 인증키를 주므로, 전용 키를 안 넣었으면 그 키로 먼저 시도한다.
  * 별도 발급 없이 바로 될 수 있고, 안 되면 어차피 예외로 남을 뿐이라 손해가 없다.
  */
+/** 환경변수로 주소가 고정돼 있으면 그것만, 아니면 후보 목록을 쓴다. */
+function candidates(override: string | undefined, defaults: string[]): string[] {
+  const fixed = override?.trim();
+
+  return fixed ? [fixed] : defaults;
+}
+
 function fallbackDataGoKrKey(): string | undefined {
   return process.env.KAPE_MARKET_PRICE_API_KEY ?? process.env.NTS_BUSINESS_VERIFY_API_KEY;
 }
@@ -60,9 +78,9 @@ function sourceConfig(source: TraceSource): SourceConfig {
         label: "meatwatch_imported",
         // ⚠️ 이 주소는 미확인이다. 실제로 연결되는지 확인된 바 없으므로
         //    MEATWATCH_API_ENDPOINT로 덮어쓸 것.
-        endpoint:
-          process.env.MEATWATCH_API_ENDPOINT ??
+        endpoints: candidates(process.env.MEATWATCH_API_ENDPOINT, [
           "http://apis.data.go.kr/B552895/imported/trace/traceNoSearch",
+        ]),
         // 수입 이력은 운영 기관이 달라 공용키가 통하지 않을 수 있다 — 그래도
         // 전용 키가 없으면 한 번은 시도해본다.
         apiKey: process.env.MEATWATCH_API_KEY ?? fallbackDataGoKrKey(),
@@ -70,9 +88,10 @@ function sourceConfig(source: TraceSource): SourceConfig {
     case "poultry":
       return {
         label: "poultry_trace",
-        endpoint:
-          process.env.POULTRY_TRACE_API_ENDPOINT ??
+        endpoints: candidates(process.env.POULTRY_TRACE_API_ENDPOINT, [
           `${KAPE_SERVICE_BASE}/poultry/traceNoSearch`,
+          `${KAPE_SERVICE_BASE}/confirm/poultry`,
+        ]),
         apiKey: process.env.POULTRY_TRACE_API_KEY ?? fallbackDataGoKrKey(),
       };
     default:
@@ -82,9 +101,14 @@ function sourceConfig(source: TraceSource): SourceConfig {
         // (http://data.ekape.or.kr/openapi-data/service/user/grade).
         // 그 뒤에 붙는 오퍼레이션 이름(경락가의 auct/cattle 자리)은 아직 미확인이라
         // 추정값을 둔다 — data.go.kr 상세 화면에서 확인되면 .env로 덮어쓴다.
-        endpoint:
-          process.env.MTRACE_API_ENDPOINT ??
+        // 경락가가 `${KAPE_SERVICE_BASE}/auct/cattle` 형태이므로 같은 자리에
+        // 들어갈 법한 이름들을 순서대로 시도한다.
+        endpoints: candidates(process.env.MTRACE_API_ENDPOINT, [
+          `${KAPE_SERVICE_BASE}/confirm/cattle`,
+          `${KAPE_SERVICE_BASE}/confirm/pig`,
           `${KAPE_SERVICE_BASE}/trace/traceNoSearch`,
+          `${KAPE_SERVICE_BASE}/judge/cattle`,
+        ]),
         apiKey: process.env.MTRACE_API_KEY ?? fallbackDataGoKrKey(),
       };
   }
@@ -247,15 +271,16 @@ function normalizeDate(value: string | null): string | null {
  */
 const parser = new XMLParser({ ignoreAttributes: false, parseTagValue: false });
 
-async function callSource(source: TraceSource, traceNo: string): Promise<unknown> {
-  const config = sourceConfig(source);
+/**
+ * 한 번 성공한 주소는 기억해 다음부터 바로 쓴다.
+ * 서버리스라 인스턴스가 바뀌면 초기화되지만, 그래도 같은 인스턴스가 연속으로
+ * 처리하는 동안(현장 연속 스캔)은 후보 탐색이 한 번만 일어난다.
+ */
+const resolvedEndpoint = new Map<TraceSource, string>();
 
-  if (!config.apiKey) {
-    throw new MtraceError(`${source} 인증키 미설정`);
-  }
-
-  const url = new URL(config.endpoint);
-  url.searchParams.set("serviceKey", config.apiKey);
+async function callUrl(endpoint: string, apiKey: string, traceNo: string): Promise<unknown> {
+  const url = new URL(endpoint);
+  url.searchParams.set("serviceKey", apiKey);
   url.searchParams.set("traceNo", traceNo);
 
   const controller = new AbortController();
@@ -285,6 +310,44 @@ async function callSource(source: TraceSource, traceNo: string): Promise<unknown
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * 후보 주소를 순서대로 시도해 실제 이력이 담긴 응답을 찾는다.
+ * 주소가 틀리면 보통 404/빈 응답이라 빠르게 넘어간다.
+ */
+async function callSource(source: TraceSource, traceNo: string): Promise<unknown | null> {
+  const config = sourceConfig(source);
+
+  if (!config.apiKey) {
+    throw new MtraceError(`${source} 인증키 미설정`);
+  }
+
+  const known = resolvedEndpoint.get(source);
+  const endpoints = known ? [known, ...config.endpoints.filter((url) => url !== known)] : config.endpoints;
+
+  let lastError: MtraceError | null = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const tree = await callUrl(endpoint, config.apiKey, traceNo);
+
+      if (hasRecord(tree)) {
+        resolvedEndpoint.set(source, endpoint);
+        return tree;
+      }
+    } catch (error) {
+      lastError = error instanceof MtraceError ? error : new MtraceError(String(error));
+    }
+  }
+
+  // 후보를 다 돌았는데 내용이 없으면 "조회 결과 없음"으로 본다.
+  // 전부 호출 자체가 실패했을 때만 오류로 올린다.
+  if (lastError && !resolvedEndpoint.has(source)) {
+    throw lastError;
+  }
+
+  return null;
 }
 
 /** 응답에 실제 이력 내용이 담겼는지 — 빈 껍데기(조회 결과 없음)면 false. */
@@ -371,7 +434,7 @@ export async function fetchTraceRecord(traceNoInput: string): Promise<MtraceReco
     try {
       const tree = await callSource(attempt.source, traceNo);
 
-      if (hasRecord(tree)) {
+      if (tree !== null) {
         return toRecord(traceNo, attempt.kind, attempt.source, tree);
       }
     } catch (error) {
