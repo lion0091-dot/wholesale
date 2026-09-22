@@ -329,35 +329,73 @@ export function InboundScanView({ initialScans, products }: Props) {
     if (!cameraOn) return;
 
     let cancelled = false;
-    // BarcodeDetector는 표준화 진행 중이라 TS lib에 아직 없다.
-    const DetectorCtor = (window as unknown as { BarcodeDetector: new (options?: unknown) => { detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>> } }).BarcodeDetector;
-    const detector = new DetectorCtor({
-      formats: ["code_128", "code_39", "ean_13", "qr_code", "itf"],
-    });
+    let timer: number | undefined;
 
-    const timer = window.setInterval(async () => {
-      if (cancelled || !videoRef.current) return;
+    // BarcodeDetector는 표준화 진행 중이라 TS lib에 아직 없다.
+    const BarcodeDetectorCtor = (
+      window as unknown as {
+        BarcodeDetector: {
+          new (options?: { formats: string[] }): {
+            detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>>;
+          };
+          getSupportedFormats?: () => Promise<string[]>;
+        };
+      }
+    ).BarcodeDetector;
+
+    const wantedFormats = ["code_128", "code_39", "ean_13", "qr_code", "itf"];
+
+    (async () => {
+      let formats = wantedFormats;
 
       try {
-        const found = await detector.detect(videoRef.current);
+        // 요청 포맷 중 브라우저가 실제로 지원하지 않는 게 섞여 있으면 생성자 자체가
+        // 던질 수 있다 — 그러면 카메라는 켜지는데 인식은 영영 시작을 못 한다
+        // (실계정 테스트에서 발견: 화면은 나오는데 아무 반응이 없던 원인).
+        const supported = await BarcodeDetectorCtor.getSupportedFormats?.();
 
-        if (found.length > 0 && found[0].rawValue) {
-          const value = found[0].rawValue.trim();
-
-          stopCamera();
-          // 카메라는 이력번호만 읽는다 — 실중량은 저울 값이라 자동 제출하지 않고
-          // processTraceInput이 알아서 실중량 입력을 기다리거나(비어있으면) 곧장 등록한다
-          // (이미 실중량을 먼저 입력해둔 경우).
-          processTraceInput(value, "CAMERA");
+        if (supported && supported.length > 0) {
+          formats = wantedFormats.filter((format) => supported.includes(format));
         }
+
+        if (formats.length === 0) {
+          throw new Error("NO_SUPPORTED_FORMAT");
+        }
+
+        const detector = new BarcodeDetectorCtor({ formats });
+
+        if (cancelled) return;
+
+        timer = window.setInterval(async () => {
+          if (cancelled || !videoRef.current) return;
+
+          try {
+            const found = await detector.detect(videoRef.current);
+
+            if (found.length > 0 && found[0].rawValue) {
+              const value = found[0].rawValue.trim();
+
+              stopCamera();
+              // 카메라는 이력번호만 읽는다 — 실중량은 저울 값이라 자동 제출하지 않고
+              // processTraceInput이 알아서 실중량 입력을 기다리거나(비어있으면) 곧장 등록한다
+              // (이미 실중량을 먼저 입력해둔 경우).
+              processTraceInput(value, "CAMERA");
+            }
+          } catch {
+            // 프레임 한 장 인식 실패는 정상이다 — 다음 주기에 다시 시도한다.
+          }
+        }, 400);
       } catch {
-        // 프레임 한 장 인식 실패는 정상이다 — 다음 주기에 다시 시도한다.
+        if (!cancelled) {
+          setError("이 기기·브라우저에서는 바코드 자동 인식을 쓸 수 없습니다. 이력번호를 직접 입력해주세요.");
+          stopCamera();
+        }
       }
-    }, 400);
+    })();
 
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      if (timer !== undefined) window.clearInterval(timer);
     };
   }, [cameraOn, stopCamera, processTraceInput]);
 
