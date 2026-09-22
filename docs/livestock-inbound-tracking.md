@@ -194,3 +194,23 @@
    - **거래명세서 PDF 연결** — `get_order_trace_numbers()`는 만들었지만 아직 어느 화면·PDF에도 붙이지 않았다.
 7. **중복 스캔 방지 정책** — 박스 단위 식별자 기반 dedupe 규칙 미정(이력번호+중량+시각 근접도 등).
 8. **오프라인 대응** — 냉동창고 전파 불량 시 IndexedDB 로컬 큐 + 복구 시 동기화(PWA). 웹인 이상 스택과 무관한 별도 과제.
+
+### 공공 API 커넥터 (6단계)
+
+**`lib/livestock/mtrace-client.ts`** — 축산물이력제 오픈API 클라이언트.
+
+- `MTRACE_API_KEY` 미설정이면 스캔이 막히지 않는다. 물건은 실제로 창고에 들어와 있으므로 입고는 받아들이고 `EXCEPTION`(사유 `API_ERROR`)으로 남긴다. 나중에 키를 넣고 예외 목록을 재조회하면 채워진다 — **현장을 세우지 않는 게 우선**이라는 판단이다.
+- 엔드포인트와 응답 필드명이 **전부 미확정**이다(인증키 미발급). 그래서 `kape-client.ts`와 같은 전략을 쓴다 — 정확한 XML 경로에 의존하지 않고 트리를 재귀 탐색해 알려진 후보 키들을 찾는다. 원본은 `master_livestock.raw_payload`에 통째로 보관하므로, 실제 필드명이 확인되면 **캐시를 버리지 않고 파서만 고치면 된다.**
+- `fast-xml-parser`의 `parseTagValue: false`를 반드시 유지할 것. 기본 설정은 `"00"` 같은 문자열을 숫자 `0`으로 바꾸는데, 이력번호는 0으로 시작하는 경우가 흔하다(`kape-client.ts`가 `resultCode "00"` 비교에서 이미 겪은 함정).
+- **국내산/수입 라우팅**: 12자리 숫자 → 개체, `L`+14자리 또는 15자리 숫자 → 묶음. 판별 실패 시 국내산 → 수입 순으로 순차 호출하는 폴백을 둔다. 자릿수 규칙은 확정 스펙이 아니다.
+- 타임아웃 8초(`AbortController`). 현장 스캔이 무한정 매달리지 않게 한다.
+
+**`app/dashboard/inbound/actions.ts`** — 스캔 Server Action.
+
+- Lazy Loading 순서: 마스터 캐시 → (미스면) 공공 API → `upsert_master_livestock` → `record_inbound_scan`.
+- 중복 의심이면 저장하지 않고 직전 스캔 시각(HH:MM)을 돌려준다. 작업자가 확인하면 `confirmDuplicate: true`로 다시 호출한다.
+- 입고는 현장 작업이라 `staff`까지 허용한다(상품 마스터 수정은 `manager` 이상).
+
+**환경변수**: `.env.example`의 `MTRACE_API_KEY` 참고. data.go.kr에도 같은 축산물이력 API가 올라와 있어, 그 경로로 쓴다면 기존 `NTS_BUSINESS_VERIFY_API_KEY`/`KAPE_MARKET_PRICE_API_KEY`와 동일한 data.go.kr 계정 공용키가 그대로 통할 수 있다 — **별도 발급 전에 먼저 시험해볼 것**(엔드포인트 주소도 함께 맞춰야 한다).
+
+**미검증**: 실호출 전무. 엔드포인트 경로·파라미터명·응답 필드명 전부 문서 기준 추정이다. 특히 **부위(`partName`)가 응답에 실제로 오는지**가 매핑 자동화율을 좌우한다.
