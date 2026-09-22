@@ -107,15 +107,11 @@ function sourceConfig(source: TraceSource): SourceConfig {
       return {
         label: "mtrace_livestock",
         // 소는 data.go.kr 상품 페이지(15056898)로 실주소·파라미터명이 확인됐다(위 상수 참고).
-        // 돼지 전용 상품은 데이터포털 검색으로 못 찾았다 — 기존 추정 주소를 뒤에 그대로 남겨
-        // 순서대로 시도한다(찾으면 여기 교체).
-        endpoints: candidates(process.env.MTRACE_API_ENDPOINT, [
-          KAPE_CATTLE_TRACE_ENDPOINT,
-          `${KAPE_SERVICE_BASE}/confirm/cattle`,
-          `${KAPE_SERVICE_BASE}/confirm/pig`,
-          `${KAPE_SERVICE_BASE}/trace/traceNoSearch`,
-          `${KAPE_SERVICE_BASE}/judge/cattle`,
-        ]),
+        // 예전에 남겨뒀던 추측 주소 4개(confirm/cattle 등)는 전부 지웠다 — 실주소가 아닌 게
+        // 확인됐고(25단계), 그중 하나가 애매한 200 응답을 주면 진짜 주소의 진짜 오류가
+        // "이력 없음"으로 가려지는 부작용까지 있었다(2026-09-22 실사용 중 발견).
+        // 돼지 전용 상품은 데이터포털 검색으로 못 찾아 여전히 미확인 — 찾으면 여기 추가.
+        endpoints: candidates(process.env.MTRACE_API_ENDPOINT, [KAPE_CATTLE_TRACE_ENDPOINT]),
         apiKey: process.env.MTRACE_API_KEY ?? fallbackDataGoKrKey(),
       };
   }
