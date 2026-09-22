@@ -18,6 +18,8 @@ export const LEDGER_EVENTS: LedgerEventMeta[] = [
   { code: "OPENING_BALANCE", label: "기초재고", bg: "#e0e7ff", color: "#3730a3" },
   { code: "ORDER_OUT", label: "출고", bg: "#dbeafe", color: "#1e40af" },
   { code: "ORDER_RESTORE", label: "출고취소", bg: "#f1f5f9", color: "#64748b" },
+  { code: "OUTBOUND_ASSIGN", label: "출고(스캔)", bg: "#dbeafe", color: "#1e40af" },
+  { code: "OUTBOUND_UNASSIGN", label: "배정정정", bg: "#f1f5f9", color: "#64748b" },
   { code: "ADJUSTMENT", label: "조정", bg: "#fef3c7", color: "#92400e" },
   { code: "LOSS", label: "손실", bg: "#fee2e2", color: "#991b1b" },
 ];
