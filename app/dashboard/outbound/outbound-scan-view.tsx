@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { parseBarcode } from "@/lib/livestock/barcode-parser";
 import {
@@ -158,8 +159,38 @@ export function OutboundScanView({ orders }: Props) {
 
       {progress.length > 0 && (
         <section style={panelStyle}>
-          <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "10px" }}>
-            출고 진행 {allDone && <span style={{ color: "#166534" }}>· 전부 채웠습니다</span>}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              flexWrap: "wrap",
+              marginBottom: "10px",
+            }}
+          >
+            <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>
+              출고 진행 {allDone && <span style={{ color: "#166534" }}>· 전부 채웠습니다</span>}
+            </span>
+
+            {/* 소분해서 나가는 봉지에는 원래 이력번호를 표시해야 한다 —
+                박스 라벨은 창고에 남으므로 새 라벨이 필요하다. */}
+            <Link
+              href={`/dashboard/outbound/labels/${orderId}`}
+              target="_blank"
+              style={{
+                marginLeft: "auto",
+                padding: "7px 12px",
+                fontSize: "12px",
+                fontWeight: 600,
+                borderRadius: "6px",
+                border: "1px solid #e2e8f0",
+                backgroundColor: "#f8fafc",
+                color: "#334155",
+                textDecoration: "none",
+              }}
+            >
+              소분 라벨 인쇄
+            </Link>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>

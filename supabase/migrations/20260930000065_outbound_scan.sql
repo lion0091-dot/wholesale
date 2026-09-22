@@ -338,3 +338,69 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.summarize_stock_ledger(UUID, DATE, DATE, UUID, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.summarize_stock_ledger(UUID, DATE, DATE, UUID, TEXT) TO authenticated;
+
+
+-- 소분 라벨에 찍을 정보 — 출고된 박스별로 한 줄.
+-- get_order_trace_numbers()와 달리 공급사 정보와 원산지까지 함께 준다.
+CREATE OR REPLACE FUNCTION public.get_order_labels(p_order_id UUID)
+RETURNS TABLE (
+    product_name   TEXT,
+    trace_no       TEXT,
+    quantity       NUMERIC,
+    unit           TEXT,
+    grade          TEXT,
+    origin         TEXT,
+    slaughter_date DATE,
+    packing_date   DATE,
+    butchery_place TEXT,
+    supplier_name  TEXT,
+    order_number   TEXT,
+    retailer_name  TEXT
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    SELECT
+        p.name,
+        s.trace_no,
+        -l.qty_delta,
+        p.unit,
+        COALESCE(m.grade, p.grade),
+        p.origin,
+        m.slaughter_date,
+        m.packing_date,
+        m.butchery_place,
+        w.business_name,
+        o.order_number,
+        r.restaurant_name
+    FROM public.stock_ledger l
+    JOIN public.orders o          ON o.id = l.source_id
+    JOIN public.wholesalers w     ON w.id = o.wholesaler_id
+    JOIN public.retailers r       ON r.id = o.retailer_id
+    JOIN public.inbound_scans s   ON s.id = l.inbound_scan_id
+    JOIN public.products p        ON p.id = l.product_id
+    LEFT JOIN public.master_livestock m ON m.trace_no = s.trace_no
+    WHERE l.source_type = 'order'
+      AND l.source_id = p_order_id
+      AND l.inbound_scan_id IS NOT NULL
+      -- 출고 스캔이 있었으면 그것만, 없으면 자동 배정분을 쓴다.
+      AND l.event_type = CASE
+            WHEN EXISTS (
+                SELECT 1 FROM public.stock_ledger x
+                WHERE x.source_type = 'order' AND x.source_id = p_order_id
+                  AND x.event_type = 'OUTBOUND_ASSIGN'
+            ) THEN 'OUTBOUND_ASSIGN'
+            ELSE 'ORDER_OUT'
+          END
+      AND (
+            o.wholesaler_id = public.get_current_wholesaler_id()
+         OR public.is_org_staff_of_wholesaler(o.wholesaler_id)
+         OR public.get_current_role() = 'super_admin'
+      )
+    ORDER BY p.name, s.trace_no;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_order_labels(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_order_labels(UUID) TO authenticated;

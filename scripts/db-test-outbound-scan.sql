@@ -76,3 +76,7 @@ select '--- O8: 기간 요약의 출고 합계가 맞는다 (-10) ---' as t;
 -- 입고 26.70 = 등심 3박스(21.70) + O7에서 넣은 채끝 1박스(5.00)
 select inbound_qty as should_be_26_70, outbound_qty as should_be_minus_10
   from public.summarize_stock_ledger('aaaaaaaa-0000-0000-0000-000000000001');
+
+select '--- O9: 소분 라벨 정보 (실제 스캔분 기준) ---' as t;
+select product_name, trace_no, quantity, unit, grade, origin, supplier_name, retailer_name, order_number
+  from public.get_order_labels('eeeeeeee-0000-0000-0000-000000000001');

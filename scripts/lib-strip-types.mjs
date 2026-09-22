@@ -24,13 +24,15 @@ const TYPE_PATTERNS = [
   /: string \| null/g,
   /: number \| null/g,
 
-  // 3) 배열
+  // 3) 배열 — number[] 처럼 흔한 것부터
+  /: number\[\]/g,
   /: PriceCsvProduct\[\]/g,
   /: PriceUpdateRow\[\]/g,
   /: ImportRow\[\]/g,
   /: string\[\]/g,
 
   // 4) 단일 이름
+  /: Code128Options/g,
   /: ParsedPriceCsv\b/g,
   /: PriceUpdateRow\b/g,
   /: ParsedImport\b/g,
