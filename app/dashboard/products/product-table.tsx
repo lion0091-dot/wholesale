@@ -7,6 +7,7 @@ import type { Product } from "@/types/database";
 import { SampleBadge } from "@/components/sample-badge";
 import { MiniToggle } from "@/components/mini-toggle";
 import { composeProductDisplayName } from "@/lib/products/display-name";
+import { findMarketPrice, type MarketPriceIndex } from "@/lib/market-price/product-match";
 import {
   deleteProductAction,
   toggleProductFlagAction,
@@ -52,6 +53,8 @@ interface ProductTableProps {
   /** user_id → 표시 이름. 등록자/수정자 표시용 (여러 직원이 쓰는 백오피스) */
   memberNames?: Record<string, string>;
   stockSummaries?: Record<string, StockSummary>;
+  /** 축종+등급 → 공공 경락가. 상품 줄마다 내 판매가와 나란히 보여준다. */
+  marketPrices?: MarketPriceIndex;
 }
 
 function stockBadge(quantity: number, unit: string) {
@@ -103,6 +106,48 @@ function StockFreshness({ summary }: { summary?: StockSummary }) {
   );
 }
 
+/**
+ * 내 판매가 밑에 붙는 "공공 26,980원/kg" 한 줄. 공급사 전용이다 —
+ * 고객(미니샵)에는 이 컴포넌트를 쓰지 않고, DB 권한으로도 막혀 있다.
+ */
+function MarketPriceHint({
+  category,
+  grade,
+  index,
+}: {
+  category: string;
+  grade: string | null;
+  index: MarketPriceIndex;
+}) {
+  const matched = findMarketPrice(index, category, grade);
+
+  if (!matched) {
+    return null;
+  }
+
+  return (
+    <div
+      style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}
+      title={`공공 경락가 (${matched.snapshotDate} 기준)`}
+    >
+      공공 {Math.round(matched.pricePerKg).toLocaleString("ko-KR")}원/kg
+    </div>
+  );
+}
+
+/** 판매가를 아직 안 정한 상품은 고객에게 안 보인다 — 공급사에게 이유를 밝힌다. */
+function UnpricedBadge({ basePrice }: { basePrice: number }) {
+  if (Number(basePrice) > 0) {
+    return null;
+  }
+
+  return (
+    <div style={{ fontSize: "11px", color: "#b45309", fontWeight: 600, marginTop: "2px" }}>
+      판매가 미설정 · 고객 비노출
+    </div>
+  );
+}
+
 const chipButtonStyle: React.CSSProperties = {
   fontSize: "12px",
   fontWeight: 600,
@@ -133,6 +178,7 @@ export function ProductTable({
   readOnly = false,
   memberNames = {},
   stockSummaries = {},
+  marketPrices = new Map(),
 }: ProductTableProps) {
   const router = useRouter();
   const [keyword, setKeyword] = useState("");
@@ -374,6 +420,12 @@ export function ProductTable({
                         {" "}
                         / {product.unit}
                       </span>
+                      <MarketPriceHint
+                        category={product.category}
+                        grade={product.grade}
+                        index={marketPrices}
+                      />
+                      <UnpricedBadge basePrice={product.base_price} />
                     </td>
 
                     <td>
@@ -568,6 +620,12 @@ export function ProductTable({
                       {" "}
                       / {product.unit}
                     </span>
+                    <MarketPriceHint
+                      category={product.category}
+                      grade={product.grade}
+                      index={marketPrices}
+                    />
+                    <UnpricedBadge basePrice={product.base_price} />
                   </span>
 
                   {editingStockId === product.id ? (

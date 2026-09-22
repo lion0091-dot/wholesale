@@ -5,7 +5,9 @@ import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { DEMO_PRODUCTS } from "@/lib/demo/supplier-samples";
 import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
 import { ProductTable, type StockSummary } from "./product-table";
-import { MarketPricePanel } from "./market-price-panel";
+import { getLatestMarketPricesAction } from "@/app/actions/market-price";
+import { buildMarketPriceIndex, type MarketPriceIndex } from "@/lib/market-price/product-match";
+
 import { SeedDefaultProductsButton } from "./seed-default-products-button";
 import { DemoNoticeBanner } from "./demo-notice-banner";
 import type { Product } from "@/types/database";
@@ -27,6 +29,9 @@ export default async function DashboardProductsPage() {
   // 상품별 재고 신선도 요약(도축일/포장일/박스수). 목록에서 상품마다 따로 조회하면
   // N+1이 되므로 한 번에 집계해 받아 상품 id로 매핑한다.
   let stockSummaries: Record<string, StockSummary> = {};
+  // 상품마다 시세를 따로 조회하면 N+1이라, 최신 스냅샷을 한 번만 읽어 맵으로 만든다.
+  // 고객 계정에서는 RLS가 0건을 돌려주므로 여기서 별도 권한 체크가 필요 없다.
+  let marketPrices: MarketPriceIndex = new Map();
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -54,6 +59,12 @@ export default async function DashboardProductsPage() {
     stockSummaries = Object.fromEntries(
       ((summaries ?? []) as StockSummary[]).map((summary) => [summary.product_id, summary])
     );
+
+    const marketPriceResult = await getLatestMarketPricesAction();
+
+    if (marketPriceResult.success) {
+      marketPrices = buildMarketPriceIndex(marketPriceResult.data ?? []);
+    }
 
     memberNames = Object.fromEntries(
       ((members ?? []) as Array<{ user_id: string; name: string | null }>).map((member) => [
@@ -134,13 +145,12 @@ export default async function DashboardProductsPage() {
         ))}
       </section>
 
-      <MarketPricePanel />
-
       <ProductTable
         products={products}
         readOnly={isDemoData}
         memberNames={memberNames}
         stockSummaries={stockSummaries}
+        marketPrices={marketPrices}
       />
     </div>
   );

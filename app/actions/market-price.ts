@@ -24,9 +24,10 @@ const MARKET_PRICE_SPECIES: MarketPriceSpecies[] = ["cattle", "pig"];
  * 없는 축종은 실제로는 최신 데이터가 있어도 0건으로 보인다. 축종별로 각자의 최신
  * snapshot_date를 따로 구해서 조회한다.
  *
- * market_price_snapshots는 authenticated 전체에 SELECT RLS가 열려 있어(플랫폼 공용
- * 참고 데이터, 업체별 구분 없음) 일반 세션 클라이언트로 충분하고 별도 권한 체크가
- * 필요 없다.
+ * market_price_snapshots의 SELECT RLS는 공급사(및 관리자)로 한정돼 있다
+ * (20260930000056) — 공공 시세는 공급사의 매입·판매가 판단용이라 고객에게는
+ * 노출하지 않는다. 그래서 일반 세션 클라이언트로 조회하면 고객 계정에서는
+ * 자동으로 0건이 되고, 별도 권한 체크 코드가 필요 없다.
  */
 export async function getLatestMarketPricesAction(): Promise<ActionResult<MarketPriceSnapshotRow[]>> {
   try {
