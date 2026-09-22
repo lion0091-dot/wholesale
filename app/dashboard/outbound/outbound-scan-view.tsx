@@ -7,7 +7,9 @@ import { parseBarcode } from "@/lib/livestock/barcode-parser";
 import {
   recordOutboundScanAction,
   getOutboundProgressAction,
+  getPickingListAction,
   type OutboundProgressRow,
+  type PickingRow,
 } from "./actions";
 
 export interface ShippableOrder {
@@ -32,6 +34,7 @@ export function OutboundScanView({ orders }: Props) {
   const [orderId, setOrderId] = useState(orders[0]?.id ?? "");
   const [traceNo, setTraceNo] = useState("");
   const [progress, setProgress] = useState<OutboundProgressRow[]>([]);
+  const [picking, setPicking] = useState<PickingRow[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,13 +44,21 @@ export function OutboundScanView({ orders }: Props) {
   const loadProgress = useCallback(async (id: string) => {
     if (!id) {
       setProgress([]);
+      setPicking([]);
       return;
     }
 
-    const result = await getOutboundProgressAction(id);
+    const [progressResult, pickingResult] = await Promise.all([
+      getOutboundProgressAction(id),
+      getPickingListAction(id),
+    ]);
 
-    if (result.success) {
-      setProgress(result.data ?? []);
+    if (progressResult.success) {
+      setProgress(progressResult.data ?? []);
+    }
+
+    if (pickingResult.success) {
+      setPicking(pickingResult.data ?? []);
     }
   }, []);
 
@@ -171,6 +182,71 @@ export function OutboundScanView({ orders }: Props) {
         )}
         {error && <div style={{ ...noticeStyle, backgroundColor: "#fee2e2", color: "#991b1b" }}>{error}</div>}
       </section>
+
+      {picking.length > 0 && (
+        <section style={panelStyle}>
+          <div style={{ marginBottom: "10px" }}>
+            <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>가져올 박스</span>
+            <span style={{ fontSize: "11px", color: "#64748b", marginLeft: "6px" }}>
+              오래된 박스부터 (선입선출)
+            </span>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {picking.map((row) => (
+              <div
+                key={`${row.boxId}-${row.alreadyPicked ? "done" : "todo"}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  padding: "8px 10px",
+                  borderRadius: "8px",
+                  border: "1px solid #e2e8f0",
+                  backgroundColor: row.alreadyPicked ? "#f8fafc" : "#fff",
+                  opacity: row.alreadyPicked ? 0.6 : 1,
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>
+                    {row.productName}
+                    {row.grade && (
+                      <span style={{ fontSize: "11px", color: "#64748b", marginLeft: "6px" }}>
+                        {row.grade}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "#64748b", fontFamily: "monospace" }}>
+                    {row.traceNo}
+                  </div>
+                  {row.slaughterDate && (
+                    <div style={{ fontSize: "11px", color: "#94a3b8" }}>
+                      도축 {row.slaughterDate} · 박스 {row.boxWeight}
+                      {row.unit}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                  <div
+                    style={{
+                      fontSize: "15px",
+                      fontWeight: 700,
+                      color: row.alreadyPicked ? "#64748b" : "#b45309",
+                    }}
+                  >
+                    {row.suggestedQty}
+                    {row.unit}
+                  </div>
+                  <div style={{ fontSize: "11px", color: row.alreadyPicked ? "#166534" : "#94a3b8" }}>
+                    {row.alreadyPicked ? "출고 완료" : "가져오기"}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {progress.length > 0 && (
         <section style={panelStyle}>

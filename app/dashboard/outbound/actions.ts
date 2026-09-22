@@ -40,6 +40,21 @@ export interface OutboundScanResult {
   productPart: string | null;
 }
 
+export interface PickingRow {
+  productId: string;
+  productName: string;
+  unit: string;
+  boxId: string;
+  traceNo: string;
+  /** 이 박스에서 가져갈 양. 박스 전체가 아니라 주문에 필요한 만큼이다. */
+  suggestedQty: number;
+  boxWeight: number;
+  grade: string | null;
+  slaughterDate: string | null;
+  /** 이미 출고 스캔을 마친 박스. 목록에서 빼지 않고 표시만 한다. */
+  alreadyPicked: boolean;
+}
+
 /** DB가 던지는 코드를 현장에서 읽을 문장으로 바꾼다. */
 const SCAN_ERRORS: Record<string, string> = {
   BOX_NOT_AVAILABLE: "재고에 없는 이력번호입니다. 입고된 박스인지, 이미 다 나간 박스는 아닌지 확인해주세요.",
@@ -174,6 +189,45 @@ export async function getOutboundProgressAction(
         orderedQty: Number(row.ordered_qty ?? 0),
         scannedQty: Number(row.scanned_qty ?? 0),
         traceNos: (row.trace_nos as string | null) ?? null,
+      })),
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
+ * 피킹 목록 — 창고에서 어느 박스를 가져와야 하는지.
+ *
+ * 스캔 전에는 확정 때 선입선출로 잡아둔 배정이 그대로 추천이고, 스캔이
+ * 시작되면 남은 필요량을 현재 가용 박스에서 다시 계산한다. 이미 찍은 박스도
+ * 목록에 남겨 표시한다(사라지면 작업자가 기억해야 한다).
+ */
+export async function getPickingListAction(
+  orderId: string
+): Promise<ActionResult<PickingRow[]>> {
+  try {
+    const { supabase } = await resolveOutboundScope();
+
+    const { data, error } = await supabase.rpc("get_picking_list", { p_order_id: orderId });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return {
+      success: true,
+      data: ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+        productId: String(row.product_id),
+        productName: String(row.product_name ?? ""),
+        unit: String(row.unit ?? "kg"),
+        boxId: String(row.box_id),
+        traceNo: String(row.trace_no ?? ""),
+        suggestedQty: Number(row.suggested_qty ?? 0),
+        boxWeight: Number(row.box_weight ?? 0),
+        grade: (row.grade as string | null) ?? null,
+        slaughterDate: (row.slaughter_date as string | null) ?? null,
+        alreadyPicked: Boolean(row.already_picked),
       })),
     };
   } catch (error) {
