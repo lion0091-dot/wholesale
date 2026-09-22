@@ -182,7 +182,9 @@ export async function updateProductAction(
         grade: input.grade,
         base_price: input.base_price,
         unit: input.unit,
-        stock_quantity: input.stock_quantity,
+        // stock_quantity는 여기서 갱신하지 않는다 — 재고는 stock_ledger 합계로
+        // 파생되므로 여기서 덮어쓰면 다음 입고/출고 때 recalc_product_stock()에
+        // 의해 조용히 되돌아간다. 수정은 목록의 "재고 조정"(사유 기록)으로만 한다.
         is_active: input.is_active,
         description: input.description,
         updated_at: new Date().toISOString(),

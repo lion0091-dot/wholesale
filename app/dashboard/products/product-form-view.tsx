@@ -622,7 +622,7 @@ export function ProductFormView({
 
           <div>
             <label htmlFor="stock_quantity" style={labelStyle}>
-              재고 수량 *
+              {product ? "재고 수량 (여기서 수정 불가)" : "최초 재고 수량 *"}
             </label>
             <input
               id="stock_quantity"
@@ -630,10 +630,23 @@ export function ProductFormView({
               type="number"
               min="0"
               step="0.1"
-              required
+              required={!product}
+              // 수정 모드에서는 읽기전용이다. 재고는 입출고 원장 합계로 파생되므로
+              // 이 폼에서 덮어쓰면 다음 입고/출고 때 사라진다. 조정은 상품 목록의
+              // "재고 조정"(사유가 원장에 남는 경로)에서만 한다.
+              readOnly={Boolean(product)}
               defaultValue={product ? String(product.stock_quantity) : "10"}
-              style={fieldStyle}
+              style={
+                product
+                  ? { ...fieldStyle, backgroundColor: "#f1f5f9", color: "#64748b", cursor: "not-allowed" }
+                  : fieldStyle
+              }
             />
+            <p style={{ fontSize: "11px", color: "#94a3b8", margin: "4px 0 0" }}>
+              {product
+                ? "재고 변경은 상품 목록의 재고 조정(사유 기록)에서 하세요. 입고·출고는 자동 반영됩니다."
+                : "등록 후에는 입고·출고로 자동 관리되며, 수동 변경은 상품 목록의 재고 조정에서 합니다."}
+            </p>
           </div>
         </div>
 
