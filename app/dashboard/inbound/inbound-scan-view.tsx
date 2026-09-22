@@ -244,35 +244,46 @@ export function InboundScanView({ initialScans, products }: Props) {
   );
 
   /**
-   * 스캐너(HID)는 이력번호를 입력하고 Enter를 보낸다 — 그다음은 저울이다.
+   * 이력번호가 정해졌을 때(스캐너 Enter든 카메라 인식이든) 공통으로 타는 경로 —
+   * 그다음은 저울이다.
    *
    * 바코드에 중량이 실려 있어도 **바로 등록하지 않는다**. 그 값은 표기중량이고,
    * 재고·매입금액의 기준은 저울에 찍힌 실중량이어야 한다(24단계 설계 결정 1번).
    * 대신 실중량 칸에 미리 채워 선택해두므로, 저울 값이 같으면 Enter 한 번으로 끝난다.
+   * 이미 실중량을 먼저 입력해둔 경우(저울 먼저 올린 경우)에는 바로 등록한다.
    */
+  const processTraceInput = useCallback(
+    (rawValue: string, scanType: ScanType) => {
+      setTraceNo(rawValue);
+
+      const parsed = parseBarcode(rawValue);
+
+      if (parsed.weightKg && !labeledWeight.trim()) {
+        setLabeledWeight(String(parsed.weightKg));
+
+        if (!weight.trim()) {
+          setWeight(String(parsed.weightKg));
+        }
+      }
+
+      if (!weight.trim()) {
+        setNotice("이력번호 인식 완료 — 저울에 올리고 실중량을 입력한 뒤 Enter를 눌러주세요.");
+        weightInputRef.current?.focus();
+        // 값이 채워진 뒤에 선택해야 저울 값으로 덮어쓰기가 편하다.
+        window.setTimeout(() => weightInputRef.current?.select(), 0);
+        return;
+      }
+
+      void submitScan(rawValue, weight, scanType);
+    },
+    [weight, labeledWeight, submitScan]
+  );
+
   const handleTraceKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Enter") return;
 
     event.preventDefault();
-
-    const parsed = parseBarcode(traceNo);
-
-    if (parsed.weightKg && !labeledWeight.trim()) {
-      setLabeledWeight(String(parsed.weightKg));
-
-      if (!weight.trim()) {
-        setWeight(String(parsed.weightKg));
-      }
-    }
-
-    if (!weight.trim()) {
-      weightInputRef.current?.focus();
-      // 값이 채워진 뒤에 선택해야 저울 값으로 덮어쓰기가 편하다.
-      window.setTimeout(() => weightInputRef.current?.select(), 0);
-      return;
-    }
-
-    void submitScan(traceNo, weight, "BARCODE_SCAN");
+    processTraceInput(traceNo, "BARCODE_SCAN");
   };
 
   const handleWeightKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -289,12 +300,6 @@ export function InboundScanView({ initialScans, products }: Props) {
   }, []);
 
   const startCamera = useCallback(async () => {
-    if (!weight.trim()) {
-      setError("카메라로 찍기 전에 중량을 먼저 입력해주세요.");
-      weightInputRef.current?.focus();
-      return;
-    }
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
@@ -311,7 +316,7 @@ export function InboundScanView({ initialScans, products }: Props) {
     } catch {
       setError("카메라를 열 수 없습니다. 권한을 허용했는지 확인해주세요.");
     }
-  }, [weight]);
+  }, []);
 
   // 카메라가 켜져 있는 동안 주기적으로 프레임에서 바코드를 찾는다.
   useEffect(() => {
@@ -334,7 +339,10 @@ export function InboundScanView({ initialScans, products }: Props) {
           const value = found[0].rawValue.trim();
 
           stopCamera();
-          void submitScan(value, weight, "CAMERA");
+          // 카메라는 이력번호만 읽는다 — 실중량은 저울 값이라 자동 제출하지 않고
+          // processTraceInput이 알아서 실중량 입력을 기다리거나(비어있으면) 곧장 등록한다
+          // (이미 실중량을 먼저 입력해둔 경우).
+          processTraceInput(value, "CAMERA");
         }
       } catch {
         // 프레임 한 장 인식 실패는 정상이다 — 다음 주기에 다시 시도한다.
@@ -345,7 +353,7 @@ export function InboundScanView({ initialScans, products }: Props) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [cameraOn, weight, stopCamera, submitScan]);
+  }, [cameraOn, stopCamera, processTraceInput]);
 
   useEffect(() => stopCamera, [stopCamera]);
 
