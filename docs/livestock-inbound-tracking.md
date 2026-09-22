@@ -38,6 +38,15 @@
 `vercel.json`의 크론 슬롯 2개가 이미 소진됐고 Hobby는 하루 1회가 최대 빈도다(`app/api/cron/market-price-sync/route.ts:12` 주석에 같은 제약이 기록돼 있다). 엑셀 대량 업로드는 **브라우저가 `processChunk`를 반복 호출해 20건씩 소화하는 클라이언트 주도 방식**으로 간다 — 각 요청이 짧아 실행시간 제한을 안 건드리고, 진행률이 보이며, 창을 닫아도 job이 DB에 남아 이어서 처리된다.
 > 참고: Vercel Hobby는 약관상 비상업적 용도 전용이다. 구독 과금(`docs/platform-subscription-billing.md`)을 실제로 시작하는 시점에는 Pro로 올려야 한다 — 이 입고 시스템 때문이 아니라 기존 과금 기능 때문이다.
 
+**9. 출고 차감 시점은 '출고(shipping)'가 아니라 '확정(confirmed)'이다.**
+출고 시점에 빼면 확정~출고 사이에 다른 거래처가 같은 물건을 주문해 이중 판매가 난다. 공급사가 "드리겠습니다"라고 확정한 순간 물건을 잡아야 한다. 재고가 모자라면 확정 자체를 막는다(`INSUFFICIENT_STOCK`) — "상태만 바뀌고 재고는 음수"보다 낫고, PG 환불 실패 시 취소를 막는 기존 정책(`docs/pg-payment-integration.md`)과 같은 방향이다.
+
+**10. 출고 차감은 Server Action이 아니라 `orders` 테이블 트리거로 건다.**
+상태를 바꾸는 경로가 대시보드 액션 하나가 아니다 — 운송장 등록 시 자동 출고 전환(`app/dashboard/orders/actions.ts`의 `shouldAutoShip`), PG 취소, 관리자 직접 수정이 모두 `orders.status`를 건드린다. 트리거면 어느 경로로 들어와도 재고가 따라간다. 외상 잔액 원복을 트리거로 처리한 `20260927000000`과 같은 판단이다.
+
+**11. 원장에 처음 편입되는 상품은 기존 수동 재고를 `OPENING_BALANCE` 행으로 먼저 옮긴다.**
+이게 없으면 첫 입고 스캔 순간 `recalc_product_stock()`이 재고를 원장 합계(=방금 찍은 박스 한 개)로 덮어써서 **기존 수동 재고가 통째로 증발한다.** 상품당 1행만 허용(멱등 인덱스). 이 덕분에 스캔을 전혀 쓰지 않는 상품도 주문 확정 시 자동으로 원장에 편입돼 출고 차감이 동작한다 — 박스가 없는 분량은 `inbound_scan_id IS NULL` 행으로 빠진다.
+
 ### 아키텍처
 
 ```
@@ -51,6 +60,19 @@
          ├ 이력 못 찾음        → EXCEPTION       + exception_log
          ├ 이력 O, 상품 미확정 → PENDING_MAPPING + exception_log  → 사용자에게 되묻기
          └ 이력 O, 상품 확정   → NORMAL + stock_ledger(+) + 재고 재계산
+```
+
+```
+주문 상태 변경 (어느 경로로든)
+   │
+   └─ trg_orders_stock_sync (AFTER UPDATE OF status)
+         ├ → confirmed  : apply_order_shipment()
+         │                  ├ ensure_opening_balance()  기존 수동 재고 이관
+         │                  ├ 선입선출로 박스에서 차감 → ledger(-) + inbound_scan_id
+         │                  ├ 박스로 못 채운 분량은 박스 없이 차감
+         │                  └ 재고 부족이면 RAISE → 확정 자체가 롤백
+         └ → cancelled  : reverse_order_shipment()
+                            └ 나갔던 박스에 그대로 원복 + ledger(+)
 ```
 
 ### 테이블 (`supabase/migrations/20260930000053_livestock_inbound_core.sql`)
@@ -74,6 +96,11 @@
 | `resolve_inbound_mapping(...)` | 미확정 건에 상품 지정 → 재고 확정 + 매핑 학습 |
 | `void_inbound_scan(...)` | 역분개. 일부라도 출고된 박스는 `PARTIALLY_SHIPPED`로 차단 |
 | `recalc_product_stock(...)` | 내부 전용(`REVOKE EXECUTE FROM PUBLIC`). 원장 합계로 `stock_quantity` 재계산 |
+| `ensure_opening_balance(...)` | 내부 전용. 원장 첫 편입 시 기존 수동 재고를 `OPENING_BALANCE`로 이관 (설계 결정 11번) |
+| `apply_order_shipment(...)` | 주문 확정 시 선입선출 차감. 이미 차감된 주문이면 무시(멱등) |
+| `reverse_order_shipment(...)` | 주문 취소 시 나갔던 박스에 원복 |
+| `sync_order_stock()` | `orders.status` 변경 트리거 본체 |
+| `get_order_trace_numbers(...)` | 거래명세서/주문 상세용 — 이 주문에 나간 이력번호+등급+도축일 |
 
 ### 검증 상태 (2026-09-22)
 로컬 Postgres 16에 **전체 마이그레이션 체인을 처음부터 적용**하고(Supabase `auth`/`storage` 스키마는 스텁) 기능 테스트 9종을 돌려 전부 통과:
@@ -88,9 +115,20 @@
 8. 테넌트 격리 — B사가 A사 입고/원장 0건, 공용 마스터는 2건 조회
 9. 남의 상품에 입고 시도 → `PRODUCT_NOT_FOUND`로 차단
 
+출고(2단계) 테스트 6종도 같은 방식으로 전부 통과:
+
+1. 수동 재고 20kg 상품에 5kg 주문 확정 → `OPENING_BALANCE(+20)` 자동 생성 후 `ORDER_OUT(-5)`, 재고 15 — **기존 수동 재고가 보존됨**
+2. 박스 2개(8.20+7.50) 상품에 10kg 확정 → 선입선출로 박스A 전량(잔량 0) + 박스B 1.80(잔량 5.70), 재고 5.70
+3. `get_order_trace_numbers()` → 002111111111 8.20kg / 002222222222 1.80kg + 등급·도축일 반환
+4. 주문 취소 → 재고 15.70 복귀, 박스 잔량 8.20/7.50 원복
+5. 같은 주문 재차감 시도 → 멱등 가드로 무시, 재고 변동 없음
+6. 재고 부족(보유 15, 주문 100) → `INSUFFICIENT_STOCK:수입 삼겹살:15.00:100.00`으로 차단되고 **주문은 `pending`에 그대로 남음**(상태 전이까지 롤백)
+
 **미검증:**
 - 실제 Supabase 인스턴스에 적용 안 함 (로컬 스텁 환경에서만 검증)
 - **공공 API 실호출 전무** — 축산물이력제 인증키 미발급. 응답 필드명·구조 전부 미확정이라 `raw_payload jsonb`로 원본을 보관하는 방어 설계를 깔아둠
+- **TypeScript 타입체크/린트 미실행** — npm 레지스트리가 이 환경의 프록시에서 403으로 막혀(`zod-validation-error`) 의존성 설치 불가. `app/dashboard/orders/actions.ts`의 재고 부족 메시지 변환 로직은 함수만 떼어 Node로 직접 실행해 확인했지만, 전체 빌드는 통과 여부 미확인
+- 브라우저에서 실제로 주문을 확정해본 적 없음 (DB 레벨 트리거 검증만)
 
 ### 남은 과제
 1. **공공 API 커넥터** (`lib/livestock/mtrace-client.ts`) — 인증키 발급 후 실응답으로 파싱 검증 필요. 특히 **부위(`part_name`)가 응답에 오는지**가 매핑 자동화율을 좌우한다. 이력번호가 개체 단위라 안 올 가능성이 있고, 그 경우 되묻는 빈도가 높아진다. 냉장/냉동 구분은 이력 데이터에 아예 없다.
@@ -98,6 +136,10 @@
 3. **캐시 TTL** — `fetched_at`만 두고 재조회 주기 규칙은 아직 없다. 등급·가공 정보가 나중에 갱신될 수 있어 영구 캐시는 위험.
 4. **묶음번호 1:N 전개** — 묶음(15자리)이 개별 이력번호 여러 건을 포함하는 경우 마스터에 어떻게 펼쳐 저장할지 미정.
 5. **공공 API 호출량 제어** — 서버리스는 인스턴스가 분산돼 메모리 기반 전역 레이트리밋이 불가능. 일일 한도를 지키려면 카운터 테이블이 필요.
-6. **출고 연결 (`apply_order_shipment`)** — 가장 위험한 구간. 기존 주문 확정/취소/부분취소(`order_active_amount`)와 PG 환불 경로마다 역분개가 필요하다. 이게 붙기 전까지 재고는 입고만 자동이고 출고는 수동이라 오차가 남는다(지금도 같은 상태).
+6. ~~출고 연결~~ — **완료**(2단계). 다만 아래가 남는다:
+   - **기존 운영 데이터에 대한 첫 확정 시 재고 급변 가능성** — 지금까지 수동 재고가 실제와 안 맞던 공급사는 첫 주문 확정에서 `INSUFFICIENT_STOCK`으로 막힐 수 있다. 배포 전 재고 정리 안내가 필요하다.
+   - **`delivered` 이후 반품** — 현재 `delivered`에서 `cancelled`로 가는 전이가 없어(`ORDER_STATUS_TRANSITIONS`) 반품 재입고 경로가 아예 없다. 별도 이벤트(`ADJUSTMENT`/`LOSS`)로 처리해야 한다.
+   - **부분 취소** — 현재 주문 취소는 전량 취소뿐이다. 부분 취소가 생기면 `reverse_order_shipment`를 수량 지정형으로 확장해야 한다.
+   - **거래명세서 PDF 연결** — `get_order_trace_numbers()`는 만들었지만 아직 어느 화면·PDF에도 붙이지 않았다.
 7. **중복 스캔 방지 정책** — 박스 단위 식별자 기반 dedupe 규칙 미정(이력번호+중량+시각 근접도 등).
 8. **오프라인 대응** — 냉동창고 전파 불량 시 IndexedDB 로컬 큐 + 복구 시 동기화(PWA). 웹인 이상 스택과 무관한 별도 과제.

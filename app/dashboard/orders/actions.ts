@@ -45,15 +45,36 @@ const VALID_STATUSES: OrderStatus[] = [
   "cancelled",
 ];
 
+/**
+ * 주문 확정 시 재고가 모자라면 DB 트리거(sync_order_stock → apply_order_shipment)가
+ * 'INSUFFICIENT_STOCK:<상품명>:<보유>:<주문>' 형태로 예외를 던져 상태 전이를 막는다.
+ * 날것의 Postgres 오류 문자열이 공급사에게 그대로 보이지 않도록 사람이 읽을 문장으로 바꾼다.
+ */
+const INSUFFICIENT_STOCK_PATTERN = /INSUFFICIENT_STOCK:(.*?):([\d.]+):([\d.]+)/;
+
+function translateStockError(message: string): string | null {
+  const matched = message.match(INSUFFICIENT_STOCK_PATTERN);
+
+  if (!matched) {
+    return null;
+  }
+
+  const [, productName, available, requested] = matched;
+  const trim = (value: string) => String(Number(value));
+
+  return `재고가 부족해 확정할 수 없습니다 — ${productName}: 보유 ${trim(available)}, 주문 ${trim(requested)}. 입고를 먼저 등록하거나 상품 재고를 조정해주세요.`;
+}
+
 function toResult(error: unknown): ActionResult<never> {
   if (error instanceof RbacError) {
     return { success: false, error: error.message };
   }
 
-  return {
-    success: false,
-    error: error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.",
-  };
+  if (error instanceof Error) {
+    return { success: false, error: translateStockError(error.message) ?? error.message };
+  }
+
+  return { success: false, error: "알 수 없는 오류가 발생했습니다." };
 }
 
 /** 주문도 상품과 동일하게 레거시 wholesalers.id로 스코프된다. */
@@ -185,6 +206,13 @@ export async function updateOrderStatusAction(
     const { error } = await supabase.from("orders").update(updates).eq("id", orderId);
 
     if (error) {
+      // 재고 부족은 사용자가 고칠 수 있는 상황이므로 RbacError(=그대로 노출되는 문구)로 올린다.
+      const stockMessage = translateStockError(error.message);
+
+      if (stockMessage) {
+        throw new RbacError(stockMessage);
+      }
+
       throw new Error(error.message);
     }
 

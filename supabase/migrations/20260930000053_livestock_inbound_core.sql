@@ -192,12 +192,19 @@ CREATE TABLE public.stock_ledger (
     -- 어느 박스에서 들어오고 나갔는지. 이게 있어야 거래명세서에 이력번호를 찍을 수 있다.
     inbound_scan_id UUID REFERENCES public.inbound_scans(id) ON DELETE RESTRICT,
     qty_delta       NUMERIC(10, 2) NOT NULL CHECK (qty_delta <> 0),
+    -- OPENING_BALANCE: 원장 도입 전 수동으로 입력돼 있던 재고를 기초재고로 이관한 행.
+    --   이게 없으면 첫 입고 스캔 순간 재고가 원장 합계(=그 박스 한 개)로 덮어써져
+    --   기존 수동 재고가 통째로 증발한다.
+    -- ORDER_OUT:  주문 출고 차감. '확정(confirmed)' 진입 시점에 잡는다 — 확정과 실제
+    --   출고 사이에 다른 거래처가 같은 박스를 주문해 이중 판매되는 걸 막기 위해서다.
+    -- ORDER_RESTORE: 주문 취소 시 원복(역분개).
     event_type      TEXT NOT NULL CHECK (event_type IN (
                         'INBOUND', 'INBOUND_VOID',
-                        'ORDER_SHIPPED', 'ORDER_CANCELLED',
+                        'OPENING_BALANCE',
+                        'ORDER_OUT', 'ORDER_RESTORE',
                         'ADJUSTMENT', 'LOSS'
                     )),
-    source_type     TEXT NOT NULL CHECK (source_type IN ('inbound_scan', 'order', 'manual')),
+    source_type     TEXT NOT NULL CHECK (source_type IN ('inbound_scan', 'order', 'product', 'manual')),
     source_id       UUID,
     reason          TEXT,
     created_by      UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -205,7 +212,8 @@ CREATE TABLE public.stock_ledger (
 );
 
 -- 멱등성 — 같은 이벤트가 재시도로 두 번 기록되는 걸 DB가 막는다.
--- (예: 입고 1건당 INBOUND 1행, 주문 1건의 한 박스 출고당 ORDER_SHIPPED 1행)
+-- (예: 입고 1건당 INBOUND 1행, 주문 1건의 한 박스 출고당 ORDER_OUT 1행,
+--  상품 1개당 OPENING_BALANCE 1행)
 CREATE UNIQUE INDEX idx_stock_ledger_idempotent
     ON public.stock_ledger (event_type, source_type, source_id, COALESCE(inbound_scan_id, '00000000-0000-0000-0000-000000000000'::uuid))
     WHERE source_id IS NOT NULL;
@@ -350,6 +358,49 @@ $$;
 
 -- 내부 전용 — 앱에서 직접 부르면 원장을 우회해 재고를 흔들 수 있다.
 REVOKE EXECUTE ON FUNCTION public.recalc_product_stock(UUID) FROM PUBLIC;
+
+
+-- --------------------------------------------------------------------
+-- 기초재고 이관 — 어떤 상품이 원장에 처음 편입될 때 딱 한 번 실행된다.
+--
+-- 원장 도입 전에는 stock_quantity를 사람이 손으로 넣었다. 그 상태에서 첫
+-- 입고 스캔이 들어오면 recalc_product_stock()이 재고를 원장 합계(=방금 찍은
+-- 박스 한 개)로 덮어써서 기존 수동 재고가 통째로 증발한다.
+-- 그래서 첫 원장 행을 쓰기 전에 현재 stock_quantity를 OPENING_BALANCE 행으로
+-- 옮겨 담는다. 멱등 인덱스가 상품당 1행만 허용한다.
+-- --------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.ensure_opening_balance(p_product_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_product public.products%ROWTYPE;
+BEGIN
+    IF EXISTS (SELECT 1 FROM public.stock_ledger WHERE product_id = p_product_id) THEN
+        RETURN;
+    END IF;
+
+    SELECT * INTO v_product FROM public.products WHERE id = p_product_id;
+
+    IF v_product.id IS NULL OR COALESCE(v_product.stock_quantity, 0) <= 0 THEN
+        RETURN;
+    END IF;
+
+    INSERT INTO public.stock_ledger (
+        wholesaler_id, product_id, inbound_scan_id, qty_delta,
+        event_type, source_type, source_id, reason, created_by
+    ) VALUES (
+        v_product.wholesaler_id, p_product_id, NULL, v_product.stock_quantity,
+        'OPENING_BALANCE', 'product', p_product_id,
+        '원장 도입 전 수동 입력 재고 이관', auth.uid()
+    )
+    ON CONFLICT DO NOTHING;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.ensure_opening_balance(UUID) FROM PUBLIC;
 
 
 -- --------------------------------------------------------------------
@@ -508,6 +559,9 @@ BEGIN
     RETURNING id INTO v_scan_id;
 
     IF v_status = 'NORMAL' THEN
+        -- 이 상품의 첫 원장 행이면 기존 수동 재고를 기초재고로 먼저 옮긴다.
+        PERFORM public.ensure_opening_balance(v_product_id);
+
         INSERT INTO public.stock_ledger (
             wholesaler_id, product_id, inbound_scan_id, qty_delta,
             event_type, source_type, source_id, created_by
@@ -593,6 +647,8 @@ BEGIN
         status = 'NORMAL',
         remaining_weight = weight
     WHERE id = p_scan_id;
+
+    PERFORM public.ensure_opening_balance(p_product_id);
 
     INSERT INTO public.stock_ledger (
         wholesaler_id, product_id, inbound_scan_id, qty_delta,

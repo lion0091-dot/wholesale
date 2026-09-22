@@ -57,4 +57,4 @@
 
 ## 축산물 이력 입고 시스템 (바코드 스캔 + 박스 단위 재고) (별도 기능)
 
-- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) — 이력번호 바코드/카메라 스캔 → 공공 API 대조 검증 → 박스 단위 입고. 스택 결정(별도 백엔드 대신 기존 Next.js+Supabase에 얹음, RLS가 이유), 잠긴 설계 결정 8가지(재고 단위는 이력번호가 아닌 박스, 원장 파생 재고, `products` 스키마 무변경, 출고 박스 단위 추적, Hobby 크론 제약 우회), 로컬 DB 기능 테스트 9종 통과. 공공 API 인증키 미발급이라 실호출 전무. 출고 연결(`apply_order_shipment`)은 미착수 — 그전까지 재고는 입고만 자동.
+- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) — 이력번호 바코드/카메라 스캔 → 공공 API 대조 검증 → 박스 단위 입고. 스택 결정(별도 백엔드 대신 기존 Next.js+Supabase에 얹음, RLS가 이유), 잠긴 설계 결정 8가지(재고 단위는 이력번호가 아닌 박스, 원장 파생 재고, `products` 스키마 무변경, 출고 박스 단위 추적, Hobby 크론 제약 우회), 입고 9종 + 출고 6종 로컬 DB 테스트 통과. **출고 자동 차감까지 완료** — 주문 확정 시 `orders` 트리거가 선입선출로 박스에서 차감하고 취소 시 원복, 재고 부족이면 확정 자체를 막는다. 원장 첫 편입 시 기존 수동 재고를 `OPENING_BALANCE`로 이관해 증발을 막는다. 공공 API 인증키 미발급이라 실호출 전무, npm 프록시 차단으로 타입체크 미실행.
