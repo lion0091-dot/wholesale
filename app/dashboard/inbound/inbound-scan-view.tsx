@@ -146,10 +146,17 @@ export function InboundScanView({ initialScans, products }: Props) {
       }
 
       if (data && "status" in data) {
-        if (data.status === "EXCEPTION") {
+        if (data.autoCreated) {
+          setNotice(
+            `'${data.autoCreated.productName}' 상품을 새로 만들어 입고했습니다.` +
+              (data.autoCreated.needsPrice
+                ? " 판매가를 넣어야 고객에게 보입니다 (상품 관리)."
+                : "")
+          );
+        } else if (data.status === "EXCEPTION") {
           setNotice("이력을 찾지 못해 '이력 확인 필요'로 기록했습니다. 입고 자체는 저장됐습니다.");
         } else if (data.status === "PENDING_MAPPING") {
-          setNotice("이력은 확인됐습니다. 아래 목록에서 어느 상품인지 한 번만 지정해주세요.");
+          setNotice("부위를 알 수 없어 자동 등록이 안 됩니다. 아래 목록에서 상품을 한 번만 지정해주세요.");
         }
       }
 

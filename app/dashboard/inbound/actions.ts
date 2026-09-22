@@ -35,6 +35,8 @@ export interface ScanResult {
   grade: string | null;
   slaughterDate: string | null;
   packingDate: string | null;
+  /** 이력 정보로 상품을 새로 만든 경우 — 화면에서 "가격을 넣어달라"고 안내한다. */
+  autoCreated: { productName: string; needsPrice: boolean } | null;
 }
 
 export interface DuplicateWarning {
@@ -190,7 +192,33 @@ export async function recordScanAction(input: {
 
     const row = data as Record<string, unknown>;
 
+    // 처음 취급하는 고기면 이력 정보(축종·부위·등급)로 상품을 자동 생성한다.
+    // 공공 API가 이미 알려준 값을 사람이 다시 입력하게 할 이유가 없다.
+    // 부위를 모르면 자동 생성이 건너뛰어지고 아래 목록에서 되묻는다.
+    let autoCreated: { productName: string; needsPrice: boolean } | null = null;
+
+    if (row.status === "PENDING_MAPPING") {
+      const { data: created } = await supabase.rpc("autocreate_product_for_scan", {
+        p_scan_id: String(row.scan_id),
+      });
+
+      const createdRow = created as Record<string, unknown> | null;
+
+      if (createdRow?.product_id) {
+        row.status = "NORMAL";
+        row.product_id = createdRow.product_id;
+
+        if (createdRow.created) {
+          autoCreated = {
+            productName: String(createdRow.product_name ?? ""),
+            needsPrice: Boolean(createdRow.needs_price),
+          };
+        }
+      }
+    }
+
     revalidatePath(REVALIDATE_PATH);
+    revalidatePath("/dashboard/products");
 
     return {
       success: true,
@@ -205,6 +233,7 @@ export async function recordScanAction(input: {
         grade: (row.grade as string | null) ?? null,
         slaughterDate: (row.slaughter_date as string | null) ?? null,
         packingDate: (row.packing_date as string | null) ?? null,
+        autoCreated,
       },
     };
   } catch (error) {
