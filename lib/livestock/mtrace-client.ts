@@ -36,31 +36,47 @@ interface SourceConfig {
   apiKey: string | undefined;
 }
 
+/**
+ * 소·돼지 이력은 축산물품질평가원(KAPE)이 운영한다 — 이미 동작 중인 경락가 API
+ * (`data.ekape.or.kr`, KAPE_MARKET_PRICE_API_KEY)와 같은 기관이다. data.go.kr은
+ * 계정당 공용 인증키를 주므로, 전용 키를 안 넣었으면 그 키로 먼저 시도한다.
+ * 별도 발급 없이 바로 될 수 있고, 안 되면 어차피 예외로 남을 뿐이라 손해가 없다.
+ */
+function fallbackDataGoKrKey(): string | undefined {
+  return process.env.KAPE_MARKET_PRICE_API_KEY ?? process.env.NTS_BUSINESS_VERIFY_API_KEY;
+}
+
 function sourceConfig(source: TraceSource): SourceConfig {
   switch (source) {
     case "meatwatch":
       return {
         label: "meatwatch_imported",
+        // ⚠️ 이 주소는 미확인이다. 실제로 연결되는지 확인된 바 없으므로
+        //    MEATWATCH_API_ENDPOINT로 덮어쓸 것.
         endpoint:
           process.env.MEATWATCH_API_ENDPOINT ??
-          "http://data.meatwatch.go.kr/openapi-data/service/user/imported/trace/traceNoSearch",
-        apiKey: process.env.MEATWATCH_API_KEY,
+          "http://apis.data.go.kr/B552895/imported/trace/traceNoSearch",
+        // 수입 이력은 운영 기관이 달라 공용키가 통하지 않을 수 있다 — 그래도
+        // 전용 키가 없으면 한 번은 시도해본다.
+        apiKey: process.env.MEATWATCH_API_KEY ?? fallbackDataGoKrKey(),
       };
     case "poultry":
       return {
         label: "poultry_trace",
         endpoint:
           process.env.POULTRY_TRACE_API_ENDPOINT ??
-          "http://data.mtrace.go.kr/openapi-data/service/user/poultry/trace/traceNoSearch",
-        apiKey: process.env.POULTRY_TRACE_API_KEY,
+          "http://data.ekape.or.kr/openapi-data/service/user/poultry/trace/traceNoSearch",
+        apiKey: process.env.POULTRY_TRACE_API_KEY ?? fallbackDataGoKrKey(),
       };
     default:
       return {
         label: "mtrace_livestock",
+        // KAPE 경락가 API와 같은 도메인 체계를 기본값으로 둔다 — 같은 기관이
+        // 운영하므로 가장 가능성이 높다. 실제 주소가 확인되면 .env로 덮어쓴다.
         endpoint:
           process.env.MTRACE_API_ENDPOINT ??
-          "http://data.mtrace.go.kr/openapi-data/service/user/animal/trace/traceNoSearch",
-        apiKey: process.env.MTRACE_API_KEY,
+          "http://data.ekape.or.kr/openapi-data/service/user/animal/trace/traceNoSearch",
+        apiKey: process.env.MTRACE_API_KEY ?? fallbackDataGoKrKey(),
       };
   }
 }
