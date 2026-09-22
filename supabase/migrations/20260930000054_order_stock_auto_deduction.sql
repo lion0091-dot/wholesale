@@ -161,10 +161,17 @@ BEGIN
         RETURN;
     END IF;
 
+    -- 출고 스캔(record_outbound_scan)이 자동 배정을 되돌리고(OUTBOUND_UNASSIGN)
+    -- 실제 집은 박스로 재배정(OUTBOUND_ASSIGN)했을 수 있으므로, 원래 확정 시
+    -- 차감분(ORDER_OUT)만 보고 되돌리면 스캔으로 옮겨간 박스는 복원되지 않고
+    -- 이미 스캔이 복원해 둔 박스는 중복 복원된다. 박스별 순 출고량을 되돌린다.
     FOR v_row IN
-        SELECT wholesaler_id, product_id, inbound_scan_id, qty_delta
+        SELECT wholesaler_id, product_id, inbound_scan_id, SUM(qty_delta) AS qty_delta
         FROM public.stock_ledger
-        WHERE source_type = 'order' AND source_id = p_order_id AND event_type = 'ORDER_OUT'
+        WHERE source_type = 'order' AND source_id = p_order_id
+          AND event_type IN ('ORDER_OUT', 'OUTBOUND_UNASSIGN', 'OUTBOUND_ASSIGN')
+        GROUP BY wholesaler_id, product_id, inbound_scan_id
+        HAVING SUM(qty_delta) <> 0
     LOOP
         IF v_row.inbound_scan_id IS NOT NULL THEN
             -- 취소된 박스가 그 사이 폐기(VOIDED)됐을 수 있다 — 그때는 박스 잔량을

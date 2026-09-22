@@ -14,6 +14,12 @@
 --     빠져서 0부터 시작해버린다. 그래서 필터 전 전체 행에서 누적을 먼저 구하고,
 --     그 다음에 걸러낸다.
 -- ====================================================================
+-- 위 누적합 윈도우 함수가 매 조회마다 원장 전체를 정렬해야 했다
+-- (기존 idx_stock_ledger_product/idx_stock_ledger_recent 중 어느 것도
+-- wholesaler_id+product_id+created_at 정렬을 그대로 커버하지 못함).
+CREATE INDEX IF NOT EXISTS idx_stock_ledger_wholesaler_product_created
+    ON public.stock_ledger (wholesaler_id, product_id, created_at);
+
 DROP FUNCTION IF EXISTS public.list_stock_ledger(UUID, DATE, DATE, UUID, TEXT[], INTEGER, INTEGER);
 
 CREATE OR REPLACE FUNCTION public.list_stock_ledger(
@@ -59,9 +65,7 @@ AS $$
         WHERE l.wholesaler_id = p_wholesaler_id
           AND (p_product_id IS NULL OR l.product_id = p_product_id)
           AND (
-                p_wholesaler_id = public.get_current_wholesaler_id()
-             OR public.is_org_staff_of_wholesaler(p_wholesaler_id)
-             OR public.get_current_role() = 'super_admin'
+                public.can_access_wholesaler(p_wholesaler_id)
           )
     ),
     scoped AS (

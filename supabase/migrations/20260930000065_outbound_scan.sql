@@ -227,9 +227,7 @@ AS $$
     LEFT JOIN public.products p ON p.id = i.product_id
     WHERE i.order_id = p_order_id
       AND (
-            o.wholesaler_id = public.get_current_wholesaler_id()
-         OR public.is_org_staff_of_wholesaler(o.wholesaler_id)
-         OR public.get_current_role() = 'super_admin'
+            public.can_access_wholesaler(o.wholesaler_id)
       )
     GROUP BY i.product_id;
 $$;
@@ -330,9 +328,7 @@ AS $$
          OR scan.trace_no ILIKE '%' || btrim(p_trace_no) || '%'
       )
       AND (
-            p_wholesaler_id = public.get_current_wholesaler_id()
-         OR public.is_org_staff_of_wholesaler(p_wholesaler_id)
-         OR public.get_current_role() = 'super_admin'
+            public.can_access_wholesaler(p_wholesaler_id)
       );
 $$;
 
@@ -395,9 +391,7 @@ AS $$
             ELSE 'ORDER_OUT'
           END
       AND (
-            o.wholesaler_id = public.get_current_wholesaler_id()
-         OR public.is_org_staff_of_wholesaler(o.wholesaler_id)
-         OR public.get_current_role() = 'super_admin'
+            public.can_access_wholesaler(o.wholesaler_id)
       )
     ORDER BY p.name, s.trace_no;
 $$;

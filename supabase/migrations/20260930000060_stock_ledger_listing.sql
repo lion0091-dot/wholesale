@@ -46,9 +46,7 @@ AS $$
           AND (p_product_id IS NULL OR l.product_id = p_product_id)
           AND (p_event_types IS NULL OR l.event_type = ANY(p_event_types))
           AND (
-                p_wholesaler_id = public.get_current_wholesaler_id()
-             OR public.is_org_staff_of_wholesaler(p_wholesaler_id)
-             OR public.get_current_role() = 'super_admin'
+                public.can_access_wholesaler(p_wholesaler_id)
           )
     )
     SELECT
@@ -107,9 +105,7 @@ AS $$
       AND (p_to IS NULL OR created_at < (p_to + 1)::timestamptz)
       AND (p_product_id IS NULL OR product_id = p_product_id)
       AND (
-            p_wholesaler_id = public.get_current_wholesaler_id()
-         OR public.is_org_staff_of_wholesaler(p_wholesaler_id)
-         OR public.get_current_role() = 'super_admin'
+            public.can_access_wholesaler(p_wholesaler_id)
       );
 $$;
 

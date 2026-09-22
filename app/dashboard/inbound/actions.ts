@@ -76,7 +76,10 @@ async function resolveInboundScope() {
     wholesalerId = (organization?.wholesaler_id as string | null) ?? null;
   }
 
-  if (!wholesalerId) {
+  // super_admin은 조직 소속이 없는 한 자기 profile_id로 업체를 자동 매칭하지 않는다.
+  // 과거 같은 계정으로 공급사 온보딩을 테스트했다면 wholesalers 행이 남아 있을 수 있는데,
+  // 그걸 "내 회사"로 오인해 입고 처리를 대행해버리면 안 된다 (lib/supplier/scope.ts와 동일 판단).
+  if (!wholesalerId && !context.isSuperAdmin) {
     const { data: wholesaler } = await supabase
       .from("wholesalers")
       .select("id")

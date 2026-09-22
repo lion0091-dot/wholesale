@@ -41,6 +41,13 @@ BEGIN
         RAISE EXCEPTION 'NOT_A_SUPPLIER';
     END IF;
 
+    -- resolve_current_wholesaler_id()는 owner/manager/staff 구분 없이 통과시키므로,
+    -- 화면(상품관리)과 같은 owner/manager 전용 게이트를 여기서도 건다.
+    IF v_wholesaler_id <> public.get_current_wholesaler_id()
+       AND NOT public.is_org_staff_of_wholesaler(v_wholesaler_id, ARRAY['owner', 'manager']::public.organization_role[]) THEN
+        RAISE EXCEPTION 'FORBIDDEN';
+    END IF;
+
     IF jsonb_typeof(p_updates) <> 'array' THEN
         RAISE EXCEPTION 'INVALID_PAYLOAD';
     END IF;

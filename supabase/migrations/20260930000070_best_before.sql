@@ -289,32 +289,6 @@ BEGIN
         RAISE EXCEPTION 'EMPTY_TRACE_NO';
     END IF;
 
-    IF NOT EXISTS (
-        SELECT 1 FROM public.stock_ledger
-        WHERE source_type = 'order' AND source_id = p_order_id
-          AND event_type = 'OUTBOUND_UNASSIGN'
-    ) THEN
-        FOR v_row IN
-            SELECT product_id, inbound_scan_id, qty_delta
-            FROM public.stock_ledger
-            WHERE source_type = 'order' AND source_id = p_order_id AND event_type = 'ORDER_OUT'
-        LOOP
-            IF v_row.inbound_scan_id IS NOT NULL THEN
-                UPDATE public.inbound_scans
-                SET remaining_weight = remaining_weight + (-v_row.qty_delta)
-                WHERE id = v_row.inbound_scan_id AND status = 'NORMAL';
-            END IF;
-
-            INSERT INTO public.stock_ledger (
-                wholesaler_id, product_id, inbound_scan_id, qty_delta,
-                event_type, source_type, source_id, reason, created_by
-            ) VALUES (
-                v_wholesaler_id, v_row.product_id, v_row.inbound_scan_id, -v_row.qty_delta,
-                'OUTBOUND_UNASSIGN', 'order', p_order_id, '출고 스캔으로 배정 정정', auth.uid()
-            );
-        END LOOP;
-    END IF;
-
     SELECT * INTO v_box
     FROM public.inbound_scans
     WHERE wholesaler_id = v_wholesaler_id
@@ -333,6 +307,37 @@ BEGIN
     -- 판단의 여지가 없어 확인 버튼으로 넘기게 두지 않는다.
     IF v_box.best_before IS NOT NULL AND v_box.best_before < CURRENT_DATE THEN
         RAISE EXCEPTION 'BOX_EXPIRED:%', to_char(v_box.best_before, 'YYYY-MM-DD');
+    END IF;
+
+    -- 이 상품이 이 주문에서 처음 스캔되는 거면, 그 상품의 자동 배정만 되돌린다.
+    -- 주문 전체를 되돌리면(구버전) 아직 안 찍은 다른 상품의 ORDER_OUT 행까지
+    -- 지워져서, 부분 스캔 상태의 명세서·마감 계산이 그 상품을 출고 0으로 본다.
+    IF NOT EXISTS (
+        SELECT 1 FROM public.stock_ledger
+        WHERE source_type = 'order' AND source_id = p_order_id
+          AND event_type = 'OUTBOUND_UNASSIGN'
+          AND product_id = v_box.product_id
+    ) THEN
+        FOR v_row IN
+            SELECT product_id, inbound_scan_id, qty_delta
+            FROM public.stock_ledger
+            WHERE source_type = 'order' AND source_id = p_order_id AND event_type = 'ORDER_OUT'
+              AND product_id = v_box.product_id
+        LOOP
+            IF v_row.inbound_scan_id IS NOT NULL THEN
+                UPDATE public.inbound_scans
+                SET remaining_weight = remaining_weight + (-v_row.qty_delta)
+                WHERE id = v_row.inbound_scan_id AND status = 'NORMAL';
+            END IF;
+
+            INSERT INTO public.stock_ledger (
+                wholesaler_id, product_id, inbound_scan_id, qty_delta,
+                event_type, source_type, source_id, reason, created_by
+            ) VALUES (
+                v_wholesaler_id, v_row.product_id, v_row.inbound_scan_id, -v_row.qty_delta,
+                'OUTBOUND_UNASSIGN', 'order', p_order_id, '출고 스캔으로 배정 정정', auth.uid()
+            );
+        END LOOP;
     END IF;
 
     SELECT COALESCE(SUM(quantity), 0) INTO v_ordered
@@ -473,9 +478,7 @@ AS $$
         FROM public.orders o
         WHERE o.id = p_order_id
           AND (
-                o.wholesaler_id = public.get_current_wholesaler_id()
-             OR public.is_org_staff_of_wholesaler(o.wholesaler_id)
-             OR public.get_current_role() = 'super_admin'
+                public.can_access_wholesaler(o.wholesaler_id)
           )
     ),
     scan_started AS (

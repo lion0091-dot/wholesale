@@ -42,9 +42,7 @@ AS $$
         FROM public.orders o
         WHERE o.id = p_order_id
           AND (
-                o.wholesaler_id = public.get_current_wholesaler_id()
-             OR public.is_org_staff_of_wholesaler(o.wholesaler_id)
-             OR public.get_current_role() = 'super_admin'
+                public.can_access_wholesaler(o.wholesaler_id)
           )
     ),
     scan_started AS (

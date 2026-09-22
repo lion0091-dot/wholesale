@@ -65,22 +65,8 @@ AS $$
         FROM public.orders o
         WHERE o.id = p_order_id
           AND (
-                o.wholesaler_id = public.get_current_wholesaler_id()
-             OR public.is_org_staff_of_wholesaler(o.wholesaler_id)
-             OR public.get_current_role() = 'super_admin'
+                public.can_access_wholesaler(o.wholesaler_id)
           )
-    ),
-    -- 출고 스캔이 있었으면 그것만, 없으면 확정 때 자동 배정분을 쓴다.
-    -- (get_order_trace_numbers 와 같은 기준)
-    basis AS (
-        SELECT CASE
-            WHEN EXISTS (
-                SELECT 1 FROM public.stock_ledger x
-                WHERE x.source_type = 'order' AND x.source_id = p_order_id
-                  AND x.event_type = 'OUTBOUND_ASSIGN'
-            ) THEN 'OUTBOUND_ASSIGN'
-            ELSE 'ORDER_OUT'
-        END AS event_type
     ),
     item AS (
         SELECT
@@ -105,12 +91,26 @@ AS $$
         ROUND(item.unit_price * item.ordered_qty, 2),
         ROUND(item.unit_price * shipped.qty, 2)
     FROM item
+    -- 출고 스캔이 있었으면 그것만, 없으면 확정 때 자동 배정분을 쓴다.
+    -- 상품마다 스캔 여부가 다를 수 있어 상품 단위로 판정한다(주문 전체로 판정하면
+    -- 아직 안 찍은 다른 상품이 출고량 0으로 계산된다).
+    CROSS JOIN LATERAL (
+        SELECT CASE
+            WHEN EXISTS (
+                SELECT 1 FROM public.stock_ledger x
+                WHERE x.source_type = 'order' AND x.source_id = p_order_id
+                  AND x.event_type = 'OUTBOUND_ASSIGN'
+                  AND x.product_id = item.product_id
+            ) THEN 'OUTBOUND_ASSIGN'
+            ELSE 'ORDER_OUT'
+        END AS event_type
+    ) AS basis
     CROSS JOIN LATERAL (
         SELECT LEAST(item.ordered_qty, COALESCE((
             SELECT SUM(-l.qty_delta)
-            FROM public.stock_ledger l, basis b
+            FROM public.stock_ledger l
             WHERE l.source_type = 'order' AND l.source_id = p_order_id
-              AND l.event_type = b.event_type
+              AND l.event_type = basis.event_type
               AND l.product_id = item.product_id
         ), 0)) AS qty
     ) AS shipped

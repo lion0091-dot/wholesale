@@ -12,9 +12,7 @@ DROP POLICY IF EXISTS "Products viewable by owner, org staff, linked retailers, 
 
 CREATE POLICY "Products viewable by owner, org staff, priced for retailers, or admin" ON public.products
     FOR SELECT USING (
-        wholesaler_id = public.get_current_wholesaler_id()
-        OR public.is_org_staff_of_wholesaler(wholesaler_id)
-        OR public.get_current_role() = 'super_admin'
+        public.can_access_wholesaler(wholesaler_id)
         OR (
             is_active = true
             -- 판매가 미설정(0원) 상품은 고객 쪽 조회에서 제외한다.

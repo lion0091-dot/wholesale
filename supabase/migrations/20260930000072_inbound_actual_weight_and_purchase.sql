@@ -86,9 +86,7 @@ ALTER TABLE public.product_purchase_prices ENABLE ROW LEVEL SECURITY;
 -- 원가는 고객에게 절대 보이면 안 된다 — 바이어 분기를 아예 두지 않는다.
 CREATE POLICY "Purchase prices viewable by owner, org staff, or admin" ON public.product_purchase_prices
     FOR SELECT USING (
-        wholesaler_id = public.get_current_wholesaler_id()
-        OR public.is_org_staff_of_wholesaler(wholesaler_id)
-        OR public.get_current_role() = 'super_admin'
+        public.can_access_wholesaler(wholesaler_id)
     );
 
 DROP TRIGGER IF EXISTS trg_product_purchase_prices_updated_at ON public.product_purchase_prices;
@@ -114,6 +112,14 @@ BEGIN
 
     IF v_wholesaler_id IS NULL THEN
         RAISE EXCEPTION 'NOT_A_SUPPLIER';
+    END IF;
+
+    -- 매입단가는 원가라 화면(app/dashboard/purchases/actions.ts의 PURCHASE_ROLES)에서
+    -- owner/manager만 고치게 막아뒀다. resolve_current_wholesaler_id()는 staff도
+    -- 통과시키므로 여기서도 같은 게이트를 건다.
+    IF v_wholesaler_id <> public.get_current_wholesaler_id()
+       AND NOT public.is_org_staff_of_wholesaler(v_wholesaler_id, ARRAY['owner', 'manager']::public.organization_role[]) THEN
+        RAISE EXCEPTION 'FORBIDDEN';
     END IF;
 
     PERFORM 1 FROM public.products
@@ -276,6 +282,12 @@ BEGIN
 
     IF v_scan.id IS NULL OR v_scan.wholesaler_id <> v_wholesaler_id THEN
         RAISE EXCEPTION 'SCAN_NOT_FOUND';
+    END IF;
+
+    -- 매입단가는 원가라 owner/manager만 고칠 수 있다 (set_product_purchase_price와 동일 게이트).
+    IF v_wholesaler_id <> public.get_current_wholesaler_id()
+       AND NOT public.is_org_staff_of_wholesaler(v_wholesaler_id, ARRAY['owner', 'manager']::public.organization_role[]) THEN
+        RAISE EXCEPTION 'FORBIDDEN';
     END IF;
 
     IF p_unit_price IS NULL OR p_unit_price < 0 THEN

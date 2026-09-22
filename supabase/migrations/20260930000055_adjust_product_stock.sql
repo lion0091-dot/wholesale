@@ -134,9 +134,7 @@ AS $$
       AND s.status = 'NORMAL'
       AND s.remaining_weight > 0
       AND (
-            s.wholesaler_id = public.get_current_wholesaler_id()
-         OR public.is_org_staff_of_wholesaler(s.wholesaler_id)
-         OR public.get_current_role() = 'super_admin'
+            public.can_access_wholesaler(s.wholesaler_id)
       )
     ORDER BY s.created_at;
 $$;

@@ -327,10 +327,16 @@ async function callSource(source: TraceSource, traceNo: string): Promise<unknown
   const endpoints = known ? [known, ...config.endpoints.filter((url) => url !== known)] : config.endpoints;
 
   let lastError: MtraceError | null = null;
+  // 이번 호출에서 어느 후보든 실제로 응답을 받았는지 — resolvedEndpoint(과거 호출 캐시)로
+  // 판정하면, 이전에 다른 이력번호로 한 번이라도 성공한 적이 있다는 이유로 이번 호출의
+  // 진짜 장애를 "조회 결과 없음"으로 삼켜버리거나, 반대로 이번 호출에서 늦게 시도한
+  // 정상 후보가 응답했는데도 먼저 실패한 엉뚱한 후보의 에러를 올리는 문제가 생긴다.
+  let sawSuccessfulResponse = false;
 
   for (const endpoint of endpoints) {
     try {
       const tree = await callUrl(endpoint, config.apiKey, traceNo);
+      sawSuccessfulResponse = true;
 
       if (hasRecord(tree)) {
         resolvedEndpoint.set(source, endpoint);
@@ -341,9 +347,9 @@ async function callSource(source: TraceSource, traceNo: string): Promise<unknown
     }
   }
 
-  // 후보를 다 돌았는데 내용이 없으면 "조회 결과 없음"으로 본다.
+  // 이번 호출에서 응답을 하나라도 받았으면 "조회 결과 없음"으로 본다.
   // 전부 호출 자체가 실패했을 때만 오류로 올린다.
-  if (lastError && !resolvedEndpoint.has(source)) {
+  if (lastError && !sawSuccessfulResponse) {
     throw lastError;
   }
 

@@ -91,9 +91,7 @@ ALTER TABLE public.product_bundles ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Product bundles viewable by owner, org staff, or admin" ON public.product_bundles
     FOR SELECT USING (
-        wholesaler_id = public.get_current_wholesaler_id()
-        OR public.is_org_staff_of_wholesaler(wholesaler_id)
-        OR public.get_current_role() = 'super_admin'
+        public.can_access_wholesaler(wholesaler_id)
     );
 
 DROP TRIGGER IF EXISTS trg_product_bundles_updated_at ON public.product_bundles;
@@ -161,9 +159,7 @@ ALTER TABLE public.bundle_assemblies ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Bundle assemblies viewable by owner, org staff, or admin" ON public.bundle_assemblies
     FOR SELECT USING (
-        wholesaler_id = public.get_current_wholesaler_id()
-        OR public.is_org_staff_of_wholesaler(wholesaler_id)
-        OR public.get_current_role() = 'super_admin'
+        public.can_access_wholesaler(wholesaler_id)
     );
 
 
@@ -1003,19 +999,19 @@ AS $$
           AND l.source_id = p_order_id
           AND l.inbound_scan_id IS NOT NULL
           -- 출고 스캔이 있었으면 그것만, 없으면 자동 배정분을 쓴다.
+          -- 상품마다 스캔 여부가 다를 수 있어 상품 단위로 판정한다.
           AND l.event_type = CASE
                 WHEN EXISTS (
                     SELECT 1 FROM public.stock_ledger x
                     WHERE x.source_type = 'order' AND x.source_id = p_order_id
                       AND x.event_type = 'OUTBOUND_ASSIGN'
+                      AND x.product_id = l.product_id
                 ) THEN 'OUTBOUND_ASSIGN'
                 ELSE 'ORDER_OUT'
               END
           AND (
-                o.wholesaler_id = public.get_current_wholesaler_id()
-             OR public.is_org_staff_of_wholesaler(o.wholesaler_id)
+                public.can_access_wholesaler(o.wholesaler_id)
              OR o.retailer_id = public.get_current_retailer_id()
-             OR public.get_current_role() = 'super_admin'
           )
     )
     SELECT
@@ -1126,18 +1122,18 @@ AS $$
     WHERE l.source_type = 'order'
       AND l.source_id = p_order_id
       AND l.inbound_scan_id IS NOT NULL
+      -- 상품마다 스캔 여부가 다를 수 있어 상품 단위로 판정한다.
       AND l.event_type = CASE
             WHEN EXISTS (
                 SELECT 1 FROM public.stock_ledger x
                 WHERE x.source_type = 'order' AND x.source_id = p_order_id
                   AND x.event_type = 'OUTBOUND_ASSIGN'
+                  AND x.product_id = l.product_id
             ) THEN 'OUTBOUND_ASSIGN'
             ELSE 'ORDER_OUT'
           END
       AND (
-            o.wholesaler_id = public.get_current_wholesaler_id()
-         OR public.is_org_staff_of_wholesaler(o.wholesaler_id)
-         OR public.get_current_role() = 'super_admin'
+            public.can_access_wholesaler(o.wholesaler_id)
       )
     ORDER BY p.name, s.trace_no;
 $$;
@@ -1246,9 +1242,7 @@ AS $$
          OR scan.trace_no ILIKE '%' || btrim(p_trace_no) || '%'
       )
       AND (
-            p_wholesaler_id = public.get_current_wholesaler_id()
-         OR public.is_org_staff_of_wholesaler(p_wholesaler_id)
-         OR public.get_current_role() = 'super_admin'
+            public.can_access_wholesaler(p_wholesaler_id)
       );
 $$;
 

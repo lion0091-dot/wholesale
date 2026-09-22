@@ -51,6 +51,18 @@ RETURNS UUID LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
     );
 $$;
 
+-- 이 파일 전체에서 "이 wholesaler_id를 볼 수 있는 사람인가"(원 가입자 본인 /
+-- 소속 직원(역할 무관) / 플랫폼 관리자)를 반복해서 검사하므로 하나로 묶는다.
+-- 화면별 owner/manager 전용 게이트(예: 상품 가격 일괄수정)는 이것과 별개로
+-- is_org_staff_of_wholesaler(id, ARRAY['owner','manager'])를 직접 쓴다 — 여기 묶은
+-- 건 "보이는가"이지 "고칠 수 있는가"가 아니다.
+CREATE OR REPLACE FUNCTION public.can_access_wholesaler(p_wholesaler_id UUID)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT p_wholesaler_id = public.get_current_wholesaler_id()
+        OR public.is_org_staff_of_wholesaler(p_wholesaler_id)
+        OR public.get_current_role() = 'super_admin';
+$$;
+
 
 -- --------------------------------------------------------------------
 -- 1. MASTER_LIVESTOCK — 공공 API 응답 캐시 (플랫폼 공용, 업체 구분 없음)

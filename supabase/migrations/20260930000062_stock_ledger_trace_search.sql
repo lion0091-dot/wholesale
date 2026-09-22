@@ -56,9 +56,7 @@ AS $$
         WHERE l.wholesaler_id = p_wholesaler_id
           AND (p_product_id IS NULL OR l.product_id = p_product_id)
           AND (
-                p_wholesaler_id = public.get_current_wholesaler_id()
-             OR public.is_org_staff_of_wholesaler(p_wholesaler_id)
-             OR public.get_current_role() = 'super_admin'
+                public.can_access_wholesaler(p_wholesaler_id)
           )
     ),
     scoped AS (
@@ -136,9 +134,7 @@ AS $$
          OR scan.trace_no ILIKE '%' || btrim(p_trace_no) || '%'
       )
       AND (
-            p_wholesaler_id = public.get_current_wholesaler_id()
-         OR public.is_org_staff_of_wholesaler(p_wholesaler_id)
-         OR public.get_current_role() = 'super_admin'
+            public.can_access_wholesaler(p_wholesaler_id)
       );
 $$;
 
