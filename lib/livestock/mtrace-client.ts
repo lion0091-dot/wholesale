@@ -55,6 +55,15 @@ interface SourceConfig {
 const KAPE_SERVICE_BASE = "http://data.ekape.or.kr/openapi-data/service/user/grade";
 
 /**
+ * data.go.kr 상품 페이지("축산물품질평가원_쇠고기이력정보", data.go.kr/data/15056898)에서
+ * 확인한 실제 소 개체정보 조회 주소. 파라미터명도 이 상품 고유의 `cattleNo`다(callUrl 참고).
+ * 경락가와 같은 계정 인증키를 쓰지만 이 상품은 **별도 활용신청(자동승인)이 필요**하다 — 승인
+ * 전에는 이 주소도 다른 후보처럼 빈 응답/오류로 남는다.
+ */
+const KAPE_CATTLE_TRACE_ENDPOINT =
+  "http://data.ekape.or.kr/openapi-data/service/user/mtrace/breeding/cattle";
+
+/**
  * 소·돼지 이력은 축산물품질평가원(KAPE)이 운영한다 — 이미 동작 중인 경락가 API
  * (`data.ekape.or.kr`, KAPE_MARKET_PRICE_API_KEY)와 같은 기관이다. data.go.kr은
  * 계정당 공용 인증키를 주므로, 전용 키를 안 넣었으면 그 키로 먼저 시도한다.
@@ -97,13 +106,11 @@ function sourceConfig(source: TraceSource): SourceConfig {
     default:
       return {
         label: "mtrace_livestock",
-        // 서비스 기본 경로는 경락가 API와 동일한 것으로 확인됐다
-        // (http://data.ekape.or.kr/openapi-data/service/user/grade).
-        // 그 뒤에 붙는 오퍼레이션 이름(경락가의 auct/cattle 자리)은 아직 미확인이라
-        // 추정값을 둔다 — data.go.kr 상세 화면에서 확인되면 .env로 덮어쓴다.
-        // 경락가가 `${KAPE_SERVICE_BASE}/auct/cattle` 형태이므로 같은 자리에
-        // 들어갈 법한 이름들을 순서대로 시도한다.
+        // 소는 data.go.kr 상품 페이지(15056898)로 실주소·파라미터명이 확인됐다(위 상수 참고).
+        // 돼지 전용 상품은 데이터포털 검색으로 못 찾았다 — 기존 추정 주소를 뒤에 그대로 남겨
+        // 순서대로 시도한다(찾으면 여기 교체).
         endpoints: candidates(process.env.MTRACE_API_ENDPOINT, [
+          KAPE_CATTLE_TRACE_ENDPOINT,
           `${KAPE_SERVICE_BASE}/confirm/cattle`,
           `${KAPE_SERVICE_BASE}/confirm/pig`,
           `${KAPE_SERVICE_BASE}/trace/traceNoSearch`,
@@ -282,6 +289,9 @@ async function callUrl(endpoint: string, apiKey: string, traceNo: string): Promi
   const url = new URL(endpoint);
   url.searchParams.set("serviceKey", apiKey);
   url.searchParams.set("traceNo", traceNo);
+  // 확인된 실제 소 이력조회 상품(15056898)은 파라미터명이 `cattleNo`다. 나머지 후보는
+  // 파라미터명이 미확인이라, 모르는 파라미터를 무시하는 공공 API 관례에 기대어 둘 다 보낸다.
+  url.searchParams.set("cattleNo", traceNo);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
