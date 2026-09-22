@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LEDGER_EVENTS, ledgerEventMeta } from "@/lib/stock/ledger-events";
 
@@ -35,7 +36,7 @@ interface Props {
   summary: LedgerSummary;
   products: LedgerProduct[];
   totalCount: number;
-  filters: { from: string; to: string; productId: string; eventType: string };
+  filters: { from: string; to: string; productId: string; eventType: string; traceNo: string };
 }
 
 function formatQty(value: number, unit: string): string {
@@ -56,6 +57,13 @@ function formatDateTime(iso: string): string {
 export function StockLedgerView({ rows, summary, products, totalCount, filters }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // 이력번호는 타자마다 주소를 바꾸면 깜빡이므로 Enter(또는 검색 버튼)로만 적용한다.
+  const [traceInput, setTraceInput] = useState(filters.traceNo);
+
+  useEffect(() => {
+    setTraceInput(filters.traceNo);
+  }, [filters.traceNo]);
 
   /** 필터는 URL 쿼리로 유지한다 — 새로고침·뒤로가기에도 조건이 살아있고 링크로 공유된다. */
   const applyFilter = (key: string, value: string) => {
@@ -126,6 +134,47 @@ export function StockLedgerView({ rows, summary, products, totalCount, filters }
             </select>
           </div>
 
+          <div style={{ flex: "1 1 180px", minWidth: "160px" }}>
+            <label htmlFor="trace" style={labelStyle}>
+              이력번호
+            </label>
+            <div style={{ display: "flex", gap: "4px" }}>
+              <input
+                id="trace"
+                value={traceInput}
+                onChange={(event) => setTraceInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    applyFilter("trace", traceInput.trim());
+                  }
+                }}
+                placeholder="번호 일부만 입력해도 됩니다"
+                style={inputStyle}
+              />
+              <button
+                type="button"
+                onClick={() => applyFilter("trace", traceInput.trim())}
+                style={searchButtonStyle}
+              >
+                검색
+              </button>
+              {filters.traceNo && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTraceInput("");
+                    applyFilter("trace", "");
+                  }}
+                  style={{ ...searchButtonStyle, color: "#b91c1c", borderColor: "#fecaca" }}
+                  aria-label="이력번호 검색 지우기"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+
           <div style={{ minWidth: "120px" }}>
             <label htmlFor="event" style={labelStyle}>
               유형
@@ -168,7 +217,10 @@ export function StockLedgerView({ rows, summary, products, totalCount, filters }
         </div>
 
         {rows.length === 0 ? (
-          <p style={{ fontSize: "13px", color: "#94a3b8", margin: 0 }}>이 조건에 해당하는 내역이 없습니다.</p>
+          <p style={{ fontSize: "13px", color: "#94a3b8", margin: 0 }}>
+            이 조건에 해당하는 내역이 없습니다.
+            {filters.traceNo ? " 이력번호는 기간 안에 있는 건만 찾습니다 — 기간을 넓혀보세요." : ""}
+          </p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {rows.map((row) => {
@@ -258,6 +310,18 @@ const inputStyle: React.CSSProperties = {
   border: "1px solid #cbd5e1",
   borderRadius: "6px",
   backgroundColor: "#fff",
+};
+
+const searchButtonStyle: React.CSSProperties = {
+  padding: "8px 12px",
+  fontSize: "13px",
+  fontWeight: 600,
+  borderRadius: "6px",
+  border: "1px solid #e2e8f0",
+  backgroundColor: "#f8fafc",
+  color: "#334155",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
 };
 
 const rowStyle: React.CSSProperties = {

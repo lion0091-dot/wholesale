@@ -50,6 +50,18 @@ select (select stock_quantity from public.products where id='cccccccc-0000-0000-
        (select balance_after from public.list_stock_ledger('aaaaaaaa-0000-0000-0000-000000000001')
           order by created_at desc limit 1) as last_balance;
 
+select '--- L6: 이력번호로 입고+출고 함께 추적 ---' as t;
+select event_type, qty_delta, balance_after, trace_no, order_number
+  from public.list_stock_ledger('aaaaaaaa-0000-0000-0000-000000000001', null, null, null, null, '002111111111');
+
+select '--- L7: 번호 일부만 입력해도 찾음 ---' as t;
+select count(*) as should_be_2
+  from public.list_stock_ledger('aaaaaaaa-0000-0000-0000-000000000001', null, null, null, null, '0021111');
+
+select '--- L8: 다른 번호는 입고 1건만 ---' as t;
+select event_type, qty_delta, trace_no
+  from public.list_stock_ledger('aaaaaaaa-0000-0000-0000-000000000001', null, null, null, null, '002222222222');
+
 select '--- L4: 남의 업체 조회 차단 ---' as t;
 set request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333';
 select count(*) as retailer_sees_should_be_0

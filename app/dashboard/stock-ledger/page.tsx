@@ -33,6 +33,7 @@ export default async function StockLedgerPage({
   const to = pick("to") || isoDate(today);
   const productId = pick("product") || "";
   const eventType = pick("event") || "";
+  const traceNo = pick("trace") || "";
 
   let rows: LedgerRow[] = [];
   let summary: LedgerSummary = { inbound: 0, outbound: 0, adjustment: 0, loss: 0 };
@@ -49,6 +50,7 @@ export default async function StockLedgerPage({
         p_to: to,
         p_product_id: productId || null,
         p_event_types: eventType ? [eventType] : null,
+        p_trace_no: traceNo || null,
         p_limit: 200,
         p_offset: 0,
       }),
@@ -57,6 +59,7 @@ export default async function StockLedgerPage({
         p_from: from,
         p_to: to,
         p_product_id: productId || null,
+        p_trace_no: traceNo || null,
       }),
       supabase
         .from("products")
@@ -108,7 +111,7 @@ export default async function StockLedgerPage({
         summary={summary}
         products={products}
         totalCount={totalCount}
-        filters={{ from, to, productId, eventType }}
+        filters={{ from, to, productId, eventType, traceNo }}
       />
     </div>
   );
