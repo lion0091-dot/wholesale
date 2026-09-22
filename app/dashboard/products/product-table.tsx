@@ -12,6 +12,7 @@ import {
   deleteProductAction,
   toggleProductFlagAction,
   updateProductStockAction,
+  setProductArchivedAction,
 } from "./actions";
 import { STOCK_ADJUST_REASONS } from "@/lib/products/stock-adjust-reasons";
 
@@ -183,6 +184,11 @@ export function ProductTable({
   const router = useRouter();
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState("all");
+  /**
+   * 상태 필터. 자동 생성된 상품은 판매가 0원·판매중지로 들어오므로, 그대로 두면
+   * 진짜 파는 상품이 그 사이에 묻힌다. 기본은 보관을 제외한 전체를 보여준다.
+   */
+  const [status, setStatus] = useState<"all" | "selling" | "unpriced" | "archived">("all");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingStockId, setEditingStockId] = useState<string | null>(null);
@@ -200,8 +206,25 @@ export function ProductTable({
       : true;
     const matchesCategory = category === "all" ? true : product.category === category;
 
-    return matchesKeyword && matchesCategory;
+    const isArchived = Boolean(product.archived_at);
+    const isUnpriced = Number(product.base_price) <= 0;
+
+    const matchesStatus =
+      status === "archived"
+        ? isArchived
+        : status === "selling"
+          ? !isArchived && product.is_active && !isUnpriced
+          : status === "unpriced"
+            ? !isArchived && isUnpriced
+            // 'all'은 보관을 뺀 전체다 — 보관은 치운 상품이라 기본 목록에 섞이면 안 된다.
+            : !isArchived;
+
+    return matchesKeyword && matchesCategory && matchesStatus;
   });
+
+  const unpricedCount = products.filter(
+    (product) => !product.archived_at && Number(product.base_price) <= 0
+  ).length;
 
   const run = async (productId: string, task: () => Promise<{ success: boolean; error?: string }>) => {
     if (readOnly) {
@@ -246,6 +269,14 @@ export function ProductTable({
 
       return result;
     });
+  };
+
+  const handleArchive = (product: Product, archived: boolean) => {
+    if (archived && !window.confirm(`'${product.name}'을(를) 보관하시겠습니까?\n목록과 미니샵에서 빠지고, 입출고 기록은 그대로 남습니다.`)) {
+      return;
+    }
+
+    void run(product.id, () => setProductArchivedAction(product.id, archived));
   };
 
   const handleDelete = (product: Product) => {
@@ -333,6 +364,27 @@ export function ProductTable({
             </option>
           ))}
         </select>
+
+        {/* 자동 생성 상품은 판매가 0원·판매중지로 들어온다 — 그대로 두면 진짜 파는
+            상품이 묻히므로 상태로 걸러 볼 수 있게 한다. */}
+        <select
+          value={status}
+          onChange={(event) => setStatus(event.target.value as typeof status)}
+          aria-label="상태 필터"
+          style={{
+            flex: "0 1 130px",
+            minWidth: "96px",
+            padding: "8px 6px",
+            fontSize: "13px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "6px",
+          }}
+        >
+          <option value="all">전체 (보관 제외)</option>
+          <option value="selling">판매중만</option>
+          <option value="unpriced">판매가 미설정{unpricedCount > 0 ? ` (${unpricedCount})` : ""}</option>
+          <option value="archived">보관함</option>
+        </select>
       </div>
 
       {error && (
@@ -395,6 +447,20 @@ export function ProductTable({
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                             <div style={{ fontWeight: 700 }}>{product.name}</div>
+                            {product.archived_at && (
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  fontWeight: 700,
+                                  backgroundColor: "#f1f5f9",
+                                  color: "#64748b",
+                                  borderRadius: "4px",
+                                  padding: "2px 6px",
+                                }}
+                              >
+                                보관됨
+                              </span>
+                            )}
                             {readOnly && <SampleBadge />}
                           </div>
                           <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
@@ -542,6 +608,19 @@ export function ProductTable({
                         >
                           수정
                         </Link>
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => handleArchive(product, !product.archived_at)}
+                          style={chipButtonStyle}
+                          title={
+                            product.archived_at
+                              ? "다시 목록으로 꺼냅니다"
+                              : "목록과 미니샵에서 감춥니다 (입출고 기록은 남습니다)"
+                          }
+                        >
+                          {product.archived_at ? "복원" : "보관"}
+                        </button>
                         <button
                           type="button"
                           disabled={isBusy}
@@ -758,6 +837,14 @@ export function ProductTable({
                   >
                     수정
                   </Link>
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => handleArchive(product, !product.archived_at)}
+                    style={{ ...chipButtonStyle, padding: "7px 11px" }}
+                  >
+                    {product.archived_at ? "복원" : "보관"}
+                  </button>
                   <button
                     type="button"
                     disabled={isBusy}

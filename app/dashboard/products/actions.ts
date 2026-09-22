@@ -333,6 +333,20 @@ export async function deleteProductAction(productId: string): Promise<ActionResu
       throw new RbacError("올바른 상품 식별자가 아닙니다.");
     }
 
+    // 입출고 기록이 있으면 삭제가 아예 불가능하다 — stock_ledger.product_id가
+    // ON DELETE RESTRICT다(입출고 기록은 지우면 안 되는 자료). DB가 막기 전에
+    // 먼저 확인해 "보관하세요"라고 안내한다. 그냥 두면 외래키 위반 메시지가
+    // 그대로 노출된다.
+    const { data: hasHistory } = await supabase.rpc("product_has_stock_history", {
+      p_product_id: productId,
+    });
+
+    if (hasHistory) {
+      throw new RbacError(
+        "입출고 기록이 있는 상품은 삭제할 수 없습니다. 기록을 남겨야 하기 때문입니다 — 대신 '보관'으로 목록에서 감출 수 있습니다."
+      );
+    }
+
     let query = supabase.from("products").delete().eq("id", productId);
 
     if (!context.isSuperAdmin) {
@@ -359,13 +373,47 @@ export async function deleteProductAction(productId: string): Promise<ActionResu
 }
 
 // ====================================================================
-// 6. 기본 납품 품목 일괄 생성 (온보딩)
+// 6. 상품 보관 / 복원
+//
+// 입출고 기록이 있는 상품은 지울 수 없으므로(위 참고) 목록에서 치우는 수단이
+// 따로 필요하다. 보관하면 상품 목록과 고객 카탈로그 양쪽에서 빠지고, 기록은
+// 그대로 남는다. 보관 시 판매도 함께 내린다 — 목록에서 감췄는데 미니샵에
+// 남아 있으면 사고다.
 // ====================================================================
-/**
- * 상품이 한 건도 없는 공급사에 기본 납품 품목 세트를 생성한다.
- * 이미 상품이 있으면 중복 생성을 막기 위해 거부한다.
- * 성공 시 미니샵(/shop/<shop_token>)도 함께 무효화하여 데모 카탈로그를 벗어나게 한다.
- */
+export async function setProductArchivedAction(
+  productId: string,
+  archived: boolean
+): Promise<ActionResult> {
+  try {
+    const { supabase } = await resolveProductScope();
+
+    if (!UUID_PATTERN.test(productId)) {
+      throw new RbacError("올바른 상품 식별자가 아닙니다.");
+    }
+
+    const { error } = await supabase.rpc("set_product_archived", {
+      p_product_id: productId,
+      p_archived: archived,
+    });
+
+    if (error) {
+      if (error.message.includes("PRODUCT_NOT_FOUND")) {
+        throw new RbacError("권한이 없거나 해당 상품을 찾을 수 없습니다.");
+      }
+
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+// ====================================================================
+// 7. 기본 납품 품목 일괄 등록
+// ====================================================================
 export async function seedDefaultProductsAction(): Promise<ActionResult<{ created: number }>> {
   try {
     const { supabase, wholesalerId } = await resolveProductScope();

@@ -109,6 +109,11 @@ export interface Product {
   created_by: string | null;
   /** 마지막으로 수정한 계정 */
   updated_by: string | null;
+  /**
+   * 보관 처리 시각. 입출고 기록이 있는 상품은 삭제할 수 없어(원장 FK RESTRICT)
+   * 대신 보관한다. 보관된 상품은 목록과 고객 카탈로그에서 제외된다.
+   */
+  archived_at: string | null;
 }
 
 export interface CustomPrice {
