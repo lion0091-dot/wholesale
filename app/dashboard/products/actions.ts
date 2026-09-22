@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
 import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
+import { STOCK_ADJUST_REASON_CODES } from "@/lib/products/stock-adjust-reasons";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -276,17 +277,7 @@ export async function toggleProductFlagAction(
 // 조용히 되돌아간다. 대신 adjust_product_stock() RPC가 차이분을 원장 행으로
 // 남기고, 왜 바뀌었는지(실사/폐기/파손/반품)를 함께 기록한다.
 // ====================================================================
-export const STOCK_ADJUST_REASONS = [
-  { code: "STOCKTAKE", label: "재고 실사" },
-  { code: "DISPOSAL", label: "폐기" },
-  { code: "DAMAGE", label: "파손·손실" },
-  { code: "RETURN", label: "반품 입고" },
-  { code: "OTHER", label: "기타" },
-] as const;
 
-export type StockAdjustReasonCode = (typeof STOCK_ADJUST_REASONS)[number]["code"];
-
-const STOCK_ADJUST_REASON_CODES: string[] = STOCK_ADJUST_REASONS.map((reason) => reason.code);
 
 export async function updateProductStockAction(
   productId: string,

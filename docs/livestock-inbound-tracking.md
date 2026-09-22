@@ -231,3 +231,16 @@
 **환경변수**: `.env.example`의 `MTRACE_API_KEY` 참고. data.go.kr에도 같은 축산물이력 API가 올라와 있어, 그 경로로 쓴다면 기존 `NTS_BUSINESS_VERIFY_API_KEY`/`KAPE_MARKET_PRICE_API_KEY`와 동일한 data.go.kr 계정 공용키가 그대로 통할 수 있다 — **별도 발급 전에 먼저 시험해볼 것**(엔드포인트 주소도 함께 맞춰야 한다).
 
 **미검증**: 실호출 전무. 엔드포인트 경로·파라미터명·응답 필드명 전부 문서 기준 추정이다. 특히 **부위(`partName`)가 응답에 실제로 오는지**가 매핑 자동화율을 좌우한다.
+
+### 스캔 화면 (7단계)
+
+**`/dashboard/inbound`** — 현장 입고 화면. 위에서 찍고 아래에 바로 쌓인다.
+
+- **입력 흐름**: 바코드를 찍으면(HID 스캐너가 Enter를 보냄) 중량 칸으로 포커스가 넘어가고, 중량 입력 후 Enter로 등록된다. 등록 즉시 입력칸이 비고 이력번호 칸으로 돌아와 다음 박스를 바로 찍을 수 있다.
+- **낙관적 UI**: 서버 응답을 기다리지 않고 목록에 "검증 중…" 행을 먼저 얹는다. 콜드 스타트나 공공 API 지연(최악 2~3초)이 현장 작업을 멈추지 않게 하려는 것이다.
+- **카메라**: `npm` 레지스트리가 이 환경에서 막혀 `html5-qrcode` 같은 의존성을 추가할 수 없어, **브라우저 내장 `BarcodeDetector`** 를 쓴다. Android Chrome은 지원하고 iOS Safari는 아직 아니다 — 미지원 브라우저에서는 카메라 버튼을 감추고 스캐너/수동 입력만 노출한다(잠긴 결정: 의존성 추가가 가능해지면 재검토).
+- **중복 경고**: DB가 `DUPLICATE_SUSPECTED`를 던지면 저장하지 않고 직전 스캔 시각을 담은 확인창을 띄운다. "다른 박스가 맞다"를 누르면 `confirmDuplicate`로 재호출한다.
+- **상품 미확정**: `PENDING_MAPPING`/`EXCEPTION` 행에는 상품 선택 드롭다운이 붙는다. 한 번 고르면 `trace_product_map`에 학습돼 같은 부위는 다음부터 자동 연결된다.
+- **인증키 미설정 안내**: 키가 하나도 없으면 상단에 "입고는 기록되지만 이력 검증이 안 된다"는 경고를 띄운다. 현장을 막지 않는다는 원칙을 화면에서도 밝힌다.
+
+**`"use server"` 파일의 값 export 금지** — `STOCK_ADJUST_REASONS`를 `app/dashboard/products/actions.ts`에 두고 있었는데, Next.js는 `"use server"` 파일에서 async 함수 외의 export를 빌드 에러로 막는다. `lib/products/stock-adjust-reasons.ts`로 분리했다. 새 Server Action을 만들 때 같은 실수를 반복하지 말 것.

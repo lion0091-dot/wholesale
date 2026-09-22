@@ -22,6 +22,7 @@ export const metadata: Metadata = {
 const NAV_GROUPS: DashboardNavItem[][] = [
   [{ label: "대시보드", href: "/dashboard", icon: "📊", ready: true }],
   [
+    { label: "입고 스캔", href: "/dashboard/inbound", icon: "📦", ready: true },
     { label: "상품 관리", href: "/dashboard/products", icon: "🥩", ready: true },
     { label: "맞춤 단가 관리", href: "/dashboard/custom-prices", icon: "🏷️", ready: true },
     { label: "공공 시세", href: "/dashboard/market-prices", icon: "📉", ready: true },

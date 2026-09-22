@@ -12,8 +12,8 @@ import {
   deleteProductAction,
   toggleProductFlagAction,
   updateProductStockAction,
-  STOCK_ADJUST_REASONS,
 } from "./actions";
+import { STOCK_ADJUST_REASONS } from "@/lib/products/stock-adjust-reasons";
 
 /** get_product_stock_summary() 한 행 — 상품 하나를 채우고 있는 박스들의 요약 */
 export interface StockSummary {
