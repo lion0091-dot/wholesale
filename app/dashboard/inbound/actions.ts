@@ -242,15 +242,22 @@ export async function recordScanAction(input: {
 }
 
 /** 상품 미확정(PENDING_MAPPING)/예외 건에 상품을 지정해 재고로 확정한다. */
+export interface MappingResult {
+  /** 이력의 부위와 고른 상품의 부위가 다를 때 true (막지는 않는다) */
+  partMismatch: boolean;
+  tracePart: string | null;
+  productPart: string | null;
+}
+
 export async function resolveMappingAction(
   scanId: string,
   productId: string,
   remember = true
-): Promise<ActionResult> {
+): Promise<ActionResult<MappingResult>> {
   try {
     const { supabase } = await resolveInboundScope();
 
-    const { error } = await supabase.rpc("resolve_inbound_mapping", {
+    const { data, error } = await supabase.rpc("resolve_inbound_mapping", {
       p_scan_id: scanId,
       p_product_id: productId,
       p_remember: remember,
@@ -270,7 +277,16 @@ export async function resolveMappingAction(
     revalidatePath(REVALIDATE_PATH);
     revalidatePath("/dashboard/products");
 
-    return { success: true };
+    const row = (data ?? {}) as Record<string, unknown>;
+
+    return {
+      success: true,
+      data: {
+        partMismatch: Boolean(row.part_mismatch),
+        tracePart: (row.trace_part as string | null) ?? null,
+        productPart: (row.product_part as string | null) ?? null,
+      },
+    };
   } catch (error) {
     return toResult(error);
   }

@@ -33,6 +33,7 @@ export function OutboundScanView({ orders }: Props) {
   const [traceNo, setTraceNo] = useState("");
   const [progress, setProgress] = useState<OutboundProgressRow[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const traceInputRef = useRef<HTMLInputElement>(null);
@@ -71,6 +72,7 @@ export function OutboundScanView({ orders }: Props) {
     }
 
     setError(null);
+    setWarning(null);
     setTraceNo("");
     traceInputRef.current?.focus();
 
@@ -83,6 +85,14 @@ export function OutboundScanView({ orders }: Props) {
     }
 
     const data = result.data;
+
+    // 입고 때 매핑이 틀렸으면 출고에서도 안 걸린다 — 이력의 진짜 부위와
+    // 상품 부위를 대조해 알려준다(막지는 않는다).
+    if (data.partMismatch) {
+      setWarning(
+        `이 박스의 이력 부위는 '${data.tracePart}'인데 상품은 '${data.productPart}'입니다. 박스를 다시 확인해주세요.`
+      );
+    }
 
     setMessage(
       data.remainingNeeded > 0
@@ -154,6 +164,11 @@ export function OutboundScanView({ orders }: Props) {
         </div>
 
         {message && <div style={{ ...noticeStyle, backgroundColor: "#dcfce7", color: "#166534" }}>{message}</div>}
+        {warning && (
+          <div style={{ ...noticeStyle, backgroundColor: "#fef3c7", color: "#92400e", fontWeight: 600 }}>
+            ⚠️ {warning}
+          </div>
+        )}
         {error && <div style={{ ...noticeStyle, backgroundColor: "#fee2e2", color: "#991b1b" }}>{error}</div>}
       </section>
 

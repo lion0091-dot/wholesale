@@ -31,6 +31,13 @@ export interface OutboundScanResult {
   ordered: number;
   assigned: number;
   remainingNeeded: number;
+  /**
+   * 박스의 이력 부위와 상품 부위가 다를 때 true. 막지는 않는다 —
+   * 표기 차이로 헛경고가 날 수 있고 실제로는 맞는데 막으면 현장이 멈춘다.
+   */
+  partMismatch: boolean;
+  tracePart: string | null;
+  productPart: string | null;
 }
 
 /** DB가 던지는 코드를 현장에서 읽을 문장으로 바꾼다. */
@@ -135,6 +142,9 @@ export async function recordOutboundScanAction(
         ordered: Number(row.ordered ?? 0),
         assigned: Number(row.assigned ?? 0),
         remainingNeeded: Number(row.remaining_needed ?? 0),
+        partMismatch: Boolean(row.part_mismatch),
+        tracePart: (row.trace_part as string | null) ?? null,
+        productPart: (row.product_part as string | null) ?? null,
       },
     };
   } catch (error) {

@@ -272,7 +272,16 @@ export function InboundScanView({ initialScans, products }: Props) {
       return;
     }
 
-    setNotice("상품을 지정했습니다. 같은 부위는 다음부터 자동으로 연결됩니다.");
+    // 고른 상품의 부위가 이력의 부위와 다르면 알려준다 — 여기서 잘못 고르면
+    // 출고 때도 안 걸리고 식당에 다른 고기가 간다.
+    if (result.data?.partMismatch) {
+      setError(
+        `⚠️ 이 박스의 이력 부위는 '${result.data.tracePart}'인데 고르신 상품은 '${result.data.productPart}'입니다. 맞는지 확인해주세요.`
+      );
+    } else {
+      setNotice("상품을 지정했습니다. 같은 부위는 다음부터 자동으로 연결됩니다.");
+    }
+
     router.refresh();
   };
 
