@@ -2,11 +2,20 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { renderCode128Svg } from "@/lib/livestock/code128";
-import { PrintButton } from "./print-button";
+import { PrintButton } from "@/components/print-button";
 
 export const metadata = {
   title: "출고 라벨 | 도매업체 통합관리시스템",
 };
+
+interface LabelSourceTrace {
+  traceNo: string;
+  productName: string;
+  weight: number;
+  grade: string | null;
+  slaughterDate: string | null;
+  butcheryPlace: string | null;
+}
 
 interface LabelRow {
   productName: string;
@@ -21,6 +30,12 @@ interface LabelRow {
   supplierName: string;
   orderNumber: string;
   retailerName: string;
+  /** 자체 세트 박스인가 — 이 경우 traceNo가 세트번호이고 구성 이력번호가 따로 있다. */
+  isBundle: boolean;
+  /** 세트 박스의 실중량 합계 (일반 박스는 null) */
+  totalWeight: number | null;
+  bestBefore: string | null;
+  sourceTraces: LabelSourceTrace[];
 }
 
 function formatDate(value: string | null): string {
@@ -69,6 +84,17 @@ export default async function OrderLabelsPage({
       supplierName: String(row.supplier_name ?? ""),
       orderNumber: String(row.order_number ?? ""),
       retailerName: String(row.retailer_name ?? ""),
+      isBundle: Boolean(row.is_bundle),
+      totalWeight: row.total_weight === null || row.total_weight === undefined ? null : Number(row.total_weight),
+      bestBefore: (row.best_before as string | null) ?? null,
+      sourceTraces: ((row.source_traces ?? []) as Array<Record<string, unknown>>).map((trace) => ({
+        traceNo: String(trace.trace_no),
+        productName: String(trace.product_name ?? ""),
+        weight: Number(trace.weight),
+        grade: (trace.grade as string | null) ?? null,
+        slaughterDate: (trace.slaughter_date as string | null) ?? null,
+        butcheryPlace: (trace.butchery_place as string | null) ?? null,
+      })),
     }));
   }
 
@@ -122,7 +148,24 @@ export default async function OrderLabelsPage({
                 lineHeight: 1.5,
               }}
             >
-              <div style={{ fontWeight: 800, fontSize: "14px" }}>{label.productName}</div>
+              <div style={{ fontWeight: 800, fontSize: "14px" }}>
+                {label.isBundle && (
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      backgroundColor: "#ede9fe",
+                      color: "#5b21b6",
+                      borderRadius: "3px",
+                      padding: "2px 5px",
+                      marginRight: "4px",
+                    }}
+                  >
+                    세트
+                  </span>
+                )}
+                {label.productName}
+              </div>
 
               <div style={{ color: "#475569" }}>
                 {label.origin}
@@ -132,6 +175,12 @@ export default async function OrderLabelsPage({
               <div style={{ fontWeight: 800, fontSize: "16px", margin: "4px 0" }}>
                 {label.quantity}
                 {label.unit}
+                {label.isBundle && label.totalWeight !== null && (
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#475569" }}>
+                    {" "}
+                    · 실중량 {label.totalWeight}kg
+                  </span>
+                )}
               </div>
 
               {barcode && (
@@ -146,11 +195,28 @@ export default async function OrderLabelsPage({
                 {label.traceNo}
               </div>
 
-              <div style={{ color: "#475569", fontSize: "11px", marginTop: "4px" }}>
-                도축 {formatDate(label.slaughterDate)}
-                {label.packingDate ? ` · 포장 ${formatDate(label.packingDate)}` : ""}
-                {label.butcheryPlace ? ` · ${label.butcheryPlace}` : ""}
-              </div>
+              {label.isBundle ? (
+                /* 세트 박스는 안에 여러 마리가 들어 있다 — 라벨 한 장에 전부 찍어야
+                   박스를 열어보지 않고도 이력이 확인된다(이력제 표시 의무). */
+                <div style={{ fontSize: "10px", color: "#475569", marginTop: "4px" }}>
+                  <div style={{ fontWeight: 700, color: "#0f172a" }}>구성 이력번호</div>
+                  {label.sourceTraces.map((trace) => (
+                    <div key={trace.traceNo} style={{ fontFamily: "monospace" }}>
+                      {trace.traceNo} · {trace.productName} {trace.weight}kg
+                      {trace.grade ? ` · ${trace.grade}` : ""}
+                    </div>
+                  ))}
+                  {label.bestBefore && (
+                    <div style={{ fontFamily: "inherit" }}>유통기한 {formatDate(label.bestBefore)}</div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ color: "#475569", fontSize: "11px", marginTop: "4px" }}>
+                  도축 {formatDate(label.slaughterDate)}
+                  {label.packingDate ? ` · 포장 ${formatDate(label.packingDate)}` : ""}
+                  {label.butcheryPlace ? ` · ${label.butcheryPlace}` : ""}
+                </div>
+              )}
 
               <div style={{ color: "#64748b", fontSize: "11px", borderTop: "1px solid #e2e8f0", marginTop: "6px", paddingTop: "4px" }}>
                 {label.supplierName} → {label.retailerName} · {label.orderNumber}

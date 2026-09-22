@@ -24,6 +24,8 @@ export interface LedgerSummary {
   outbound: number;
   adjustment: number;
   loss: number;
+  /** 세트로 묶인 구성품 중량(제작 −, 해체 +). 단위가 섞이지 않게 따로 센다. */
+  bundle: number;
 }
 
 export interface LedgerProduct {
@@ -83,6 +85,7 @@ export function StockLedgerView({ rows, summary, products, totalCount, filters }
     { label: "출고", value: summary.outbound, accent: "#1e40af" },
     { label: "조정", value: summary.adjustment, accent: "#92400e" },
     { label: "손실", value: summary.loss, accent: "#991b1b" },
+    { label: "세트투입", value: summary.bundle, accent: "#6b21a8" },
   ];
 
   return (

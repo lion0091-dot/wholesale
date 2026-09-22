@@ -30,6 +30,20 @@ const cases = [
     traceNo: "002123456789",
     weightKg: null,
   },
+  {
+    label: "자체 세트번호",
+    input: "SET-260922-001",
+    traceNo: "SET-260922-001",
+    weightKg: null,
+    format: "bundle",
+  },
+  {
+    label: "자체 세트번호(소문자 입력)",
+    input: "set-260922-012",
+    traceNo: "SET-260922-012",
+    weightKg: null,
+    format: "bundle",
+  },
   { label: "잡음 섞인 값", input: "TRACE:002123456789 END", traceNo: "002123456789", weightKg: null },
   { label: "빈 값", input: "", traceNo: null, weightKg: null },
 ];
@@ -38,7 +52,7 @@ let failed = 0;
 
 for (const testCase of cases) {
   const result = parseBarcode(testCase.input);
-  const checks = ["traceNo", "weightKg", "packingDate"].filter((key) => key in testCase);
+  const checks = ["traceNo", "weightKg", "packingDate", "format"].filter((key) => key in testCase);
   const bad = checks.filter((key) => result[key] !== testCase[key]);
 
   if (bad.length > 0) {
