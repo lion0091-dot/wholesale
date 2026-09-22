@@ -70,6 +70,7 @@ export default async function StockLedgerPage({
       createdAt: String(row.created_at),
       eventType: String(row.event_type),
       qtyDelta: Number(row.qty_delta),
+      balanceAfter: Number(row.balance_after),
       reason: (row.reason as string | null) ?? null,
       productName: (row.product_name as string | null) ?? null,
       productUnit: (row.product_unit as string | null) ?? "kg",
@@ -97,7 +98,8 @@ export default async function StockLedgerPage({
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>입출고 내역</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>
-          입고·출고·조정·손실이 한 곳에 시간순으로 쌓입니다. 재고 숫자가 왜 그렇게 됐는지 여기서 추적합니다.
+          입고·출고·조정·손실이 오래된 순으로 쌓입니다. 오른쪽 화살표(→)가 그 시점의 재고라
+          숫자가 어떻게 변해왔는지 따라 읽을 수 있습니다.
         </p>
       </header>
 

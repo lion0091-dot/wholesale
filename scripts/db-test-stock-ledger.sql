@@ -34,16 +34,21 @@ insert into public.order_items (order_id,product_id,product_name,unit_price,quan
 set role authenticated; set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 update public.orders set status='confirmed' where id='eeeeeeee-0000-0000-0000-000000000001';
 
-select '--- L1: 원장 전체 (시간 역순) ---' as t;
-select event_type, qty_delta, product_name, trace_no, order_number, reason, actor_name, total_count
+select '--- L1: 원장 전체 (오래된 순 + 시점 재고) ---' as t;
+select event_type, qty_delta, balance_after, product_name, trace_no, order_number, reason, actor_name
   from public.list_stock_ledger('aaaaaaaa-0000-0000-0000-000000000001');
 
 select '--- L2: 기간 요약 ---' as t;
 select * from public.summarize_stock_ledger('aaaaaaaa-0000-0000-0000-000000000001');
 
-select '--- L3: 유형 필터(출고만) ---' as t;
-select event_type, qty_delta, order_number
+select '--- L3: 유형 필터(출고만) — 시점 재고는 전체 기준이어야 함 ---' as t;
+select event_type, qty_delta, balance_after as should_be_10_40, order_number
   from public.list_stock_ledger('aaaaaaaa-0000-0000-0000-000000000001', null, null, null, array['ORDER_OUT']);
+
+select '--- L5: 최종 재고와 마지막 시점 재고가 같아야 함 ---' as t;
+select (select stock_quantity from public.products where id='cccccccc-0000-0000-0000-000000000002') as product_stock,
+       (select balance_after from public.list_stock_ledger('aaaaaaaa-0000-0000-0000-000000000001')
+          order by created_at desc limit 1) as last_balance;
 
 select '--- L4: 남의 업체 조회 차단 ---' as t;
 set request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333';

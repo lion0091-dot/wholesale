@@ -8,6 +8,8 @@ export interface LedgerRow {
   createdAt: string;
   eventType: string;
   qtyDelta: number;
+  /** 이 일이 일어난 직후의 해당 상품 재고 */
+  balanceAfter: number;
   reason: string | null;
   productName: string | null;
   productUnit: string;
@@ -214,6 +216,14 @@ export function StockLedgerView({ rows, summary, products, totalCount, filters }
                       }}
                     >
                       {formatQty(row.qtyDelta, row.productUnit)}
+                    </span>
+                    {/* 이 줄까지 반영된 재고 — 숫자가 왜 이렇게 됐는지 따라 읽는 용도다. */}
+                    <span
+                      style={{ fontSize: "12px", color: "#475569", minWidth: "72px", textAlign: "right" }}
+                      title="이 일이 일어난 직후 재고"
+                    >
+                      → {Math.round(row.balanceAfter * 100) / 100}
+                      {row.productUnit}
                     </span>
                   </div>
                 </div>
