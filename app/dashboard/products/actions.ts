@@ -462,3 +462,60 @@ export async function seedDefaultProductsAction(): Promise<ActionResult<{ create
     return toResult(error);
   }
 }
+
+// ====================================================================
+// 8. 판매가 일괄 등록
+//
+// 스캔으로 자동 등록된 상품은 판매가가 0원이라 고객에게 안 보인다. 수십 개를
+// 화면에서 하나씩 고치는 건 고통스러워서, 목록을 CSV로 내려받아 엑셀에서 값을
+// 채우고 다시 올리는 경로를 둔다. 상품 식별은 UUID로만 한다 — 이름으로 맞추면
+// 엑셀에서 이름을 고친 순간 엉뚱한 상품 가격이 바뀐다.
+// ====================================================================
+export interface BulkPriceResult {
+  updated: number;
+  /** 값을 안 채운 줄 */
+  skipped: number;
+  /** ID가 없거나 내 상품이 아니거나 보관된 줄 */
+  notFound: number;
+}
+
+export async function bulkUpdateProductPricesAction(
+  updates: Array<{ id: string; price: number }>,
+  activate: boolean
+): Promise<ActionResult<BulkPriceResult>> {
+  try {
+    const { supabase } = await resolveProductScope();
+
+    if (updates.length === 0) {
+      throw new RbacError("반영할 판매가가 없습니다.");
+    }
+
+    if (updates.length > 5_000) {
+      throw new RbacError("한 번에 5,000행까지만 올릴 수 있습니다.");
+    }
+
+    const { data, error } = await supabase.rpc("bulk_update_product_prices", {
+      p_updates: updates.map((row) => ({ id: row.id, price: String(row.price) })),
+      p_activate: activate,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const row = (data ?? {}) as Record<string, unknown>;
+
+    revalidatePath(REVALIDATE_PATH);
+
+    return {
+      success: true,
+      data: {
+        updated: Number(row.updated ?? 0),
+        skipped: Number(row.skipped ?? 0),
+        notFound: Number(row.not_found ?? 0),
+      },
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}

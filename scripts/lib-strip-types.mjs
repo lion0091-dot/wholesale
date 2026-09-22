@@ -5,27 +5,45 @@
  * 필요한 순수 함수 모듈은 타입 표기를 지우고 Function으로 평가해 확인한다.
  * 정규식으로 임의의 TS를 다루는 건 위험하지만, 대상 파일이 타입 표기만 쓰는
  * 순수 함수라 이 범위에서는 안전하다 — 새 문법을 쓰면 여기도 함께 고쳐야 한다.
+ *
+ * ⚠️ 순서가 중요하다. `: string`을 먼저 지우면 `: string | number | null`이
+ *    ` | number | null`로 남아 문법 오류가 난다. 긴 표기를 먼저 지운다.
  */
 import { readFileSync } from "node:fs";
 
 const TYPE_PATTERNS = [
+  // 1) 임포트·타입 선언 통째로
   /^import[^;]+;$/gm,
   /export (type|interface)[\s\S]*?\n}\n/g,
   /export type [^;]+;/g,
+
+  // 2) 합집합·제네릭 등 긴 표기 먼저
+  /: string \| number \| null/g,
   /: Record<string, number>/g,
-  /: ParsedImport\b/g,
-  /: ImportRow\[\]/g,
-  /: ImportRow\b/g,
-  /: ParsedBarcode\b/g,
   /: Partial<ParsedBarcode>/g,
-  /: BarcodeFormat/g,
   /: string \| null/g,
   /: number \| null/g,
+
+  // 3) 배열
+  /: PriceCsvProduct\[\]/g,
+  /: PriceUpdateRow\[\]/g,
+  /: ImportRow\[\]/g,
   /: string\[\]/g,
+
+  // 4) 단일 이름
+  /: ParsedPriceCsv\b/g,
+  /: PriceUpdateRow\b/g,
+  /: ParsedImport\b/g,
+  /: ImportRow\b/g,
+  /: ParsedBarcode\b/g,
+  /: BarcodeFormat\b/g,
   /: string\b/g,
   /: number\b/g,
   /: boolean\b/g,
   /: unknown\b/g,
+
+  // 5) const 단언 — 값에는 영향이 없다
+  / as const/g,
 ];
 
 export function stripTypes(path) {

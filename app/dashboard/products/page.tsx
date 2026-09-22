@@ -6,7 +6,9 @@ import { DEMO_PRODUCTS } from "@/lib/demo/supplier-samples";
 import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
 import { ProductTable, type StockSummary } from "./product-table";
 import { getLatestMarketPricesAction } from "@/app/actions/market-price";
-import { buildMarketPriceIndex, type MarketPriceIndex } from "@/lib/market-price/product-match";
+import { buildMarketPriceIndex, findMarketPrice, type MarketPriceIndex } from "@/lib/market-price/product-match";
+import { PriceBulkPanel } from "./price-bulk-panel";
+import type { PriceCsvProduct } from "@/lib/products/price-import";
 
 import { SeedDefaultProductsButton } from "./seed-default-products-button";
 import { DemoNoticeBanner } from "./demo-notice-banner";
@@ -78,6 +80,22 @@ export default async function DashboardProductsPage() {
     products = DEMO_PRODUCTS;
   }
 
+  const unpricedProducts: PriceCsvProduct[] = isDemoData
+    ? []
+    : products
+        .filter((product) => !product.archived_at && Number(product.base_price) <= 0)
+        .map((product) => ({
+          id: product.id,
+          name: product.name,
+          category: product.category,
+          subcategory: product.subcategory,
+          grade: product.grade,
+          unit: product.unit,
+          basePrice: Number(product.base_price),
+          marketPrice:
+            findMarketPrice(marketPrices, product.category, product.grade)?.pricePerKg ?? null,
+        }));
+
   const lowStockCount = products.filter((product) => Number(product.stock_quantity) <= 3).length;
 
   return (
@@ -144,6 +162,10 @@ export default async function DashboardProductsPage() {
           </div>
         ))}
       </section>
+
+      {/* 스캔으로 자동 등록된 상품은 판매가가 0원이라 고객에게 안 보인다 —
+          수십 개를 하나씩 고치지 않게 CSV로 내려받아 채워 올리는 경로를 둔다. */}
+      <PriceBulkPanel unpricedProducts={unpricedProducts} />
 
       <ProductTable
         products={products}
