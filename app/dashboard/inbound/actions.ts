@@ -8,7 +8,6 @@ import {
   fetchTraceRecord,
   isMtraceConfigured,
   isPlausibleTraceNo,
-  MtraceError,
 } from "@/lib/livestock/mtrace-client";
 
 export interface ActionResult<T = undefined> {
@@ -200,7 +199,11 @@ export async function recordScanAction(input: {
           }
         } catch (error) {
           // 조회 실패로 현장 입고를 막지 않는다 — 예외로 남기고 나중에 보정한다.
-          failReason = error instanceof MtraceError ? "API_ERROR" : "API_ERROR";
+          // 실패 사유는 DB에는 API_ERROR로만 남지만(스키마 변경 없이), 진짜 메시지는 서버
+          // 로그에 남겨야 "활용신청 미승인"인지 "번호가 진짜 없음"인지 구분할 수 있다
+          // (2026-09-22 — resultCode 오류가 NOT_FOUND로 오인되던 문제 수정 참고).
+          console.error(`[mtrace] ${traceNo} 이력 조회 실패:`, error instanceof Error ? error.message : error);
+          failReason = "API_ERROR";
         }
       }
     }

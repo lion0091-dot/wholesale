@@ -346,6 +346,9 @@ async function callSource(source: TraceSource, traceNo: string): Promise<unknown
   for (const endpoint of endpoints) {
     try {
       const tree = await callUrl(endpoint, config.apiKey, traceNo);
+      // resultCode가 실패를 가리키면 "이력 없음"이 아니라 진짜 오류다 — sawSuccessfulResponse를
+      // 세우지 않고 다음 후보로 넘어간다. 전부 이렇게 끝나면 아래에서 이 오류가 그대로 올라간다.
+      checkResultCode(tree);
       sawSuccessfulResponse = true;
 
       if (hasRecord(tree)) {
@@ -372,6 +375,56 @@ function hasRecord(tree: unknown): boolean {
     pick(tree, ["traceNo", "cattleNo", "pigNo", "individualNo"]) !== null ||
     pick(tree, ["lsTypeNm", "lsType", "cattleGradeNm", "gradeNm"]) !== null
   );
+}
+
+/**
+ * data.go.kr 표준 응답은 `<response><header><resultCode>..</resultCode></header></response>`
+ * 형태를 쓴다(kape-client.ts에서 이미 같은 패턴 확인). 트리를 재귀 탐색해 찾는다 — 정확한
+ * 경로가 오퍼레이션마다 다를 수 있어 kape-client.ts와 같은 전략을 쓴다.
+ */
+function findResultCode(node: unknown): { code: string | null; msg: string | null } {
+  if (!node || typeof node !== "object") {
+    return { code: null, msg: null };
+  }
+
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const found = findResultCode(item);
+      if (found.code !== null) return found;
+    }
+    return { code: null, msg: null };
+  }
+
+  const obj = node as Record<string, unknown>;
+
+  if ("resultCode" in obj) {
+    return {
+      code: String(obj.resultCode),
+      msg: obj.resultMsg !== undefined ? String(obj.resultMsg) : null,
+    };
+  }
+
+  for (const value of Object.values(obj)) {
+    const found = findResultCode(value);
+    if (found.code !== null) return found;
+  }
+
+  return { code: null, msg: null };
+}
+
+/**
+ * resultCode가 있는 응답인데 실패 코드면(서비스키 미등록·활용신청 미승인·한도초과 등) 그건
+ * "이력 없음"이 아니라 진짜 오류다. 이걸 구분 안 하면 활용신청을 안 했거나 키가 틀려도
+ * 화면에는 "이력을 못 찾았습니다"로만 보여 원인을 영영 못 찾는다(2026-09-22 실제로 겪음 —
+ * `serviceKey` 없이 호출했더니 `resultCode 99 "등록되지 않은 서비스키"`가 정상 XML로 왔다).
+ * resultCode가 아예 없는 응답(구조 미확인 후보 엔드포인트)은 기존처럼 hasRecord()에만 맡긴다.
+ */
+function checkResultCode(tree: unknown): void {
+  const { code, msg } = findResultCode(tree);
+
+  if (code !== null && code !== "00" && Number(code) !== 0) {
+    throw new MtraceError(msg || `이력 조회 API가 오류를 반환했습니다 (코드 ${code}).`);
+  }
 }
 
 function toRecord(
