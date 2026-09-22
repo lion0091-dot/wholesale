@@ -54,3 +54,7 @@
 ## Downloads 폴더 패치 3개 보류 (2026-09-16, Vercel 배포 우선 진행 중)
 
 - [docs/deferred-drive-patches.md](docs/deferred-drive-patches.md) — 이전 세션 산출물 패치 3개(PRD/ROADMAP 8번 섹션 추가, wholesaler 구버전 화면 삭제, KNOWN_GAPS.md 신규 생성) 검토 결과 전부 stale로 판정, 적용 보류. Vercel 배포 완료 후 재검토 예정.
+
+## 축산물 이력 입고 시스템 (바코드 스캔 + 박스 단위 재고) (별도 기능)
+
+- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) — 이력번호 바코드/카메라 스캔 → 공공 API 대조 검증 → 박스 단위 입고. 스택 결정(별도 백엔드 대신 기존 Next.js+Supabase에 얹음, RLS가 이유), 잠긴 설계 결정 8가지(재고 단위는 이력번호가 아닌 박스, 원장 파생 재고, `products` 스키마 무변경, 출고 박스 단위 추적, Hobby 크론 제약 우회), 로컬 DB 기능 테스트 9종 통과. 공공 API 인증키 미발급이라 실호출 전무. 출고 연결(`apply_order_shipment`)은 미착수 — 그전까지 재고는 입고만 자동.
