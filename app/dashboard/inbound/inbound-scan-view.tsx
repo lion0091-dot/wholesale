@@ -561,7 +561,12 @@ export function InboundScanView({
       }
     ).BarcodeDetector;
 
-    const wantedFormats = ["code_128", "code_39", "ean_13", "qr_code", "itf"];
+    // 이력번호 체계는 GS1-128(code_128)과 소비자용 QR(qr_code) 둘뿐이다(barcode-parser.ts
+    // 헤더 참고). code_39/ean_13/itf까지 같이 시도하면 흔들리거나 각도가 애매한
+    // 프레임에서 같은 막대무늬를 엉뚱한 형식으로 잘못 해석해 매번 다른 값이 나올
+    // 수 있다(마트용 EAN-13 실측 테스트에서 발견, 2026-09-23) — 이력번호와 무관한
+    // 형식을 인식 대상에서 빼서 오인식 확률을 줄인다.
+    const wantedFormats = ["code_128", "qr_code"];
 
     (async () => {
       let formats = wantedFormats;
