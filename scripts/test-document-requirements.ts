@@ -15,6 +15,7 @@ function line(overrides: Partial<DocumentLine> = {}): DocumentLine {
     raw: "",
     itemName: "한우 등심",
     traceNo: "002191840078",
+    grade: "1++",
     quantity: null,
     labeledWeight: 8.2,
     unitPrice: 52000,
@@ -165,6 +166,33 @@ function check(label: string, condition: boolean, detail = "") {
     !summary.some((text) => text.includes("이력번호") || text.includes("골라주세요")),
     JSON.stringify(summary),
   );
+}
+
+// 11) 등급 — 그 자체로 필수는 아니다. 이력번호가 있으면 공공조회가 채운다.
+//     둘 다 없을 때만 짚는다 (사장님 확정 2026-09-23).
+{
+  const hasTrace = buildGapReport(header, [line({ grade: null })], linked);
+  const hasGrade = buildGapReport(header, [line({ traceNo: null })], linked);
+  const neither = buildGapReport(header, [line({ grade: null, traceNo: null })], linked);
+
+  check(
+    "등급 없어도 이력번호가 있으면 안 짚음",
+    !hasTrace.lineGaps[0]?.gaps.some((g) => g.code === "GRADE_UNKNOWN"),
+    JSON.stringify(hasTrace.lineGaps[0]?.gaps.map((g) => g.code)),
+  );
+  check(
+    "이력번호 없어도 등급이 있으면 안 짚음",
+    !hasGrade.lineGaps[0]?.gaps.some((g) => g.code === "GRADE_UNKNOWN"),
+  );
+
+  const gap = neither.lineGaps[0]?.gaps.find((g) => g.code === "GRADE_UNKNOWN");
+
+  check(
+    "둘 다 없으면 권장 + 공급처에 요청",
+    gap?.level === "RECOMMENDED" && gap?.source === "FROM_SUPPLIER",
+    JSON.stringify(gap),
+  );
+  check("등급은 필수가 아니므로 미완성 줄로 세지 않음", neither.incompleteLineCount === 0);
 }
 
 if (failed > 0) {

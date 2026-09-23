@@ -86,6 +86,24 @@ const cases: TestCase[] = [
     expectLineCount: 1,
     expectFirst: { itemName: "삼겹살" },
   },
+  {
+    label: "등급 칸이 있는 서류",
+    input: [
+      "품목,등급,중량,단가,금액",
+      "한우 등심,1++,8.20,52000,426400",
+      "한우 채끝,1+,7.50,41000,307500",
+    ].join("\n"),
+    expectColumns: { itemName: 0, grade: 1, labeledWeight: 2, unitPrice: 3, amount: 4 },
+    expectLineCount: 2,
+    expectFirst: { itemName: "한우 등심", grade: "1++", labeledWeight: 8.2 },
+  },
+  {
+    // "1+등급"처럼 등급 뒤에 글자가 붙어 와도 등급만 남겨야 한다.
+    label: "헤더 없이 등급만 내용으로 판별 (1+등급 표기)",
+    input: ["삼겹살\t1+등급\t10.5\t18000\t189000", "목살\t1등급\t8.2\t16000\t131200"].join("\n"),
+    expectLineCount: 2,
+    expectFirst: { itemName: "삼겹살", grade: "1+" },
+  },
   { label: "빈 입력", input: "", expectLineCount: 0 },
 ];
 

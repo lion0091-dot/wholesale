@@ -28,18 +28,19 @@ import type { ScanProductOption } from "./inbound-scan-view";
 /**
  * 공급처 명세서 올리기 (29단계 A).
  *
- * 서류가 들어오는 길이 여러 갈래다 — 이메일로 온 엑셀/CSV, 현장에서 받은 종이를
- * 찍은 사진, PDF. 사진은 글자 정보가 아예 없고 PDF도 뽑기가 무거워서, 자동으로
- * 읽는 건 엑셀·CSV·붙여넣기까지만 한다. 사진·PDF는 원본을 옆에 띄워놓고 보면서
- * 입력한다(잠긴 결정 — 실제 서류를 보고 자동 읽기 가치를 판단한 뒤 재검토).
+ * 서류가 들어오는 길이 여러 갈래다 — 이메일로 온 엑셀/CSV/PDF, 현장에서 받은
+ * 종이를 찍은 사진. 읽히는 것(엑셀·CSV·붙여넣기·글자가 든 PDF)은 표로 보여주고,
+ * 못 읽는 것(사진·스캔본 PDF)은 **원본만 보관한다.** 입고 화면에서 손으로
+ * 받아적게 만들지 않는다 — 현장 화면은 바코드 찍는 데 집중해야 한다(잠긴 결정).
  *
- * 어느 길로 들어오든 마지막은 같다: 표를 사람이 확인하고, 플랫폼 기준에 견줘
- * 뭐가 빠졌는지 보고, 저장한다. 재고는 만들지 않는다.
+ * 읽힌 경우의 마지막은 같다: 표를 사람이 확인하고, 플랫폼 기준에 견줘 뭐가
+ * 빠졌는지 보고, 저장한다. 재고는 만들지 않는다.
  */
 
 const FIELD_LABELS: Record<DocumentField, string> = {
   itemName: "품목",
   traceNo: "이력번호",
+  grade: "등급",
   quantity: "수량",
   labeledWeight: "중량(kg)",
   unitPrice: "단가",
@@ -49,6 +50,7 @@ const FIELD_LABELS: Record<DocumentField, string> = {
 const FIELD_ORDER: DocumentField[] = [
   "itemName",
   "traceNo",
+  "grade",
   "quantity",
   "labeledWeight",
   "unitPrice",
@@ -91,6 +93,7 @@ function emptyLine(lineNo: number): EditableLine {
     raw: "",
     itemName: null,
     traceNo: null,
+    grade: null,
     quantity: null,
     labeledWeight: null,
     unitPrice: null,
@@ -403,6 +406,7 @@ export function InboundDocumentPanel({
         itemName: line.itemName,
         productId: line.productId,
         traceNo: line.traceNo,
+        grade: line.grade,
         quantity: line.quantity,
         labeledWeight: line.labeledWeight,
         unitPrice: line.unitPrice,
@@ -907,6 +911,7 @@ export function InboundDocumentPanel({
                       <th style={thStyle}>품목</th>
                       <th style={thStyle}>내 상품</th>
                       <th style={thStyle}>이력번호</th>
+                      <th style={thStyle}>등급</th>
                       <th style={thStyle}>중량(kg)</th>
                       <th style={thStyle}>단가</th>
                       <th style={thStyle}>금액</th>
@@ -953,6 +958,16 @@ export function InboundDocumentPanel({
                                 updateLine(line.lineNo, { traceNo: event.target.value || null })
                               }
                               style={cellInput}
+                            />
+                          </td>
+                          <td style={tdStyle}>
+                            <input
+                              value={line.grade ?? ""}
+                              onChange={(event) =>
+                                updateLine(line.lineNo, { grade: event.target.value || null })
+                              }
+                              placeholder="1++"
+                              style={{ ...cellInput, minWidth: "60px" }}
                             />
                           </td>
                           <td style={tdStyle}>

@@ -127,6 +127,19 @@ function lineGapsFor(line: DocumentLine, resolvedProductId: string | null): Gap[
     });
   }
 
+  // 등급은 그 자체로 필수가 아니다 — 이력번호가 있으면 공공조회가 채워준다.
+  // 하지만 둘 다 없으면 품질을 알 길이 아예 없다. 등급은 축산물 가격을 좌우하므로
+  // 그 경우에만 짚는다 (사장님 확정: "필수는 아니고 있으면 받기").
+  if (!line.grade && !line.traceNo) {
+    gaps.push({
+      code: "GRADE_UNKNOWN",
+      level: "RECOMMENDED",
+      source: "FROM_SUPPLIER",
+      label: "등급을 알 수 없습니다 (이력번호도 등급도 없음)",
+      why: "등급은 축산물 값을 좌우합니다. 이력번호가 있으면 공공조회로 채워지지만 둘 다 없으면 확인할 방법이 없습니다.",
+    });
+  }
+
   return gaps;
 }
 

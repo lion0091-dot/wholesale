@@ -16,6 +16,7 @@ import { detectDelimiter, splitLine } from "./import-parser";
 export type DocumentField =
   | "itemName"
   | "traceNo"
+  | "grade"
   | "quantity"
   | "labeledWeight"
   | "unitPrice"
@@ -39,6 +40,8 @@ export interface DocumentLine {
   raw: string;
   itemName: string | null;
   traceNo: string | null;
+  /** 1++, 1+, 1, 2, 3 등. 이력번호가 있으면 공공조회 값이 우선이다. */
+  grade: string | null;
   quantity: number | null;
   labeledWeight: number | null;
   unitPrice: number | null;
@@ -52,6 +55,7 @@ export interface DocumentLine {
  */
 const HEADER_PATTERNS: Array<{ field: DocumentField; patterns: RegExp[] }> = [
   { field: "traceNo", patterns: [/이력/, /개체번호/, /묶음번호/, /trace/i] },
+  { field: "grade", patterns: [/등급/, /육질/, /grade/i] },
   {
     field: "amount",
     patterns: [/공급가/, /금액/, /합계금액/, /매입액/, /amount/i],
@@ -69,6 +73,12 @@ const HEADER_PATTERNS: Array<{ field: DocumentField; patterns: RegExp[] }> = [
 
 /** 합계 줄은 품목이 아니다 — 잘못 넣으면 중량·금액이 두 배가 된다. */
 const TOTAL_ROW_PATTERN = /^(합\s*계|총\s*계|소\s*계|계|total|sum)$/i;
+
+/**
+ * 축산물 등급 표기. 소는 1++·1+·1·2·3, 돼지는 1+·1·2가 쓰인다.
+ * "1++등급", "1+ 등급" 같은 표기도 받는다.
+ */
+const GRADE_PATTERN = /^([123])(\+{1,2})?\s*(등급)?$/;
 
 /** "8.2", "8.2kg", "8,200", "1,234원" 같은 표기를 숫자로. 음수는 받지 않는다. */
 export function parseNumber(value: string): number | null {
@@ -155,6 +165,8 @@ function mapByContent(bodyRows: string[][], existing: ColumnMap): ColumnMap {
       traceHits: values.filter((v) => parseBarcode(v).traceNo !== null).length,
       /** 한글/영문이 섞인 칸인지 (품목명 후보) */
       textHits: values.filter((v) => /[가-힣A-Za-z]/.test(v)).length,
+      /** 등급 표기로 읽히는 칸인지 */
+      gradeHits: values.filter((v) => GRADE_PATTERN.test(v)).length,
       numericRatio: values.length ? numbers.length / values.length : 0,
     };
   });
@@ -172,6 +184,13 @@ function mapByContent(bodyRows: string[][], existing: ColumnMap): ColumnMap {
   claim(
     "traceNo",
     stats.find((s) => s.values.length > 0 && s.traceHits / s.values.length >= 0.6)?.column,
+  );
+
+  // 등급: 대부분의 값이 등급 표기인 칸. 품목명보다 먼저 잡아야 한다 —
+  // "1++"는 글자가 아니지만 품목명 칸이 먼저 가져가면 등급을 놓친다.
+  claim(
+    "grade",
+    stats.find((s) => s.values.length > 0 && s.gradeHits / s.values.length >= 0.6)?.column,
   );
 
   // 품목명: 글자가 가장 많이 섞인 칸.
@@ -297,6 +316,10 @@ export function applyColumnMap(
     // 셀에 바코드 원문이 그대로 들어있는 경우가 있어 한 번 태운다.
     const traceNo = rawTrace ? (parseBarcode(rawTrace).traceNo ?? rawTrace) : null;
     const itemName = pick("itemName") || null;
+    // "1++등급" 같은 표기에서 등급만 남긴다.
+    const rawGrade = pick("grade");
+    const gradeMatch = rawGrade.match(GRADE_PATTERN);
+    const grade = gradeMatch ? `${gradeMatch[1]}${gradeMatch[2] ?? ""}` : rawGrade || null;
     const labeledWeight = parseNumber(pick("labeledWeight"));
     const quantity = parseNumber(pick("quantity"));
     const unitPrice = parseNumber(pick("unitPrice"));
@@ -310,6 +333,7 @@ export function applyColumnMap(
       raw: row.join(" | "),
       itemName,
       traceNo,
+      grade,
       quantity,
       labeledWeight,
       unitPrice,
