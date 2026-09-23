@@ -8,6 +8,7 @@ import {
   type ShippableOrderOption,
 } from "./inbound-scan-view";
 import { InboundImportPanel } from "./inbound-import-panel";
+import { InboundDocumentPanel } from "./inbound-document-panel";
 import { isMtraceConfigured, configuredTraceSources } from "@/lib/livestock/mtrace-client";
 
 /** 이력 조회 기관 표기 — 설정 안내 문구에 쓴다. */
@@ -129,6 +130,8 @@ export default async function InboundPage() {
           이력 조회 가능: {configured.map((source) => SOURCE_LABELS[source] ?? source).join(" · ")}
         </div>
       )}
+
+      <InboundDocumentPanel products={products} />
 
       <InboundImportPanel />
 

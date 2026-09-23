@@ -8,6 +8,12 @@ const nextConfig = {
   outputFileTracingIncludes: {
     "/**": ["./assets/fonts/**", "./node_modules/pdfkit/js/standard-fonts/**"],
   },
+
+  experimental: {
+    // 공급처 명세서를 현장에서 종이로 받아 폰으로 찍어 올리는 경로가 있다.
+    // 요즘 폰 사진은 3~5MB가 예사라 Server Action 기본 한도(1MB)에 걸린다.
+    serverActions: { bodySizeLimit: "8mb" },
+  },
 };
 
 export default nextConfig;
