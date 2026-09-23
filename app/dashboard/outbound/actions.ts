@@ -68,6 +68,7 @@ const SCAN_ERRORS: Record<string, string> = {
   ORDER_NOT_FOUND: "발주서를 찾을 수 없습니다.",
   EMPTY_TRACE_NO: "이력번호를 읽지 못했습니다.",
   INVALID_WEIGHT: "가져올 수 있는 중량이 없습니다.",
+  ALREADY_FINALIZED: "이미 마감(금액 확정)된 발주서입니다. 추가로 나가는 물건은 별도로 처리해주세요.",
 };
 
 async function resolveOutboundScope() {
