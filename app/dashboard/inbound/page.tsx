@@ -8,7 +8,7 @@ import {
   type ShippableOrderOption,
 } from "./inbound-scan-view";
 import { InboundImportPanel } from "./inbound-import-panel";
-import { InboundDocumentPanel } from "./inbound-document-panel";
+import { InboundDocumentPanel, type InboundDocumentRow } from "./inbound-document-panel";
 import { isMtraceConfigured, configuredTraceSources } from "@/lib/livestock/mtrace-client";
 
 /** 이력 조회 기관 표기 — 설정 안내 문구에 쓴다. */
@@ -32,6 +32,7 @@ export default async function InboundPage() {
   let scans: InboundScanRow[] = [];
   let products: ScanProductOption[] = [];
   let shippableOrders: ShippableOrderOption[] = [];
+  let documents: InboundDocumentRow[] = [];
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -64,6 +65,34 @@ export default async function InboundPage() {
         .order("ordered_at", { ascending: true })
         .limit(50),
     ]);
+
+    // 올린 명세서 목록. 저장만 되고 다시 열어볼 곳이 없으면 쓸모가 없어서 함께 내린다.
+    // 줄 수는 행마다 세면 N+1이라 관계 count로 한 번에 받는다.
+    const { data: documentRows } = await supabase
+      .from("inbound_documents")
+      .select(
+        "id, supplier_name, document_no, issued_on, file_name, storage_path, status, total_amount, created_at, inbound_document_lines(count)"
+      )
+      .eq("wholesaler_id", scope.wholesalerId)
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    documents = ((documentRows ?? []) as Array<Record<string, unknown>>).map((row) => {
+      const counts = row.inbound_document_lines as Array<{ count: number }> | null;
+
+      return {
+        id: String(row.id),
+        supplierName: (row.supplier_name as string | null) ?? null,
+        documentNo: (row.document_no as string | null) ?? null,
+        issuedOn: (row.issued_on as string | null) ?? null,
+        fileName: (row.file_name as string | null) ?? null,
+        hasFile: Boolean(row.storage_path),
+        status: String(row.status),
+        totalAmount: row.total_amount === null ? null : Number(row.total_amount),
+        createdAt: String(row.created_at),
+        lineCount: counts?.[0]?.count ?? 0,
+      };
+    });
 
     products = (productRows ?? []) as ScanProductOption[];
 
@@ -131,7 +160,7 @@ export default async function InboundPage() {
         </div>
       )}
 
-      <InboundDocumentPanel products={products} />
+      <InboundDocumentPanel products={products} documents={documents} />
 
       <InboundImportPanel />
 

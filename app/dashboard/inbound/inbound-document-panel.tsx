@@ -13,7 +13,9 @@ import {
 } from "@/lib/livestock/document-parser";
 import { buildGapReport, buildSupplierRequestSummary } from "@/lib/livestock/document-requirements";
 import {
+  deleteInboundDocumentAction,
   extractDocumentTableAction,
+  getDocumentFileUrlAction,
   loadSupplierFormatAction,
   saveInboundDocumentAction,
   type DocumentLineInput,
@@ -63,6 +65,19 @@ const SOURCE_BADGE: Record<string, { text: string; bg: string; fg: string }> = {
  */
 type Mode = "idle" | "review" | "storeOnly";
 
+export interface InboundDocumentRow {
+  id: string;
+  supplierName: string | null;
+  documentNo: string | null;
+  issuedOn: string | null;
+  fileName: string | null;
+  hasFile: boolean;
+  status: string;
+  totalAmount: number | null;
+  createdAt: string;
+  lineCount: number;
+}
+
 interface EditableLine extends DocumentLine {
   productId: string | null;
 }
@@ -91,8 +106,15 @@ function toNumber(value: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-export function InboundDocumentPanel({ products }: { products: ScanProductOption[] }) {
+export function InboundDocumentPanel({
+  products,
+  documents,
+}: {
+  products: ScanProductOption[];
+  documents: InboundDocumentRow[];
+}) {
   const router = useRouter();
+  const [busyDocumentId, setBusyDocumentId] = useState<string | null>(null);
 
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("idle");
@@ -526,6 +548,113 @@ export function InboundDocumentPanel({ products }: { products: ScanProductOption
                 >
                   붙여넣은 내용 읽기
                 </button>
+              </div>
+
+              <div>
+                <label style={labelStyle}>올린 명세서</label>
+                {documents.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
+                    아직 올린 명세서가 없습니다.
+                  </p>
+                ) : (
+                  <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                    {documents.map((document) => (
+                      <li
+                        key={document.id}
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                          gap: "8px",
+                          padding: "8px 0",
+                          borderTop: "1px solid #e2e8f0",
+                          fontSize: "13px",
+                        }}
+                      >
+                        <span style={{ fontWeight: 600, color: "#0f172a" }}>
+                          {document.supplierName ?? "공급처 미입력"}
+                        </span>
+                        <span style={{ color: "#64748b" }}>
+                          {document.issuedOn ?? document.createdAt.slice(0, 10)}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            borderRadius: "5px",
+                            padding: "2px 6px",
+                            color: document.lineCount > 0 ? "#065f46" : "#92400e",
+                            backgroundColor: document.lineCount > 0 ? "#d1fae5" : "#fef3c7",
+                          }}
+                        >
+                          {document.lineCount > 0
+                            ? `품목 ${document.lineCount}줄`
+                            : "원본만 보관 (내용 없음)"}
+                        </span>
+                        {document.documentNo ? (
+                          <span style={{ color: "#94a3b8", fontSize: "12px" }}>
+                            {document.documentNo}
+                          </span>
+                        ) : null}
+
+                        <span style={{ marginLeft: "auto", display: "flex", gap: "8px" }}>
+                          {document.hasFile ? (
+                            <button
+                              type="button"
+                              disabled={busyDocumentId === document.id}
+                              onClick={async () => {
+                                setBusyDocumentId(document.id);
+
+                                const result = await getDocumentFileUrlAction(document.id);
+
+                                setBusyDocumentId(null);
+
+                                if (result.success && result.data) {
+                                  window.open(result.data, "_blank", "noopener");
+                                } else {
+                                  setError(result.error ?? "원본을 열지 못했습니다.");
+                                }
+                              }}
+                              style={linkButton}
+                            >
+                              원본 보기
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: "12px", color: "#94a3b8" }}>원본 없음</span>
+                          )}
+                          <button
+                            type="button"
+                            disabled={busyDocumentId === document.id}
+                            onClick={async () => {
+                              if (
+                                !window.confirm(
+                                  "이 명세서를 지웁니다. 보관된 원본도 함께 사라집니다.",
+                                )
+                              ) {
+                                return;
+                              }
+
+                              setBusyDocumentId(document.id);
+
+                              const result = await deleteInboundDocumentAction(document.id);
+
+                              setBusyDocumentId(null);
+
+                              if (result.success) {
+                                setNotice("명세서를 지웠습니다.");
+                                router.refresh();
+                              } else {
+                                setError(result.error ?? "지우지 못했습니다.");
+                              }
+                            }}
+                            style={{ ...linkButton, color: "#b91c1c" }}
+                          >
+                            삭제
+                          </button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </>
           ) : null}
@@ -977,6 +1106,16 @@ const secondaryButton: React.CSSProperties = {
   fontWeight: 600,
   padding: "9px 14px",
   cursor: "pointer",
+};
+
+const linkButton: React.CSSProperties = {
+  border: "none",
+  background: "none",
+  color: "#1d4ed8",
+  fontSize: "12px",
+  fontWeight: 600,
+  cursor: "pointer",
+  padding: 0,
 };
 
 const thStyle: React.CSSProperties = {
