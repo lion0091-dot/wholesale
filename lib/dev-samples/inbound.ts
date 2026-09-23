@@ -75,6 +75,7 @@ export function buildSampleInboundRow(kind: InboundSampleKey): InboundScanRow {
     purchaseUnitPrice: null,
     purchaseAmount: null,
     purchaseSupplier: null,
+    scannedByName: "샘플",
     isSample: true,
     sampleNote: sample.note,
   };

@@ -56,6 +56,8 @@ export interface InboundScanRow {
   purchaseUnitPrice: number | null;
   purchaseAmount: number | null;
   purchaseSupplier: string | null;
+  /** 여러 직원이 섞여서 스캔할 때 누가 찍었는지 — 없으면(탈퇴 등) null */
+  scannedByName: string | null;
   /**
    * 개발용 미리보기 행 — DB에 없다. 4가지 이력번호 유형이 화면에서 각각 어떻게
    * 보이는지 실제 API·DB 호출 없이 확인하려고 만들었다. 실제 동작은 하지 않으므로
@@ -1087,6 +1089,11 @@ export function InboundScanView({
                 <div key={scan.id} style={rowStyle}>
                   <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
                     <span style={{ fontSize: "11px", color: "#94a3b8" }}>{formatTime(scan.createdAt)}</span>
+                    {scan.scannedByName && (
+                      <span style={{ fontSize: "11px", color: "#475569", fontWeight: 600 }}>
+                        {scan.scannedByName}
+                      </span>
+                    )}
                     <span style={{ fontFamily: "monospace", fontSize: "13px" }}>{scan.traceNo}</span>
                     <span style={{ fontWeight: 600 }}>{scan.productName ?? "상품 미지정"}</span>
                     <span style={{ fontWeight: 600 }}>

@@ -52,7 +52,7 @@ export default async function InboundPage() {
       supabase
         .from("inbound_scans")
         .select(
-          "id, trace_no, product_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_unit_price, purchase_amount, purchase_supplier"
+          "id, trace_no, product_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_unit_price, purchase_amount, purchase_supplier, scanned_by"
         )
         .eq("wholesaler_id", scope.wholesalerId)
         .order("created_at", { ascending: false })
@@ -216,6 +216,32 @@ export default async function InboundPage() {
       })
     );
 
+    // 여러 직원이 같은 화면을 섞어서 쓰므로 누가 찍었는지 목록에서 바로 보여준다
+    // (list_stock_ledger()의 actor_name과 같은 목적). 줄마다 조회하면 N+1이라
+    // scanned_by를 모아 한 번만 읽는다.
+    const scannedByIds = [
+      ...new Set(
+        ((scanRows ?? []) as Array<Record<string, unknown>>)
+          .map((row) => row.scanned_by as string | null)
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
+
+    const scannerNameById = new Map<string, string>();
+
+    if (scannedByIds.length > 0) {
+      const { data: scannerProfiles } = await supabase
+        .from("profiles")
+        .select("id, name")
+        .in("id", scannedByIds);
+
+      ((scannerProfiles ?? []) as Array<{ id: string; name: string | null }>).forEach((profile) => {
+        if (profile.name) {
+          scannerNameById.set(profile.id, profile.name);
+        }
+      });
+    }
+
     scans = ((scanRows ?? []) as Array<Record<string, unknown>>).map((row) => ({
       id: String(row.id),
       traceNo: String(row.trace_no),
@@ -232,6 +258,7 @@ export default async function InboundPage() {
       purchaseUnitPrice: row.purchase_unit_price === null ? null : Number(row.purchase_unit_price),
       purchaseAmount: row.purchase_amount === null ? null : Number(row.purchase_amount),
       purchaseSupplier: (row.purchase_supplier as string | null) ?? null,
+      scannedByName: row.scanned_by ? (scannerNameById.get(String(row.scanned_by)) ?? "직원") : null,
     }));
   }
 
