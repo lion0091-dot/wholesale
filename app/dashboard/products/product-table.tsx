@@ -15,6 +15,13 @@ import {
   setProductArchivedAction,
 } from "./actions";
 import { STOCK_ADJUST_REASONS } from "@/lib/products/stock-adjust-reasons";
+import { DevSamplePanel } from "@/lib/dev-samples/DevSamplePanel";
+import {
+  PRODUCT_SAMPLE_KINDS,
+  buildSampleProduct,
+  type SampleProduct,
+  type ProductSampleKey,
+} from "@/lib/dev-samples/product";
 
 /** get_product_stock_summary() 한 행 — 상품 하나를 채우고 있는 박스들의 요약 */
 export interface StockSummary {
@@ -47,13 +54,8 @@ function freshnessInfo(dateText: string | null): { label: string; days: number; 
   };
 }
 
-/** 개발용 미리보기 상품 — DB에 없다. 화면에만 얹고 실제 동작은 막는다. */
-type SampleProduct = Product & { isSample: true; sampleNote: string };
-
 interface ProductTableProps {
   products: Product[];
-  /** 데모(샘플) 데이터일 때는 변경 버튼을 비활성화한다. */
-  readOnly?: boolean;
   /** user_id → 표시 이름. 등록자/수정자 표시용 (여러 직원이 쓰는 백오피스) */
   memberNames?: Record<string, string>;
   stockSummaries?: Record<string, StockSummary>;
@@ -179,7 +181,6 @@ function categoryIcon(category: string): string {
 
 export function ProductTable({
   products,
-  readOnly = false,
   memberNames = {},
   stockSummaries = {},
   marketPrices = new Map(),
@@ -252,88 +253,13 @@ export function ProductTable({
     });
   };
 
-  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
-
-  /**
-   * 입고 화면(4가지 이력번호 유형)이 확정되면 여기 상품 목록에 실제로 어떻게
-   * 나타나는지 미리 보여준다. 공급자 자체 코드(③④)는 정부 API에 한 번도 안
-   * 걸렸으므로 도축일·등급 정보가 끝까지 비어 있다 — 그게 실제로 다른 점이라
-   * 샘플에도 그대로 반영했다(1단계 설계 결정: 이력번호가 아니라 박스가 재고 단위).
-   */
-  const SAMPLE_KINDS = {
-    NORMAL_INDIVIDUAL: {
-      label: "① 일반 개체 (API 확인됨)",
-      name: "한우 등심 1++",
-      grade: "1++",
-      stock: 8.2,
-      summary: { box_count: 1, oldest_slaughter_date: daysAgo(3), oldest_packing_date: daysAgo(1), grades: "1++" },
-    },
-    NORMAL_GROUP: {
-      label: "② 정부 발행 묶음 (API 확인됨)",
-      name: "한우 갈비 1+",
-      grade: "1+",
-      stock: 15.0,
-      summary: { box_count: 2, oldest_slaughter_date: daysAgo(5), oldest_packing_date: daysAgo(2), grades: "1+" },
-    },
-    SUPPLIER_BUNDLE: {
-      label: "③ 공급자 자체 묶음 (API에 없음)",
-      name: "수입 삼겹살 (공급자 코드)",
-      grade: null,
-      stock: 5.0,
-      // 정부 API에 한 번도 안 걸려서 도축일·등급이 끝까지 비어 있다.
-      summary: { box_count: 1, oldest_slaughter_date: null, oldest_packing_date: null, grades: null },
-    },
-    ORDER_BUNDLE: {
-      label: "④ 고객주문용 묶음 (거의 다 배정됨)",
-      name: "특수 부위 (고객 주문 전용)",
-      grade: null,
-      // 들어오자마자 "주문에 바로 배정"으로 대부분 나가서 남는 재고가 적다.
-      stock: 0.3,
-      summary: { box_count: 1, oldest_slaughter_date: null, oldest_packing_date: null, grades: null },
-    },
-  } satisfies Record<
-    string,
-    {
-      label: string;
-      name: string;
-      grade: string | null;
-      stock: number;
-      summary: Pick<StockSummary, "box_count" | "oldest_slaughter_date" | "oldest_packing_date" | "grades">;
-    }
-  >;
-
-  const addSampleProduct = (kind: keyof typeof SAMPLE_KINDS) => {
-    const sample = SAMPLE_KINDS[kind];
-    const id = `sample-${kind}-${Date.now()}`;
-    const now = new Date().toISOString();
-
-    const product: SampleProduct = {
-      id,
-      wholesaler_id: "sample",
-      name: sample.name,
-      category: "소",
-      subcategory: null,
-      origin: "국내산",
-      grade: sample.grade,
-      base_price: 0,
-      unit: "kg",
-      stock_quantity: sample.stock,
-      is_active: false,
-      description: null,
-      created_at: now,
-      updated_at: now,
-      created_by: null,
-      updated_by: null,
-      archived_at: null,
-      isSample: true,
-      sampleNote: sample.label,
-    };
+  // 개발용 미리보기 — 데이터·빌더는 lib/dev-samples/product.ts에 모아뒀다.
+  // 폐기할 때 그 폴더만 지우고 아래 몇 줄 + 패널 JSX만 지우면 된다.
+  const addSampleProduct = (kind: ProductSampleKey) => {
+    const { product, stockSummary } = buildSampleProduct(kind);
 
     setSampleProducts((prev) => [product, ...prev]);
-    setSampleStockSummaries((prev) => ({
-      ...prev,
-      [id]: { product_id: id, latest_slaughter_date: sample.summary.oldest_slaughter_date, ...sample.summary },
-    }));
+    setSampleStockSummaries((prev) => ({ ...prev, [product.id]: stockSummary }));
   };
 
   const clearSampleProducts = () => {
@@ -342,11 +268,6 @@ export function ProductTable({
   };
 
   const run = async (productId: string, task: () => Promise<{ success: boolean; error?: string }>) => {
-    if (readOnly) {
-      setError("샘플 데이터는 변경할 수 없습니다. 로그인 후 실제 상품을 등록해주세요.");
-      return;
-    }
-
     if (sampleProducts.some((product) => product.id === productId)) {
       setError("샘플 상품입니다 — 실제로 동작하지 않습니다. 목록의 '샘플 삭제'로 지워주세요.");
       return;
@@ -507,41 +428,15 @@ export function ProductTable({
         </select>
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          gap: "8px",
-          flexWrap: "wrap",
-          alignItems: "center",
-          padding: "10px 12px",
-          borderBottom: "1px solid #e2e8f0",
-          backgroundColor: "#fafaf9",
-        }}
-      >
-        <span style={{ fontSize: "12px", fontWeight: 700, color: "#0f172a" }}>개발용 샘플 보기</span>
-        <span style={{ fontSize: "11px", color: "#64748b" }}>
-          입고 4가지 유형이 확정되면 어떻게 보이는지 미리보기 — 실제 API·DB는 안 건드립니다.
-        </span>
-        {(Object.keys(SAMPLE_KINDS) as Array<keyof typeof SAMPLE_KINDS>).map((kind) => (
-          <button
-            key={kind}
-            type="button"
-            onClick={() => addSampleProduct(kind)}
-            style={{ ...chipButtonStyle }}
-          >
-            {SAMPLE_KINDS[kind].label}
-          </button>
-        ))}
-        {sampleProducts.length > 0 && (
-          <button
-            type="button"
-            onClick={clearSampleProducts}
-            style={{ ...chipButtonStyle, borderColor: "#fca5a5", color: "#b91c1c" }}
-          >
-            샘플 전체 지우기
-          </button>
-        )}
-      </div>
+      <DevSamplePanel
+        kinds={PRODUCT_SAMPLE_KINDS}
+        onAdd={addSampleProduct}
+        onClearAll={clearSampleProducts}
+        hasSamples={sampleProducts.length > 0}
+        description="입고 4가지 유형이 확정되면 어떻게 보이는지 미리보기 — 실제 API·DB는 안 건드립니다."
+        buttonStyle={chipButtonStyle}
+        containerStyle={{ borderBottom: "1px solid #e2e8f0" }}
+      />
 
       {error && (
         <div
@@ -617,7 +512,7 @@ export function ProductTable({
                                 보관됨
                               </span>
                             )}
-                            {(readOnly || Boolean((product as SampleProduct).isSample)) && <SampleBadge />}
+                            {Boolean((product as SampleProduct).isSample) && <SampleBadge />}
                           </div>
                           <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
                             {product.category}
@@ -850,7 +745,7 @@ export function ProductTable({
                       <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>
                         {product.name}
                       </div>
-                      {(readOnly || Boolean((product as SampleProduct).isSample)) && <SampleBadge />}
+                      {Boolean((product as SampleProduct).isSample) && <SampleBadge />}
                     </div>
                     <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
                       {product.category}

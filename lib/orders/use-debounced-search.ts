@@ -53,19 +53,29 @@ export function useDebouncedSearch<T>(
     setLoading(true);
 
     const timer = setTimeout(() => {
-      void searchFnRef.current(trimmed).then((result) => {
-        if (thisRequestId !== requestId.current) return;
+      // searchFn이 reject하면(네트워크 오류 등) .catch() 없이는 setLoading(false)에
+      // 도달하지 못해 로딩 상태에 갇힌다(2026-09-21 code-review 지적, 실버그).
+      void searchFnRef.current(trimmed)
+        .then((result) => {
+          if (thisRequestId !== requestId.current) return;
 
-        setLoading(false);
+          setLoading(false);
 
-        if (result.success && result.data) {
-          setResults(result.data.entries);
-          setError(null);
-        } else {
+          if (result.success && result.data) {
+            setResults(result.data.entries);
+            setError(null);
+          } else {
+            setResults([]);
+            setError(result.error ?? "검색에 실패했습니다.");
+          }
+        })
+        .catch((error: unknown) => {
+          if (thisRequestId !== requestId.current) return;
+
+          setLoading(false);
           setResults([]);
-          setError(result.error ?? "검색에 실패했습니다.");
-        }
-      });
+          setError(error instanceof Error ? error.message : "검색에 실패했습니다.");
+        });
     }, debounceMs);
 
     return () => clearTimeout(timer);

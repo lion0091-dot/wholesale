@@ -47,36 +47,49 @@ export function useOrderHistoryPagination<T, TExtra = unknown>(
     setRangeLoading(true);
     setErrorMessage(null);
 
-    const result = await fetchPage(nextRangeDays, 0);
-    setRangeLoading(false);
+    // fetchPage가 reject(네트워크 오류 등)하면 try/catch 없이는 아래 setRangeLoading(false)에
+    // 영영 도달하지 못해 로딩 상태에 갇힌다(2026-09-21 code-review 지적, 실버그).
+    try {
+      const result = await fetchPage(nextRangeDays, 0);
 
-    if (!result.success || !result.data) {
-      setErrorMessage(result.error ?? "조회에 실패했습니다. 잠시 후 다시 시도해주세요.");
-      return;
+      if (!result.success || !result.data) {
+        setErrorMessage(result.error ?? "조회에 실패했습니다. 잠시 후 다시 시도해주세요.");
+        return;
+      }
+
+      setRangeDays(nextRangeDays);
+      setEntries(result.data.entries);
+      setTotalCount(result.data.totalCount);
+      setHasMore(result.data.hasMore);
+      onPageLoaded?.(result.data, nextRangeDays);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "조회에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setRangeLoading(false);
     }
-
-    setRangeDays(nextRangeDays);
-    setEntries(result.data.entries);
-    setTotalCount(result.data.totalCount);
-    setHasMore(result.data.hasMore);
-    onPageLoaded?.(result.data, nextRangeDays);
   };
 
   const loadMore = async () => {
     if (isBusy) return;
 
     setMoreLoading(true);
-    const result = await fetchPage(rangeDays, entries.length);
-    setMoreLoading(false);
 
-    if (!result.success || !result.data) {
-      setErrorMessage(result.error ?? "조회에 실패했습니다. 잠시 후 다시 시도해주세요.");
-      return;
+    try {
+      const result = await fetchPage(rangeDays, entries.length);
+
+      if (!result.success || !result.data) {
+        setErrorMessage(result.error ?? "조회에 실패했습니다. 잠시 후 다시 시도해주세요.");
+        return;
+      }
+
+      setEntries((prev) => [...prev, ...result.data!.entries]);
+      setHasMore(result.data.hasMore);
+      onPageLoaded?.(result.data, rangeDays);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "조회에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setMoreLoading(false);
     }
-
-    setEntries((prev) => [...prev, ...result.data!.entries]);
-    setHasMore(result.data.hasMore);
-    onPageLoaded?.(result.data, rangeDays);
   };
 
   return {

@@ -13,7 +13,7 @@ import {
 import { ORDER_HISTORY_RANGE_OPTIONS } from "@/lib/orders/history-range";
 import type { OrderRow } from "@/lib/orders/order-row";
 import { useDebouncedSearch } from "@/lib/orders/use-debounced-search";
-import { SampleBadge } from "@/components/sample-badge";
+import { useOrderHistoryPagination } from "@/lib/orders/use-order-history-pagination";
 import { getHistoricalOrdersAction, searchHistoricalOrdersAction } from "./actions";
 import type { OrderStatus } from "@/types/database";
 
@@ -71,8 +71,6 @@ interface OrderBoardProps {
   initialHistoryHasMore: boolean;
   /** 이 공급사의 비즈뿌리오 연동 여부 (미연동 시 "미발송(연동 필요)"으로 표기) */
   isLiveChannel: boolean;
-  /** 샘플(데모) 발주서 여부 — 각 행/카드에 "샘플" 배지를 붙인다. */
-  isDemo?: boolean;
 }
 
 export function OrderBoard({
@@ -82,7 +80,6 @@ export function OrderBoard({
   initialHistoryTotalCount,
   initialHistoryHasMore,
   isLiveChannel,
-  isDemo = false,
 }: OrderBoardProps) {
   // 진행중과 완료·취소는 데이터 로딩 방식 자체가 다르므로(진행중=항상 전체,
   // 완료·취소=기간 제한+페이지네이션) 하나의 목록으로 섞지 않고 탭으로 분리한다.
@@ -91,25 +88,34 @@ export function OrderBoard({
   const filterScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  const [historicalOrders, setHistoricalOrders] = useState(initialHistoricalOrders);
-  const [historyRangeDays, setHistoryRangeDays] = useState<number | null>(initialHistoryRangeDays);
-  const [historyTotalCount, setHistoryTotalCount] = useState(initialHistoryTotalCount);
-  const [historyHasMore, setHistoryHasMore] = useState(initialHistoryHasMore);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  // 구간(30일/3개월/전체) + 더보기 — 발주이력 대상찾기·미니샵 발주내역과 같은 공용
+  // 훅을 쓴다(2026-09-21 code-review 지적: 이 화면만 세 번째 복사본으로 남아있었음).
+  const {
+    entries: historicalOrders,
+    rangeDays: historyRangeDays,
+    totalCount: historyTotalCount,
+    hasMore: historyHasMore,
+    rangeLoading: historyLoading,
+    moreLoading: historyLoadingMore,
+    errorMessage: historyErrorMessage,
+    changeRange: handleRangeChange,
+    loadMore: handleLoadMoreHistory,
+  } = useOrderHistoryPagination<OrderRow>(
+    { entries: initialHistoricalOrders, totalCount: initialHistoryTotalCount, hasMore: initialHistoryHasMore },
+    initialHistoryRangeDays,
+    getHistoricalOrdersAction
+  );
 
   // 완료·취소 탭 검색 — 조회 구간(30일/3개월)에 갇히면 예전 발주를 못 찾으므로
-  // 전체 기간을 서버에서 재조회한다. 데모는 실제 DB가 없어 서버 검색을 탈 수
-  // 없으므로 그럴 땐 검색을 호출하지 않고 빈 결과로 응답해 클라이언트 필터로
-  // 대체한다(데이터 양이 적어 성능 문제 없음). keyword는 진행중 탭의 클라이언트
-  // 필터에도 그대로 쓰이므로 group과 무관하게 하나의 입력창을 공유한다.
+  // 전체 기간을 서버에서 재조회한다. keyword는 진행중 탭의 클라이언트 필터에도
+  // 그대로 쓰이므로 group과 무관하게 하나의 입력창을 공유한다.
   const {
     keyword,
     setKeyword,
     results: historySearchResults,
     loading: historySearchLoading,
   } = useDebouncedSearch<OrderRow>(async (trimmed) => {
-    if (group !== "historical" || isDemo) {
+    if (group !== "historical") {
       return { success: true, data: { entries: [] } };
     }
 
@@ -117,7 +123,7 @@ export function OrderBoard({
   });
 
   const normalizedKeyword = keyword.trim().toLowerCase();
-  const isHistorySearch = group === "historical" && normalizedKeyword.length > 0 && !isDemo;
+  const isHistorySearch = group === "historical" && normalizedKeyword.length > 0;
 
   const filters = group === "active" ? ACTIVE_STATUS_FILTERS : HISTORICAL_STATUS_FILTERS;
 
@@ -149,39 +155,8 @@ export function OrderBoard({
     return () => window.removeEventListener("resize", updateFilterScrollFade);
   }, [orders]);
 
-  const handleRangeChange = (days: number | null) => {
-    if (days === historyRangeDays) return;
-
-    setHistoryLoading(true);
-
-    void getHistoricalOrdersAction(days, 0).then((result) => {
-      if (result.success) {
-        setHistoricalOrders(result.data?.entries ?? []);
-        setHistoryTotalCount(result.data?.totalCount ?? 0);
-        setHistoryHasMore(result.data?.hasMore ?? false);
-        setHistoryRangeDays(days);
-      }
-
-      setHistoryLoading(false);
-    });
-  };
-
-  const handleLoadMoreHistory = () => {
-    setHistoryLoadingMore(true);
-
-    void getHistoricalOrdersAction(historyRangeDays, historicalOrders.length).then((result) => {
-      if (result.success) {
-        setHistoricalOrders((prev) => [...prev, ...(result.data?.entries ?? [])]);
-        setHistoryTotalCount(result.data?.totalCount ?? historyTotalCount);
-        setHistoryHasMore(result.data?.hasMore ?? false);
-      }
-
-      setHistoryLoadingMore(false);
-    });
-  };
-
   // isHistorySearch가 참이면 orders는 이미 서버에서 키워드로 걸러진 검색 결과라
-  // 다시 텍스트로 거를 필요 없다. 진행중 탭과 데모의 완료·취소 탭만 클라이언트에서 거른다.
+  // 다시 텍스트로 거를 필요 없다. 진행중 탭만 클라이언트에서 거른다.
   const keywordFilteredOrders =
     !isHistorySearch && normalizedKeyword
       ? orders.filter(
@@ -414,7 +389,7 @@ export function OrderBoard({
                 key={option.label}
                 type="button"
                 onClick={() => handleRangeChange(option.days)}
-                disabled={isDemo || (historyLoading && !isSelected)}
+                disabled={historyLoading && !isSelected}
                 style={{
                   fontSize: "12px",
                   fontWeight: isSelected ? 700 : 500,
@@ -423,7 +398,7 @@ export function OrderBoard({
                   border: isSelected ? "1px solid #0f172a" : "1px solid #cbd5e1",
                   backgroundColor: isSelected ? "#0f172a" : "#ffffff",
                   color: isSelected ? "#ffffff" : "#475569",
-                  cursor: isDemo ? "not-allowed" : "pointer",
+                  cursor: "pointer",
                 }}
               >
                 {option.label}
@@ -432,6 +407,9 @@ export function OrderBoard({
           })}
           {historyLoading && (
             <span style={{ fontSize: "12px", color: "#94a3b8" }}>불러오는 중...</span>
+          )}
+          {historyErrorMessage && (
+            <span style={{ fontSize: "12px", color: "#b91c1c" }}>{historyErrorMessage}</span>
           )}
 
           <span style={{ fontSize: "12px", color: "#94a3b8", marginLeft: "auto" }}>
@@ -491,7 +469,6 @@ export function OrderBoard({
                       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                         <div style={{ fontWeight: 700 }}>{order.orderNumber}</div>
                         <CopyOrderNumberButton value={order.orderNumber} />
-                        {isDemo && <SampleBadge />}
                       </div>
                       <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
                         {formatOrderedAt(order.orderedAt)}
@@ -607,7 +584,6 @@ export function OrderBoard({
                       {order.orderNumber}
                     </span>
                     <CopyOrderNumberButton value={order.orderNumber} />
-                    {isDemo && <SampleBadge />}
                   </div>
                   <span style={{ fontSize: "11px", color: "#94a3b8" }}>
                     {formatOrderedAt(order.orderedAt)}

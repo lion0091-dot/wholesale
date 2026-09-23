@@ -11,6 +11,8 @@ import {
   type ScanType,
 } from "./actions";
 import { parseBarcode } from "@/lib/livestock/barcode-parser";
+import { DevSamplePanel } from "@/lib/dev-samples/DevSamplePanel";
+import { INBOUND_SAMPLE_KINDS, buildSampleInboundRow, type InboundSampleKey } from "@/lib/dev-samples/inbound";
 import {
   calcPurchaseAmount,
   evaluateWeightVariance,
@@ -572,80 +574,10 @@ export function InboundScanView({ initialScans, products, shippableOrders }: Pro
     router.refresh();
   };
 
-  /**
-   * 개발용 미리보기 — 4가지 이력번호 유형이 화면에서 어떻게 보이는지 실제 API·DB
-   * 호출 없이 확인한다. 로컬 상태에만 얹으므로 새로고침하면 사라진다.
-   */
-  const SAMPLE_KINDS = {
-    NORMAL_INDIVIDUAL: {
-      label: "① 일반 개체 (API 확인됨)",
-      traceNo: "002191840078",
-      weight: 8.2,
-      status: "NORMAL" as const,
-      productName: "한우 등심 1++",
-      note: "정부 이력제 API로 바로 조회된 정상 케이스입니다.",
-    },
-    NORMAL_GROUP: {
-      label: "② 정부 발행 묶음 (API 확인됨)",
-      traceNo: "L01234567890123",
-      weight: 15.0,
-      status: "NORMAL" as const,
-      productName: "한우 갈비 1+",
-      note: "여러 마리를 묶은 정부 발행 묶음번호 — 개체번호와 같은 API로 조회됩니다.",
-    },
-    SUPPLIER_BUNDLE: {
-      label: "③ 공급자 자체 묶음 (API에 없음)",
-      traceNo: "SUPP-LOT-0913-A",
-      weight: 5.0,
-      status: "EXCEPTION" as const,
-      productName: null,
-      note: "정부 API에 없는 공급자 자체 코드 — 상품을 직접 지정해야 재고에 반영됩니다.",
-    },
-    ORDER_BUNDLE: {
-      label: "④ 고객주문용 공급자 묶음 (API에 없음, 주문 배정 대상)",
-      traceNo: "SUPP-ORD-2603-01",
-      weight: 3.0,
-      status: "EXCEPTION" as const,
-      productName: null,
-      note: "고객 주문 때문에 공급자가 특별히 만들어 온 묶음 — \"주문에 바로 배정\" 기능의 대상입니다.",
-    },
-  } satisfies Record<
-    string,
-    {
-      label: string;
-      traceNo: string;
-      weight: number;
-      status: InboundScanRow["status"];
-      productName: string | null;
-      note: string;
-    }
-  >;
-
-  const addSampleRow = (kind: keyof typeof SAMPLE_KINDS) => {
-    const sample = SAMPLE_KINDS[kind];
-
-    setRows((prev) => [
-      {
-        id: `sample-${kind}-${Date.now()}`,
-        traceNo: sample.traceNo,
-        productId: null,
-        productName: sample.productName,
-        weight: sample.weight,
-        unit: "kg",
-        scanType: "MANUAL",
-        status: sample.status,
-        remainingWeight: sample.status === "NORMAL" ? sample.weight : 0,
-        createdAt: new Date().toISOString(),
-        labeledWeight: null,
-        weightVariance: null,
-        purchaseUnitPrice: null,
-        purchaseAmount: null,
-        purchaseSupplier: null,
-        isSample: true,
-        sampleNote: sample.note,
-      },
-      ...prev,
-    ]);
+  // 개발용 미리보기 — 데이터·빌더는 lib/dev-samples/inbound.ts에 모아뒀다.
+  // 폐기할 때 그 폴더만 지우고 아래 3줄 + 패널 JSX만 지우면 된다.
+  const addSampleRow = (kind: InboundSampleKey) => {
+    setRows((prev) => [buildSampleInboundRow(kind), ...prev]);
   };
 
   const removeSampleRow = (id: string) => {
@@ -912,33 +844,16 @@ export function InboundScanView({ initialScans, products, shippableOrders }: Pro
         </section>
       )}
 
-      <section style={{ ...panelStyle, backgroundColor: "#fafaf9" }}>
-        <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "6px" }}>
-          개발용 샘플 보기
-        </div>
-        <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 10px" }}>
-          실제 API·DB를 안 건드리고 화면에만 미리보기 행을 띄웁니다 — 검토용이며 새로고침하면
-          사라집니다.
-        </p>
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          {(Object.keys(SAMPLE_KINDS) as Array<keyof typeof SAMPLE_KINDS>).map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              onClick={() => addSampleRow(kind)}
-              style={{ ...buttonStyle, fontSize: "12px" }}
-            >
-              {SAMPLE_KINDS[kind].label}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={clearSampleRows}
-            style={{ ...buttonStyle, fontSize: "12px", borderColor: "#fca5a5", color: "#b91c1c" }}
-          >
-            샘플 전체 지우기
-          </button>
-        </div>
+      <section style={panelStyle}>
+        <DevSamplePanel
+          kinds={INBOUND_SAMPLE_KINDS}
+          onAdd={addSampleRow}
+          onClearAll={clearSampleRows}
+          hasSamples={rows.some((row) => row.isSample)}
+          description="실제 API·DB를 안 건드리고 화면에만 미리보기 행을 띄웁니다 — 검토용이며 새로고침하면 사라집니다."
+          buttonStyle={{ ...buttonStyle, fontSize: "12px" }}
+          containerStyle={{ padding: 0 }}
+        />
       </section>
 
       <section style={panelStyle}>

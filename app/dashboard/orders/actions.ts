@@ -453,9 +453,13 @@ export async function searchHistoricalOrdersAction(
       merged.set(row.id, row);
     }
 
+    // 발주번호 일치와 거래처명 일치를 각각 이미 ORDER_HISTORY_SEARCH_LIMIT개로 캡한
+    // 상태라 합친 결과를 여기서 다시 자르지 않는다 — 합친 뒤 자르면 거래처명 일치가
+    // 많을 때 발주번호로 정확히 찾은 진짜 결과가 뒤로 밀려 조용히 빠질 수 있다
+    // (app/dashboard/history/orders/actions.ts의 searchOrdersForHistoryAction과 동일한
+    // 버그였고 2026-09-21에 그쪽만 먼저 고쳐졌던 것을 여기도 맞춤, 2026-09-23).
     const entries = Array.from(merged.values())
       .sort((a, b) => (a.ordered_at < b.ordered_at ? 1 : -1))
-      .slice(0, ORDER_HISTORY_SEARCH_LIMIT)
       .map(mapOrderJoinRow);
 
     return { success: true, data: { entries } };
