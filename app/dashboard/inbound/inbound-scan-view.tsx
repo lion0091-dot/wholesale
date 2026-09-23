@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { composeProductDisplayName } from "@/lib/products/display-name";
 import {
@@ -109,6 +109,12 @@ interface Props {
   scanRequirements: Record<string, ScanRequirementReport>;
   products: ScanProductOption[];
   shippableOrders: ShippableOrderOption[];
+  /**
+   * 대기중(PENDING) 명세서 줄에 적힌 이력번호 전체(대문자). "박스 나눠서 입고"에서
+   * 줄마다 쓴 번호가 여기 없으면 명세서와 대조되지 않는다는 경고 배너를 띄운다.
+   * 명세서 자체가 없으면(빈 배열) 대조할 게 없으니 배너를 안 띄운다.
+   */
+  pendingDocumentTraceNos: string[];
 }
 
 /** 오픈 직전 Vercel에서 이 값을 지우거나 false로 바꾸면 샘플 패널이 전부 사라진다. */
@@ -208,8 +214,11 @@ export function InboundScanView({
   products,
   shippableOrders,
   scanRequirements,
+  pendingDocumentTraceNos,
 }: Props) {
   const router = useRouter();
+
+  const documentTraceNoSet = useMemo(() => new Set(pendingDocumentTraceNos), [pendingDocumentTraceNos]);
 
   // 상품 확인 필요/이력 확인 필요 행 중 "특정 주문으로 바로 보내기" 패널을 펼친 스캔 id.
   const [orderTargetScanId, setOrderTargetScanId] = useState<string | null>(null);
@@ -987,6 +996,43 @@ export function InboundScanView({
             공급자가 서로 다른 상품을 한 박스에 코드 하나로 묶어 보낸 경우입니다. 코드는 한 번만
             입력하고, 박스를 열어 실제로 들어있는 상품마다 무게를 나눠 입력해주세요.
           </p>
+
+          {(() => {
+            // 대기중 명세서가 있을 때만 대조한다 — 명세서 자체가 없는 공급처는 대조할
+            // 대상이 없으니 경고를 안 띄운다(사장님 확정).
+            if (documentTraceNoSet.size === 0) return null;
+
+            const boxCode = (parseBarcode(splitTraceNo).traceNo ?? splitTraceNo.trim()).toUpperCase();
+
+            const unmatchedRowNumbers = splitRows
+              .map((row, index) => {
+                if (!row.productId || !(Number.parseFloat(row.weight) > 0)) return null;
+
+                const rowParsed = parseBarcode(row.traceNo ?? "");
+                const effectiveTrace = (
+                  (rowParsed.traceNo ?? (row.traceNo ?? "").trim()) || boxCode
+                ).toUpperCase();
+
+                return effectiveTrace && !documentTraceNoSet.has(effectiveTrace) ? index + 1 : null;
+              })
+              .filter((value): value is number => value !== null);
+
+            if (unmatchedRowNumbers.length === 0) return null;
+
+            return (
+              <p
+                style={{
+                  ...messageStyle,
+                  backgroundColor: "#fffbeb",
+                  color: "#92400e",
+                  marginBottom: "10px",
+                }}
+              >
+                ⚠ {unmatchedRowNumbers.join(", ")}번 줄의 이력번호가 업로드된 명세서에서 확인되지
+                않았습니다. 실제로 맞는 번호인지 다시 확인해주세요.
+              </p>
+            );
+          })()}
 
           <input
             value={splitTraceNo}

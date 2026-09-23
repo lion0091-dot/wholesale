@@ -39,6 +39,10 @@ export default async function InboundPage() {
   let shippableOrders: ShippableOrderOption[] = [];
   let documents: InboundDocumentRow[] = [];
   let scanRequirements: Record<string, ScanRequirementReport> = {};
+  // "박스 나눠서 입고"에서 줄마다 적은(또는 박스 코드를 그대로 재사용한) 이력번호가
+  // 올려둔 명세서에 실제로 있는 번호인지 대조하는 배너용 — 대기중(PENDING) 명세서
+  // 줄에 적힌 번호만 모은다. 명세서 자체가 없으면 대조할 게 없으니 조용히 넘어간다.
+  let pendingDocumentTraceNos: string[] = [];
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -48,29 +52,43 @@ export default async function InboundPage() {
     // 주문 목록은 출고 스캔 화면(app/dashboard/outbound/page.tsx)과 같은 기준
     // (확정·배송중만)이다 — "이 박스 특정 주문으로 바로 보내기"가 결국 출고 스캔을
     // 대신 호출하므로 같은 상태만 배정 대상이어야 한다.
-    const [{ data: scanRows }, { data: productRows }, { data: orderRows }] = await Promise.all([
-      supabase
-        .from("inbound_scans")
-        .select(
-          "id, trace_no, product_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_unit_price, purchase_amount, purchase_supplier, scanned_by"
-        )
-        .eq("wholesaler_id", scope.wholesalerId)
-        .order("created_at", { ascending: false })
-        .limit(100),
-      supabase
-        .from("products")
-        .select("id, name, category, subcategory, grade, origin, unit")
-        .eq("wholesaler_id", scope.wholesalerId)
-        .eq("is_active", true)
-        .order("name", { ascending: true }),
-      supabase
-        .from("orders")
-        .select("id, order_number, retailers ( restaurant_name )")
-        .eq("wholesaler_id", scope.wholesalerId)
-        .in("status", ["awaiting_stock", "confirmed", "shipping"])
-        .order("ordered_at", { ascending: true })
-        .limit(50),
-    ]);
+    const [{ data: scanRows }, { data: productRows }, { data: orderRows }, { data: pendingDocLineRows }] =
+      await Promise.all([
+        supabase
+          .from("inbound_scans")
+          .select(
+            "id, trace_no, product_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_unit_price, purchase_amount, purchase_supplier, scanned_by"
+          )
+          .eq("wholesaler_id", scope.wholesalerId)
+          .order("created_at", { ascending: false })
+          .limit(100),
+        supabase
+          .from("products")
+          .select("id, name, category, subcategory, grade, origin, unit")
+          .eq("wholesaler_id", scope.wholesalerId)
+          .eq("is_active", true)
+          .order("name", { ascending: true }),
+        supabase
+          .from("orders")
+          .select("id, order_number, retailers ( restaurant_name )")
+          .eq("wholesaler_id", scope.wholesalerId)
+          .in("status", ["awaiting_stock", "confirmed", "shipping"])
+          .order("ordered_at", { ascending: true })
+          .limit(50),
+        supabase
+          .from("inbound_document_lines")
+          .select("trace_no, inbound_documents!inner(status)")
+          .eq("inbound_documents.status", "PENDING")
+          .not("trace_no", "is", null),
+      ]);
+
+    pendingDocumentTraceNos = [
+      ...new Set(
+        ((pendingDocLineRows ?? []) as Array<{ trace_no: string | null }>)
+          .map((row) => (row.trace_no ?? "").trim().toUpperCase())
+          .filter((value) => value.length > 0)
+      ),
+    ];
 
     // 올린 명세서 목록. 저장만 되고 다시 열어볼 곳이 없으면 쓸모가 없어서 함께 내린다.
     // 줄 수는 행마다 세면 N+1이라 관계 count로 한 번에 받는다.
@@ -305,6 +323,7 @@ export default async function InboundPage() {
         products={products}
         shippableOrders={shippableOrders}
         scanRequirements={scanRequirements}
+        pendingDocumentTraceNos={pendingDocumentTraceNos}
       />
     </div>
   );
