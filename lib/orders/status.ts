@@ -85,9 +85,21 @@ export function isSupplierAssignableStatus(status: OrderStatus): boolean {
   return !RETAILER_ONLY_STATUSES.includes(status);
 }
 
-/** 바이어가 취소 요청을 넣을 수 있는 상태 (출고 이후에는 불가) */
+/**
+ * 바이어가 취소 요청을 넣을 수 있는 상태.
+ *
+ * ORDER_STATUS_TRANSITIONS[status]에 'cancel_requested'가 있는 상태와는 다르다 —
+ * 그 표는 pending/awaiting_stock/confirmed 셋 다 포함하지만, 실제로 취소 요청을
+ * 써주는 곳(requestOrderCancelAction의 UPDATE 조건, DB 보안 트리거
+ * enforce_order_cancel_authority)은 pending/confirmed 둘만 허용한다.
+ * awaiting_stock까지 여기 포함시키면 버튼은 뜨는데 눌러도 항상 실패하는
+ * 불일치가 생긴다(감사 결과 발견, 2026-09-23) — 그래서 실제 허용 상태를
+ * 별도로 고정해서 화면과 백엔드를 맞춘다.
+ */
+const RETAILER_CANCELABLE_STATUSES: OrderStatus[] = ["pending", "confirmed"];
+
 export function canRequestCancel(status: OrderStatus): boolean {
-  return ORDER_STATUS_TRANSITIONS[status].includes("cancel_requested");
+  return RETAILER_CANCELABLE_STATUSES.includes(status);
 }
 
 export interface StatusActionConfig {
