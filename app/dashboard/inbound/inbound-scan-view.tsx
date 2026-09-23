@@ -27,6 +27,7 @@ export interface ScanProductOption {
   category: string;
   subcategory: string | null;
   grade: string | null;
+  origin: string | null;
   unit: string;
 }
 

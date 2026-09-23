@@ -16,6 +16,7 @@ function line(overrides: Partial<DocumentLine> = {}): DocumentLine {
     itemName: "한우 등심",
     traceNo: "002191840078",
     grade: "1++",
+    origin: "국내산",
     quantity: null,
     labeledWeight: 8.2,
     unitPrice: 52000,
@@ -25,7 +26,7 @@ function line(overrides: Partial<DocumentLine> = {}): DocumentLine {
 }
 
 const header = { supplierName: "대성축산", issuedOn: "2026-09-23", totalAmount: null };
-const linked = [{ lineNo: 1, productId: "prod-1" }];
+const linked = [{ lineNo: 1, productId: "prod-1", productOrigin: "국내산" }];
 
 let failed = 0;
 
@@ -193,6 +194,54 @@ function check(label: string, condition: boolean, detail = "") {
     JSON.stringify(gap),
   );
   check("등급은 필수가 아니므로 미완성 줄로 세지 않음", neither.incompleteLineCount === 0);
+}
+
+// 12) 원산지 — 필수지만 알 수 있는 경로가 셋이라 셋 다 막혔을 때만 걸린다.
+{
+  const viaTrace = buildGapReport(header, [line({ origin: null })], linked);
+  const viaProduct = buildGapReport(header, [line({ origin: null, traceNo: null })], linked);
+  const nothing = buildGapReport(header, [line({ origin: null, traceNo: null })], []);
+
+  check(
+    "원산지 없어도 이력번호가 있으면 안 짚음",
+    !viaTrace.lineGaps[0]?.gaps.some((g) => g.code === "ORIGIN_UNKNOWN"),
+  );
+  check(
+    "이력번호 없어도 상품이 연결됐으면 안 짚음",
+    !viaProduct.lineGaps[0]?.gaps.some((g) => g.code === "ORIGIN_UNKNOWN"),
+  );
+
+  const gap = nothing.lineGaps[0]?.gaps.find((g) => g.code === "ORIGIN_UNKNOWN");
+
+  check(
+    "셋 다 없으면 필수 누락 + 공급처에 요청",
+    gap?.level === "REQUIRED" && gap?.source === "FROM_SUPPLIER",
+    JSON.stringify(gap),
+  );
+}
+
+// 13) 서류 원산지와 고른 상품의 원산지가 다르면 상품을 잘못 고른 것이다.
+//     그대로 두면 수입육이 국내산 상품 재고로 들어가 원산지 허위표시가 된다.
+{
+  const mismatch = buildGapReport(header, [line({ origin: "미국산" })], linked);
+  const gap = mismatch.lineGaps[0]?.gaps.find((g) => g.code === "ORIGIN_MISMATCH");
+
+  check(
+    "원산지 불일치 → 필수 + 공급사가 상품을 다시 고름",
+    gap?.level === "REQUIRED" && gap?.source === "FROM_STAFF",
+    JSON.stringify(gap),
+  );
+  check(
+    "불일치 문구에 양쪽 원산지가 모두 보임",
+    Boolean(gap && gap.label.includes("미국산") && gap.label.includes("국내산")),
+    gap?.label,
+  );
+  check(
+    "원산지가 같으면 조용함",
+    !buildGapReport(header, [line()], linked).lineGaps.some((l) =>
+      l.gaps.some((g) => g.code === "ORIGIN_MISMATCH"),
+    ),
+  );
 }
 
 if (failed > 0) {

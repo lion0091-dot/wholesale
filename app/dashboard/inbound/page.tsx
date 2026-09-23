@@ -53,7 +53,7 @@ export default async function InboundPage() {
         .limit(100),
       supabase
         .from("products")
-        .select("id, name, category, subcategory, grade, unit")
+        .select("id, name, category, subcategory, grade, origin, unit")
         .eq("wholesaler_id", scope.wholesalerId)
         .eq("is_active", true)
         .order("name", { ascending: true }),

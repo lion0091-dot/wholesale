@@ -17,6 +17,7 @@ export type DocumentField =
   | "itemName"
   | "traceNo"
   | "grade"
+  | "origin"
   | "quantity"
   | "labeledWeight"
   | "unitPrice"
@@ -42,6 +43,8 @@ export interface DocumentLine {
   traceNo: string | null;
   /** 1++, 1+, 1, 2, 3 등. 이력번호가 있으면 공공조회 값이 우선이다. */
   grade: string | null;
+  /** 국내산 / 미국산 등. 원산지 허위표시로 이어질 수 있어 필수로 본다. */
+  origin: string | null;
   quantity: number | null;
   labeledWeight: number | null;
   unitPrice: number | null;
@@ -56,6 +59,7 @@ export interface DocumentLine {
 const HEADER_PATTERNS: Array<{ field: DocumentField; patterns: RegExp[] }> = [
   { field: "traceNo", patterns: [/이력/, /개체번호/, /묶음번호/, /trace/i] },
   { field: "grade", patterns: [/등급/, /육질/, /grade/i] },
+  { field: "origin", patterns: [/원산지/, /산지/, /origin/i] },
   {
     field: "amount",
     patterns: [/공급가/, /금액/, /합계금액/, /매입액/, /amount/i],
@@ -79,6 +83,29 @@ const TOTAL_ROW_PATTERN = /^(합\s*계|총\s*계|소\s*계|계|total|sum)$/i;
  * "1++등급", "1+ 등급" 같은 표기도 받는다.
  */
 const GRADE_PATTERN = /^([123])(\+{1,2})?\s*(등급)?$/;
+
+/**
+ * 원산지 표기. **칸 전체가 원산지일 때만** 인정한다 — "한우"는 품목명에도
+ * 흔히 나오므로 부분일치를 쓰면 품목명 칸을 원산지로 잘못 잡는다.
+ */
+const DOMESTIC_ORIGIN = /^(국내산|국산|한우|한돈|국내)$/;
+const IMPORT_ORIGIN =
+  /^(수입|수입산|미국|미국산|호주|호주산|캐나다|캐나다산|뉴질랜드|뉴질랜드산|스페인|스페인산|덴마크|덴마크산|네덜란드|네덜란드산|칠레|칠레산|멕시코|멕시코산|브라질|브라질산|아르헨티나|아르헨티나산|프랑스|프랑스산|독일|독일산|오스트리아|오스트리아산|헝가리|헝가리산|폴란드|폴란드산)$/;
+
+function looksLikeOrigin(value: string): boolean {
+  const text = value.trim();
+
+  return DOMESTIC_ORIGIN.test(text) || IMPORT_ORIGIN.test(text);
+}
+
+/** 같은 뜻의 여러 표기를 하나로 모은다 — 국산/한우/한돈은 전부 국내산이다. */
+export function normalizeOrigin(value: string): string {
+  const text = value.trim();
+
+  if (DOMESTIC_ORIGIN.test(text)) return "국내산";
+
+  return text;
+}
 
 /** "8.2", "8.2kg", "8,200", "1,234원" 같은 표기를 숫자로. 음수는 받지 않는다. */
 export function parseNumber(value: string): number | null {
@@ -167,6 +194,8 @@ function mapByContent(bodyRows: string[][], existing: ColumnMap): ColumnMap {
       textHits: values.filter((v) => /[가-힣A-Za-z]/.test(v)).length,
       /** 등급 표기로 읽히는 칸인지 */
       gradeHits: values.filter((v) => GRADE_PATTERN.test(v)).length,
+      /** 원산지 표기로 읽히는 칸인지 */
+      originHits: values.filter((v) => looksLikeOrigin(v)).length,
       numericRatio: values.length ? numbers.length / values.length : 0,
     };
   });
@@ -191,6 +220,12 @@ function mapByContent(bodyRows: string[][], existing: ColumnMap): ColumnMap {
   claim(
     "grade",
     stats.find((s) => s.values.length > 0 && s.gradeHits / s.values.length >= 0.6)?.column,
+  );
+
+  // 원산지: 등급과 같은 이유로 품목명보다 먼저 잡는다.
+  claim(
+    "origin",
+    stats.find((s) => s.values.length > 0 && s.originHits / s.values.length >= 0.6)?.column,
   );
 
   // 품목명: 글자가 가장 많이 섞인 칸.
@@ -320,6 +355,8 @@ export function applyColumnMap(
     const rawGrade = pick("grade");
     const gradeMatch = rawGrade.match(GRADE_PATTERN);
     const grade = gradeMatch ? `${gradeMatch[1]}${gradeMatch[2] ?? ""}` : rawGrade || null;
+    const rawOrigin = pick("origin");
+    const origin = rawOrigin ? normalizeOrigin(rawOrigin) : null;
     const labeledWeight = parseNumber(pick("labeledWeight"));
     const quantity = parseNumber(pick("quantity"));
     const unitPrice = parseNumber(pick("unitPrice"));
@@ -334,6 +371,7 @@ export function applyColumnMap(
       itemName,
       traceNo,
       grade,
+      origin,
       quantity,
       labeledWeight,
       unitPrice,

@@ -41,6 +41,7 @@ const FIELD_LABELS: Record<DocumentField, string> = {
   itemName: "품목",
   traceNo: "이력번호",
   grade: "등급",
+  origin: "원산지",
   quantity: "수량",
   labeledWeight: "중량(kg)",
   unitPrice: "단가",
@@ -51,6 +52,7 @@ const FIELD_ORDER: DocumentField[] = [
   "itemName",
   "traceNo",
   "grade",
+  "origin",
   "quantity",
   "labeledWeight",
   "unitPrice",
@@ -94,6 +96,7 @@ function emptyLine(lineNo: number): EditableLine {
     itemName: null,
     traceNo: null,
     grade: null,
+    origin: null,
     quantity: null,
     labeledWeight: null,
     unitPrice: null,
@@ -165,9 +168,14 @@ export function InboundDocumentPanel({
           totalAmount: toNumber(totalAmount),
         },
         lines,
-        lines.map((line) => ({ lineNo: line.lineNo, productId: line.productId })),
+        lines.map((line) => ({
+          lineNo: line.lineNo,
+          productId: line.productId,
+          productOrigin:
+            products.find((product) => product.id === line.productId)?.origin ?? null,
+        })),
       ),
-    [supplierName, issuedOn, totalAmount, lines],
+    [supplierName, issuedOn, totalAmount, lines, products],
   );
 
   const supplierRequests = useMemo(
@@ -407,6 +415,7 @@ export function InboundDocumentPanel({
         productId: line.productId,
         traceNo: line.traceNo,
         grade: line.grade,
+        origin: line.origin,
         quantity: line.quantity,
         labeledWeight: line.labeledWeight,
         unitPrice: line.unitPrice,
@@ -912,6 +921,7 @@ export function InboundDocumentPanel({
                       <th style={thStyle}>내 상품</th>
                       <th style={thStyle}>이력번호</th>
                       <th style={thStyle}>등급</th>
+                      <th style={thStyle}>원산지</th>
                       <th style={thStyle}>중량(kg)</th>
                       <th style={thStyle}>단가</th>
                       <th style={thStyle}>금액</th>
@@ -968,6 +978,16 @@ export function InboundDocumentPanel({
                               }
                               placeholder="1++"
                               style={{ ...cellInput, minWidth: "60px" }}
+                            />
+                          </td>
+                          <td style={tdStyle}>
+                            <input
+                              value={line.origin ?? ""}
+                              onChange={(event) =>
+                                updateLine(line.lineNo, { origin: event.target.value || null })
+                              }
+                              placeholder="국내산"
+                              style={{ ...cellInput, minWidth: "70px" }}
                             />
                           </td>
                           <td style={tdStyle}>

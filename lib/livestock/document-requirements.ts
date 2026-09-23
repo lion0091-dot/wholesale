@@ -69,9 +69,15 @@ export interface DocumentHeaderInput {
 export interface LineResolution {
   lineNo: number;
   productId?: string | null;
+  /** 연결된 상품의 원산지. products.origin은 NOT NULL이라 연결되면 항상 있다. */
+  productOrigin?: string | null;
 }
 
-function lineGapsFor(line: DocumentLine, resolvedProductId: string | null): Gap[] {
+function lineGapsFor(
+  line: DocumentLine,
+  resolvedProductId: string | null,
+  productOrigin: string | null,
+): Gap[] {
   const gaps: Gap[] = [];
 
   if (!line.itemName && !line.traceNo) {
@@ -140,6 +146,30 @@ function lineGapsFor(line: DocumentLine, resolvedProductId: string | null): Gap[
     });
   }
 
+  // 원산지는 필수다(사장님 확정 2026-09-23). 알 수 있는 경로가 셋이라
+  // 셋 다 막혔을 때만 걸린다 — 서류 기재 / 이력번호로 공공조회 / 연결된 상품.
+  if (!line.origin && !line.traceNo && !resolvedProductId) {
+    gaps.push({
+      code: "ORIGIN_UNKNOWN",
+      level: "REQUIRED",
+      source: "FROM_SUPPLIER",
+      label: "원산지를 알 수 없습니다",
+      why: "원산지는 반드시 있어야 합니다. 이력번호가 있으면 공공조회로, 상품을 고르면 그 상품 기준으로 채워지지만 셋 다 없으면 확인할 방법이 없습니다.",
+    });
+  }
+
+  // 서류 원산지와 고른 상품의 원산지가 다르면 상품을 잘못 고른 것이다.
+  // 그대로 두면 수입육이 국내산 상품 재고로 들어가 원산지 허위표시가 된다.
+  if (line.origin && productOrigin && line.origin !== productOrigin) {
+    gaps.push({
+      code: "ORIGIN_MISMATCH",
+      level: "REQUIRED",
+      source: "FROM_STAFF",
+      label: `원산지가 다릅니다 — 서류는 ${line.origin}, 고른 상품은 ${productOrigin}`,
+      why: "상품을 잘못 고르셨을 수 있습니다. 이대로 두면 원산지가 뒤바뀐 채 재고에 들어갑니다.",
+    });
+  }
+
   return gaps;
 }
 
@@ -161,9 +191,7 @@ export function buildGapReport(
   resolutions: LineResolution[] = [],
 ): DocumentGapReport {
   const documentGaps: Gap[] = [];
-  const productByLine = new Map(
-    resolutions.map((item) => [item.lineNo, item.productId ?? null]),
-  );
+  const resolutionByLine = new Map(resolutions.map((item) => [item.lineNo, item]));
 
   if (!header.supplierName?.trim()) {
     documentGaps.push({
@@ -215,7 +243,12 @@ export function buildGapReport(
   let incompleteLineCount = 0;
 
   lines.forEach((line) => {
-    const gaps = lineGapsFor(line, productByLine.get(line.lineNo) ?? null);
+    const resolution = resolutionByLine.get(line.lineNo);
+    const gaps = lineGapsFor(
+      line,
+      resolution?.productId ?? null,
+      resolution?.productOrigin ?? null,
+    );
 
     if (gaps.length > 0) {
       lineGaps.push({ lineNo: line.lineNo, gaps });

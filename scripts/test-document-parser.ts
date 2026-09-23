@@ -104,6 +104,25 @@ const cases: TestCase[] = [
     expectLineCount: 2,
     expectFirst: { itemName: "삼겹살", grade: "1+" },
   },
+  {
+    label: "원산지 칸이 있는 서류",
+    input: [
+      "품목,원산지,등급,중량,단가,금액",
+      "한우 등심,국내산,1++,8.20,52000,426400",
+      "수입 삼겹살,미국산,,12.40,18000,223200",
+    ].join("\n"),
+    expectColumns: { itemName: 0, origin: 1, grade: 2, labeledWeight: 3 },
+    expectLineCount: 2,
+    expectFirst: { itemName: "한우 등심", origin: "국내산", grade: "1++" },
+  },
+  {
+    // "한우"는 품목명에도 나오므로 칸 전체가 원산지일 때만 인정해야 한다.
+    label: "품목명에 한우가 들어가도 원산지 칸을 뺏기지 않음",
+    input: ["품목,원산지,중량", "한우 등심,국산,8.2", "한우 채끝,한우,7.5"].join("\n"),
+    expectColumns: { itemName: 0, origin: 1 },
+    expectLineCount: 2,
+    expectFirst: { itemName: "한우 등심", origin: "국내산" },
+  },
   { label: "빈 입력", input: "", expectLineCount: 0 },
 ];
 
