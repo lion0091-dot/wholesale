@@ -464,12 +464,32 @@ export function InboundScanView({
         }
       }
 
+      // 파서가 이력번호로 볼 만한 패턴을 하나도 못 찾은 값(마트 소매용 EAN-13 등)을
+      // "인식 완료"라고 알려주면 실제로는 아무것도 인식 못 했는데 성공한 것처럼
+      // 보인다 — 그대로 두면 헛된 정부 API 호출 → 조회 실패 → "박스 쪼개기?"
+      // 배너까지 이어져 혼란만 커진다. 막지는 않되(파서가 못 잡는 정상 번호일 수도
+      // 있으니) 있는 그대로 알린다.
+      const notRecognized = !parsed.traceNo;
+
       if (!weight.trim()) {
-        setNotice("이력번호 인식 완료 — 저울에 올리고 실중량을 입력한 뒤 Enter를 눌러주세요.");
+        if (notRecognized) {
+          setError(
+            "⚠ 이 값에서 이력번호 형식을 찾지 못했습니다 — 마트 판매용 바코드 등 축산물 이력번호가 아닐 수 있습니다. 그래도 이대로 조회하려면 실중량을 입력한 뒤 Enter를 눌러주세요."
+          );
+        } else {
+          setNotice("이력번호 인식 완료 — 저울에 올리고 실중량을 입력한 뒤 Enter를 눌러주세요.");
+        }
+
         weightInputRef.current?.focus();
         // 값이 채워진 뒤에 선택해야 저울 값으로 덮어쓰기가 편하다.
         window.setTimeout(() => weightInputRef.current?.select(), 0);
         return;
+      }
+
+      if (notRecognized) {
+        setError(
+          "⚠ 이 값에서 이력번호 형식을 찾지 못했습니다 — 마트 판매용 바코드 등 축산물 이력번호가 아닐 수 있습니다. 그래도 이대로 조회합니다."
+        );
       }
 
       void submitScan(rawValue, weight, scanType);
