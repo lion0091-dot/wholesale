@@ -227,7 +227,20 @@ export function parseDocumentText(text: string): DocumentGrid {
   }
 
   const delimiter = detectDelimiter(lines[0]);
-  const cells = lines.map((line) => splitLine(line, delimiter));
+
+  return buildGrid(lines.map((line) => splitLine(line, delimiter)));
+}
+
+/**
+ * 이미 칸으로 나뉜 격자에서 헤더와 칸 뜻을 추측한다.
+ *
+ * PDF는 텍스트를 이어붙이면 칸 경계가 사라지므로(빈 칸이 있으면 나머지가 밀린다)
+ * 좌표로 세로줄을 복원한 격자를 따로 만들어 여기로 들여보낸다.
+ */
+export function buildGrid(cells: string[][]): DocumentGrid {
+  if (cells.length === 0) {
+    return { cells: [], headerRowIndex: null, columnMap: {}, totalRowIndexes: [] };
+  }
 
   const headerRowIndex = findHeaderRow(cells);
   const totalRowIndexes = cells
@@ -269,6 +282,9 @@ export function applyColumnMap(
 
   grid.cells.forEach((row, index) => {
     if (index === headerRowIndex) return;
+    // 헤더 위쪽은 문서 머리말이다 — 제목("거래명세서"), 공급처·날짜 줄이 여기 온다.
+    // 품목으로 넣으면 첫 줄이 통째로 밀린다(PDF에서 실제로 겪음).
+    if (headerRowIndex !== null && headerRowIndex !== undefined && index < headerRowIndex) return;
     if (excluded.has(index)) return;
 
     const pick = (field: DocumentField): string => {

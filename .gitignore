@@ -34,6 +34,9 @@ Thumbs.db
 .idea/
 *.tsbuildinfo
 
+# scripts/test-*.ts 를 tsc로 컴파일해 돌릴 때 쓰는 임시 출력 폴더
+.tsbuild/
+
 # Scratch files (커밋 메시지 초안, 발표자료 등 리포 무관 개인 작업물)
 temp/
 ppt.md

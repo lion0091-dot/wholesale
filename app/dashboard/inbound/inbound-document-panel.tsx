@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   applyColumnMap,
+  buildGrid,
   parseDocumentText,
   type ColumnMap,
   type DocumentField,
@@ -12,6 +13,7 @@ import {
 } from "@/lib/livestock/document-parser";
 import { buildGapReport, buildSupplierRequestSummary } from "@/lib/livestock/document-requirements";
 import {
+  extractDocumentTableAction,
   loadSupplierFormatAction,
   saveInboundDocumentAction,
   type DocumentLineInput,
@@ -54,7 +56,12 @@ const SOURCE_BADGE: Record<string, { text: string; bg: string; fg: string }> = {
   FROM_SCAN: { text: "찍으면 채워짐", bg: "#e0e7ff", fg: "#3730a3" },
 };
 
-type Mode = "idle" | "review";
+/**
+ * idle      — 아직 아무것도 안 고름
+ * review    — 표를 읽어냈고 사람이 확인하는 중
+ * storeOnly — 글자를 못 읽는 서류(사진·스캔본 PDF). 원본만 보관한다.
+ */
+type Mode = "idle" | "review" | "storeOnly";
 
 interface EditableLine extends DocumentLine {
   productId: string | null;
@@ -105,6 +112,8 @@ export function InboundDocumentPanel({ products }: { products: ScanProductOption
   const [totalAmount, setTotalAmount] = useState("");
 
   const [saving, setSaving] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [storeOnlyReason, setStoreOnlyReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [learned, setLearned] = useState(false);
@@ -153,17 +162,22 @@ export function InboundDocumentPanel({ products }: { products: ScanProductOption
     setTotalAmount("");
     setError(null);
     setLearned(false);
+    setStoreOnlyReason("");
+    setExtracting(false);
 
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (photoInputRef.current) photoInputRef.current.value = "";
   };
 
-  const startFromText = (text: string, sourceFile: File | null) => {
-    const parsed = parseDocumentText(text);
+  const startFromGrid = (parsed: DocumentGrid, sourceFile: File | null) => {
     const built = applyColumnMap(parsed, parsed.columnMap);
 
     if (built.length === 0) {
-      setError("읽을 수 있는 품목 줄이 없습니다. 아래 '직접 입력'으로 넣어주세요.");
+      if (sourceFile) {
+        startStoreOnly(sourceFile, "품목 줄을 찾지 못해 원본만 보관합니다.");
+      } else {
+        setError("읽을 수 있는 품목 줄이 없습니다. 형식을 확인해주세요.");
+      }
       return;
     }
 
@@ -176,31 +190,44 @@ export function InboundDocumentPanel({ products }: { products: ScanProductOption
     setError(null);
   };
 
-  const startManual = (sourceFile: File | null) => {
-    if (sourceFile && sourceFile.type.startsWith("image/")) {
+  const startFromText = (text: string, sourceFile: File | null) => {
+    startFromGrid(parseDocumentText(text), sourceFile);
+  };
+
+  /**
+   * 글자를 못 읽는 서류는 원본만 보관한다.
+   * 입고 화면에서 손으로 받아적게 만들지 않는다(잠긴 결정) — 현장 화면은
+   * 바코드 찍는 데 집중해야 하고, 받아적기는 그 자리에서 할 일이 아니다.
+   */
+  const startStoreOnly = (sourceFile: File, why: string) => {
+    if (sourceFile.type.startsWith("image/")) {
       setPreviewUrl(URL.createObjectURL(sourceFile));
     }
 
     setFile(sourceFile);
     setGrid(null);
     setColumnMap({});
-    setLines([emptyLine(1), emptyLine(2), emptyLine(3)]);
+    setLines([]);
     setEntryMethod("MANUAL");
-    setMode("review");
+    setMode("storeOnly");
+    setNotice(null);
     setError(null);
+    setStoreOnlyReason(why);
   };
 
   const handleFile = async (picked: File | null) => {
     if (!picked) return;
+
+    setError(null);
 
     if (picked.size > 8 * 1024 * 1024) {
       setError("파일이 너무 큽니다. 8MB 이하로 올려주세요.");
       return;
     }
 
-    // 사진과 PDF는 글자를 못 뽑는다 — 원본을 띄워놓고 보면서 입력하는 길로 간다.
-    if (picked.type.startsWith("image/") || /\.pdf$/i.test(picked.name)) {
-      startManual(picked);
+    // 사진은 글자 정보가 아예 없다. 읽으려는 시도조차 하지 않는다.
+    if (picked.type.startsWith("image/")) {
+      startStoreOnly(picked, "사진은 글자를 읽어낼 수 없어 원본만 보관합니다.");
       return;
     }
 
@@ -208,6 +235,38 @@ export function InboundDocumentPanel({ products }: { products: ScanProductOption
       setError(
         "엑셀 파일(.xlsx)은 바로 읽을 수 없습니다. 엑셀에서 '다른 이름으로 저장 > CSV'로 저장하시거나, 표를 복사해 아래 칸에 붙여넣어주세요.",
       );
+      return;
+    }
+
+    // PDF는 컴퓨터에서 만든 것이면 글자가 들어 있어 표를 되살릴 수 있고,
+    // 종이를 스캔하거나 사진을 PDF로 바꾼 것이면 글자가 없다. 서버에서 확인한다.
+    if (/\.pdf$/i.test(picked.name) || picked.type === "application/pdf") {
+      setExtracting(true);
+
+      const formData = new FormData();
+
+      formData.append("file", picked);
+
+      const result = await extractDocumentTableAction(formData);
+
+      setExtracting(false);
+
+      if (!result.success || !result.data) {
+        startStoreOnly(picked, result.error ?? "PDF를 읽지 못해 원본만 보관합니다.");
+        return;
+      }
+
+      if (result.data.cells.length === 0) {
+        startStoreOnly(
+          picked,
+          result.data.hasText
+            ? "이 PDF에서 표를 찾지 못해 원본만 보관합니다."
+            : "종이를 스캔하거나 사진으로 만든 PDF라 글자가 없습니다. 원본만 보관합니다.",
+        );
+        return;
+      }
+
+      startFromGrid(buildGrid(result.data.cells), picked);
       return;
     }
 
@@ -265,11 +324,12 @@ export function InboundDocumentPanel({ products }: { products: ScanProductOption
   const handleSave = async () => {
     setError(null);
 
-    const usable = lines.filter(
-      (line) => line.itemName || line.traceNo || line.labeledWeight !== null,
-    );
+    const usable =
+      mode === "storeOnly"
+        ? []
+        : lines.filter((line) => line.itemName || line.traceNo || line.labeledWeight !== null);
 
-    if (usable.length === 0) {
+    if (mode !== "storeOnly" && usable.length === 0) {
       setError("저장할 품목이 없습니다.");
       return;
     }
@@ -320,11 +380,14 @@ export function InboundDocumentPanel({ products }: { products: ScanProductOption
       return;
     }
 
-    setNotice(
-      result.data?.fileStored === false && file
-        ? `명세서 ${result.data?.lineCount}줄을 저장했습니다. 다만 원본 파일은 보관하지 못했습니다 — 다시 올려주세요.`
-        : `명세서 ${result.data?.lineCount ?? 0}줄을 저장했습니다.`,
-    );
+    if (result.data?.fileStored === false && file) {
+      setNotice("내용은 저장했지만 원본 파일은 보관하지 못했습니다 — 원본만 다시 올려주세요.");
+    } else if ((result.data?.lineCount ?? 0) === 0) {
+      setNotice("원본을 보관했습니다. 품목 내용은 읽지 못해 비어 있습니다.");
+    } else {
+      setNotice(`명세서 ${result.data?.lineCount}줄을 저장했습니다.`);
+    }
+
     reset();
     router.refresh();
   };
@@ -420,10 +483,13 @@ export function InboundDocumentPanel({ products }: { products: ScanProductOption
                 >
                   파일 고르기 (CSV · PDF · 사진)
                 </button>
-                <button type="button" onClick={() => startManual(null)} style={secondaryButton}>
-                  파일 없이 직접 입력
-                </button>
               </div>
+
+              {extracting ? (
+                <p style={{ margin: 0, fontSize: "13px", color: "#1e40af" }}>
+                  PDF에서 표를 읽는 중입니다…
+                </p>
+              ) : null}
 
               {/* 현장에서 종이를 받은 경우 — 폰이면 바로 카메라가 열린다.
                   PC에서는 capture가 무시되고 일반 파일 선택으로 동작한다. */}
@@ -459,6 +525,82 @@ export function InboundDocumentPanel({ products }: { products: ScanProductOption
                   style={{ ...secondaryButton, marginTop: "8px" }}
                 >
                   붙여넣은 내용 읽기
+                </button>
+              </div>
+            </>
+          ) : null}
+
+          {mode === "storeOnly" ? (
+            <>
+              <div
+                style={{
+                  border: "1px solid #bfdbfe",
+                  backgroundColor: "#eff6ff",
+                  borderRadius: "8px",
+                  padding: "10px 12px",
+                  fontSize: "13px",
+                  color: "#1e40af",
+                }}
+              >
+                {storeOnlyReason} 이 화면에서 받아적으실 필요는 없습니다 — 원본은 그대로 남으니
+                필요할 때 열어보시면 됩니다.
+              </div>
+
+              {previewUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={previewUrl}
+                  alt="올린 명세서 원본"
+                  style={{
+                    width: "100%",
+                    maxHeight: "320px",
+                    objectFit: "contain",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "8px",
+                    backgroundColor: "#f8fafc",
+                  }}
+                />
+              ) : (
+                <p style={{ margin: 0, fontSize: "12px", color: "#64748b" }}>
+                  올린 파일: {file?.name}
+                </p>
+              )}
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                <div style={{ flex: "1 1 180px" }}>
+                  <label style={labelStyle}>공급처 이름 *</label>
+                  <input
+                    value={supplierName}
+                    onChange={(event) => setSupplierName(event.target.value)}
+                    placeholder="예: 대성축산"
+                    style={inputStyle}
+                  />
+                </div>
+                <div style={{ flex: "0 1 150px" }}>
+                  <label style={labelStyle}>서류 날짜</label>
+                  <input
+                    type="date"
+                    value={issuedOn}
+                    onChange={(event) => setIssuedOn(event.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+                <div style={{ flex: "0 1 150px" }}>
+                  <label style={labelStyle}>명세서 번호</label>
+                  <input
+                    value={documentNo}
+                    onChange={(event) => setDocumentNo(event.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button type="button" onClick={handleSave} disabled={saving} style={primaryButton}>
+                  {saving ? "보관 중…" : "원본 보관"}
+                </button>
+                <button type="button" onClick={reset} disabled={saving} style={secondaryButton}>
+                  취소
                 </button>
               </div>
             </>

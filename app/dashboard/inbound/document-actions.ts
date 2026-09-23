@@ -129,15 +129,19 @@ export async function saveInboundDocumentAction(
       throw new RbacError("공급처 이름을 입력해주세요.");
     }
 
-    if (!Array.isArray(input.lines) || input.lines.length === 0) {
-      throw new RbacError("저장할 품목이 없습니다.");
-    }
-
+    // 품목 줄이 없어도 저장한다 — 사진이나 스캔본처럼 글자를 못 읽는 서류는
+    // 원본 보관만이 목적이다(잠긴 결정: 읽을 수 없는 문서를 입고 화면에서
+    // 손으로 받아적게 만들지 않는다).
+    const lines = Array.isArray(input.lines) ? input.lines : [];
     const file = formData.get("file");
     const hasFile = file instanceof File && file.size > 0;
 
     if (hasFile && file.size > MAX_FILE_BYTES) {
       throw new RbacError("파일이 너무 큽니다. 8MB 이하로 올려주세요.");
+    }
+
+    if (lines.length === 0 && !hasFile) {
+      throw new RbacError("저장할 품목도 파일도 없습니다.");
     }
 
     const { data: created, error: insertError } = await supabase
@@ -152,7 +156,9 @@ export async function saveInboundDocumentAction(
         entry_method: input.entryMethod === "MANUAL" ? "MANUAL" : "AUTO",
         file_name: hasFile ? file.name : null,
         mime_type: hasFile ? file.type || null : null,
-        status: "PENDING",
+        // 읽어낸 품목이 있으면 바로 대조 대상(PENDING), 원본만 보관한 서류는
+        // 아직 내용이 안 들어간 상태(DRAFT)로 둔다.
+        status: lines.length > 0 ? "PENDING" : "DRAFT",
         created_by: context.userId,
       })
       .select("id")
@@ -189,7 +195,7 @@ export async function saveInboundDocumentAction(
       }
     }
 
-    const lineRows = input.lines.map((line, index) => ({
+    const lineRows = lines.map((line, index) => ({
       document_id: documentId,
       line_no: line.lineNo ?? index + 1,
       raw_text: line.raw ?? null,
@@ -202,14 +208,16 @@ export async function saveInboundDocumentAction(
       amount: line.amount ?? null,
     }));
 
-    const { error: linesError } = await supabase
-      .from("inbound_document_lines")
-      .insert(lineRows);
+    if (lineRows.length > 0) {
+      const { error: linesError } = await supabase
+        .from("inbound_document_lines")
+        .insert(lineRows);
 
-    if (linesError) {
-      // 줄이 없는 문서는 쓸모가 없다. 껍데기만 남기지 않고 되돌린다.
-      await supabase.from("inbound_documents").delete().eq("id", documentId);
-      throw linesError;
+      if (linesError) {
+        // 품목을 읽어놓고 저장에 실패한 경우다. 껍데기 문서만 남기지 않고 되돌린다.
+        await supabase.from("inbound_documents").delete().eq("id", documentId);
+        throw linesError;
+      }
     }
 
     // 사람이 확정한 칸 위치를 공급처별로 학습해둔다.
@@ -231,6 +239,47 @@ export async function saveInboundDocumentAction(
     return {
       success: true,
       data: { documentId, lineCount: lineRows.length, fileStored },
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export interface ExtractedTable {
+  cells: string[][];
+  /** 글자가 하나라도 있었나. false면 스캔본·사진 PDF라 읽을 수 없다. */
+  hasText: boolean;
+  pageCount: number;
+}
+
+/**
+ * PDF에서 표를 복원해 돌려준다.
+ *
+ * 브라우저에 PDF 파서를 싣지 않으려고 서버에서만 돌린다 — 현장 화면을 무겁게
+ * 만들지 않는다. 파일이 한 번 더 올라가지만 명세서 PDF는 보통 작아서 괜찮다.
+ */
+export async function extractDocumentTableAction(
+  formData: FormData
+): Promise<ActionResult<ExtractedTable>> {
+  try {
+    await resolveDocumentScope();
+
+    const file = formData.get("file");
+
+    if (!(file instanceof File) || file.size === 0) {
+      throw new RbacError("파일이 없습니다.");
+    }
+
+    if (file.size > MAX_FILE_BYTES) {
+      throw new RbacError("파일이 너무 큽니다. 8MB 이하로 올려주세요.");
+    }
+
+    const { extractPdfTable } = await import("@/lib/livestock/pdf-extract");
+    const table = await extractPdfTable(new Uint8Array(await file.arrayBuffer()));
+
+    return {
+      success: true,
+      data: { cells: table.cells, hasText: table.hasText, pageCount: table.pageCount },
     };
   } catch (error) {
     return toResult(error);
