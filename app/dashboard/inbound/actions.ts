@@ -52,6 +52,13 @@ export interface ScanResult {
   purchaseSupplier: string | null;
   /** 이력 정보로 상품을 새로 만든 경우 — 화면에서 "가격을 넣어달라"고 안내한다. */
   autoCreated: { productName: string; needsPrice: boolean } | null;
+  /**
+   * status가 EXCEPTION일 때만 의미 있다. "API_ERROR"(조회 자체를 못 함 — 인증키
+   * 미설정 등)와 "NOT_FOUND"(조회는 됐지만 그 번호가 없음)는 화면에서 완전히
+   * 다른 안내가 필요하다 — 전자는 "설정 문제"고 후자는 "번호 확인 필요"다.
+   */
+  failReason: "API_ERROR" | "NOT_FOUND" | null;
+  failDetail: string | null;
 }
 
 export interface DuplicateWarning {
@@ -169,7 +176,7 @@ export async function recordScanAction(input: {
       .eq("trace_no", traceNo)
       .maybeSingle();
 
-    let failReason: string | null = null;
+    let failReason: "API_ERROR" | "NOT_FOUND" | null = null;
     // 실패 사유의 실제 메시지 — NOT_FOUND(호출은 성공, 결과 없음)면 비워둔다.
     // API_ERROR일 때만 채워서 DB만 보고도 "승인 미반영"인지 "진짜 오류"인지 구분한다
     // (2026-09-22 — resultCode 오류가 NOT_FOUND로 오인되던 문제 수정 이후 도입).
@@ -338,6 +345,10 @@ export async function recordScanAction(input: {
         purchaseAmount: toNumberOrNull(row.purchase_amount),
         purchaseSupplier: (row.purchase_supplier as string | null) ?? null,
         autoCreated,
+        // record_inbound_scan의 JSONB 반환값에는 안 실려 있다 — 위에서 API 호출
+        // 직후 이미 계산해둔 로컬 값을 그대로 돌려준다(DB 왕복 불필요).
+        failReason: row.status === "EXCEPTION" ? failReason : null,
+        failDetail: row.status === "EXCEPTION" ? failDetail : null,
       },
     };
   } catch (error) {
