@@ -10,6 +10,11 @@ import {
 import { InboundImportPanel } from "./inbound-import-panel";
 import { InboundDocumentPanel, type InboundDocumentRow } from "./inbound-document-panel";
 import { isMtraceConfigured, configuredTraceSources } from "@/lib/livestock/mtrace-client";
+import {
+  buildScanRequirementReport,
+  resolveTraceOrigin,
+  type ScanRequirementReport,
+} from "@/lib/livestock/inbound-requirements";
 
 /** 이력 조회 기관 표기 — 설정 안내 문구에 쓴다. */
 const SOURCE_LABELS: Record<string, string> = {
@@ -33,6 +38,7 @@ export default async function InboundPage() {
   let products: ScanProductOption[] = [];
   let shippableOrders: ShippableOrderOption[] = [];
   let documents: InboundDocumentRow[] = [];
+  let scanRequirements: Record<string, ScanRequirementReport> = {};
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -108,6 +114,107 @@ export default async function InboundPage() {
     });
 
     const productNames = new Map(products.map((product) => [product.id, product.name]));
+    const productOrigins = new Map(products.map((product) => [product.id, product.origin]));
+
+    // 스캔한 박스마다 "필수 항목이 다 찼는지"를 보여주려면 값이 들어오는 세 길을
+    // 다 봐야 한다 — 스캔 자체, 공공 이력조회(master_livestock), 올라온 명세서.
+    // 화면에서 줄마다 조회하면 N+1이라 이력번호를 모아 한 번씩만 읽는다.
+    const traceNos = [...new Set((scanRows ?? []).map((row) => String(row.trace_no)))];
+
+    let masterByTrace = new Map<string, { grade: string | null; origin: string | null }>();
+    let documentByTrace = new Map<
+      string,
+      {
+        supplier: string | null;
+        grade: string | null;
+        origin: string | null;
+        unitPrice: number | null;
+        labeledWeight: number | null;
+      }
+    >();
+
+    if (traceNos.length > 0) {
+      const [{ data: masterRows }, { data: docLineRows }] = await Promise.all([
+        supabase
+          .from("master_livestock")
+          .select("trace_no, grade, origin_country, source")
+          .in("trace_no", traceNos),
+        // 취소 처리된 명세서는 참조 대상이 아니다. 줄의 소속 업체 제한은 RLS가 한다.
+        supabase
+          .from("inbound_document_lines")
+          .select(
+            "trace_no, grade, origin, unit_price, labeled_weight, inbound_documents!inner(supplier_name, status)"
+          )
+          .in("trace_no", traceNos)
+          .neq("inbound_documents.status", "DISCARDED"),
+      ]);
+
+      masterByTrace = new Map(
+        ((masterRows ?? []) as Array<Record<string, unknown>>).map((row) => [
+          String(row.trace_no),
+          {
+            grade: (row.grade as string | null) ?? null,
+            origin: resolveTraceOrigin(
+              row.source as string | null,
+              row.origin_country as string | null
+            ),
+          },
+        ])
+      );
+
+      // 같은 번호가 여러 명세서에 있으면 먼저 읽은 것을 쓴다 — 어느 쪽이 맞는지는
+      // 사람이 판단할 문제라 여기서 고르지 않는다.
+      ((docLineRows ?? []) as Array<Record<string, unknown>>).forEach((row) => {
+        const key = String(row.trace_no);
+
+        if (documentByTrace.has(key)) return;
+
+        const document = Array.isArray(row.inbound_documents)
+          ? row.inbound_documents[0]
+          : row.inbound_documents;
+
+        documentByTrace.set(key, {
+          supplier: ((document as Record<string, unknown> | null)?.supplier_name as string | null) ?? null,
+          grade: (row.grade as string | null) ?? null,
+          origin: (row.origin as string | null) ?? null,
+          unitPrice: row.unit_price === null ? null : Number(row.unit_price),
+          labeledWeight: row.labeled_weight === null ? null : Number(row.labeled_weight),
+        });
+      });
+    }
+
+    scanRequirements = Object.fromEntries(
+      ((scanRows ?? []) as Array<Record<string, unknown>>).map((row) => {
+        const traceNo = String(row.trace_no);
+        const master = masterByTrace.get(traceNo);
+        const document = documentByTrace.get(traceNo);
+        const productId = (row.product_id as string | null) ?? null;
+
+        return [
+          String(row.id),
+          buildScanRequirementReport({
+            traceNo,
+            productId,
+            productName: productId ? productNames.get(productId) ?? null : null,
+            productOrigin: productId ? productOrigins.get(productId) ?? null : null,
+            weight: row.weight === null ? null : Number(row.weight),
+            labeledWeight: row.labeled_weight === null ? null : Number(row.labeled_weight),
+            purchaseUnitPrice:
+              row.purchase_unit_price === null ? null : Number(row.purchase_unit_price),
+            purchaseSupplier: (row.purchase_supplier as string | null) ?? null,
+            traceFound: Boolean(master),
+            apiGrade: master?.grade ?? null,
+            apiOrigin: master?.origin ?? null,
+            documentMatched: Boolean(document),
+            documentSupplier: document?.supplier ?? null,
+            documentGrade: document?.grade ?? null,
+            documentOrigin: document?.origin ?? null,
+            documentUnitPrice: document?.unitPrice ?? null,
+            documentLabeledWeight: document?.labeledWeight ?? null,
+          }),
+        ];
+      })
+    );
 
     scans = ((scanRows ?? []) as Array<Record<string, unknown>>).map((row) => ({
       id: String(row.id),
@@ -164,7 +271,12 @@ export default async function InboundPage() {
 
       <InboundImportPanel />
 
-      <InboundScanView initialScans={scans} products={products} shippableOrders={shippableOrders} />
+      <InboundScanView
+        initialScans={scans}
+        products={products}
+        shippableOrders={shippableOrders}
+        scanRequirements={scanRequirements}
+      />
     </div>
   );
 }

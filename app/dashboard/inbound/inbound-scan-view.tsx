@@ -11,6 +11,7 @@ import {
   type ScanType,
 } from "./actions";
 import { parseBarcode } from "@/lib/livestock/barcode-parser";
+import type { ScanRequirementReport } from "@/lib/livestock/inbound-requirements";
 import { DevSamplePanel } from "@/lib/dev-samples/DevSamplePanel";
 import { INBOUND_SAMPLE_KINDS, buildSampleInboundRow, type InboundSampleKey } from "@/lib/dev-samples/inbound";
 import {
@@ -97,6 +98,11 @@ function hasBarcodeDetector(): boolean {
 
 interface Props {
   initialScans: InboundScanRow[];
+  /**
+   * 스캔 id → 필수항목 체크리스트. 서버에서 공공조회·명세서를 붙여 만든다.
+   * 방금 찍어서 아직 서버 데이터가 없는 줄은 여기 없고, 새로고침되면 채워진다.
+   */
+  scanRequirements: Record<string, ScanRequirementReport>;
   products: ScanProductOption[];
   shippableOrders: ShippableOrderOption[];
 }
@@ -104,7 +110,101 @@ interface Props {
 /** 오픈 직전 Vercel에서 이 값을 지우거나 false로 바꾸면 샘플 패널이 전부 사라진다. */
 const SHOW_DEV_SAMPLES = process.env.NEXT_PUBLIC_SHOW_DEV_SAMPLES === "true";
 
-export function InboundScanView({ initialScans, products, shippableOrders }: Props) {
+/** 값이 어디서 왔는지 한눈에 — 출처마다 색을 달리한다. */
+const SOURCE_STYLE: Record<string, { label: string; bg: string; fg: string }> = {
+  SCAN: { label: "스캔", bg: "#e0f2fe", fg: "#075985" },
+  TRACE_API: { label: "이력조회", bg: "#dcfce7", fg: "#166534" },
+  DOCUMENT: { label: "명세서", bg: "#ede9fe", fg: "#5b21b6" },
+  PRODUCT: { label: "상품", bg: "#f1f5f9", fg: "#475569" },
+};
+
+/**
+ * 입고 한 건이 플랫폼 기준을 채웠는지 항목별로 뿌린다.
+ *
+ * 빠진 것만 보여주지 않고 **채워진 값과 그 출처까지** 보여준다 — 공공조회와
+ * 명세서 중 어느 쪽에서 온 값인지 알아야 틀렸을 때 어디를 고칠지 알 수 있고,
+ * 양쪽이 어긋나는 경우도 드러나야 하기 때문이다(사장님 요청).
+ */
+function ScanRequirementList({ report }: { report: ScanRequirementReport }) {
+  return (
+    <div style={{ width: "100%", marginTop: "4px" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", alignItems: "center" }}>
+        {report.fields.map((field) => {
+          const source = field.source ? SOURCE_STYLE[field.source] : null;
+          const missing = !field.value;
+          const required = field.level === "REQUIRED";
+
+          return (
+            <span
+              key={field.key}
+              title={field.conflict ?? field.hint ?? undefined}
+              style={{
+                fontSize: "11px",
+                borderRadius: "5px",
+                padding: "3px 7px",
+                border: "1px solid",
+                ...(missing
+                  ? required
+                    ? { backgroundColor: "#fef2f2", color: "#991b1b", borderColor: "#fecaca" }
+                    : { backgroundColor: "#fffbeb", color: "#92400e", borderColor: "#fde68a" }
+                  : { backgroundColor: "#ffffff", color: "#334155", borderColor: "#e2e8f0" }),
+              }}
+            >
+              {field.label} {missing ? "—" : field.value}
+              {source ? (
+                <span
+                  style={{
+                    marginLeft: "4px",
+                    fontSize: "10px",
+                    borderRadius: "3px",
+                    padding: "1px 4px",
+                    backgroundColor: source.bg,
+                    color: source.fg,
+                  }}
+                >
+                  {source.label}
+                </span>
+              ) : null}
+            </span>
+          );
+        })}
+
+        {!report.documentMatched ? (
+          <span style={{ fontSize: "11px", color: "#94a3b8" }}>명세서 연결 안 됨</span>
+        ) : null}
+      </div>
+
+      {report.fields
+        .filter((field) => field.conflict)
+        .map((field) => (
+          <p
+            key={`conflict-${field.key}`}
+            style={{ margin: "4px 0 0", fontSize: "11px", color: "#b45309" }}
+          >
+            {field.conflict} — 어느 쪽이 맞는지 확인이 필요합니다.
+          </p>
+        ))}
+
+      {report.fields
+        .filter((field) => !field.value && field.level === "REQUIRED" && field.hint)
+        .map((field) => (
+          <p
+            key={`hint-${field.key}`}
+            style={{ margin: "3px 0 0", fontSize: "11px", color: "#991b1b" }}
+          >
+            {field.label}: {field.hint}
+          </p>
+        ))}
+    </div>
+  );
+}
+
+export function InboundScanView({
+  initialScans,
+  products,
+  shippableOrders,
+  scanRequirements,
+}: Props) {
   const router = useRouter();
 
   // 상품 확인 필요/이력 확인 필요 행 중 "특정 주문으로 바로 보내기" 패널을 펼친 스캔 id.
@@ -952,6 +1052,10 @@ export function InboundScanView({ initialScans, products, shippableOrders }: Pro
                       {scan.sampleNote}
                     </p>
                   )}
+
+                  {!scan.isSample && scanRequirements[scan.id] ? (
+                    <ScanRequirementList report={scanRequirements[scan.id]} />
+                  ) : null}
 
                   <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                     {needsProduct && (
