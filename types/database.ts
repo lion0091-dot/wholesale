@@ -5,6 +5,12 @@ export type SubscriptionStatus = "trial" | "active" | "overdue" | "cancelled";
 export type RelationshipStatus = "active" | "blocked";
 export type OrderStatus =
   | "pending"
+  /**
+   * 재고 없이 받아둔 주문. 고객 주문을 받고 공급처에 발주를 넣은 뒤 물건이
+   * 들어오기를 기다리는 자리다. 재고 차감 트리거는 confirmed/cancelled에서만
+   * 돌기 때문에 이 상태는 재고를 건드리지 않는다.
+   */
+  | "awaiting_stock"
   | "confirmed"
   | "shipping"
   | "delivered"

@@ -9,6 +9,7 @@ export interface StatusBadge {
 /** 주문 상태 배지 — 목록/상세/필터에서 공통 사용 */
 export const ORDER_STATUS_BADGES: Record<OrderStatus, StatusBadge> = {
   pending: { label: "접수대기", bg: "#fef3c7", color: "#92400e" },
+  awaiting_stock: { label: "확보 대기", bg: "#ffedd5", color: "#9a3412" },
   confirmed: { label: "확정", bg: "#dbeafe", color: "#1e40af" },
   shipping: { label: "배송중", bg: "#e0e7ff", color: "#3730a3" },
   delivered: { label: "완료", bg: "#dcfce7", color: "#166534" },
@@ -24,6 +25,7 @@ export const ORDER_STATUS_BADGES: Record<OrderStatus, StatusBadge> = {
 export const ACTIVE_STATUS_FILTERS: Array<OrderStatus | "all"> = [
   "all",
   "pending",
+  "awaiting_stock",
   "confirmed",
   "cancel_requested",
   "shipping",
@@ -49,6 +51,7 @@ export const HISTORICAL_ORDER_STATUSES: OrderStatus[] = ["delivered", "cancelled
  */
 export const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
   "pending",
+  "awaiting_stock",
   "confirmed",
   "shipping",
   "cancel_requested",
@@ -57,14 +60,17 @@ export const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
 
 /** 상태 전이 규칙 — 각 상태에서 이동 가능한 다음 상태 목록 */
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  pending: ["confirmed", "cancel_requested", "cancelled"],
+  pending: ["awaiting_stock", "confirmed", "cancel_requested", "cancelled"],
+  // 물건이 들어와 재고가 생기면 확정으로 넘어간다. 확정 시점에 평소대로
+  // 재고에서 차감되므로 별도 처리가 필요 없다.
+  awaiting_stock: ["confirmed", "cancel_requested", "cancelled"],
   confirmed: ["shipping", "cancel_requested", "cancelled"],
   shipping: ["delivered"],
   delivered: [],
   // 취소요청은 공급사가 승인(cancelled) 또는 반려(cancel_rejected)로만 종결한다.
   cancel_requested: ["cancelled", "cancel_rejected"],
   // 반려되면 원래 진행 흐름으로 복귀한다.
-  cancel_rejected: ["confirmed", "shipping", "cancelled"],
+  cancel_rejected: ["awaiting_stock", "confirmed", "shipping", "cancelled"],
   cancelled: [],
 };
 
@@ -94,6 +100,11 @@ export interface StatusActionConfig {
 
 export const ORDER_STATUS_ACTIONS: Record<OrderStatus, StatusActionConfig> = {
   pending: { status: "pending", label: "접수대기로 되돌리기", tone: "primary" },
+  awaiting_stock: {
+    status: "awaiting_stock",
+    label: "확보 대기 (공급처 발주)",
+    tone: "info",
+  },
   confirmed: { status: "confirmed", label: "발주 확정 (접수 확인)", tone: "primary" },
   shipping: { status: "shipping", label: "출고 / 배송 시작", tone: "info" },
   delivered: { status: "delivered", label: "배송 완료 처리", tone: "success" },
@@ -137,6 +148,15 @@ export interface AlimtalkStatus {
 }
 
 const ALIMTALK_BY_STATUS: Record<OrderStatus, AlimtalkStatus> = {
+  // 확보 대기는 고객에게 따로 알리지 않는다. "주문은 받았는데 물건이 아직
+  // 없다"를 그대로 보내면 불안만 키우고, 확정되면 어차피 확정 안내가 나간다.
+  // 템플릿이 필요해지면 카카오 승인부터 받아야 한다.
+  awaiting_stock: {
+    label: "발송 없음 (확정 시 안내)",
+    target: "—",
+    bg: "#f1f5f9",
+    color: "#475569",
+  },
   pending: {
     label: "신규 발주 접수 알림",
     target: "공급사 담당자",

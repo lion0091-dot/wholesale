@@ -20,6 +20,7 @@ interface DashboardOrder {
 
 const STATUS_LABELS: Record<OrderStatus, { label: string; bg: string; color: string }> = {
   pending: { label: "신규 접수", bg: "#fef3c7", color: "#92400e" },
+  awaiting_stock: { label: "확보 대기", bg: "#ffedd5", color: "#9a3412" },
   confirmed: { label: "접수 확인", bg: "#dbeafe", color: "#1e40af" },
   shipping: { label: "배송 중", bg: "#e0e7ff", color: "#3730a3" },
   delivered: { label: "배송 완료", bg: "#dcfce7", color: "#166534" },
