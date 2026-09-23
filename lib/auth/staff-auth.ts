@@ -21,6 +21,8 @@
  * 앞당기지 않고, 가입 "이후" 도착 화면만 공급사 온보딩과 다르게 바꿀 뿐이다.
  */
 
+import type { createClient } from "@/lib/supabase/server";
+
 export const STAFF_INTENT = "staff";
 
 /** 카카오 OAuth provider 식별자. buyer-auth.ts/supplier-auth.ts와 동일 값을 그대로 둔다
@@ -32,3 +34,41 @@ export const AUTH_CALLBACK_PATH = "/auth/callback";
 
 /** 요청 접수 후 도착하는 중립 안내 화면. 승인 전엔 이 밖으로 안 내보낸다. */
 export const STAFF_PENDING_PATH = "/staff-login/pending";
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * 이미 도매(공급사)로 확정된 계정인지 확인한다.
+ *
+ * /staff-login은 URL만 다를 뿐 보안 경계가 아니라서(docs/staff-login-separation.md),
+ * 이미 확정 고객인 도매업체 계정이 실수로(잘못된 링크 공유, 즐겨찾기 오클릭 등) 여기로
+ * 들어올 수 있다. 이 경우 아무 안전장치 없이 signup_channel='staff'를 찍어버리면,
+ * 나중에 사업자정보를 다시 제출해야 할 때(국세청 재확인 등) "내부 스태프 계정이라
+ * 가입 불가"로 영구히 막혀버린다 — 실계정 고객을 이런 실수 한 번으로 잃을 수는 없어서
+ * /auth/callback이 마킹 직전에 이 함수로 먼저 확인한다.
+ */
+export async function isExistingSupplierAccount(
+  supabase: SupabaseServerClient,
+  userId: string
+): Promise<boolean> {
+  const [{ data: ownWholesaler }, { data: staffRow }] = await Promise.all([
+    supabase.from("wholesalers").select("id").eq("profile_id", userId).maybeSingle(),
+    supabase.from("organization_staff").select("organization_id").eq("user_id", userId).maybeSingle(),
+  ]);
+
+  if (ownWholesaler) {
+    return true;
+  }
+
+  if (!staffRow?.organization_id) {
+    return false;
+  }
+
+  const { data: organization } = await supabase
+    .from("organizations")
+    .select("wholesaler_id")
+    .eq("id", staffRow.organization_id as string)
+    .maybeSingle();
+
+  return Boolean(organization?.wholesaler_id);
+}

@@ -11,7 +11,9 @@
  *   ?intent=staff         내부 스태프 — 온보딩으로 보내지 않고 STAFF_PENDING_PATH로
  *                         보낸다(lib/auth/staff-auth.ts). wholesalers row가 생기지
  *                         않게 하는 게 핵심 — 이게 관리자 후보 검색과 실제 입점
- *                         신청자를 구분하는 신호가 된다.
+ *                         신청자를 구분하는 신호가 된다. 단, 이미 확정된 도매 계정이
+ *                         실수로 이 링크에 들어온 경우는 마킹하지 않고 정상 화면으로
+ *                         돌려보낸다(isExistingSupplierAccount).
  *
  * 세 흐름으로 갈라지기 전에 슈퍼관리자 부트스트랩을 먼저 수행한다.
  * (SUPER_ADMIN_EMAIL 계정이 초대 링크를 먼저 클릭해 바이어로 굳는 일을 막는다)
@@ -33,7 +35,7 @@ import {
   SUPPLIER_ONBOARDING_PATH,
   sanitizeSupplierReturnPath,
 } from "@/lib/auth/supplier-auth";
-import { STAFF_INTENT, STAFF_PENDING_PATH } from "@/lib/auth/staff-auth";
+import { STAFF_INTENT, STAFF_PENDING_PATH, isExistingSupplierAccount } from "@/lib/auth/staff-auth";
 import { TEAM_INVITE_INTENT, TEAM_INVITE_LANDING_PATH, toTeamInviteError } from "@/lib/auth/team-invite";
 import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import { getSupplierAccount } from "@/lib/supplier/verification";
@@ -148,6 +150,16 @@ export async function GET(request: NextRequest) {
   // ------------------------------------------------------------------
   if (isStaffFlow) {
     if (!superAdmin.isSuperAdmin && exchangeData?.user?.id) {
+      // 이미 확정된 도매(공급사) 계정이 실수로 /staff-login에 들어온 경우의 안전망 —
+      // 그대로 마킹하면 나중에 사업자정보를 다시 제출해야 할 때(국세청 재확인 등)
+      // "내부 스태프라 가입 불가"로 영구히 막힌다. 실계정 고객을 이런 실수 한 번으로
+      // 잃을 수는 없으므로 마킹 전에 먼저 확인하고, 이미 공급사면 정상 화면으로 돌려보낸다.
+      const alreadySupplier = await isExistingSupplierAccount(supabase, exchangeData.user.id);
+
+      if (alreadySupplier) {
+        return NextResponse.redirect(new URL(SUPPLIER_LANDING_PATH, request.url));
+      }
+
       try {
         const admin = createServiceRoleClient();
 
