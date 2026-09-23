@@ -59,12 +59,14 @@ export interface InboundScanRow {
   /** 여러 직원이 섞여서 스캔할 때 누가 찍었는지 — 없으면(탈퇴 등) null */
   scannedByName: string | null;
   /**
-   * 개발용 미리보기 행 — DB에 없다. 4가지 이력번호 유형이 화면에서 각각 어떻게
+   * 개발용 미리보기 행 — DB에 없다. 5가지 이력번호 유형이 화면에서 각각 어떻게
    * 보이는지 실제 API·DB 호출 없이 확인하려고 만들었다. 실제 동작은 하지 않으므로
    * 목록에서 이 값이 true면 상품 지정·주문 배정·취소를 전부 숨긴다.
    */
   isSample?: boolean;
   sampleNote?: string;
+  /** 샘플 중 체크리스트(등급·원산지 충돌 등)까지 보여주는 것만 채운다. */
+  sampleRequirementReport?: ScanRequirementReport;
 }
 
 const STATUS_BADGE: Record<InboundScanRow["status"], { label: string; bg: string; color: string }> = {
@@ -1159,9 +1161,13 @@ export function InboundScanView({
                     </p>
                   )}
 
-                  {!scan.isSample && scanRequirements[scan.id] ? (
-                    <ScanRequirementList report={scanRequirements[scan.id]} />
-                  ) : null}
+                  {(() => {
+                    const report = scan.isSample
+                      ? scan.sampleRequirementReport
+                      : scanRequirements[scan.id];
+
+                    return report ? <ScanRequirementList report={report} /> : null;
+                  })()}
 
                   <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                     {needsProduct && (
