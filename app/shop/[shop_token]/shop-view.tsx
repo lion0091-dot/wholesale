@@ -8,7 +8,6 @@ import { useShopCart } from "@/lib/shop/cart-store";
 import { cartTotals, quantityStepFor } from "@/lib/shop/order-policy";
 import { toCartLines, type ShopCatalog, type ShopCatalogItem } from "@/lib/shop/catalog-types";
 import { ShopFooter, ShopHeader, cardStyle, formatWon, shopPageStyle } from "./shop-chrome";
-import { SampleBadge } from "@/components/sample-badge";
 
 interface ShopViewProps {
   catalog: ShopCatalog;
@@ -172,21 +171,6 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
       </ShopHeader>
 
       <div style={{ padding: "16px" }}>
-        {catalog.isDemo && (
-          <div
-            style={{
-              backgroundColor: "#fffbeb",
-              border: "1px solid #fde68a",
-              color: "#92400e",
-              fontSize: "13px",
-              padding: "10px 12px",
-              borderRadius: "8px",
-              marginBottom: "12px",
-            }}
-          >
-            시연(데모) 카탈로그입니다. 실제 공급사 데이터가 연결되면 등록된 상품과 계약 단가로 대체됩니다.
-          </div>
-        )}
 
         {catalog.customer.isLinked && (
           <div
@@ -324,7 +308,6 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
                         Number(item.product.stock_quantity)
                       )
                     }
-                    isDemo={catalog.isDemo}
                   />
                 ))}
               </div>
@@ -385,10 +368,9 @@ interface ProductCardProps {
   item: ShopCatalogItem;
   quantity: number;
   onStep: (direction: 1 | -1) => void;
-  isDemo?: boolean;
 }
 
-function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProps) {
+function ProductCard({ item, quantity, onStep }: ProductCardProps) {
   const { product, effectivePrice, isCustomPrice, isHotDeal } = item;
   const stock = Number(product.stock_quantity);
   const isSoldOut = stock <= 0;
@@ -432,7 +414,6 @@ function ProductCard({ item, quantity, onStep, isDemo = false }: ProductCardProp
               </span>
             )}
             <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>{product.name}</h3>
-            {isDemo && <SampleBadge />}
           </div>
           <p style={{ fontSize: "12px", color: "#334155", marginTop: "4px" }}>
             원산지: {product.origin}

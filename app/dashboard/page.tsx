@@ -4,7 +4,6 @@ import { getOrgStaffContext } from "@/lib/auth/rbac";
 import { CopyInviteButton } from "@/components/copy-invite-button";
 import { PendingApprovalBanner } from "@/components/pending-approval-banner";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
-import { SampleBadge } from "@/components/sample-badge";
 import {
   describeInviteRestriction,
   getSupplierAccount,
@@ -96,12 +95,12 @@ export default async function DashboardPage() {
   const canIssueInvite = account?.canIssueInvite ?? false;
   const { todayStart, monthStart } = kstBoundaries();
 
-  let businessName = "마장동 태양축산 (테스트 도매)";
-  let shopToken = "demo-token-12345";
+  let businessName: string | null = null;
+  let shopToken: string | null = null;
   let activeCustomerCount = 0;
   let activeProductCount = 0;
   let orders: DashboardOrder[] = [];
-  let isDemoData = true;
+  let hasWholesaler = false;
 
   if (context) {
     const supabase = await createClient();
@@ -138,6 +137,7 @@ export default async function DashboardPage() {
         : { data: null };
 
     if (wholesaler) {
+      hasWholesaler = true;
       wholesalerId = wholesaler.id as string;
       businessName = (wholesaler.business_name as string) ?? businessName;
       shopToken = (wholesaler.shop_token as string) ?? shopToken;
@@ -164,48 +164,12 @@ export default async function DashboardPage() {
 
       activeCustomerCount = customerCount ?? 0;
       activeProductCount = productCount ?? 0;
-
-      if (monthOrders) {
-        orders = monthOrders as DashboardOrder[];
-        isDemoData = false;
-      }
+      orders = (monthOrders ?? []) as DashboardOrder[];
     }
   }
 
-  if (isDemoData && context?.isSuperAdmin) {
+  if (!hasWholesaler && context?.isSuperAdmin) {
     return <AdminScopeNotice />;
-  }
-
-  // 미인증(데모) 또는 이번 달 데이터가 아직 없을 때 보여줄 샘플 요약
-  if (isDemoData) {
-    const minutesAgo = (minutes: number) =>
-      new Date(Date.now() - minutes * 60 * 1000).toISOString();
-
-    orders = [
-      {
-        id: "demo-order-1",
-        order_number: "ORD-20260911-A79B2C",
-        total_amount: 255000,
-        status: "pending",
-        ordered_at: minutesAgo(30),
-      },
-      {
-        id: "demo-order-2",
-        order_number: "ORD-20260911-E54D1F",
-        total_amount: 185000,
-        status: "confirmed",
-        ordered_at: minutesAgo(180),
-      },
-      {
-        id: "demo-order-3",
-        order_number: "ORD-20260910-C21A88",
-        total_amount: 412000,
-        status: "delivered",
-        ordered_at: minutesAgo(60 * 30),
-      },
-    ];
-    activeCustomerCount = 8;
-    activeProductCount = 12;
   }
 
   const todayOrders = orders.filter((order) => new Date(order.ordered_at) >= todayStart);
@@ -222,28 +186,13 @@ export default async function DashboardPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>
-          {businessName} 대시보드
+          {businessName ? `${businessName} ` : ""}대시보드
         </h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
           오늘의 발주 현황과 매출 요약을 확인하고, 고객(소매) 전용 미니샵 초대 링크를
           전달하세요.
         </p>
       </header>
-
-      {isDemoData && (
-        <div
-          style={{
-            backgroundColor: "#fef3c7",
-            border: "1px solid #fde68a",
-            color: "#92400e",
-            fontSize: "13px",
-            padding: "12px 16px",
-            borderRadius: "8px",
-          }}
-        >
-          ℹ️ 실제 발주 데이터가 없어 샘플 요약을 표시하고 있습니다. (데모/개발 모드)
-        </div>
-      )}
 
       <section className="dash-cards">
         <SummaryCard
@@ -375,7 +324,6 @@ export default async function DashboardPage() {
                   <span style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>
                     {order.order_number}
                   </span>
-                  {isDemoData && <SampleBadge />}
                   <span style={{ fontSize: "12px", color: "#94a3b8" }}>
                     {formatTime(order.ordered_at)}
                   </span>

@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
-import { SampleBadge } from "@/components/sample-badge";
 import {
   getReceivableAuditLogAction,
   sendReceivablesReminderAction,
@@ -13,13 +12,11 @@ import type { ReceivableCustomerGroup } from "./receivable-types";
 
 interface ReceivablesViewProps {
   groups: ReceivableCustomerGroup[];
-  /** 데모(샘플) 데이터 여부 — 정산 처리를 막는다 */
-  readOnly?: boolean;
   /** 알림톡 연동(계정/발신정보/이 템플릿 코드)이 전부 준비됐는지 — false면 리마인드 버튼을 숨긴다 */
   alimtalkReady?: boolean;
 }
 
-export function ReceivablesView({ groups, readOnly = false, alimtalkReady = false }: ReceivablesViewProps) {
+export function ReceivablesView({ groups, alimtalkReady = false }: ReceivablesViewProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pendingGroupId, setPendingGroupId] = useState<string | null>(null);
   const [errorByGroup, setErrorByGroup] = useState<Record<string, string>>({});
@@ -72,11 +69,6 @@ export function ReceivablesView({ groups, readOnly = false, alimtalkReady = fals
   };
 
   const handleSettle = (group: ReceivableCustomerGroup) => {
-    if (readOnly) {
-      window.alert("샘플 데이터입니다. 로그인 후 실제 거래처에서 이용해주세요.");
-      return;
-    }
-
     const orderIds = group.orders.filter((order) => selected.has(order.id)).map((order) => order.id);
 
     if (orderIds.length === 0) {
@@ -108,11 +100,6 @@ export function ReceivablesView({ groups, readOnly = false, alimtalkReady = fals
   };
 
   const handleSendReminder = (group: ReceivableCustomerGroup) => {
-    if (readOnly) {
-      window.alert("샘플 데이터입니다. 로그인 후 실제 거래처에서 이용해주세요.");
-      return;
-    }
-
     setReminderStatusByGroup((prev) => ({ ...prev, [group.retailerId]: undefined }));
     setReminderPendingGroupId(group.retailerId);
 
@@ -249,11 +236,6 @@ export function ReceivablesView({ groups, readOnly = false, alimtalkReady = fals
                       }}
                     >
                       연체
-                    </span>
-                  )}
-                  {readOnly && (
-                    <span style={{ marginLeft: "8px" }}>
-                      <SampleBadge />
                     </span>
                   )}
                 </div>

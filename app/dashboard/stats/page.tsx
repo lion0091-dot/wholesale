@@ -2,8 +2,6 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
-import { SampleBadge } from "@/components/sample-badge";
-import { DEMO_ORDERS } from "@/lib/demo/supplier-samples";
 import { formatWon } from "@/lib/orders/status";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
@@ -111,7 +109,6 @@ export default async function DashboardStatsPage({
   const start = rangeStart(range);
 
   let items: StatItem[] = [];
-  let isDemoData = true;
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -127,19 +124,7 @@ export default async function DashboardStatsPage({
 
     const { data } = await query;
 
-    if (data && data.length > 0) {
-      items = (data as OrderJoinRow[]).flatMap((order) => order.order_items ?? []);
-      isDemoData = false;
-    }
-  }
-
-  if (isDemoData) {
-    const startDate = start ? new Date(start) : null;
-
-    items = DEMO_ORDERS.filter(
-      (order) =>
-        order.status !== "cancelled" && (!startDate || new Date(order.ordered_at) >= startDate)
-    ).flatMap((order) => order.items);
+    items = ((data ?? []) as OrderJoinRow[]).flatMap((order) => order.order_items ?? []);
   }
 
   const categories = aggregateByCategory(items);
@@ -151,27 +136,11 @@ export default async function DashboardStatsPage({
       <header>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
           <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>판매 통계</h1>
-          {isDemoData && <SampleBadge />}
         </div>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
           축종 → 부위 기준으로 판매량/매출을 집계합니다. 취소된 발주는 제외됩니다.
         </p>
       </header>
-
-      {isDemoData && (
-        <div
-          style={{
-            backgroundColor: "#fef3c7",
-            border: "1px solid #fde68a",
-            color: "#92400e",
-            fontSize: "13px",
-            padding: "12px 16px",
-            borderRadius: "8px",
-          }}
-        >
-          ℹ️ 접수된 발주가 없거나 미인증(데모) 상태여서 샘플 데이터를 표시하고 있습니다.
-        </div>
-      )}
 
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
         {(Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => (

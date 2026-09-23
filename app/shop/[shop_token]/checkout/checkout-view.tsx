@@ -36,7 +36,6 @@ interface OrderReceipt {
   totalAmount: number;
   itemsSummary: string;
   notificationId?: string;
-  isDemo?: boolean;
 }
 
 export function CheckoutView({ catalog }: CheckoutViewProps) {
@@ -163,7 +162,6 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
           totalAmount: result.totalAmount ?? totals.totalAmount,
           itemsSummary: result.itemsSummary ?? "",
           notificationId: result.notificationId,
-          isDemo: result.isDemo,
         });
         clear();
       } else {
@@ -224,12 +222,6 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 </div>
               )}
             </div>
-
-            {receipt.isDemo && (
-              <p style={{ fontSize: "11px", color: "#92400e", marginTop: "10px", textAlign: "left" }}>
-                * 시연 모드로 접수되어 알림톡 포맷만 검증되었으며 실제 발주 내역은 저장되지 않았습니다.
-              </p>
-            )}
 
             <Link
               href={`/shop/${shopToken}`}

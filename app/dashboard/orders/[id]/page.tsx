@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
-import { DEMO_ORDERS, DEMO_RETAILERS } from "@/lib/demo/supplier-samples";
 import {
   ORDER_STATUS_BADGES,
   formatOrderedAt,
@@ -17,7 +16,6 @@ import { TaxInvoiceDraftPanel } from "@/components/tax-invoice-draft-panel";
 import { isSweetTrackerConfigured } from "@/lib/verification/sweettracker";
 import { isPopbillConfigured } from "@/lib/popbill/client";
 import { signExternalOpenToken } from "@/lib/pdf/external-open-token";
-import { SampleBadge } from "@/components/sample-badge";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 export const metadata = {
@@ -87,84 +85,53 @@ function firstOrSelf<T>(value: T | T[] | null): T | null {
 
 async function loadOrder(
   orderId: string
-): Promise<{ order: OrderDetail; isDemoData: boolean; wholesalerId: string | null } | null> {
+): Promise<{ order: OrderDetail; wholesalerId: string } | null> {
   const scope = await getSupplierScope();
 
-  if (scope?.wholesalerId) {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from("orders")
-      .select(
-        "*, order_items (*), retailers ( restaurant_name, representative_name, business_number, delivery_address, delivery_address_detail )"
-      )
-      .eq("id", orderId)
-      .eq("wholesaler_id", scope.wholesalerId)
-      .maybeSingle();
-
-    if (data) {
-      const row = data as Record<string, unknown>;
-      const retailer = firstOrSelf(row.retailers as RetailerInfo | RetailerInfo[] | null);
-
-      return {
-        isDemoData: false,
-        wholesalerId: scope.wholesalerId,
-        order: {
-          id: row.id as string,
-          orderNumber: row.order_number as string,
-          status: row.status as OrderStatus,
-          totalAmount: Number(row.total_amount),
-          deliveryAddress: row.delivery_address as string,
-          deliveryNotes: (row.delivery_notes as string | null) ?? null,
-          orderedAt: row.ordered_at as string,
-          updatedAt: row.updated_at as string,
-          items: ((row.order_items as OrderItem[] | null) ?? []).slice().sort((a, b) =>
-            a.created_at.localeCompare(b.created_at)
-          ),
-          retailer: {
-            restaurant_name: retailer?.restaurant_name ?? "이름 미등록 고객(소매)",
-            representative_name: retailer?.representative_name ?? null,
-            business_number: retailer?.business_number ?? null,
-            delivery_address: retailer?.delivery_address ?? null,
-            delivery_address_detail: retailer?.delivery_address_detail ?? null,
-          },
-          courierCode: (row.courier_code as string | null) ?? null,
-          trackingNumber: (row.tracking_number as string | null) ?? null,
-        },
-      };
-    }
-  }
-
-  // 데모 모드 / 미인증 상태 — 샘플 발주서에서 조회
-  const demoOrder = DEMO_ORDERS.find((order) => order.id === orderId);
-
-  if (!demoOrder) {
+  if (!scope?.wholesalerId) {
     return null;
   }
 
-  const demoRetailer = DEMO_RETAILERS.find((retailer) => retailer.id === demoOrder.retailer_id);
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("orders")
+    .select(
+      "*, order_items (*), retailers ( restaurant_name, representative_name, business_number, delivery_address, delivery_address_detail )"
+    )
+    .eq("id", orderId)
+    .eq("wholesaler_id", scope.wholesalerId)
+    .maybeSingle();
+
+  if (!data) {
+    return null;
+  }
+
+  const row = data as Record<string, unknown>;
+  const retailer = firstOrSelf(row.retailers as RetailerInfo | RetailerInfo[] | null);
 
   return {
-    isDemoData: true,
-    wholesalerId: null,
+    wholesalerId: scope.wholesalerId,
     order: {
-      id: demoOrder.id,
-      orderNumber: demoOrder.order_number,
-      status: demoOrder.status,
-      totalAmount: Number(demoOrder.total_amount),
-      deliveryAddress: demoOrder.delivery_address,
-      deliveryNotes: demoOrder.delivery_notes,
-      orderedAt: demoOrder.ordered_at,
-      updatedAt: demoOrder.updated_at,
-      items: demoOrder.items,
+      id: row.id as string,
+      orderNumber: row.order_number as string,
+      status: row.status as OrderStatus,
+      totalAmount: Number(row.total_amount),
+      deliveryAddress: row.delivery_address as string,
+      deliveryNotes: (row.delivery_notes as string | null) ?? null,
+      orderedAt: row.ordered_at as string,
+      updatedAt: row.updated_at as string,
+      items: ((row.order_items as OrderItem[] | null) ?? []).slice().sort((a, b) =>
+        a.created_at.localeCompare(b.created_at)
+      ),
       retailer: {
-        restaurant_name: demoOrder.retailer_name,
-        representative_name: demoRetailer?.representative_name ?? null,
-        business_number: demoRetailer?.business_number ?? null,
-        delivery_address: demoRetailer?.delivery_address ?? null,
-        delivery_address_detail: demoRetailer?.delivery_address_detail ?? null,
+        restaurant_name: retailer?.restaurant_name ?? "이름 미등록 고객(소매)",
+        representative_name: retailer?.representative_name ?? null,
+        business_number: retailer?.business_number ?? null,
+        delivery_address: retailer?.delivery_address ?? null,
+        delivery_address_detail: retailer?.delivery_address_detail ?? null,
       },
-      courierCode: null,
-      trackingNumber: null,
+      courierCode: (row.courier_code as string | null) ?? null,
+      trackingNumber: (row.tracking_number as string | null) ?? null,
     },
   };
 }
@@ -191,36 +158,31 @@ export default async function OrderDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const { order, isDemoData, wholesalerId } = loaded;
+  const { order, wholesalerId } = loaded;
   const badge = ORDER_STATUS_BADGES[order.status];
   const timeline = buildAlimtalkTimeline(order.status);
-  const isLiveChannel = wholesalerId ? await isAlimtalkConfiguredForWholesaler(wholesalerId) : false;
+  const isLiveChannel = await isAlimtalkConfiguredForWholesaler(wholesalerId);
 
   // 카카오 인앱 브라우저 "외부에서 열기" 전용 — 세션 쿠키 없이도 인가되는 단발성 토큰.
-  // wholesalerId가 없으면(데모) 발급하지 않고, 버튼은 기존 href로 폴백한다.
-  const statementExternalOpenHref = wholesalerId
-    ? (() => {
-        const token = signExternalOpenToken({
-          kind: "supplier-statement",
-          orderId: order.id,
-          wholesalerId,
-        });
+  const statementExternalOpenHref = (() => {
+    const token = signExternalOpenToken({
+      kind: "supplier-statement",
+      orderId: order.id,
+      wholesalerId,
+    });
 
-        return token ? `/doc/${token}` : null;
-      })()
-    : null;
+    return token ? `/doc/${token}` : null;
+  })();
 
-  const taxInvoiceExternalOpenHref = wholesalerId
-    ? (() => {
-        const token = signExternalOpenToken({
-          kind: "tax-invoice",
-          orderId: order.id,
-          wholesalerId,
-        });
+  const taxInvoiceExternalOpenHref = (() => {
+    const token = signExternalOpenToken({
+      kind: "tax-invoice",
+      orderId: order.id,
+      wholesalerId,
+    });
 
-        return token ? `/doc/${token}` : null;
-      })()
-    : null;
+    return token ? `/doc/${token}` : null;
+  })();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -245,7 +207,6 @@ export default async function OrderDetailPage({ params }: PageProps) {
           >
             {badge.label}
           </span>
-          {isDemoData && <SampleBadge />}
         </div>
 
         <p style={{ fontSize: "13px", color: "#64748b" }}>
@@ -268,25 +229,9 @@ export default async function OrderDetailPage({ params }: PageProps) {
         </div>
       </header>
 
-      {isDemoData && (
-        <div
-          style={{
-            backgroundColor: "#fef3c7",
-            border: "1px solid #fde68a",
-            color: "#92400e",
-            fontSize: "13px",
-            padding: "12px 16px",
-            borderRadius: "8px",
-          }}
-        >
-          ℹ️ 샘플(데모) 발주서입니다. 상태 변경은 저장되지 않습니다.
-        </div>
-      )}
-
       <OrderStatusPanel
         orderId={order.id}
         currentStatus={order.status}
-        readOnly={isDemoData}
       />
 
       {/* 주문 상품 목록 */}
@@ -445,7 +390,6 @@ export default async function OrderDetailPage({ params }: PageProps) {
           courierCode={order.courierCode}
           trackingNumber={order.trackingNumber}
           sweetTrackerConfigured={isSweetTrackerConfigured()}
-          readOnly={isDemoData}
         />
 
         {/* 알림톡 발송 상태 */}

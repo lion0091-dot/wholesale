@@ -2,7 +2,6 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
-import { DEMO_PRODUCTS } from "@/lib/demo/supplier-samples";
 import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
 import { ProductTable, type StockSummary } from "./product-table";
 import { getLatestMarketPricesAction } from "@/app/actions/market-price";
@@ -11,7 +10,6 @@ import { PriceBulkPanel } from "./price-bulk-panel";
 import type { PriceCsvProduct } from "@/lib/products/price-import";
 
 import { SeedDefaultProductsButton } from "./seed-default-products-button";
-import { DemoNoticeBanner } from "./demo-notice-banner";
 import type { Product } from "@/types/database";
 
 export const metadata = {
@@ -26,7 +24,6 @@ export default async function DashboardProductsPage() {
   }
 
   let products: Product[] = [];
-  let isDemoData = true;
   let memberNames: Record<string, string> = {};
   // 상품별 재고 신선도 요약(도축일/포장일/박스수). 목록에서 상품마다 따로 조회하면
   // N+1이 되므로 한 번에 집계해 받아 상품 id로 매핑한다.
@@ -53,10 +50,7 @@ export default async function DashboardProductsPage() {
       supabase.rpc("get_product_stock_summary", { p_wholesaler_id: scope.wholesalerId }),
     ]);
 
-    if (data && data.length > 0) {
-      products = data as Product[];
-      isDemoData = false;
-    }
+    products = (data ?? []) as Product[];
 
     stockSummaries = Object.fromEntries(
       ((summaries ?? []) as StockSummary[]).map((summary) => [summary.product_id, summary])
@@ -76,25 +70,19 @@ export default async function DashboardProductsPage() {
     );
   }
 
-  if (isDemoData) {
-    products = DEMO_PRODUCTS;
-  }
-
-  const unpricedProducts: PriceCsvProduct[] = isDemoData
-    ? []
-    : products
-        .filter((product) => !product.archived_at && Number(product.base_price) <= 0)
-        .map((product) => ({
-          id: product.id,
-          name: product.name,
-          category: product.category,
-          subcategory: product.subcategory,
-          grade: product.grade,
-          unit: product.unit,
-          basePrice: Number(product.base_price),
-          marketPrice:
-            findMarketPrice(marketPrices, product.category, product.grade)?.pricePerKg ?? null,
-        }));
+  const unpricedProducts: PriceCsvProduct[] = products
+    .filter((product) => !product.archived_at && Number(product.base_price) <= 0)
+    .map((product) => ({
+      id: product.id,
+      name: product.name,
+      category: product.category,
+      subcategory: product.subcategory,
+      grade: product.grade,
+      unit: product.unit,
+      basePrice: Number(product.base_price),
+      marketPrice:
+        findMarketPrice(marketPrices, product.category, product.grade)?.pricePerKg ?? null,
+    }));
 
   const lowStockCount = products.filter((product) => Number(product.stock_quantity) <= 3).length;
 
@@ -132,13 +120,22 @@ export default async function DashboardProductsPage() {
         </Link>
       </header>
 
-      {isDemoData && (
-        <DemoNoticeBanner>
-          <SeedDefaultProductsButton
-            disabled={!scope?.wholesalerId}
-            itemCount={DEFAULT_DELIVERY_ITEMS.length}
-          />
-        </DemoNoticeBanner>
+      {scope?.wholesalerId && products.length === 0 && (
+        <div
+          style={{
+            backgroundColor: "#f8fafc",
+            border: "1px solid #e2e8f0",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            fontSize: "13px",
+            color: "#334155",
+          }}
+        >
+          아직 등록된 상품이 없습니다. 아래 버튼으로 기본 납품 품목을 한 번에 불러올 수 있습니다.
+          <div style={{ marginTop: "10px" }}>
+            <SeedDefaultProductsButton itemCount={DEFAULT_DELIVERY_ITEMS.length} />
+          </div>
+        </div>
       )}
 
       <section className="dash-cards">
@@ -169,7 +166,6 @@ export default async function DashboardProductsPage() {
 
       <ProductTable
         products={products}
-        readOnly={isDemoData}
         memberNames={memberNames}
         stockSummaries={stockSummaries}
         marketPrices={marketPrices}

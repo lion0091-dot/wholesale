@@ -12,7 +12,6 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
-import { SampleBadge } from "@/components/sample-badge";
 import { IncompleteProfileBadge } from "@/components/incomplete-profile-badge";
 import type { RelationshipStatus } from "@/types/database";
 import type { CustomerRow } from "./customer-types";
@@ -27,8 +26,6 @@ interface CustomerCardGridProps {
   onOpenCredit: (customer: CustomerRow) => void;
   /** 거래중지 / 거래 재개 모달 열기 */
   onOpenStatus: (customer: CustomerRow) => void;
-  /** 샘플(데모) 고객 목록 여부 — 카드마다 "샘플" 배지를 붙인다. */
-  isDemo?: boolean;
 }
 
 const RELATION_BADGES: Record<RelationshipStatus, { label: string; bg: string; color: string }> = {
@@ -110,7 +107,6 @@ export function CustomerCardGrid({
   onOpenInvite,
   onOpenCredit,
   onOpenStatus,
-  isDemo = false,
 }: CustomerCardGridProps) {
   return (
     <div className="dash-customer-grid">
@@ -161,7 +157,6 @@ export function CustomerCardGrid({
                   >
                     {customer.restaurantName}
                   </h3>
-                  {isDemo && <SampleBadge />}
                   {customer.hasIncompleteProfile && <IncompleteProfileBadge />}
                 </div>
                 <p style={{ fontSize: "12px", color: "#475569", marginTop: "3px" }}>

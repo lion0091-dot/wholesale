@@ -11,8 +11,6 @@ interface TrackingPanelProps {
   trackingNumber: string | null;
   /** 스위트트래커 API 키 미설정 시 조회 버튼을 잠근다 (입력/저장은 계속 가능). */
   sweetTrackerConfigured: boolean;
-  /** 데모(샘플) 발주서는 저장할 수 없다. */
-  readOnly?: boolean;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -27,7 +25,6 @@ export function TrackingPanel({
   courierCode,
   trackingNumber,
   sweetTrackerConfigured,
-  readOnly = false,
 }: TrackingPanelProps) {
   const router = useRouter();
   const [courier, setCourier] = useState(courierCode ?? KOREAN_COURIERS[0].code);
@@ -42,11 +39,6 @@ export function TrackingPanel({
   const hasSaved = Boolean(courierCode && trackingNumber);
 
   const handleSave = async () => {
-    if (readOnly) {
-      setMessage({ type: "error", text: "샘플 발주서는 저장할 수 없습니다. 로그인 후 실제 발주서에서 이용해주세요." });
-      return;
-    }
-
     setSaving(true);
     setMessage(null);
 

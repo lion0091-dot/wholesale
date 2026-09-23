@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
-import { DEMO_PRODUCTS } from "@/lib/demo/supplier-samples";
 import { HistoryPickerList, type HistoryPickerItem } from "../history-picker-list";
 import type { Product } from "@/types/database";
 
@@ -24,7 +23,7 @@ export default async function ProductHistoryPage() {
     return <AdminScopeNotice />;
   }
 
-  let products: Product[] = DEMO_PRODUCTS;
+  let products: Product[] = [];
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -34,9 +33,7 @@ export default async function ProductHistoryPage() {
       .eq("wholesaler_id", scope.wholesalerId)
       .order("name", { ascending: true });
 
-    if (data && data.length > 0) {
-      products = data as Product[];
-    }
+    products = (data ?? []) as Product[];
   }
 
   return (

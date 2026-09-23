@@ -1,13 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
-import { DEMO_ORDERS } from "@/lib/demo/supplier-samples";
 import { formatWon, ACTIVE_ORDER_STATUSES, HISTORICAL_ORDER_STATUSES } from "@/lib/orders/status";
 import { isAlimtalkConfiguredForWholesaler } from "@/lib/notifications/alimtalk";
 import {
   ORDER_LIST_SELECT_COLUMNS,
   mapOrderJoinRow,
-  summarizeItems,
   type OrderJoinRow,
   type OrderRow,
 } from "@/lib/orders/order-row";
@@ -32,7 +30,6 @@ export default async function DashboardOrdersPage() {
   let activeOrders: OrderRow[] = [];
   let historicalOrders: OrderRow[] = [];
   let historyTotalCount = 0;
-  let isDemoData = true;
   /** 배송완료/취소 카드 합계는 목록과 달리 항상 전체 기간 기준이어야 해서 별도 집계로 가져온다. */
   let activeAmount = 0;
   /** 이 공급사가 비즈뿌리오 계정을 등록했는지 — 등록 전엔 알림톡이 콘솔 로그로만 남는다. */
@@ -63,36 +60,10 @@ export default async function DashboardOrdersPage() {
 
     isLiveChannel = liveChannel;
 
-    const hasAny = (activeData?.length ?? 0) > 0 || (historicalData?.length ?? 0) > 0;
-
-    if (hasAny) {
-      activeOrders = ((activeData ?? []) as OrderJoinRow[]).map(mapOrderJoinRow);
-      historicalOrders = ((historicalData ?? []) as OrderJoinRow[]).map(mapOrderJoinRow);
-      historyTotalCount = historicalCount ?? 0;
-      activeAmount = Number(activeAmountData ?? 0);
-      isDemoData = false;
-    }
-  }
-
-  if (isDemoData) {
-    const demoRows: OrderRow[] = DEMO_ORDERS.map((order) => ({
-      id: order.id,
-      orderNumber: order.order_number,
-      retailerName: order.retailer_name,
-      status: order.status,
-      totalAmount: Number(order.total_amount),
-      itemCount: order.items.length,
-      itemSummary: summarizeItems(order.items),
-      orderedAt: order.ordered_at,
-      deliveryAddress: order.delivery_address,
-    }));
-
-    activeOrders = demoRows.filter((row) => ACTIVE_ORDER_STATUSES.includes(row.status));
-    historicalOrders = demoRows.filter((row) => HISTORICAL_ORDER_STATUSES.includes(row.status));
-    historyTotalCount = historicalOrders.length;
-    activeAmount = demoRows
-      .filter((row) => row.status !== "cancelled")
-      .reduce((sum, row) => sum + row.totalAmount, 0);
+    activeOrders = ((activeData ?? []) as OrderJoinRow[]).map(mapOrderJoinRow);
+    historicalOrders = ((historicalData ?? []) as OrderJoinRow[]).map(mapOrderJoinRow);
+    historyTotalCount = historicalCount ?? 0;
+    activeAmount = Number(activeAmountData ?? 0);
   }
 
   const pendingCount = activeOrders.filter((order) => order.status === "pending").length;
@@ -109,22 +80,6 @@ export default async function DashboardOrdersPage() {
           접수 및 상태 변경 시점에 자동 발송됩니다.
         </p>
       </header>
-
-      {isDemoData && (
-        <div
-          style={{
-            backgroundColor: "#fef3c7",
-            border: "1px solid #fde68a",
-            color: "#92400e",
-            fontSize: "13px",
-            padding: "12px 16px",
-            borderRadius: "8px",
-          }}
-        >
-          ℹ️ 접수된 발주서가 없거나 미인증(데모) 상태여서 샘플 발주서를 표시하고 있습니다. 샘플
-          발주서는 상태 변경이 동작하지 않습니다.
-        </div>
-      )}
 
       <section className="dash-cards">
         {[
@@ -156,7 +111,6 @@ export default async function DashboardOrdersPage() {
         initialHistoryTotalCount={historyTotalCount}
         initialHistoryHasMore={historicalOrders.length < historyTotalCount}
         isLiveChannel={isLiveChannel}
-        isDemo={isDemoData}
       />
     </div>
   );

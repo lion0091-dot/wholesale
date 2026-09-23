@@ -9,19 +9,15 @@
  *   kind='hot_deal' 매핑이 있으면 그 가격이 최우선, 없으면 kind='custom' 매핑, 둘 다
  *   없거나 꺼져 있으면 기준 단가.
  *
- * Supabase 미설정/데이터 미존재 시 백오피스와 동일한 데모 모드 샘플로 대체한다.
+ * 등록되지 않았거나 정지된 공급사 링크는 notFound()로 처리한다.
  *
  * 서버 전용 모듈(next/headers 의존). 클라이언트 컴포넌트는 타입·순수 함수만 있는
  * `@/lib/shop/catalog-types`를 import 해야 한다.
  */
 
+import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { resolveBuyerIdentity } from "@/lib/auth/buyer-auth";
-import {
-  DEMO_CUSTOM_PRICES,
-  DEMO_PRODUCTS,
-  DEMO_RETAILERS,
-} from "@/lib/demo/supplier-samples";
 import {
   findCatalogItem,
   resolveCatalogItem,
@@ -49,76 +45,6 @@ const GUEST_CUSTOMER: ShopCustomer = {
   creditLimit: 0,
   allowedPaymentMethods: [],
 };
-
-function demoWholesaler(shopToken: string): Wholesaler {
-  const timestamp = new Date().toISOString();
-
-  return {
-    id: "demo-wholesaler-id",
-    profile_id: "demo-profile-id",
-    business_name: "마장동 태양축산 (테스트 도매)",
-    business_number: "123-45-67890",
-    representative_name: "김태양",
-    business_address: "서울 성동구 마장로 123, 2층",
-    business_start_date: "2018-03-05",
-    nts_verification_status: "match",
-    nts_verified_at: timestamp,
-    business_license_path: "demo-profile-id/business-license",
-    business_license_uploaded_at: timestamp,
-    shop_token: shopToken,
-    status: "active",
-    subscription_status: "active",
-    trial_started_at: timestamp,
-    billing_starts_at: null,
-    created_at: timestamp,
-    updated_at: timestamp,
-  };
-}
-
-/** 데모 모드에서는 첫 번째 샘플 식당을 단골 고객으로 간주하여 맞춤 단가 UI를 시연한다. */
-function demoCustomer(): ShopCustomer {
-  const retailer = DEMO_RETAILERS[0];
-
-  return {
-    retailerId: retailer.id,
-    restaurantName: retailer.restaurant_name,
-    representativeName: retailer.representative_name,
-    contactPhone: "010-9876-5432",
-    deliveryAddress: [retailer.delivery_address, retailer.delivery_address_detail]
-      .filter(Boolean)
-      .join(", "),
-    isLinked: retailer.status === "active",
-    // 데모 모드는 실제 wholesaler_retailers 행이 없으므로 외상 UI 시연용 고정값을 사용한다.
-    creditLimit: 300000,
-    // PG는 실제 자격정보가 없어 시연 불가 — 직접정산/외상만 시연한다.
-    allowedPaymentMethods: ["prepaid", "on_credit"],
-  };
-}
-
-function demoCatalog(shopToken: string): ShopCatalog {
-  const customer = demoCustomer();
-  const myPrices = DEMO_CUSTOM_PRICES.filter(
-    (price) => price.retailer_id === customer.retailerId && price.is_active
-  );
-  const hotDealByProduct = new Map(
-    myPrices.filter((price) => price.kind === "hot_deal").map((price) => [price.product_id, Number(price.custom_price)])
-  );
-  const customByProduct = new Map(
-    myPrices.filter((price) => price.kind === "custom").map((price) => [price.product_id, Number(price.custom_price)])
-  );
-
-  const items: ShopCatalogItem[] = DEMO_PRODUCTS.map((product) =>
-    resolveCatalogItem(product, hotDealByProduct.get(product.id), customByProduct.get(product.id))
-  );
-
-  return {
-    shopToken,
-    wholesaler: demoWholesaler(shopToken),
-    items,
-    customer,
-    isDemo: true,
-  };
-}
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -191,8 +117,26 @@ async function loadCustomPrices(
 }
 
 /**
+ * loadShopCatalog()가 내부에서 던지는 notFound()를 Server Action의 try/catch가
+ * 그대로 삼켜버리면, 고객에게 "이 페이지를 찾을 수 없습니다" 대신 Next.js 내부
+ * digest 문자열이 그대로 노출된다(2026-09-23 발견). 액션 쪽 catch 블록은 이 함수로
+ * 그 경우만 먼저 걸러내 알아볼 수 있는 안내문으로 바꿔야 한다 — page.tsx 쪽 호출은
+ * try/catch로 감싸지 않으므로 notFound()가 원래대로 정상 동작한다(수정 불필요).
+ */
+export function isShopNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    typeof (error as { digest?: unknown }).digest === "string" &&
+    (error as { digest: string }).digest.startsWith("NEXT_HTTP_ERROR_FALLBACK;404")
+  );
+}
+
+/**
  * 미니샵 카탈로그 조회.
- * 공급사/상품 데이터가 없으면 데모 카탈로그로 대체하므로 항상 값을 반환한다.
+ * 등록되지 않았거나 정지된 공급사 링크는 404로 처리한다. 상품이 아직 없는 경우는
+ * 빈 카탈로그를 반환하며, 화면(ShopView)이 "아직 등록된 품목이 없습니다"를 보여준다.
  */
 export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
   const supabase = await createClient();
@@ -205,9 +149,8 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
     .eq("shop_token", shopToken)
     .maybeSingle();
 
-  // 미등록/정지된 공급사 링크는 시연용 데모 카탈로그로 대체 (실 데이터 노출 없음)
   if (!wholesalerData || wholesalerData.status !== "active") {
-    return demoCatalog(shopToken);
+    notFound();
   }
 
   const wholesaler = wholesalerData as Wholesaler;
@@ -224,10 +167,6 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
     .order("name", { ascending: true });
 
   const products = (productsData ?? []) as Product[];
-
-  if (products.length === 0) {
-    return { ...demoCatalog(shopToken), wholesaler, isDemo: true };
-  }
 
   const customer = await resolveCustomer(supabase, wholesaler.id);
 
@@ -252,7 +191,6 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
     wholesaler,
     items,
     customer,
-    isDemo: false,
   };
 }
 

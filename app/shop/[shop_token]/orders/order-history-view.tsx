@@ -28,7 +28,6 @@ import {
   requestOrderCancelAction,
 } from "../actions";
 import { StatementPreviewButton } from "@/components/statement-preview-button";
-import { SampleBadge } from "@/components/sample-badge";
 import { courierLabel, type TrackingResult } from "@/lib/verification/sweettracker";
 
 interface OrderHistoryViewProps {
@@ -122,9 +121,9 @@ export function OrderHistoryView({
   const [submittingOrderId, setSubmittingOrderId] = useState<string | null>(null);
   const [completedOrderId, setCompletedOrderId] = useState<string | null>(null);
 
-  // 조회 구간(30일/3개월/전체) + 더보기 — 미인증/데모 상태(history.requiresLink,
-  // catalog.isDemo)에서는 애초에 조회할 데이터가 없으므로 아래 상태는 그 경우엔 쓰이지 않는다.
-  const canPaginate = !history.requiresLink && !catalog.isDemo;
+  // 조회 구간(30일/3개월/전체) + 더보기 — 미인증 상태(history.requiresLink)에서는
+  // 애초에 조회할 데이터가 없으므로 아래 상태는 그 경우엔 쓰이지 않는다.
+  const canPaginate = !history.requiresLink;
   const [externalOpenHrefs, setExternalOpenHrefs] = useState(statementExternalOpenHrefByOrderId);
   const [emptyNotice, setEmptyNotice] = useState<string | null>(
     history.orders.length === 0 ? history.notice : null
@@ -340,7 +339,6 @@ export function OrderHistoryView({
                     <div style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>
                       {order.orderNumber}
                     </div>
-                    {catalog.isDemo && <SampleBadge />}
                   </div>
                   <div style={{ fontSize: "12px", color: "#475569", marginTop: "3px" }}>
                     {formatOrderedAt(order.orderedAt)} 접수

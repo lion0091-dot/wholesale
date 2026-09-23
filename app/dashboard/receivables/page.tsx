@@ -3,7 +3,6 @@ import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { computeDueAt, isOverdue } from "@/lib/orders/receivables";
 import { formatWon } from "@/lib/orders/status";
-import { DEMO_ORDERS, DEMO_RETAILERS } from "@/lib/demo/supplier-samples";
 import { getAlimtalkSettingsAction } from "@/app/actions/alimtalk-settings";
 import { ReceivablesView } from "./receivables-view";
 import type { ReceivableCustomerGroup, ReceivableOrderRow } from "./receivable-types";
@@ -89,28 +88,6 @@ function buildGroups(
     });
 }
 
-function demoGroups(): ReceivableCustomerGroup[] {
-  const relations: RelationRow[] = DEMO_RETAILERS.map((retailer) => ({
-    retailer_id: retailer.id,
-    credit_limit: retailer.credit_limit,
-    outstanding_balance: retailer.outstanding_balance,
-    settlement_due_days: retailer.settlement_due_days,
-    retailers: { restaurant_name: retailer.restaurant_name },
-  }));
-
-  const creditOrders: CreditOrderRow[] = DEMO_ORDERS.filter(
-    (order) => order.payment_method === "on_credit" && !order.settled_at && order.status !== "cancelled"
-  ).map((order) => ({
-    id: order.id,
-    order_number: order.order_number,
-    retailer_id: order.retailer_id,
-    total_amount: order.total_amount,
-    ordered_at: order.ordered_at,
-  }));
-
-  return buildGroups(relations, creditOrders);
-}
-
 export default async function DashboardReceivablesPage() {
   const scope = await getSupplierScope();
 
@@ -119,7 +96,6 @@ export default async function DashboardReceivablesPage() {
   }
 
   let groups: ReceivableCustomerGroup[] = [];
-  let isDemoData = true;
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -140,19 +116,12 @@ export default async function DashboardReceivablesPage() {
         .neq("status", "cancelled"),
     ]);
 
-    if (relations && relations.length > 0) {
-      groups = buildGroups(relations as RelationRow[], (creditOrders ?? []) as CreditOrderRow[]);
-      isDemoData = false;
-    }
-  }
-
-  if (isDemoData) {
-    groups = demoGroups();
+    groups = buildGroups((relations ?? []) as RelationRow[], (creditOrders ?? []) as CreditOrderRow[]);
   }
 
   // 리마인드 발송 버튼은 실제로 보낼 수 있는 상태(계정/비밀번호/발신정보/이 템플릿 코드까지
   // 전부 등록됨)일 때만 보여준다 — 절반만 설정된 상태에서 눌렀다가 실패하는 걸 막는다.
-  const alimtalkSettingsResult = !isDemoData && scope?.wholesalerId ? await getAlimtalkSettingsAction() : null;
+  const alimtalkSettingsResult = scope?.wholesalerId ? await getAlimtalkSettingsAction() : null;
   const alimtalkSettings =
     alimtalkSettingsResult?.success && alimtalkSettingsResult.data ? alimtalkSettingsResult.data : null;
   const alimtalkReady = Boolean(
@@ -177,21 +146,6 @@ export default async function DashboardReceivablesPage() {
         </p>
       </header>
 
-      {isDemoData && (
-        <div
-          style={{
-            backgroundColor: "#fef3c7",
-            border: "1px solid #fde68a",
-            color: "#92400e",
-            fontSize: "13px",
-            padding: "12px 16px",
-            borderRadius: "8px",
-          }}
-        >
-          ℹ️ 연결된 거래처가 없거나 미인증(데모) 상태여서 샘플 데이터를 표시하고 있습니다.
-        </div>
-      )}
-
       <section className="dash-cards">
         {[
           { label: "미수금 거래처", value: `${groups.length}곳`, accent: "#0f172a" },
@@ -215,7 +169,7 @@ export default async function DashboardReceivablesPage() {
         ))}
       </section>
 
-      <ReceivablesView groups={groups} readOnly={isDemoData} alimtalkReady={alimtalkReady} />
+      <ReceivablesView groups={groups} alimtalkReady={alimtalkReady} />
     </div>
   );
 }

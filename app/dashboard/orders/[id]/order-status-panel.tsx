@@ -15,8 +15,6 @@ import type { OrderStatus } from "@/types/database";
 interface OrderStatusPanelProps {
   orderId: string;
   currentStatus: OrderStatus;
-  /** 데모(샘플) 발주서는 상태를 변경할 수 없다. */
-  readOnly?: boolean;
 }
 
 const TONE_STYLES: Record<string, CSSProperties> = {
@@ -29,7 +27,6 @@ const TONE_STYLES: Record<string, CSSProperties> = {
 export function OrderStatusPanel({
   orderId,
   currentStatus,
-  readOnly = false,
 }: OrderStatusPanelProps) {
   const router = useRouter();
   const [status, setStatus] = useState<OrderStatus>(currentStatus);
@@ -42,14 +39,6 @@ export function OrderStatusPanel({
 
   const handleChange = async (nextStatus: OrderStatus) => {
     const action = ORDER_STATUS_ACTIONS[nextStatus];
-
-    if (readOnly) {
-      setMessage({
-        type: "error",
-        text: "샘플 발주서는 상태를 변경할 수 없습니다. 로그인 후 실제 발주서를 처리해주세요.",
-      });
-      return;
-    }
 
     if (action.confirmMessage && !window.confirm(action.confirmMessage)) {
       return;

@@ -4,35 +4,6 @@ import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { isSuperAdminSession } from "@/lib/auth/rbac";
 import { RetailerLeadList, type RetailerLeadRow } from "./retailer-lead-list";
 
-const DEMO_LEADS: RetailerLeadRow[] = [
-  {
-    id: "demo-lead-1",
-    restaurant_name: "을지로 미트하우스 (샘플)",
-    contact_name: "김사장",
-    contact_phone: "010-1234-5678",
-    region: "서울 중구",
-    desired_category: "한우",
-    monthly_volume_hint: "월 200kg 내외",
-    memo: "단골 도매처가 폐업해서 새로 찾는 중",
-    status: "pending",
-    admin_note: null,
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-  },
-  {
-    id: "demo-lead-2",
-    restaurant_name: "성수동 고깃집 (샘플)",
-    contact_name: "박대표",
-    contact_phone: "010-9876-5432",
-    region: "서울 성동구",
-    desired_category: "돼지고기",
-    monthly_volume_hint: null,
-    memo: null,
-    status: "contacted",
-    admin_note: "마장동 태양축산에 의뢰함 — 회신 대기",
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
-  },
-];
-
 export default async function AdminRetailerLeadsPage() {
   const isConfigured = isSupabaseConfigured();
 
@@ -40,7 +11,7 @@ export default async function AdminRetailerLeadsPage() {
     redirect("/login?next=/admin/retailer-leads");
   }
 
-  let leads: RetailerLeadRow[] = DEMO_LEADS;
+  let leads: RetailerLeadRow[] = [];
 
   if (isConfigured) {
     const supabase = await createClient();

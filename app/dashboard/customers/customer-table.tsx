@@ -4,7 +4,6 @@ import { useEffect, useState, useTransition, type CSSProperties } from "react";
 import Link from "next/link";
 import { issueInviteAction, type IssuedInvite } from "@/app/actions/invite";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
-import { SampleBadge } from "@/components/sample-badge";
 import { IncompleteProfileBadge } from "@/components/incomplete-profile-badge";
 import type { RelationshipStatus } from "@/types/database";
 import { CustomerCardGrid } from "./customer-card-grid";
@@ -28,8 +27,6 @@ interface CustomerTableProps {
   canIssueInvite: boolean;
   /** 발부가 막힌 사유 */
   inviteRestriction?: string | null;
-  /** 데모(샘플) 데이터 여부 — 실제 초대 링크가 아님을 안내한다. */
-  readOnly?: boolean;
   /** 공급사 자신의 PG(토스페이먼츠) 연동 설정 여부 — 미설정이면 PG 체크박스를 잠근다. */
   pgConfigured?: boolean;
 }
@@ -70,7 +67,6 @@ export function CustomerTable({
   shopToken,
   canIssueInvite,
   inviteRestriction,
-  readOnly = false,
   pgConfigured = false,
 }: CustomerTableProps) {
   const [keyword, setKeyword] = useState("");
@@ -209,7 +205,7 @@ export function CustomerTable({
   };
 
   const handleBlockRetailer = () => {
-    if (!statusTarget || readOnly) {
+    if (!statusTarget) {
       return;
     }
 
@@ -236,7 +232,7 @@ export function CustomerTable({
   };
 
   const handleReactivateRetailer = () => {
-    if (!statusTarget || readOnly) {
+    if (!statusTarget) {
       return;
     }
 
@@ -260,7 +256,7 @@ export function CustomerTable({
   };
 
   const handleSaveCredit = () => {
-    if (!creditTarget || readOnly) {
+    if (!creditTarget) {
       return;
     }
 
@@ -432,7 +428,6 @@ export function CustomerTable({
             onOpenInvite={handleOpenInvite}
             onOpenCredit={handleOpenCredit}
             onOpenStatus={handleOpenStatus}
-            isDemo={readOnly}
           />
         ) : (
           <div className="dash-table-wrap">
@@ -462,7 +457,6 @@ export function CustomerTable({
                       <td>
                         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                           <div style={{ fontWeight: 700 }}>{customer.restaurantName}</div>
-                          {readOnly && <SampleBadge />}
                           {customer.hasIncompleteProfile && <IncompleteProfileBadge />}
                         </div>
                         <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
@@ -652,22 +646,6 @@ export function CustomerTable({
                 ✕
               </button>
             </div>
-
-            {readOnly && (
-              <div
-                style={{
-                  backgroundColor: "#fef3c7",
-                  border: "1px solid #fde68a",
-                  color: "#92400e",
-                  fontSize: "12px",
-                  padding: "9px 11px",
-                  borderRadius: "8px",
-                }}
-              >
-                샘플 토큰으로 생성된 링크입니다. 실제 초대는 로그인 후 발급된 미니샵 토큰으로
-                진행해주세요.
-              </div>
-            )}
 
             {inviteError && (
               <div
@@ -868,21 +846,6 @@ export function CustomerTable({
               </button>
             </div>
 
-            {readOnly && (
-              <div
-                style={{
-                  backgroundColor: "#fef3c7",
-                  border: "1px solid #fde68a",
-                  color: "#92400e",
-                  fontSize: "12px",
-                  padding: "9px 11px",
-                  borderRadius: "8px",
-                }}
-              >
-                샘플 데이터입니다. 로그인 후 실제 거래처에서 이용해주세요.
-              </div>
-            )}
-
             <div>
               <label
                 style={{
@@ -1025,14 +988,14 @@ export function CustomerTable({
               <button
                 type="button"
                 onClick={handleSaveCredit}
-                disabled={creditPending || readOnly}
+                disabled={creditPending}
                 style={{
                   ...chipButtonStyle,
-                  backgroundColor: creditPending || readOnly ? "#94a3b8" : "#0f172a",
-                  borderColor: creditPending || readOnly ? "#94a3b8" : "#0f172a",
+                  backgroundColor: creditPending ? "#94a3b8" : "#0f172a",
+                  borderColor: creditPending ? "#94a3b8" : "#0f172a",
                   color: "#ffffff",
                   padding: "9px 13px",
-                  cursor: creditPending || readOnly ? "not-allowed" : "pointer",
+                  cursor: creditPending ? "not-allowed" : "pointer",
                 }}
               >
                 {creditPending ? "저장 중..." : "저장"}
@@ -1095,21 +1058,6 @@ export function CustomerTable({
                 ✕
               </button>
             </div>
-
-            {readOnly && (
-              <div
-                style={{
-                  backgroundColor: "#fef3c7",
-                  border: "1px solid #fde68a",
-                  color: "#92400e",
-                  fontSize: "12px",
-                  padding: "9px 11px",
-                  borderRadius: "8px",
-                }}
-              >
-                샘플 데이터입니다. 로그인 후 실제 거래처에서 이용해주세요.
-              </div>
-            )}
 
             {statusTarget.relationStatus === "blocked" ? (
               <>
@@ -1194,14 +1142,14 @@ export function CustomerTable({
                 <button
                   type="button"
                   onClick={handleReactivateRetailer}
-                  disabled={statusPending || readOnly}
+                  disabled={statusPending}
                   style={{
                     ...chipButtonStyle,
-                    backgroundColor: statusPending || readOnly ? "#94a3b8" : "#16a34a",
-                    borderColor: statusPending || readOnly ? "#94a3b8" : "#16a34a",
+                    backgroundColor: statusPending ? "#94a3b8" : "#16a34a",
+                    borderColor: statusPending ? "#94a3b8" : "#16a34a",
                     color: "#ffffff",
                     padding: "9px 13px",
-                    cursor: statusPending || readOnly ? "not-allowed" : "pointer",
+                    cursor: statusPending ? "not-allowed" : "pointer",
                   }}
                 >
                   {statusPending ? "처리 중..." : "거래 재개"}
@@ -1210,14 +1158,14 @@ export function CustomerTable({
                 <button
                   type="button"
                   onClick={handleBlockRetailer}
-                  disabled={statusPending || readOnly}
+                  disabled={statusPending}
                   style={{
                     ...chipButtonStyle,
-                    backgroundColor: statusPending || readOnly ? "#94a3b8" : "#dc2626",
-                    borderColor: statusPending || readOnly ? "#94a3b8" : "#dc2626",
+                    backgroundColor: statusPending ? "#94a3b8" : "#dc2626",
+                    borderColor: statusPending ? "#94a3b8" : "#dc2626",
                     color: "#ffffff",
                     padding: "9px 13px",
-                    cursor: statusPending || readOnly ? "not-allowed" : "pointer",
+                    cursor: statusPending ? "not-allowed" : "pointer",
                   }}
                 >
                   {statusPending ? "처리 중..." : "거래중지"}

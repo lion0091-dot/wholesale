@@ -1,11 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
 import { listCustomPrices, type CustomPriceKind } from "@/app/actions/custom_price";
-import {
-  DEMO_CUSTOM_PRICES,
-  DEMO_PRODUCTS,
-  DEMO_RETAILERS,
-} from "@/lib/demo/supplier-samples";
 import type { HistoryPickerItem } from "./history-picker-list";
 
 /** wholesaler_retailers + retailers 조인 응답 형태 (custom-prices/page.tsx와 동일) */
@@ -28,16 +23,7 @@ export async function loadCustomPriceHistoryItems(kind: CustomPriceKind): Promis
   const scope = await getSupplierScope();
 
   if (!scope?.wholesalerId) {
-    return DEMO_CUSTOM_PRICES.filter((row) => row.kind === kind).map((row) => {
-      const product = DEMO_PRODUCTS.find((item) => item.id === row.product_id);
-      const retailer = DEMO_RETAILERS.find((item) => item.id === row.retailer_id);
-
-      return {
-        id: row.id,
-        title: `${retailer?.restaurant_name ?? "-"} · ${product?.name ?? "-"}`,
-        subtitle: `${Number(row.custom_price).toLocaleString("ko-KR")}원`,
-      };
-    });
+    return [];
   }
 
   const supabase = await createClient();

@@ -45,10 +45,9 @@ export default async function DashboardBillingPage() {
   }
 
   let subscriptionStatus: SubscriptionStatus = "trial";
-  let trialStartedAt = new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString();
+  let trialStartedAt = new Date().toISOString();
   let billingStartsAt: string | null = null;
-  let billedRetailerCount = 8;
-  let isDemoData = true;
+  let billedRetailerCount = 0;
   let eventDiscountRate = 0;
   let eventName: string | null = null;
 
@@ -73,7 +72,6 @@ export default async function DashboardBillingPage() {
       billedRetailerCount = billedCount;
       eventDiscountRate = eventDiscount.discountRate;
       eventName = eventDiscount.eventName;
-      isDemoData = false;
     }
   }
 
@@ -100,21 +98,6 @@ export default async function DashboardBillingPage() {
           이번 달 실제로 발주(취소 제외)한 거래처 수를 기준으로 계산되는 구간별 누진 구독료입니다.
         </p>
       </header>
-
-      {isDemoData && (
-        <div
-          style={{
-            backgroundColor: "#fef3c7",
-            border: "1px solid #fde68a",
-            color: "#92400e",
-            fontSize: "13px",
-            padding: "12px 16px",
-            borderRadius: "8px",
-          }}
-        >
-          ℹ️ 연결된 공급사 계정이 없어 샘플 데이터를 표시하고 있습니다.
-        </div>
-      )}
 
       <div
         style={{

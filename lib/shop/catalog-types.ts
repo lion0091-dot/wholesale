@@ -38,8 +38,6 @@ export interface ShopCatalog {
   wholesaler: Wholesaler;
   items: ShopCatalogItem[];
   customer: ShopCustomer;
-  /** Supabase 미설정/미등록 상태의 시연 데이터 여부 */
-  isDemo: boolean;
 }
 
 export interface CartEntryInput {

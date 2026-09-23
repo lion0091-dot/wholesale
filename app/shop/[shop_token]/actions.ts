@@ -10,7 +10,7 @@ import {
   sendOrderNotificationToWholesaler,
 } from "@/lib/notifications/alimtalk";
 import { canRequestCancel } from "@/lib/orders/status";
-import { loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
+import { isShopNotFoundError, loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
 import { fetchShopOrderPage } from "@/lib/shop/order-history";
 import { validateCancelReason, type ShopOrder } from "@/lib/shop/order-history-types";
 import { validateCart } from "@/lib/shop/order-policy";
@@ -40,8 +40,6 @@ export interface SubmitOrderResult {
   totalAmount?: number;
   itemsSummary?: string;
   notificationId?: string;
-  /** DB 저장 없이 알림톡 포맷만 검증한 시연 모드 여부 */
-  isDemo?: boolean;
   /** 카카오 로그인/단골 등록이 필요한 상태 (클라이언트가 게이트를 띄울 수 있도록) */
   requiresAuth?: boolean;
 }
@@ -175,82 +173,75 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
     const paymentMethod: PaymentMethod = input.paymentMethod === "on_credit" ? "on_credit" : "prepaid";
     const supabase = await createClient();
 
-    // Supabase 미설정/데모 카탈로그면 저장을 건너뛰고 알림톡 포맷만 검증한다.
-    let buyer: LinkedBuyer | null = null;
-
-    if (!catalog.isDemo) {
-      buyer = await requireLinkedBuyer(supabase, input.shopToken);
-    }
+    const buyer = await requireLinkedBuyer(supabase, input.shopToken);
 
     // 1) 발주서 저장
-    if (buyer) {
-      if (paymentMethod === "on_credit") {
-        if (buyer.creditLimit <= 0) {
-          return {
-            success: false,
-            error: "이 거래처는 외상 거래가 허용되지 않았습니다. 공급사에 문의해주세요.",
-          };
-        }
+    if (paymentMethod === "on_credit") {
+      if (buyer.creditLimit <= 0) {
+        return {
+          success: false,
+          error: "이 거래처는 외상 거래가 허용되지 않았습니다. 공급사에 문의해주세요.",
+        };
+      }
 
-        // 빠른 실패용 사전 검증. 동시 주문에 의한 한도 초과는 apply_credit_order RPC가
-        // 원자적으로 다시 막는다 (아래 3번 단계).
-        if (buyer.outstandingBalance + totalAmount > buyer.creditLimit) {
+      // 빠른 실패용 사전 검증. 동시 주문에 의한 한도 초과는 apply_credit_order RPC가
+      // 원자적으로 다시 막는다 (아래 3번 단계).
+      if (buyer.outstandingBalance + totalAmount > buyer.creditLimit) {
+        await notifyCreditLimitExceeded(supabase, buyer, restaurantName, totalAmount);
+
+        return {
+          success: false,
+          error: "여신 한도를 초과하여 발주할 수 없습니다. 미수금 정산 후 다시 시도해주세요.",
+        };
+      }
+    }
+
+    await backfillRetailerProfile(supabase, buyer, {
+      restaurantName,
+      contactPhone,
+      deliveryAddress,
+    });
+
+    const createResult = await createOrderWithItems(supabase, {
+      wholesalerId: buyer.wholesalerId,
+      retailerId: buyer.retailerId,
+      orderNumber,
+      totalAmount,
+      deliveryAddress,
+      deliveryNotes,
+      paymentMethod,
+      lines,
+    });
+
+    if ("error" in createResult) {
+      return { success: false, error: createResult.error };
+    }
+
+    const orderId = createResult.orderId;
+
+    // 3) 외상 주문이면 미수금 잔액을 원자적으로 증가시킨다 (한도 재검증 포함).
+    if (paymentMethod === "on_credit") {
+      const { error: creditError } = await supabase.rpc("apply_credit_order", {
+        p_wholesaler_retailer_id: buyer.relationshipId,
+        p_amount: totalAmount,
+      });
+
+      if (creditError) {
+        // 잔액 반영에 실패한 외상 주문은 남겨두지 않는다 (order_items는 CASCADE로 함께 삭제).
+        await supabase.from("orders").delete().eq("id", orderId);
+
+        const isCreditLimitExceeded = creditError.message.includes("CREDIT_LIMIT_EXCEEDED");
+
+        if (isCreditLimitExceeded) {
           await notifyCreditLimitExceeded(supabase, buyer, restaurantName, totalAmount);
-
-          return {
-            success: false,
-            error: "여신 한도를 초과하여 발주할 수 없습니다. 미수금 정산 후 다시 시도해주세요.",
-          };
         }
-      }
 
-      await backfillRetailerProfile(supabase, buyer, {
-        restaurantName,
-        contactPhone,
-        deliveryAddress,
-      });
-
-      const createResult = await createOrderWithItems(supabase, {
-        wholesalerId: buyer.wholesalerId,
-        retailerId: buyer.retailerId,
-        orderNumber,
-        totalAmount,
-        deliveryAddress,
-        deliveryNotes,
-        paymentMethod,
-        lines,
-      });
-
-      if ("error" in createResult) {
-        return { success: false, error: createResult.error };
-      }
-
-      const orderId = createResult.orderId;
-
-      // 3) 외상 주문이면 미수금 잔액을 원자적으로 증가시킨다 (한도 재검증 포함).
-      if (paymentMethod === "on_credit") {
-        const { error: creditError } = await supabase.rpc("apply_credit_order", {
-          p_wholesaler_retailer_id: buyer.relationshipId,
-          p_amount: totalAmount,
-        });
-
-        if (creditError) {
-          // 잔액 반영에 실패한 외상 주문은 남겨두지 않는다 (order_items는 CASCADE로 함께 삭제).
-          await supabase.from("orders").delete().eq("id", orderId);
-
-          const isCreditLimitExceeded = creditError.message.includes("CREDIT_LIMIT_EXCEEDED");
-
-          if (isCreditLimitExceeded) {
-            await notifyCreditLimitExceeded(supabase, buyer, restaurantName, totalAmount);
-          }
-
-          return {
-            success: false,
-            error: isCreditLimitExceeded
-              ? "여신 한도를 초과하여 발주할 수 없습니다. 미수금 정산 후 다시 시도해주세요."
-              : "외상 잔액 반영에 실패했습니다. 잠시 후 다시 시도해주세요.",
-          };
-        }
+        return {
+          success: false,
+          error: isCreditLimitExceeded
+            ? "여신 한도를 초과하여 발주할 수 없습니다. 미수금 정산 후 다시 시도해주세요."
+            : "외상 잔액 반영에 실패했습니다. 잠시 후 다시 시도해주세요.",
+        };
       }
     }
 
@@ -263,21 +254,17 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
         : `${firstLineDisplayName} ${firstLine.quantity}${firstLine.unit}`;
 
     // 5) 공급사 대표 연락처 조회 후 카카오 알림톡 발송
-    let wholesalerPhone: string | undefined;
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("phone")
+      .eq("id", buyer.wholesalerProfileId)
+      .maybeSingle();
 
-    if (buyer) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("phone")
-        .eq("id", buyer.wholesalerProfileId)
-        .maybeSingle();
-
-      wholesalerPhone = (profile?.phone as string | undefined) ?? undefined;
-    }
+    const wholesalerPhone = (profile?.phone as string | undefined) ?? undefined;
 
     const notification = await sendOrderNotificationToWholesaler({
-      wholesalerId: buyer?.wholesalerId ?? null,
-      wholesalerName: buyer?.wholesalerName ?? catalog.wholesaler.business_name,
+      wholesalerId: buyer.wholesalerId,
+      wholesalerName: buyer.wholesalerName,
       wholesalerPhone,
       restaurantName,
       orderNumber,
@@ -287,11 +274,9 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
       deliveryNotes,
     });
 
-    if (buyer) {
-      revalidatePath("/dashboard/orders");
-      revalidatePath(`/shop/${input.shopToken}`);
-      revalidatePath(`/shop/${input.shopToken}/orders`);
-    }
+    revalidatePath("/dashboard/orders");
+    revalidatePath(`/shop/${input.shopToken}`);
+    revalidatePath(`/shop/${input.shopToken}/orders`);
 
     return {
       success: true,
@@ -299,9 +284,17 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
       totalAmount,
       itemsSummary,
       notificationId: notification.messageId,
-      isDemo: !buyer,
     };
   } catch (error: unknown) {
+    // loadShopCatalog()가 던지는 notFound()는 이 try/catch가 가로채므로, 여기서
+    // 먼저 걸러내지 않으면 Next.js 내부 digest 문자열이 그대로 노출된다.
+    if (isShopNotFoundError(error)) {
+      return {
+        success: false,
+        error: "이 미니샵 링크가 더 이상 유효하지 않습니다. 공급사에 문의해주세요.",
+      };
+    }
+
     // 인증/권한 실패는 사용자에게 그대로 보여줄 안내 문구를 담고 있다.
     if (error instanceof BuyerAuthError) {
       return {

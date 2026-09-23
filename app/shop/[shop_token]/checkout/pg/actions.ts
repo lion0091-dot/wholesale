@@ -3,7 +3,7 @@
 import crypto from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { BuyerAuthError, requireLinkedBuyer } from "@/lib/auth/buyer-auth";
-import { loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
+import { isShopNotFoundError, loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
 import { validateCart } from "@/lib/shop/order-policy";
 import { composeProductDisplayName } from "@/lib/products/display-name";
 
@@ -54,11 +54,6 @@ export async function initiatePgPaymentAction(
     }
 
     const catalog = await loadShopCatalog(input.shopToken);
-
-    if (catalog.isDemo) {
-      return { success: false, error: "데모(샘플) 화면에서는 PG 결제를 테스트할 수 없습니다." };
-    }
-
     const lines = toCartLines(catalog, input.items ?? []);
     const validation = validateCart(lines);
 
@@ -123,6 +118,15 @@ export async function initiatePgPaymentAction(
       orderName,
     };
   } catch (error) {
+    // loadShopCatalog()가 던지는 notFound()는 이 try/catch가 가로채므로, 여기서
+    // 먼저 걸러내지 않으면 Next.js 내부 digest 문자열이 그대로 노출된다.
+    if (isShopNotFoundError(error)) {
+      return {
+        success: false,
+        error: "이 미니샵 링크가 더 이상 유효하지 않습니다. 공급사에 문의해주세요.",
+      };
+    }
+
     if (error instanceof BuyerAuthError) {
       return { success: false, error: error.message, requiresAuth: error.code === "auth_required" };
     }

@@ -10,8 +10,6 @@ import { MarketPriceWidget } from "@/components/market-price-widget";
 interface ProductFormViewProps {
   /** 수정 모드일 때 기존 상품 값 */
   product?: Product;
-  /** 데모 모드 안내 (저장 불가) */
-  isDemoMode?: boolean;
   /** 플랫폼 공용 카테고리 목록(product_categories 테이블) — 슈퍼관리자가 관리 */
   categories: string[];
   /** 축종별 부위 목록(product_subcategories 테이블). 카테고리 선택에 따라 캐스케이딩된다. */
@@ -365,7 +363,6 @@ function BottomSheetField({
 
 export function ProductFormView({
   product,
-  isDemoMode = false,
   categories,
   subcategoriesByCategory,
 }: ProductFormViewProps) {

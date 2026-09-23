@@ -3,11 +3,6 @@ import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { listCustomPrices, type CustomPriceRow } from "@/app/actions/custom_price";
 import {
-  DEMO_CUSTOM_PRICES,
-  DEMO_PRODUCTS,
-  DEMO_RETAILERS,
-} from "@/lib/demo/supplier-samples";
-import {
   CustomPriceManager,
   type AssignedCustomPrice,
   type CustomerOption,
@@ -66,7 +61,6 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
   let products: ProductOption[] = [];
   let customAssigned: AssignedCustomPrice[] = [];
   let hotDealAssigned: AssignedCustomPrice[] = [];
-  let isDemoData = true;
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -97,59 +91,20 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
       unit: row.unit,
     }));
 
-    if (customers.length > 0 && products.length > 0) {
-      isDemoData = false;
+    const productMap = new Map(products.map((product) => [product.id, product]));
+    const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
+    const allRows = customPriceResult.success ? customPriceResult.data ?? [] : [];
 
-      const productMap = new Map(products.map((product) => [product.id, product]));
-      const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
-      const allRows = customPriceResult.success ? customPriceResult.data ?? [] : [];
-
-      customAssigned = toAssigned(
-        allRows.filter((row) => row.kind === "custom"),
-        productMap,
-        customerMap
-      );
-      hotDealAssigned = toAssigned(
-        allRows.filter((row) => row.kind === "hot_deal"),
-        productMap,
-        customerMap
-      );
-    }
-  }
-
-  if (isDemoData) {
-    customers = DEMO_RETAILERS.map((retailer) => ({
-      id: retailer.id,
-      name: retailer.restaurant_name,
-    }));
-    products = DEMO_PRODUCTS.map((product) => ({
-      id: product.id,
-      name: product.name,
-      base_price: Number(product.base_price),
-      unit: product.unit,
-    }));
-
-    const demoAssigned = (kind: "custom" | "hot_deal"): AssignedCustomPrice[] =>
-      DEMO_CUSTOM_PRICES.filter((row) => row.kind === kind).map((row) => {
-        const product = DEMO_PRODUCTS.find((item) => item.id === row.product_id);
-
-        return {
-          id: row.id,
-          retailerId: row.retailer_id,
-          retailerName:
-            DEMO_RETAILERS.find((item) => item.id === row.retailer_id)?.restaurant_name ?? "-",
-          productId: row.product_id,
-          productName: product?.name ?? "-",
-          basePrice: Number(product?.base_price ?? 0),
-          unit: product?.unit ?? "kg",
-          customPrice: row.custom_price,
-          isActive: row.is_active,
-          updatedAt: row.updated_at,
-        };
-      });
-
-    customAssigned = demoAssigned("custom");
-    hotDealAssigned = demoAssigned("hot_deal");
+    customAssigned = toAssigned(
+      allRows.filter((row) => row.kind === "custom"),
+      productMap,
+      customerMap
+    );
+    hotDealAssigned = toAssigned(
+      allRows.filter((row) => row.kind === "hot_deal"),
+      productMap,
+      customerMap
+    );
   }
 
   const initialRetailerId = customers.some((customer) => customer.id === requestedRetailerId)
@@ -166,22 +121,6 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
         </p>
       </header>
 
-      {isDemoData && (
-        <div
-          style={{
-            backgroundColor: "#fef3c7",
-            border: "1px solid #fde68a",
-            color: "#92400e",
-            fontSize: "13px",
-            padding: "12px 16px",
-            borderRadius: "8px",
-          }}
-        >
-          ℹ️ 거래 중인 고객(소매) 또는 등록된 상품이 없어 샘플 데이터로 화면을 표시합니다. 샘플
-          데이터는 저장/삭제되지 않습니다.
-        </div>
-      )}
-
       <CustomPriceManager
         kind="custom"
         title="맞춤 단가"
@@ -189,7 +128,6 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
         customers={customers}
         products={products}
         assigned={customAssigned}
-        readOnly={isDemoData}
         initialRetailerId={initialRetailerId}
       />
 
@@ -200,7 +138,6 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
         customers={customers}
         products={products}
         assigned={hotDealAssigned}
-        readOnly={isDemoData}
         initialRetailerId={initialRetailerId}
       />
     </div>

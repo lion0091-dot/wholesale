@@ -17,78 +17,6 @@ export interface AdminSupplierItem extends Wholesaler {
   contactPhone?: string | null;
 }
 
-/**
- * 데모 모드(Supabase 미설정)에서 승인 UI를 시연하기 위한 샘플 공급사.
- * contactPhone은 일부러 null로 둔다 — 그럴듯한 010 번호를 채우면 "청구서 문자" 버튼이
- * 실제 배정돼 있을 수 있는 번호로 문자 앱을 여는 위험이 있다(customers/page.tsx의
- * 같은 패턴 참고). "청구 문구 복사" 버튼은 번호와 무관하게 계속 시연 가능하다.
- */
-const DEMO_SUPPLIERS: AdminSupplierItem[] = [
-  {
-    id: "demo-wholesaler-1",
-    profile_id: "profile-1",
-    business_name: "마장동 태양축산 (테스트 공급사)",
-    business_number: "123-45-67890",
-    representative_name: "김태양",
-    business_address: "서울 성동구 마장로 123, 2층",
-    business_start_date: "2018-03-05",
-    nts_verification_status: "match",
-    nts_verified_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 6).toISOString(),
-    business_license_path: "profile-1/business-license",
-    business_license_uploaded_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 6).toISOString(),
-    shop_token: "demo-token-12345",
-    status: "active",
-    subscription_status: "active",
-    trial_started_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
-    billing_starts_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
-    updated_at: new Date().toISOString(),
-    contactPhone: null,
-  },
-  {
-    id: "demo-wholesaler-2",
-    profile_id: "profile-2",
-    business_name: "독산동 한우유통 (신규 신청)",
-    business_number: "220-81-62517",
-    representative_name: "박한우",
-    business_address: null,
-    business_start_date: null,
-    nts_verification_status: "unchecked",
-    nts_verified_at: null,
-    business_license_path: null,
-    business_license_uploaded_at: null,
-    shop_token: "token-doksan-hanwoo",
-    status: "pending",
-    subscription_status: "trial",
-    trial_started_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    billing_starts_at: null,
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    updated_at: new Date().toISOString(),
-    contactPhone: null,
-  },
-  {
-    id: "demo-wholesaler-3",
-    profile_id: "profile-3",
-    business_name: "가락 미트센터 (미납 업체)",
-    business_number: "456-78-91011",
-    representative_name: "최가락",
-    business_address: "서울 송파구 가락로 45",
-    business_start_date: "2015-11-20",
-    nts_verification_status: "match",
-    nts_verified_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 29).toISOString(),
-    business_license_path: "profile-3/business-license",
-    business_license_uploaded_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 29).toISOString(),
-    shop_token: "token-garak-meat",
-    status: "suspended",
-    subscription_status: "overdue",
-    trial_started_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 60).toISOString(),
-    billing_starts_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 60).toISOString(),
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(),
-    updated_at: new Date().toISOString(),
-    contactPhone: null,
-  },
-];
-
 export default async function AdminSuppliersPage() {
   // 슈퍼관리자 전용 라우트. 데모 모드(Supabase 미설정)에서는 가드를 적용하지 않는다.
   const isConfigured = isSupabaseConfigured();
@@ -105,14 +33,9 @@ export default async function AdminSuppliersPage() {
     }
   }
 
-  let suppliers: AdminSupplierItem[] = DEMO_SUPPLIERS;
+  let suppliers: AdminSupplierItem[] = [];
   // 구독료(구간별 누진 단가) 계산용 — wholesaler_id → 이번 달 실발주(취소 제외) 거래처 수.
-  // 데모 모드는 실제 orders 행이 없으므로 시연용 고정값을 쓴다.
-  let billedRetailerCounts: Record<string, number> = {
-    "demo-wholesaler-1": 12,
-    "demo-wholesaler-2": 0,
-    "demo-wholesaler-3": 5,
-  };
+  let billedRetailerCounts: Record<string, number> = {};
   let eventDiscounts: Record<string, ActiveEventDiscount> = {};
   // wholesaler_id → 확정된 미납 청구서 합계·건수. 청구서 문자에 "이전 미납액"으로 같이 보여준다.
   let unpaidPriorInvoices: Record<string, { amount: number; count: number }> = {};

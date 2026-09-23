@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
-import { DEMO_PRODUCTS } from "@/lib/demo/supplier-samples";
 import { ProductFormView } from "../../product-form-view";
 import { fetchSubcategoriesByCategory } from "../../get-subcategories";
 import type { Product } from "@/types/database";
@@ -25,36 +24,24 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
   const categories = ((categoryRows ?? []) as Array<{ name: string }>).map((row) => row.name);
   const subcategoriesByCategory = await fetchSubcategoriesByCategory(supabase);
 
-  if (scope?.wholesalerId) {
-    const { data } = await supabase
-      .from("products")
-      .select("*")
-      .eq("id", id)
-      .eq("wholesaler_id", scope.wholesalerId)
-      .maybeSingle();
-
-    if (data) {
-      return (
-        <ProductFormView
-          product={data as Product}
-          categories={categories}
-          subcategoriesByCategory={subcategoriesByCategory}
-        />
-      );
-    }
+  if (!scope?.wholesalerId) {
+    notFound();
   }
 
-  // 데모 모드에서는 샘플 상품으로 수정 폼 UI를 확인할 수 있다.
-  const demoProduct = DEMO_PRODUCTS.find((product) => product.id === id);
+  const { data } = await supabase
+    .from("products")
+    .select("*")
+    .eq("id", id)
+    .eq("wholesaler_id", scope.wholesalerId)
+    .maybeSingle();
 
-  if (!demoProduct) {
+  if (!data) {
     notFound();
   }
 
   return (
     <ProductFormView
-      product={demoProduct}
-      isDemoMode
+      product={data as Product}
       categories={categories}
       subcategoriesByCategory={subcategoriesByCategory}
     />

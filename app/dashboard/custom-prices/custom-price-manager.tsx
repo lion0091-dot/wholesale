@@ -10,7 +10,6 @@ import {
   toggleCustomPriceActiveAction,
   type CustomPriceKind,
 } from "@/app/actions/custom_price";
-import { SampleBadge } from "@/components/sample-badge";
 import { MiniToggle } from "@/components/mini-toggle";
 
 export interface CustomerOption {
@@ -45,8 +44,6 @@ interface CustomPriceManagerProps {
   customers: CustomerOption[];
   products: ProductOption[];
   assigned: AssignedCustomPrice[];
-  /** 데모(샘플) 데이터일 때는 저장/삭제를 막는다. */
-  readOnly?: boolean;
   /** 고객 관리 카드에서 바로 진입했을 때 미리 선택할 바이어 */
   initialRetailerId?: string;
 }
@@ -95,7 +92,6 @@ export function CustomPriceManager({
   customers,
   products,
   assigned,
-  readOnly = false,
   initialRetailerId,
 }: CustomPriceManagerProps) {
   const router = useRouter();
@@ -135,14 +131,6 @@ export function CustomPriceManager({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    if (readOnly) {
-      setMessage({
-        type: "error",
-        text: "샘플 데이터에는 단가를 저장할 수 없습니다. 고객(소매) 초대와 상품 등록 후 이용해주세요.",
-      });
-      return;
-    }
 
     setPending(true);
     setMessage(null);
@@ -191,11 +179,6 @@ export function CustomPriceManager({
   };
 
   const handleDelete = async (row: AssignedCustomPrice) => {
-    if (readOnly) {
-      setMessage({ type: "error", text: "샘플 데이터는 삭제할 수 없습니다." });
-      return;
-    }
-
     if (!window.confirm(`${row.retailerName} · ${row.productName} 단가를 삭제할까요? (기준가로 복귀)`)) {
       return;
     }
@@ -216,11 +199,6 @@ export function CustomPriceManager({
   };
 
   const handleToggleActive = async (row: AssignedCustomPrice) => {
-    if (readOnly) {
-      setMessage({ type: "error", text: "샘플 데이터는 변경할 수 없습니다." });
-      return;
-    }
-
     setBusyId(row.id);
     setMessage(null);
 
@@ -237,11 +215,6 @@ export function CustomPriceManager({
   };
 
   const handleBulkToggle = async (nextActive: boolean) => {
-    if (readOnly) {
-      setMessage({ type: "error", text: "샘플 데이터는 변경할 수 없습니다." });
-      return;
-    }
-
     if (!bulkToggleProductId) return;
 
     setBulkTogglePending(nextActive ? "on" : "off");
@@ -595,7 +568,6 @@ export function CustomPriceManager({
                       <td style={{ fontWeight: 600 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                           {row.retailerName}
-                          {readOnly && <SampleBadge />}
                         </div>
                       </td>
                       <td>{row.productName}</td>
@@ -691,7 +663,6 @@ export function CustomPriceManager({
                         <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>
                           {row.retailerName}
                         </div>
-                        {readOnly && <SampleBadge />}
                       </div>
                       <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
                         {row.productName}

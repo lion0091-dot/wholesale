@@ -194,13 +194,6 @@ export async function loadShopOrderHistory(
     };
   }
 
-  if (catalog.isDemo) {
-    return {
-      ...EMPTY_HISTORY,
-      notice: "시연(데모) 카탈로그에서는 주문 내역이 조회되지 않습니다. 실제 공급사 링크로 접속해주세요.",
-    };
-  }
-
   const supabase = await createClient();
   const { orders, totalCount, hasMore, error } = await fetchShopOrderPage(
     supabase,

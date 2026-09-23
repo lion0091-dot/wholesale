@@ -4,30 +4,6 @@ import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { isSuperAdminSession } from "@/lib/auth/rbac";
 import { EventManager, type PlatformEventRow, type SupplierOption } from "./event-manager";
 
-const DEMO_SUPPLIERS: SupplierOption[] = [
-  { id: "demo-wholesaler-1", businessName: "마장동 태양축산 (테스트 공급사)" },
-  { id: "demo-wholesaler-2", businessName: "독산동 한우유통 (신규 신청)" },
-  { id: "demo-wholesaler-3", businessName: "가락 미트센터 (미납 업체)" },
-];
-
-const DEMO_EVENTS: PlatformEventRow[] = [
-  {
-    id: "demo-event-1",
-    name: "미트파트너스 오픈 1주년 기념",
-    discountRate: 20,
-    eventType: "common",
-    startsOn: new Date().toISOString().slice(0, 10),
-    endsOn: new Date(Date.now() + 1000 * 60 * 60 * 24 * 29).toISOString().slice(0, 10),
-    durationDays: 30,
-    status: "active",
-    createdByName: "샘플 관리자",
-    createdAt: new Date().toISOString(),
-    cancelledByName: null,
-    cancelledAt: null,
-    targets: [],
-  },
-];
-
 export default async function AdminEventsPage() {
   const isConfigured = isSupabaseConfigured();
 
@@ -35,8 +11,8 @@ export default async function AdminEventsPage() {
     redirect("/login?next=/admin/events");
   }
 
-  let suppliers: SupplierOption[] = DEMO_SUPPLIERS;
-  let events: PlatformEventRow[] = DEMO_EVENTS;
+  let suppliers: SupplierOption[] = [];
+  let events: PlatformEventRow[] = [];
 
   if (isConfigured) {
     const supabase = await createClient();

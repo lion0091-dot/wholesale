@@ -20,25 +20,6 @@ function shiftDateString(dateStr: string, monthsDelta: number): string {
   return new Date(Date.UTC(year, month - 1 + monthsDelta, day)).toISOString().slice(0, 10);
 }
 
-const DEMO_INVOICES: InvoiceRow[] = [
-  {
-    id: "demo-invoice-1",
-    wholesalerId: "demo-wholesaler-1",
-    businessName: "마장동 태양축산 (테스트 공급사)",
-    businessNumber: "123-45-67890",
-    billingMonth: `${todayDateStringKst().slice(0, 7)}-01`,
-    billedRetailerCount: 12,
-    fullMonthFee: 60000,
-    amount: 60000,
-    status: "unpaid",
-    paidAt: null,
-    collectedByName: null,
-    memo: null,
-    paidAmount: null,
-    lastReconcileAttemptedAt: null,
-  },
-];
-
 interface PageProps {
   searchParams: Promise<{ from?: string; to?: string }>;
 }
@@ -60,7 +41,7 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
   const rangeFromMonth = `${rangeFrom.slice(0, 7)}-01`;
   const rangeToMonth = `${rangeTo.slice(0, 7)}-01`;
 
-  let invoices: InvoiceRow[] = DEMO_INVOICES;
+  let invoices: InvoiceRow[] = [];
   let smsQueue: OutboundSmsQueueRow[] = [];
 
   if (isConfigured) {

@@ -7,11 +7,6 @@ import {
 } from "@/lib/supplier/verification";
 import { PendingApprovalBanner } from "@/components/pending-approval-banner";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
-import {
-  DEMO_CUSTOM_PRICES,
-  DEMO_ORDERS,
-  DEMO_RETAILERS,
-} from "@/lib/demo/supplier-samples";
 import { formatWon } from "@/lib/orders/status";
 import { INVITE_RESEND_COOLDOWN_DAYS, type OutboundSmsQueueRow } from "@/lib/notifications/sms-queue";
 import { CustomerTable } from "./customer-table";
@@ -22,8 +17,6 @@ import type { OrderStatus, RelationshipStatus } from "@/types/database";
 export const metadata = {
   title: "고객 관리 | 도매업체 통합관리시스템",
 };
-
-const DEMO_SHOP_TOKEN = "demo-token-12345";
 
 /** wholesaler_retailers + retailers 조인 응답 형태 */
 interface RelationJoinRow {
@@ -140,8 +133,7 @@ export default async function DashboardCustomersPage() {
     : "로그인 후 승인된 공급사 계정에서만 초대장을 발부할 수 있습니다.";
 
   let customers: CustomerRow[] = [];
-  let shopToken: string | null = DEMO_SHOP_TOKEN;
-  let isDemoData = true;
+  let shopToken: string | null = null;
   let pgConfigured = false;
   let inviteSmsQueue: OutboundSmsQueueRow[] = [];
 
@@ -225,101 +217,50 @@ export default async function DashboardCustomersPage() {
       createdAt: row.created_at,
     }));
 
-    if (relations && relations.length > 0) {
-      const customPriceCounts = countByRetailer((customPriceRows ?? []) as Array<{ retailer_id: string }>);
-      const orderStats = aggregateOrderStats((orderRows ?? []) as OrderStatRow[]);
-      const phoneByRetailer = new Map(
-        ((phoneRows ?? []) as Array<{ retailer_id: string; phone: string | null }>).map((row) => [
-          row.retailer_id,
-          row.phone,
-        ])
-      );
-
-      customers = (relations as RelationJoinRow[]).map((row) => {
-        const retailer = Array.isArray(row.retailers) ? row.retailers[0] : row.retailers;
-        const stat = orderStats.get(row.retailer_id);
-
-        return {
-          id: row.retailer_id,
-          restaurantName: retailer?.restaurant_name ?? "이름 미등록 고객(소매)",
-          representativeName: retailer?.representative_name ?? "미등록",
-          businessNumber: retailer?.business_number ?? null,
-          deliveryAddress: fullAddress(
-            retailer?.delivery_address,
-            retailer?.delivery_address_detail
-          ),
-          relationStatus: row.status,
-          statusChangedAt: row.status_changed_at,
-          blockReason: row.block_reason,
-          memo: row.memo,
-          joinedAt: row.created_at,
-          customPriceCount: customPriceCounts.get(row.retailer_id) ?? 0,
-          orderCount: stat?.orderCount ?? 0,
-          lastOrderedAt: stat?.lastOrderedAt ?? null,
-          totalOrderAmount: stat?.totalOrderAmount ?? 0,
-          creditLimit: Number(row.credit_limit ?? 0),
-          outstandingBalance: Number(row.outstanding_balance ?? 0),
-          settlementDueDays: Number(row.settlement_due_days ?? 30),
-          allowedPaymentMethods: row.allowed_payment_methods ?? ["prepaid"],
-          contactPhone: phoneByRetailer.get(row.retailer_id) ?? null,
-          hasIncompleteProfile: hasIncompleteProfile(
-            retailer?.restaurant_name,
-            retailer?.delivery_address
-          ),
-        };
-      });
-
-      shopToken = scope.shopToken ?? DEMO_SHOP_TOKEN;
-      isDemoData = false;
-    }
-  }
-
-  if (isDemoData) {
-    const customPriceCounts = countByRetailer(DEMO_CUSTOM_PRICES);
-    const orderStats = aggregateOrderStats(
-      DEMO_ORDERS.map((order) => ({
-        retailer_id: order.retailer_id,
-        total_amount: order.total_amount,
-        status: order.status,
-        ordered_at: order.ordered_at,
-      }))
+    const customPriceCounts = countByRetailer((customPriceRows ?? []) as Array<{ retailer_id: string }>);
+    const orderStats = aggregateOrderStats((orderRows ?? []) as OrderStatRow[]);
+    const phoneByRetailer = new Map(
+      ((phoneRows ?? []) as Array<{ retailer_id: string; phone: string | null }>).map((row) => [
+        row.retailer_id,
+        row.phone,
+      ])
     );
 
-    customers = DEMO_RETAILERS.map((retailer) => {
-      const stat = orderStats.get(retailer.id);
+    customers = ((relations ?? []) as RelationJoinRow[]).map((row) => {
+      const retailer = Array.isArray(row.retailers) ? row.retailers[0] : row.retailers;
+      const stat = orderStats.get(row.retailer_id);
 
       return {
-        id: retailer.id,
-        restaurantName: retailer.restaurant_name,
-        representativeName: retailer.representative_name,
-        businessNumber: retailer.business_number,
+        id: row.retailer_id,
+        restaurantName: retailer?.restaurant_name ?? "이름 미등록 고객(소매)",
+        representativeName: retailer?.representative_name ?? "미등록",
+        businessNumber: retailer?.business_number ?? null,
         deliveryAddress: fullAddress(
-          retailer.delivery_address,
-          retailer.delivery_address_detail
+          retailer?.delivery_address,
+          retailer?.delivery_address_detail
         ),
-        relationStatus: retailer.status,
-        statusChangedAt: retailer.created_at,
-        blockReason: retailer.status === "blocked" ? "미수금 정산 지연" : null,
-        memo: retailer.memo,
-        joinedAt: retailer.created_at,
-        customPriceCount: customPriceCounts.get(retailer.id) ?? 0,
+        relationStatus: row.status,
+        statusChangedAt: row.status_changed_at,
+        blockReason: row.block_reason,
+        memo: row.memo,
+        joinedAt: row.created_at,
+        customPriceCount: customPriceCounts.get(row.retailer_id) ?? 0,
         orderCount: stat?.orderCount ?? 0,
         lastOrderedAt: stat?.lastOrderedAt ?? null,
         totalOrderAmount: stat?.totalOrderAmount ?? 0,
-        creditLimit: retailer.credit_limit,
-        outstandingBalance: retailer.outstanding_balance,
-        settlementDueDays: retailer.settlement_due_days,
-        allowedPaymentMethods: ["prepaid", "on_credit"],
-        // 데모 모드는 실제 profiles 행이 없어 번호가 없다. 그럴듯한 가짜 번호를 채워두면
-        // "문자로 바로 보내기" 버튼이 실제 배정돼 있을 수 있는 번호로 문자 앱을 열게 되므로
-        // null로 둬서 그 버튼 자체가 안 뜨게 한다(contactPhone 조건부 렌더링).
-        contactPhone: null,
+        creditLimit: Number(row.credit_limit ?? 0),
+        outstandingBalance: Number(row.outstanding_balance ?? 0),
+        settlementDueDays: Number(row.settlement_due_days ?? 30),
+        allowedPaymentMethods: row.allowed_payment_methods ?? ["prepaid"],
+        contactPhone: phoneByRetailer.get(row.retailer_id) ?? null,
         hasIncompleteProfile: hasIncompleteProfile(
-          retailer.restaurant_name,
-          retailer.delivery_address
+          retailer?.restaurant_name,
+          retailer?.delivery_address
         ),
       };
     });
+
+    shopToken = scope.shopToken ?? null;
   }
 
   const activeCount = customers.filter((customer) => customer.relationStatus === "active").length;
@@ -338,21 +279,6 @@ export default async function DashboardCustomersPage() {
 
       {account && !canIssueInvite && inviteRestriction && (
         <PendingApprovalBanner message={inviteRestriction} showInviteLink />
-      )}
-
-      {isDemoData && (
-        <div
-          style={{
-            backgroundColor: "#fef3c7",
-            border: "1px solid #fde68a",
-            color: "#92400e",
-            fontSize: "13px",
-            padding: "12px 16px",
-            borderRadius: "8px",
-          }}
-        >
-          ℹ️ 연결된 거래처가 없거나 미인증(데모) 상태여서 샘플 고객 데이터를 표시하고 있습니다.
-        </div>
       )}
 
       <section className="dash-cards">
@@ -378,14 +304,13 @@ export default async function DashboardCustomersPage() {
         ))}
       </section>
 
-      {canIssueInvite && !isDemoData && <InviteSmsQueuePanel initialQueue={inviteSmsQueue} />}
+      {canIssueInvite && <InviteSmsQueuePanel initialQueue={inviteSmsQueue} />}
 
       <CustomerTable
         customers={customers}
         shopToken={canIssueInvite ? shopToken : null}
         canIssueInvite={canIssueInvite}
         inviteRestriction={inviteRestriction}
-        readOnly={isDemoData}
         pgConfigured={pgConfigured}
       />
     </div>
