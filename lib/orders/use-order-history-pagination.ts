@@ -73,6 +73,7 @@ export function useOrderHistoryPagination<T, TExtra = unknown>(
     if (isBusy) return;
 
     setMoreLoading(true);
+    setErrorMessage(null);
 
     try {
       const result = await fetchPage(rangeDays, entries.length);

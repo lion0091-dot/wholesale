@@ -973,9 +973,13 @@ export function InboundScanView({ initialScans, products, shippableOrders }: Pro
                     {needsProduct && shippableOrders.length > 0 && (
                       <button
                         type="button"
-                        onClick={() =>
-                          setOrderTargetScanId(orderTargetScanId === scan.id ? null : scan.id)
-                        }
+                        onClick={() => {
+                          // 다른 행에서 골라둔 상품/주문 선택값이 남아있으면 이 행에
+                          // 그대로 미리 채워진 것처럼 보여 잘못 배정될 수 있다(code-review 지적).
+                          setOrderTargetProductId("");
+                          setOrderTargetOrderId("");
+                          setOrderTargetScanId(orderTargetScanId === scan.id ? null : scan.id);
+                        }}
                         style={{ ...buttonStyle, padding: "6px 10px", fontSize: "12px" }}
                       >
                         {orderTargetScanId === scan.id ? "취소" : "주문에 바로 배정"}
