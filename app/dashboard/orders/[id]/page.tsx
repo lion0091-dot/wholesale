@@ -10,6 +10,7 @@ import {
 } from "@/lib/orders/status";
 import { isAlimtalkConfiguredForWholesaler } from "@/lib/notifications/alimtalk";
 import { OrderStatusPanel } from "./order-status-panel";
+import { OrderItemPriceEditor } from "./order-item-price-editor";
 import { TrackingPanel } from "./tracking-panel";
 import { StatementPreviewButton } from "@/components/statement-preview-button";
 import { TaxInvoiceDraftPanel } from "@/components/tax-invoice-draft-panel";
@@ -42,6 +43,7 @@ interface OrderDetail {
   deliveryAddress: string;
   deliveryNotes: string | null;
   negotiationNote: string | null;
+  shipmentFinalizedAt: string | null;
   orderedAt: string;
   updatedAt: string;
   items: OrderItem[];
@@ -126,6 +128,7 @@ async function loadOrder(
       deliveryAddress: row.delivery_address as string,
       deliveryNotes: (row.delivery_notes as string | null) ?? null,
       negotiationNote: (row.negotiation_note as string | null) ?? null,
+      shipmentFinalizedAt: (row.shipment_finalized_at as string | null) ?? null,
       orderedAt: row.ordered_at as string,
       updatedAt: row.updated_at as string,
       items: ((row.order_items as OrderItem[] | null) ?? []).slice().sort((a, b) =>
@@ -167,6 +170,9 @@ export default async function OrderDetailPage({ params }: PageProps) {
   }
 
   const { order, wholesalerId } = loaded;
+  // 흥정(네고)은 접수~확정 사이에만 반영한다 — 마감 이후엔 금액이 이미 굳어있다.
+  const canEditPrice =
+    !order.shipmentFinalizedAt && ["pending", "awaiting_stock", "confirmed"].includes(order.status);
   const badge = ORDER_STATUS_BADGES[order.status];
   const timeline = buildAlimtalkTimeline(order.status);
   const isLiveChannel = await isAlimtalkConfiguredForWholesaler(wholesalerId);
@@ -305,6 +311,15 @@ export default async function OrderDetailPage({ params }: PageProps) {
                           고객 희망 {formatWon(item.requested_unit_price)}
                         </div>
                       )}
+                    {canEditPrice && (
+                      <OrderItemPriceEditor
+                        orderItemId={item.id}
+                        unitPrice={Number(item.unit_price)}
+                        requestedUnitPrice={
+                          item.requested_unit_price === null ? null : Number(item.requested_unit_price)
+                        }
+                      />
+                    )}
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>{Number(item.quantity)}</td>
                   <td style={{ whiteSpace: "nowrap", fontWeight: 700 }}>
@@ -356,6 +371,15 @@ export default async function OrderDetailPage({ params }: PageProps) {
                     고객 희망 {formatWon(item.requested_unit_price)}
                   </div>
                 )}
+              {canEditPrice && (
+                <OrderItemPriceEditor
+                  orderItemId={item.id}
+                  unitPrice={Number(item.unit_price)}
+                  requestedUnitPrice={
+                    item.requested_unit_price === null ? null : Number(item.requested_unit_price)
+                  }
+                />
+              )}
             </div>
           ))}
         </div>

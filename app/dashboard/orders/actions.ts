@@ -490,3 +490,60 @@ export async function fetchOrderTrackingStatusAction(
     return toResult(error);
   }
 }
+
+export interface OrderItemPriceUpdateResult {
+  unitPrice: number;
+  subtotalAmount: number;
+  orderTotalAmount: number;
+}
+
+/**
+ * 전화로 흥정한 단가를 발주 품목에 실제로 반영한다(네고 32단계 완성).
+ * 매출 단가라 매입단가와 동일하게 owner/manager만 고칠 수 있다.
+ */
+export async function updateOrderItemPriceAction(
+  orderItemId: string,
+  unitPrice: number
+): Promise<ActionResult<OrderItemPriceUpdateResult>> {
+  try {
+    await requireOrgRole(["owner", "manager"]);
+
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      throw new RbacError("단가를 올바르게 입력해주세요.");
+    }
+
+    const supabase = await createClient();
+
+    const { data, error } = await supabase.rpc("update_order_item_price", {
+      p_order_item_id: orderItemId,
+      p_unit_price: unitPrice,
+    });
+
+    if (error) {
+      if (error.message.includes("ITEM_NOT_FOUND")) {
+        throw new RbacError("해당 발주 품목을 찾을 수 없습니다.");
+      }
+
+      if (error.message.includes("ORDER_LOCKED")) {
+        throw new RbacError("이미 마감되었거나 확정 전 단계가 지난 발주서는 단가를 고칠 수 없습니다.");
+      }
+
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+
+    const row = (data ?? {}) as Record<string, unknown>;
+
+    return {
+      success: true,
+      data: {
+        unitPrice: Number(row.unit_price ?? unitPrice),
+        subtotalAmount: Number(row.subtotal_amount ?? 0),
+        orderTotalAmount: Number(row.order_total_amount ?? 0),
+      },
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
