@@ -463,6 +463,13 @@ function speciesGroupFromIdField(tree: unknown): string | null {
   return null;
 }
 
+/**
+ * 묶음번호(로트) 조회 응답은 개체 하나가 아니라 <items><item>...</item></items>로
+ * 여러 개체가 온다(2026-09-24 실호출로 확인 — 돼지 로트 1건에 12개체, 각 item에
+ * pigNo/butcheryYmd/farmNm 등이 따로 붙는다. 농장·농장주는 개체마다 다를 수 있고
+ * 실제로 그랬다). pick()은 재귀로 첫 번째 값만 집기 때문에, 이 필드들을 그대로
+ * 쓰면 "이 로트 전체의 농장"인 것처럼 한 농장만 대표로 뜨는 허위표시가 된다.
+ */
 function toRecord(
   traceNo: string,
   traceKind: TraceKind,
@@ -492,7 +499,9 @@ function toRecord(
     slaughterDate: normalizeDate(pick(tree, ["butcheryYmd", "slaughterYmd", "butcheryDate"])),
     packingDate: normalizeDate(pick(tree, ["processYmd", "packingYmd", "packDate", "prcsYmd"])),
     butcheryPlace: pick(tree, ["butcheryPlaceNm", "abattNm", "butcheryPlace"]),
-    farmName: pick(tree, ["farmNm", "farmerNm", "farmName"]),
+    // 로트는 개체마다 농장이 다를 수 있어(실제로 확인됨) 대표 농장 하나를 적으면
+    // 안 된다. 도축장은 로트 전체가 같은 곳에서 처리되므로 대표값으로 남긴다.
+    farmName: traceKind === "group" ? null : pick(tree, ["farmNm", "farmerNm", "farmName"]),
     originCountry: pick(tree, ["natNm", "originNm", "countryNm"]),
     importerName: pick(tree, ["importerNm", "impCompanyNm", "importer"]),
     rawPayload: tree,

@@ -3,6 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
+import { parseBarcode } from "@/lib/livestock/barcode-parser";
+import {
+  fetchTraceRecord,
+  isMtraceConfigured,
+  isPlausibleTraceNo,
+  MtraceNotConfiguredError,
+} from "@/lib/livestock/mtrace-client";
 
 /**
  * 공급처 원본 명세서 저장 (29단계 A).
@@ -60,6 +67,104 @@ export interface SavedDocument {
   lineCount: number;
   /** 원본 파일까지 보관됐는지 — 실패해도 저장 자체는 살린다. */
   fileStored: boolean;
+  /**
+   * 명세서 줄의 이력/로트번호를 미리 조회해봤는데 정부 쪽에 없었던 번호들
+   * (사장님 지침 2026-09-24: 실물 도착 전에 미리 걸러 공급처에 등록을 요청한다).
+   * 인증키 자체가 없어 조회를 못 한 경우는 여기 안 들어간다(공급처 잘못이 아니다).
+   */
+  unresolvedTraceNos: string[];
+}
+
+/**
+ * 이력/로트번호가 master_livestock에 이미 있는지 보고, 없으면 지금 조회해서
+ * 채워둔다. 실제 검수(스캔)에서 쓰는 것과 같은 조회+저장 절차다(actions.ts의
+ * recordInboundScanAction 안 로직과 동일 패턴) — 다만 여기는 스캔 전에 서류만
+ * 갖고 미리 하는 것이라 실패해도 서류 저장 자체를 막지 않는다.
+ */
+async function ensureTraceCached(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  traceNo: string
+): Promise<{ found: boolean; notConfigured: boolean }> {
+  const { data: cached } = await supabase
+    .from("master_livestock")
+    .select("trace_no")
+    .eq("trace_no", traceNo)
+    .maybeSingle();
+
+  if (cached) {
+    return { found: true, notConfigured: false };
+  }
+
+  if (!isMtraceConfigured()) {
+    return { found: false, notConfigured: true };
+  }
+
+  try {
+    const record = await fetchTraceRecord(traceNo);
+
+    if (!record) {
+      return { found: false, notConfigured: false };
+    }
+
+    const { error: upsertError } = await supabase.rpc("upsert_master_livestock", {
+      p_trace_no: record.traceNo,
+      p_trace_kind: record.traceKind,
+      p_source: record.source,
+      p_raw_payload: record.rawPayload,
+      p_species: record.species,
+      p_species_group: record.speciesGroup,
+      p_part_name: record.partName,
+      p_grade: record.grade,
+      p_slaughter_date: record.slaughterDate,
+      p_butchery_place: record.butcheryPlace,
+      p_farm_name: record.farmName,
+      p_origin_country: record.originCountry,
+      p_importer_name: record.importerName,
+      p_packing_date: record.packingDate,
+    });
+
+    if (upsertError) {
+      console.error("[inbound-document] 이력 캐시 저장 실패:", upsertError.message);
+      return { found: false, notConfigured: false };
+    }
+
+    return { found: true, notConfigured: false };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[inbound-document] ${traceNo} 사전 이력 조회 실패:`, message);
+    return { found: false, notConfigured: error instanceof MtraceNotConfiguredError };
+  }
+}
+
+/**
+ * 명세서 줄에 적힌 이력/로트번호들을 미리 조회해 캐시를 채운다. 서류 한 장에
+ * 같은 번호가 중복될 수 있어 중복 제거 후 병렬로 돈다. 우리가 발행한 세트번호
+ * (BND-/SET-)는 정부 조회 대상이 아니라 건너뛴다.
+ */
+async function precacheDocumentTraceNos(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  traceNos: Array<string | null | undefined>
+): Promise<string[]> {
+  const candidates = [
+    ...new Set(
+      traceNos
+        .map((value) => value?.trim().toUpperCase() ?? "")
+        .filter((value) => value.length > 0 && isPlausibleTraceNo(value))
+        .filter((value) => parseBarcode(value).format !== "bundle")
+    ),
+  ];
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const results = await Promise.all(
+    candidates.map(async (traceNo) => ({ traceNo, ...(await ensureTraceCached(supabase, traceNo)) }))
+  );
+
+  return results
+    .filter((result) => !result.found && !result.notConfigured)
+    .map((result) => result.traceNo);
 }
 
 async function resolveDocumentScope() {
@@ -238,11 +343,19 @@ export async function saveInboundDocumentAction(
       );
     }
 
+    // 실물이 오기 전에 이력/로트번호를 미리 조회해둔다(사장님 지침 2026-09-24).
+    // 실패해도 서류 저장 자체는 이미 끝났으니 막지 않는다 — 못 찾은 번호만
+    // 화면에서 "공급처에 등록 요청" 안내로 보여준다.
+    const unresolvedTraceNos = await precacheDocumentTraceNos(
+      supabase,
+      lineRows.map((line) => line.trace_no)
+    );
+
     revalidatePath(REVALIDATE_PATH);
 
     return {
       success: true,
-      data: { documentId, lineCount: lineRows.length, fileStored },
+      data: { documentId, lineCount: lineRows.length, fileStored, unresolvedTraceNos },
     };
   } catch (error) {
     return toResult(error);

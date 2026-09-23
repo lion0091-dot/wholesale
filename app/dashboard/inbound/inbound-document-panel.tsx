@@ -148,6 +148,10 @@ export function InboundDocumentPanel({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [learned, setLearned] = useState(false);
+  // 저장 직후 조회 안 된 이력/로트번호 — 공급처에 등록을 요청해야 한다
+  // (사장님 지침 2026-09-24: 실물 도착 전에 미리 걸러낸다).
+  const [unresolvedTraceNos, setUnresolvedTraceNos] = useState<string[]>([]);
+  const [unresolvedSupplierName, setUnresolvedSupplierName] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -446,6 +450,11 @@ export function InboundDocumentPanel({
       setNotice(`명세서 ${result.data?.lineCount}줄을 저장했습니다.`);
     }
 
+    // 실물 도착 전에 미리 조회했는데 없었던 번호 — 공급처에 등록을 요청해야 한다
+    // (사장님 지침 2026-09-24). reset()이 supplierName을 지우니 먼저 붙잡아둔다.
+    setUnresolvedSupplierName(supplierName);
+    setUnresolvedTraceNos(result.data?.unresolvedTraceNos ?? []);
+
     reset();
     router.refresh();
   };
@@ -504,6 +513,42 @@ export function InboundDocumentPanel({
         >
           {notice}
         </p>
+      ) : null}
+
+      {unresolvedTraceNos.length > 0 ? (
+        <div
+          style={{
+            margin: 0,
+            padding: "10px 16px",
+            fontSize: "13px",
+            color: "#991b1b",
+            backgroundColor: "#fef2f2",
+            borderTop: "1px solid #fecaca",
+          }}
+        >
+          <p style={{ margin: "0 0 6px", fontWeight: 700 }}>
+            다음 이력/로트번호가 정부 이력조회에서 확인되지 않았습니다 — 실물 도착 전에
+            공급처에 등록을 요청하세요.
+          </p>
+          {unresolvedTraceNos.map((traceNo) => (
+            <p key={traceNo} style={{ margin: "0 0 3px", fontFamily: "monospace" }}>
+              · {traceNo}
+            </p>
+          ))}
+          <button
+            type="button"
+            onClick={() =>
+              void navigator.clipboard.writeText(
+                `[${unresolvedSupplierName || "공급처"}] 이력번호 등록 확인 요청\n` +
+                  `아래 이력/로트번호가 축산물이력제 조회에서 확인되지 않습니다. 등록 상태를 확인 부탁드립니다.\n` +
+                  unresolvedTraceNos.map((traceNo) => `- ${traceNo}`).join("\n"),
+              )
+            }
+            style={{ ...secondaryButton, marginTop: "6px" }}
+          >
+            요청 문구 복사
+          </button>
+        </div>
       ) : null}
 
       {open ? (

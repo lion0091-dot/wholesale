@@ -6,6 +6,7 @@ import {
   type InboundScanRow,
   type ScanProductOption,
   type ShippableOrderOption,
+  type AwaitingDocumentLine,
 } from "./inbound-scan-view";
 import { InboundImportPanel } from "./inbound-import-panel";
 import { InboundDocumentPanel, type InboundDocumentRow } from "./inbound-document-panel";
@@ -43,6 +44,11 @@ export default async function InboundPage() {
   // 올려둔 명세서에 실제로 있는 번호인지 대조하는 배너용 — 대기중(PENDING) 명세서
   // 줄에 적힌 번호만 모은다. 명세서 자체가 없으면 대조할 게 없으니 조용히 넘어간다.
   let pendingDocumentTraceNos: string[] = [];
+  // 명세서엔 있는데 아직 스캔 안 된 줄 — "명세서 대기 품목" 목록(탭하면 이력번호
+  // 입력칸을 채워줌)에 쓴다. 최근 100건짜리 scans 배열로 대조하면 오래된 명세서
+  // 건이 그 창밖으로 밀려나 잘못 "아직 안 들어옴"으로 보일 수 있어, 이 줄들의
+  // 이력번호만 따로 모아 inbound_scans 전체에서 존재 여부를 확인한다.
+  let awaitingDocumentLines: AwaitingDocumentLine[] = [];
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -77,7 +83,9 @@ export default async function InboundPage() {
           .limit(50),
         supabase
           .from("inbound_document_lines")
-          .select("trace_no, inbound_documents!inner(status)")
+          .select(
+            "id, trace_no, item_name, labeled_weight, unit_price, inbound_documents!inner(status, supplier_name)"
+          )
           .eq("inbound_documents.status", "PENDING")
           .not("trace_no", "is", null),
       ]);
@@ -89,6 +97,41 @@ export default async function InboundPage() {
           .filter((value) => value.length > 0)
       ),
     ];
+
+    if (pendingDocumentTraceNos.length > 0) {
+      const { data: matchedScanRows } = await supabase
+        .from("inbound_scans")
+        .select("trace_no")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .in("trace_no", pendingDocumentTraceNos);
+
+      const matchedTraceNos = new Set(
+        ((matchedScanRows ?? []) as Array<{ trace_no: string }>).map((row) =>
+          row.trace_no.trim().toUpperCase()
+        )
+      );
+
+      awaitingDocumentLines = ((pendingDocLineRows ?? []) as Array<Record<string, unknown>>)
+        .filter((row) => {
+          const traceNo = (row.trace_no as string | null)?.trim().toUpperCase() ?? "";
+          return traceNo.length > 0 && !matchedTraceNos.has(traceNo);
+        })
+        .map((row) => {
+          const document = Array.isArray(row.inbound_documents)
+            ? row.inbound_documents[0]
+            : row.inbound_documents;
+
+          return {
+            id: String(row.id),
+            traceNo: String(row.trace_no),
+            itemName: (row.item_name as string | null) ?? null,
+            labeledWeight: row.labeled_weight === null ? null : Number(row.labeled_weight),
+            unitPrice: row.unit_price === null ? null : Number(row.unit_price),
+            supplierName:
+              ((document as Record<string, unknown> | null)?.supplier_name as string | null) ?? null,
+          };
+        });
+    }
 
     // 올린 명세서 목록. 저장만 되고 다시 열어볼 곳이 없으면 쓸모가 없어서 함께 내린다.
     // 줄 수는 행마다 세면 N+1이라 관계 count로 한 번에 받는다.
@@ -332,6 +375,7 @@ export default async function InboundPage() {
         shippableOrders={shippableOrders}
         scanRequirements={scanRequirements}
         pendingDocumentTraceNos={pendingDocumentTraceNos}
+        awaitingDocumentLines={awaitingDocumentLines}
       />
     </div>
   );

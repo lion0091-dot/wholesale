@@ -115,6 +115,21 @@ interface Props {
    * 명세서 자체가 없으면(빈 배열) 대조할 게 없으니 배너를 안 띄운다.
    */
   pendingDocumentTraceNos: string[];
+  /**
+   * 명세서에는 있는데 아직 스캔되지 않은 줄 — "명세서 대기 품목" 목록에 띄워
+   * 탭하면 이력번호 입력칸에 채워준다(2026-09-24, 사장님 지침: 바코드가 지저분하거나
+   * 로트번호를 손으로 옮겨 적어야 할 때의 보조 수단 — 스캔 자체를 대체하지 않는다).
+   */
+  awaitingDocumentLines: AwaitingDocumentLine[];
+}
+
+export interface AwaitingDocumentLine {
+  id: string;
+  traceNo: string;
+  itemName: string | null;
+  labeledWeight: number | null;
+  unitPrice: number | null;
+  supplierName: string | null;
 }
 
 /** 오픈 직전 Vercel에서 이 값을 지우거나 false로 바꾸면 샘플 패널이 전부 사라진다. */
@@ -215,6 +230,7 @@ export function InboundScanView({
   shippableOrders,
   scanRequirements,
   pendingDocumentTraceNos,
+  awaitingDocumentLines,
 }: Props) {
   const router = useRouter();
 
@@ -502,6 +518,18 @@ export function InboundScanView({
 
     event.preventDefault();
     processTraceInput(traceNo, "BARCODE_SCAN");
+  };
+
+  /**
+   * 명세서 대기 품목을 탭했을 때 — 바코드가 안 찍히거나 로트번호를 손으로
+   * 옮겨 적어야 할 때의 보조 수단. 이력번호 입력칸만 채우고 실제 등록은
+   * 여전히 사람이 실중량을 입력하고 확정해야 한다(스캔을 대신하지 않는다).
+   */
+  const handleUseAwaitingLine = (line: AwaitingDocumentLine) => {
+    setTraceNo(line.traceNo);
+    setError(null);
+    setNotice(`"${line.traceNo}"를 입력칸에 채웠습니다 — 실중량을 확인하고 Enter를 눌러주세요.`);
+    weightInputRef.current?.focus();
   };
 
   const handleWeightKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1021,6 +1049,51 @@ export function InboundScanView({
           </div>
         )}
       </section>
+
+      {awaitingDocumentLines.length > 0 && (
+        <section style={panelStyle}>
+          <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>
+            명세서 대기 품목 <span style={{ color: "#94a3b8", fontWeight: 400 }}>아직 안 들어온 것</span>
+          </div>
+          <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 10px" }}>
+            바코드가 잘 안 찍히거나 로트번호를 옮겨 적어야 할 때, 아래에서 탭하면 이력번호 칸에
+            채워집니다. 실제 등록은 실중량을 확인하고 눌러야 끝납니다.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            {awaitingDocumentLines.map((line) => (
+              <button
+                key={line.id}
+                type="button"
+                onClick={() => handleUseAwaitingLine(line)}
+                style={{
+                  ...rowStyle,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  border: "1px dashed #cbd5e1",
+                  display: "flex",
+                  gap: "8px",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>{line.itemName ?? "품목명 없음"}</span>
+                <span style={{ fontFamily: "monospace", fontSize: "12px", color: "#475569" }}>
+                  {line.traceNo}
+                </span>
+                {line.labeledWeight !== null && (
+                  <span style={{ fontSize: "12px", color: "#64748b" }}>{line.labeledWeight}kg</span>
+                )}
+                {line.unitPrice !== null && (
+                  <span style={{ fontSize: "12px", color: "#64748b" }}>{formatWon(line.unitPrice)}</span>
+                )}
+                {line.supplierName && (
+                  <span style={{ fontSize: "11px", color: "#94a3b8" }}>{line.supplierName}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {splitMode && (
         <section style={panelStyle}>
