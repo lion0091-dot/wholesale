@@ -450,6 +450,19 @@ function checkResultCode(tree: unknown): void {
   }
 }
 
+/**
+ * mtrace(소·돼지 공용 animalTrace 엔드포인트) 응답은 lsTypeNm 같은 축종
+ * 이름 필드를 안 줄 때가 있다 — 실제 돼지 이력 조회로 확인됨(2026-09-23,
+ * traceNoType: "PIG|PIG_NO", pigNo 필드만 있고 lsTypeNm류는 전혀 없었음).
+ * 대신 hasRecord()가 이미 쓰는 cattleNo/pigNo 필드의 존재 여부로 가른다
+ * (그 필드명은 실호출로 검증된 값이라 traceNoType 문자열을 추측하는 것보다 안전하다).
+ */
+function speciesGroupFromIdField(tree: unknown): string | null {
+  if (pick(tree, ["pigNo"]) !== null) return "돼지";
+  if (pick(tree, ["cattleNo"]) !== null) return "소";
+  return null;
+}
+
 function toRecord(
   traceNo: string,
   traceKind: TraceKind,
@@ -464,7 +477,7 @@ function toRecord(
         normalizeSpeciesGroup(species)
       : source === "poultry"
         ? "닭/오리"
-        : normalizeSpeciesGroup(species);
+        : (normalizeSpeciesGroup(species) ?? speciesGroupFromIdField(tree));
 
   return {
     traceNo,
