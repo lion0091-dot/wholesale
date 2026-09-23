@@ -81,6 +81,11 @@ export interface Wholesaler {
   pg_provider?: string | null;
   pg_client_key?: string | null;
   pg_secret_key_encrypted?: string | null;
+  /**
+   * 미니샵 장바구니에 희망가 제안 칸을 띄울지 (마이그레이션 20260930000080).
+   * 공급사가 켜고 끈다. 기본 꺼짐.
+   */
+  allow_price_negotiation: boolean;
 }
 
 export interface Retailer {
@@ -170,6 +175,11 @@ export interface Order {
   payment_status?: PaymentStatus | null;
   pg_payment_key?: string | null;
   pg_order_id?: string | null;
+  /**
+   * 고객이 주문할 때 남긴 가격 관련 요청 (마이그레이션 20260930000080).
+   * 네고를 켜지 않은 공급사의 주문에는 항상 null.
+   */
+  negotiation_note?: string | null;
 }
 
 /** 플랫폼 관리자 allowlist 항목 (public.platform_admin_allowlist 행 그대로). */
@@ -201,4 +211,9 @@ export interface OrderItem {
   quantity: number;
   subtotal_amount: number;
   created_at: string;
+  /**
+   * 고객이 제시한 희망 단가 (마이그레이션 20260930000080). unit_price(실제 적용가)와
+   * 다르면 공급사가 조정한 것이다. 네고를 안 쓴 주문은 항상 null.
+   */
+  requested_unit_price?: number | null;
 }

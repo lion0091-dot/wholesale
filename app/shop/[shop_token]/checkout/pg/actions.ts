@@ -21,6 +21,8 @@ export interface InitiatePgPaymentInput {
   contactPhone: string;
   deliveryAddress: string;
   deliveryNotes?: string;
+  /** 가격 관련 요청 메모 (네고 켜진 공급사만 의미 있음) */
+  negotiationNote?: string;
 }
 
 export interface InitiatePgPaymentResult {
@@ -61,6 +63,12 @@ export async function initiatePgPaymentAction(
       return { success: false, error: validation.violations[0].message };
     }
 
+    // 공급사가 네고를 꺼둔 경우 메모도 함께 무시한다 (submitOrderAction과 동일 원칙).
+    const negotiationNote =
+      catalog.wholesaler.allow_price_negotiation && input.negotiationNote?.trim()
+        ? input.negotiationNote.trim()
+        : null;
+
     const totalAmount = validation.totals.totalAmount;
     const supabase = await createClient();
     const buyer = await requireLinkedBuyer(supabase, input.shopToken);
@@ -99,6 +107,7 @@ export async function initiatePgPaymentAction(
       contact_phone: contactPhone,
       delivery_address: deliveryAddress,
       delivery_notes: deliveryNotes,
+      negotiation_note: negotiationNote,
     });
 
     if (insertError) {

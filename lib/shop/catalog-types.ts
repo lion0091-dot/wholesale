@@ -43,6 +43,8 @@ export interface ShopCatalog {
 export interface CartEntryInput {
   productId: string;
   quantity: number;
+  /** 고객이 제안하는 희망 단가 (네고 켜진 공급사만 의미 있음). */
+  requestedUnitPrice?: number | null;
 }
 
 /**
@@ -91,6 +93,15 @@ export function toCartLines(catalog: ShopCatalog, entries: CartEntryInput[]): Ca
       return lines;
     }
 
+    // 공급사가 네고를 꺼둔 경우 클라이언트가 억지로 실어 보내도 서버에서 무시한다 —
+    // UI를 숨기는 것만으로는 부족하다(설정은 항상 서버 기준이 최종 권한).
+    const requestedUnitPrice =
+      catalog.wholesaler.allow_price_negotiation &&
+      Number.isFinite(entry.requestedUnitPrice) &&
+      Number(entry.requestedUnitPrice) > 0
+        ? Number(entry.requestedUnitPrice)
+        : null;
+
     lines.push({
       productId: item.product.id,
       name: item.product.name,
@@ -103,6 +114,7 @@ export function toCartLines(catalog: ShopCatalog, entries: CartEntryInput[]): Ca
       stockQuantity: Number(item.product.stock_quantity),
       isCustomPrice: item.isCustomPrice,
       isHotDeal: item.isHotDeal,
+      requestedUnitPrice,
     });
 
     return lines;

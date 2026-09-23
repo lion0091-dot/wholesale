@@ -26,9 +26,11 @@ function detectEnvironment(userAgent: string): Exclude<Environment, "checking"> 
 interface Props {
   /** 최종 목적지 (앱 내부 경로) */
   target: string;
+  /** 안내 문구에 들어갈 화면 이름 (예: "입고", "출고") */
+  label: string;
 }
 
-export function OpenInBrowserView({ target }: Props) {
+export function OpenInBrowserView({ target, label }: Props) {
   const [environment, setEnvironment] = useState<Environment>("checking");
   const [absoluteUrl, setAbsoluteUrl] = useState("");
 
@@ -58,7 +60,7 @@ export function OpenInBrowserView({ target }: Props) {
   }
 
   if (environment === "browser") {
-    return <Shell>입고 화면으로 이동 중…</Shell>;
+    return <Shell>{label} 화면으로 이동 중…</Shell>;
   }
 
   return (
@@ -94,7 +96,7 @@ export function OpenInBrowserView({ target }: Props) {
             marginBottom: "16px",
           }}
         >
-          입고 화면 열기
+          {label} 화면 열기
         </a>
       )}
 

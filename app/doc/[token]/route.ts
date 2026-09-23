@@ -5,6 +5,8 @@ import { loadStatementDataForSupplier, loadStatementDataForBuyer } from "@/lib/o
 import { buildStatementResponse } from "@/lib/pdf/statement-response";
 import { buildTaxInvoiceResponse } from "@/lib/pdf/tax-invoice-response";
 import type { TaxInvoiceOverrides } from "@/lib/pdf/tax-invoice";
+import { loadDeliveryRequestDataForSupplier } from "@/lib/orders/delivery-request";
+import { buildDeliveryRequestResponse } from "@/lib/pdf/delivery-request-response";
 
 /**
  * 카카오톡 인앱 브라우저 → "외부 브라우저에서 열기" 전용 공개 라우트.
@@ -82,9 +84,26 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
   }
 
-  // supplier-statement / tax-invoice — 둘 다 공급사 소유(wholesalerId) 기준 조회
+  // supplier-statement / tax-invoice / delivery-request — 전부 공급사 소유(wholesalerId) 기준 조회
   if (!payload.wholesalerId) {
     return invalidLinkResponse();
+  }
+
+  if (payload.kind === "delivery-request") {
+    const deliveryData = await loadDeliveryRequestDataForSupplier(
+      supabase,
+      payload.orderId,
+      payload.wholesalerId
+    );
+
+    if (!deliveryData) {
+      return NextResponse.json({ error: "발주를 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    return buildDeliveryRequestResponse(deliveryData, {
+      actionHref: "/dashboard/invites",
+      actionLabel: "사업장 주소 등록하러 가기",
+    });
   }
 
   const data = await loadStatementDataForSupplier(supabase, payload.orderId, payload.wholesalerId);

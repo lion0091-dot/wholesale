@@ -14,6 +14,8 @@ import { normalizeQuantity, quantityStepFor } from "@/lib/shop/order-policy";
 export interface CartEntry {
   productId: string;
   quantity: number;
+  /** 고객이 이번 발주에 한해 제안하는 희망 단가 (네고 켜진 공급사만). */
+  requestedUnitPrice?: number;
 }
 
 const STORAGE_PREFIX = "wsale_cart:";
@@ -46,13 +48,19 @@ function readEntries(shopToken: string): CartEntry[] {
         return [];
       }
 
-      const { productId, quantity } = row as Partial<CartEntry>;
+      const { productId, quantity, requestedUnitPrice } = row as Partial<CartEntry>;
 
       if (typeof productId !== "string" || typeof quantity !== "number" || quantity <= 0) {
         return [];
       }
 
-      return [{ productId, quantity }];
+      const entry: CartEntry = { productId, quantity };
+
+      if (typeof requestedUnitPrice === "number" && requestedUnitPrice > 0) {
+        entry.requestedUnitPrice = requestedUnitPrice;
+      }
+
+      return [entry];
     });
   } catch {
     return [];
@@ -86,6 +94,8 @@ export interface ShopCartApi {
   setQuantity: (productId: string, quantity: number, unit: string, stockQuantity: number) => void;
   /** 단위 스텝만큼 증감 */
   stepQuantity: (productId: string, direction: 1 | -1, unit: string, stockQuantity: number) => void;
+  /** 희망 단가 설정 — 0 이하나 숫자가 아니면 제거(미입력 처리) */
+  setRequestedPrice: (productId: string, price: number) => void;
   remove: (productId: string) => void;
   clear: () => void;
 }
@@ -138,6 +148,29 @@ export function useShopCart(shopToken: string): ShopCartApi {
     [shopToken]
   );
 
+  const setRequestedPrice = useCallback(
+    (productId: string, price: number) => {
+      const current = readEntries(shopToken);
+      const existing = current.find((entry) => entry.productId === productId);
+
+      if (!existing) {
+        return;
+      }
+
+      const remaining = current.filter((entry) => entry.productId !== productId);
+      const next: CartEntry = { ...existing };
+
+      if (Number.isFinite(price) && price > 0) {
+        next.requestedUnitPrice = price;
+      } else {
+        delete next.requestedUnitPrice;
+      }
+
+      writeEntries(shopToken, [...remaining, next]);
+    },
+    [shopToken]
+  );
+
   const remove = useCallback(
     (productId: string) => {
       writeEntries(
@@ -152,5 +185,5 @@ export function useShopCart(shopToken: string): ShopCartApi {
     writeEntries(shopToken, []);
   }, [shopToken]);
 
-  return { entries, isLoaded, quantityOf, setQuantity, stepQuantity, remove, clear };
+  return { entries, isLoaded, quantityOf, setQuantity, stepQuantity, setRequestedPrice, remove, clear };
 }

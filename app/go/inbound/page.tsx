@@ -1,4 +1,4 @@
-import { OpenInBrowserView } from "./open-in-browser-view";
+import { OpenInBrowserView } from "../open-in-browser-view";
 
 export const metadata = {
   title: "입고 스캔 열기 | 도매업체 통합관리시스템",
@@ -18,5 +18,5 @@ export const metadata = {
  *   https://<도메인>/go/inbound
  */
 export default function InboundEntryPage() {
-  return <OpenInBrowserView target="/dashboard/inbound" />;
+  return <OpenInBrowserView target="/dashboard/inbound" label="입고" />;
 }

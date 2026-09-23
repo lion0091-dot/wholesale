@@ -39,6 +39,10 @@
 
 - [docs/delivery-tracking.md](docs/delivery-tracking.md) — 운송장 발급/배송비 정산은 대행하지 않고 스위트트래커 API로 조회만 대행. 잠긴 설계 결정(정산 비관여, 상태 캐싱 안 함, Server Action 패턴), 아키텍처. API 키 미발급(2026-09-17 기준)이라 실조회 미검증 — 문서·코드 준비만 완료.
 
+## 배송의뢰서 자동 생성 (delivery-tracking 연장, 별도 기능)
+
+- [docs/delivery-request-document.md](docs/delivery-request-document.md) — 운송장 발급 대행 원칙은 유지한 채, 주문 데이터로 가격 없는 배송의뢰서 PDF를 자동 생성(거래명세서 PDF 파이프라인 재사용). 택배사 API 자동발급은 문서/계약 없어 보류, 목록 화면 일괄 처리도 미착수.
+
 ## 축산물 경락가격 위젯 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
 
 - [docs/market-price-widget.md](docs/market-price-widget.md) — ROADMAP §1 공공 시세 API 연동. 원매가 참고란 옆에 오늘 전국 평균 경락가(소/돼지)를 보여주는 참고용 위젯. DB 테이블·API 클라이언트·크론·조회 액션·UI 위젯까지 코드 전부 완료(커밋 전). KAPE API 키만 미발급 — 발급 전엔 위젯이 "시세 데이터 없음" 안내로 안전하게 폴백.

@@ -41,6 +41,7 @@ interface OrderDetail {
   totalAmount: number;
   deliveryAddress: string;
   deliveryNotes: string | null;
+  negotiationNote: string | null;
   orderedAt: string;
   updatedAt: string;
   items: OrderItem[];
@@ -124,6 +125,7 @@ async function loadOrder(
       totalAmount: Number(row.total_amount),
       deliveryAddress: row.delivery_address as string,
       deliveryNotes: (row.delivery_notes as string | null) ?? null,
+      negotiationNote: (row.negotiation_note as string | null) ?? null,
       orderedAt: row.ordered_at as string,
       updatedAt: row.updated_at as string,
       items: ((row.order_items as OrderItem[] | null) ?? []).slice().sort((a, b) =>
@@ -190,6 +192,16 @@ export default async function OrderDetailPage({ params }: PageProps) {
     return token ? `/doc/${token}` : null;
   })();
 
+  const deliveryRequestExternalOpenHref = (() => {
+    const token = signExternalOpenToken({
+      kind: "delivery-request",
+      orderId: order.id,
+      wholesalerId,
+    });
+
+    return token ? `/doc/${token}` : null;
+  })();
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <header style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -225,6 +237,16 @@ export default async function OrderDetailPage({ params }: PageProps) {
             label="거래명세서"
             externalOpenHref={statementExternalOpenHref}
           />
+          <div>
+            <StatementPreviewButton
+              href={`/dashboard/orders/${order.id}/delivery-request`}
+              label="배송의뢰서"
+              externalOpenHref={deliveryRequestExternalOpenHref}
+            />
+            <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+              ※ 지금은 참고용 문서만 만들어집니다. 택배사와 API 계약이 되면 자동 접수도 지원 예정입니다.
+            </p>
+          </div>
           <TaxInvoiceDraftPanel
             baseHref={`/dashboard/orders/${order.id}/tax-invoice`}
             orderId={order.id}
@@ -275,7 +297,15 @@ export default async function OrderDetailPage({ params }: PageProps) {
                     )}
                     {item.product_name}
                   </td>
-                  <td style={{ whiteSpace: "nowrap" }}>{formatWon(item.unit_price)}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {formatWon(item.unit_price)}
+                    {item.requested_unit_price != null &&
+                      Number(item.requested_unit_price) !== Number(item.unit_price) && (
+                        <div style={{ fontSize: "11px", color: "#b45309" }}>
+                          고객 희망 {formatWon(item.requested_unit_price)}
+                        </div>
+                      )}
+                  </td>
                   <td style={{ whiteSpace: "nowrap" }}>{Number(item.quantity)}</td>
                   <td style={{ whiteSpace: "nowrap", fontWeight: 700 }}>
                     {formatWon(item.subtotal_amount)}
@@ -320,6 +350,12 @@ export default async function OrderDetailPage({ params }: PageProps) {
                 <span>{formatWon(item.unit_price)} × {Number(item.quantity)}</span>
                 <span style={{ fontWeight: 700, color: "#0f172a" }}>{formatWon(item.subtotal_amount)}</span>
               </div>
+              {item.requested_unit_price != null &&
+                Number(item.requested_unit_price) !== Number(item.unit_price) && (
+                  <div style={{ fontSize: "11px", color: "#b45309" }}>
+                    고객 희망 {formatWon(item.requested_unit_price)}
+                  </div>
+                )}
             </div>
           ))}
         </div>
@@ -387,6 +423,24 @@ export default async function OrderDetailPage({ params }: PageProps) {
             >
               <strong>배송 요청사항</strong>
               <div style={{ marginTop: "3px" }}>{order.deliveryNotes}</div>
+            </div>
+          )}
+
+          {order.negotiationNote && (
+            <div
+              style={{
+                marginTop: "12px",
+                backgroundColor: "#fef2f2",
+                border: "1px solid #fecaca",
+                borderRadius: "8px",
+                padding: "10px 12px",
+                fontSize: "12px",
+                color: "#991b1b",
+                lineHeight: 1.6,
+              }}
+            >
+              <strong>가격 관련 요청 (고객)</strong>
+              <div style={{ marginTop: "3px" }}>{order.negotiationNote}</div>
             </div>
           )}
         </section>

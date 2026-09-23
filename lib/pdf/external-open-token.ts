@@ -9,7 +9,11 @@ import { createHmac, timingSafeEqual } from "crypto";
  * 기존처럼 보호된 라우트 링크를 그대로 쓰는 폴백을 유지해야 한다.
  */
 
-export type ExternalOpenDocumentKind = "supplier-statement" | "tax-invoice" | "buyer-statement";
+export type ExternalOpenDocumentKind =
+  | "supplier-statement"
+  | "tax-invoice"
+  | "buyer-statement"
+  | "delivery-request";
 
 export interface ExternalOpenPayload {
   kind: ExternalOpenDocumentKind;

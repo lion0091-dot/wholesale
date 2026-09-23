@@ -52,7 +52,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { data: pending } = await supabase
       .from("pg_pending_payments")
       .select(
-        "id, wholesaler_id, retailer_id, total_amount, cart_snapshot, restaurant_name, contact_phone, delivery_address, delivery_notes, expires_at"
+        "id, wholesaler_id, retailer_id, total_amount, cart_snapshot, restaurant_name, contact_phone, delivery_address, delivery_notes, negotiation_note, expires_at"
       )
       .eq("pg_order_id", orderId)
       .eq("retailer_id", buyer.retailerId)
@@ -105,6 +105,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       deliveryNotes: (pending.delivery_notes as string | null) ?? null,
       paymentMethod: "pg",
       lines,
+      negotiationNote: (pending.negotiation_note as string | null) ?? null,
       paymentStatus: "paid",
       pgPaymentKey: confirmed.paymentKey,
       pgOrderId: orderId,

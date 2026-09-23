@@ -23,7 +23,10 @@ interface CartViewProps {
 }
 
 export function CartView({ catalog }: CartViewProps) {
-  const { entries, isLoaded, stepQuantity, remove, clear } = useShopCart(catalog.shopToken);
+  const { entries, isLoaded, stepQuantity, setRequestedPrice, remove, clear } = useShopCart(
+    catalog.shopToken
+  );
+  const negotiationEnabled = catalog.wholesaler.allow_price_negotiation;
 
   // 단가/재고는 매번 서버 카탈로그 기준으로 재계산한다 (공급사 단가 변경 즉시 반영)
   const lines = useMemo(
@@ -185,6 +188,35 @@ export function CartView({ catalog }: CartViewProps) {
                         </div>
                       </div>
                     </div>
+
+                    {negotiationEnabled && (
+                      <div style={{ marginTop: "10px" }}>
+                        <label
+                          htmlFor={`nego-${line.productId}`}
+                          style={{ fontSize: "12px", color: "#475569", display: "block", marginBottom: "4px" }}
+                        >
+                          희망 단가 (선택, {line.unit}당)
+                        </label>
+                        <input
+                          id={`nego-${line.productId}`}
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          value={line.requestedUnitPrice ?? ""}
+                          onChange={(event) =>
+                            setRequestedPrice(line.productId, Number(event.target.value))
+                          }
+                          placeholder="예: 28000 (미입력 시 표시 단가로 접수)"
+                          style={{
+                            width: "100%",
+                            padding: "8px 10px",
+                            fontSize: "13px",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: "6px",
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               })}

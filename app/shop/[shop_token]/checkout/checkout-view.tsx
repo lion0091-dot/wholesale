@@ -47,6 +47,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
   const [contactPhone, setContactPhone] = useState(customer.contactPhone ?? "");
   const [deliveryAddress, setDeliveryAddress] = useState(customer.deliveryAddress ?? "");
   const [deliveryNotes, setDeliveryNotes] = useState("");
+  const [negotiationNote, setNegotiationNote] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("prepaid");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -96,11 +97,16 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
   const handlePgSubmit = async () => {
     const initiated = await initiatePgPaymentAction({
       shopToken,
-      items: lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+      items: lines.map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        requestedUnitPrice: line.requestedUnitPrice,
+      })),
       restaurantName,
       contactPhone,
       deliveryAddress,
       deliveryNotes,
+      negotiationNote,
     });
 
     if (!initiated.success || !initiated.pgOrderId || !initiated.clientKey || !initiated.amount) {
@@ -148,12 +154,17 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
 
       const result = await submitOrderAction({
         shopToken,
-        items: lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+        items: lines.map((line) => ({
+          productId: line.productId,
+          quantity: line.quantity,
+          requestedUnitPrice: line.requestedUnitPrice,
+        })),
         restaurantName,
         contactPhone,
         deliveryAddress,
         deliveryNotes,
         paymentMethod,
+        negotiationNote,
       });
 
       if (result.success && result.orderNumber) {
@@ -460,6 +471,22 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               style={{ ...inputStyle, resize: "vertical" }}
             />
           </div>
+
+          {wholesaler.allow_price_negotiation && (
+            <div>
+              <label style={labelStyle} htmlFor="negotiation-note">
+                가격 관련 요청 (선택)
+              </label>
+              <textarea
+                id="negotiation-note"
+                rows={2}
+                value={negotiationNote}
+                onChange={(event) => setNegotiationNote(event.target.value)}
+                placeholder="예: 단골이라 등심 kg당 2천원만 조정 부탁드려요"
+                style={{ ...inputStyle, resize: "vertical" }}
+              />
+            </div>
+          )}
 
           {usableMethods.length > 1 && (
             <div>

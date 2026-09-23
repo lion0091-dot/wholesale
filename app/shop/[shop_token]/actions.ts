@@ -31,6 +31,8 @@ export interface SubmitOrderInput {
   deliveryNotes?: string;
   /** 미지정 시 prepaid(즉시결제)로 처리 */
   paymentMethod?: PaymentMethod;
+  /** 가격 관련 요청 메모 (네고 켜진 공급사만 의미 있음) */
+  negotiationNote?: string;
 }
 
 export interface SubmitOrderResult {
@@ -161,6 +163,13 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
       return { success: false, error: validation.violations[0].message };
     }
 
+    // 공급사가 네고를 꺼둔 경우 메모도 함께 무시한다 — UI를 숨기는 것만으로는
+    // 부족하다(설정은 항상 서버 기준이 최종 권한, requestedUnitPrice와 동일한 판단).
+    const negotiationNote =
+      catalog.wholesaler.allow_price_negotiation && input.negotiationNote?.trim()
+        ? input.negotiationNote.trim()
+        : null;
+
     if (input.paymentMethod === "pg") {
       return {
         success: false,
@@ -211,6 +220,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
       deliveryNotes,
       paymentMethod,
       lines,
+      negotiationNote,
     });
 
     if ("error" in createResult) {

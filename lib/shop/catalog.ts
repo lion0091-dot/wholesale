@@ -144,7 +144,7 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
   const { data: wholesalerData } = await supabase
     .from("wholesalers")
     .select(
-      "id, profile_id, business_name, business_number, representative_name, shop_token, status, subscription_status, created_at, updated_at, pg_client_key"
+      "id, profile_id, business_name, business_number, representative_name, shop_token, status, subscription_status, created_at, updated_at, pg_client_key, allow_price_negotiation"
     )
     .eq("shop_token", shopToken)
     .maybeSingle();

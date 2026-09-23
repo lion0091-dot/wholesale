@@ -22,6 +22,8 @@ export interface CreateOrderParams {
   deliveryNotes: string | null;
   paymentMethod: PaymentMethod;
   lines: CartLine[];
+  /** 고객이 주문할 때 남긴 가격 관련 요청. 네고를 안 쓰면 undefined/null로 둔다. */
+  negotiationNote?: string | null;
   /** PG 결제만 채운다 — 직접정산/외상은 undefined로 두면 컬럼이 NULL로 남는다. */
   paymentStatus?: PaymentStatus;
   pgPaymentKey?: string;
@@ -55,6 +57,7 @@ export async function createOrderWithItems(
       pg_order_id: params.pgOrderId ?? null,
       delivery_address: params.deliveryAddress,
       delivery_notes: params.deliveryNotes,
+      negotiation_note: params.negotiationNote ?? null,
     })
     .select("id")
     .single();
@@ -75,6 +78,7 @@ export async function createOrderWithItems(
       unit_price: line.unitPrice,
       quantity: line.quantity,
       subtotal_amount: lineSubtotal(line),
+      requested_unit_price: line.requestedUnitPrice ?? null,
     }))
   );
 

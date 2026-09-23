@@ -51,6 +51,8 @@ export interface CartLine {
   stockQuantity: number;
   isCustomPrice: boolean;
   isHotDeal: boolean;
+  /** 고객이 이번 주문에 한해 제안하는 희망 단가 (네고 켜진 공급사만). 미입력이면 null. */
+  requestedUnitPrice?: number | null;
 }
 
 export interface CartTotals {

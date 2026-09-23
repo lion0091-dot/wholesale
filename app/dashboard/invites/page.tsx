@@ -17,6 +17,8 @@ import { AlimtalkSettingsForm } from "./alimtalk-settings-form";
 import { getAlimtalkSettingsAction } from "@/app/actions/alimtalk-settings";
 import { PgSettingsForm } from "./pg-settings-form";
 import { getPgSettingsAction } from "@/app/actions/pg-settings";
+import { NegotiationSettingsForm } from "./negotiation-settings-form";
+import { getNegotiationSettingsAction } from "@/app/actions/negotiation-settings";
 
 export const metadata = {
   title: "영업 · 초대장 | 도매업체 통합관리시스템",
@@ -116,6 +118,14 @@ export default async function DashboardInvitesPage() {
   const pgSettingsResult = account.wholesalerId ? await getPgSettingsAction() : null;
   const pgSettings =
     pgSettingsResult?.success && pgSettingsResult.data ? pgSettingsResult.data : null;
+
+  const negotiationSettingsResult = account.wholesalerId
+    ? await getNegotiationSettingsAction()
+    : null;
+  const negotiationSettings =
+    negotiationSettingsResult?.success && negotiationSettingsResult.data
+      ? negotiationSettingsResult.data
+      : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -264,6 +274,15 @@ export default async function DashboardInvitesPage() {
             PG(카드) 결제 연동 설정
           </div>
           <PgSettingsForm initial={pgSettings} />
+        </section>
+      )}
+
+      {account.wholesalerId && negotiationSettings && (
+        <section style={cardStyle}>
+          <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>
+            가격 네고 설정
+          </div>
+          <NegotiationSettingsForm initial={negotiationSettings} />
         </section>
       )}
 
