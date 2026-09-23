@@ -134,11 +134,18 @@ export async function recordScanAction(input: {
   /** 건별 매입단가. 비우면 상품별 기본 매입단가가 따라 들어간다. */
   purchaseUnitPrice?: number | null;
   purchaseSupplier?: string | null;
+  /**
+   * GS1-128 라벨의 상품코드(GTIN). 이력번호가 개체(소 한 마리)를 가리킨다면
+   * 이건 공급처가 품목에 부여한 코드다. 공공 이력조회가 부위를 주지 않는 것이
+   * 실물로 확인돼(30단계), 부위 대신 이 코드로 상품을 학습한다.
+   */
+  gtin?: string | null;
 }): Promise<ActionResult<ScanResult | { duplicate: DuplicateWarning }>> {
   try {
     const { supabase } = await resolveInboundScope();
 
     const traceNo = input.traceNo.trim().toUpperCase();
+    const gtin = input.gtin?.trim() || null;
 
     if (!isPlausibleTraceNo(traceNo)) {
       throw new RbacError("이력번호 형식이 올바르지 않습니다. 다시 스캔해주세요.");
@@ -212,12 +219,23 @@ export async function recordScanAction(input: {
       }
     }
 
-    // 3) 스캔 기록 (스캔 + 원장 + 재고 + 예외가 한 트랜잭션)
+    // 3) 이 바코드를 전에 본 적 있으면 그때 지정한 상품에 바로 붙인다.
+    //    이력조회는 부위를 주지 않아 매번 되묻게 되는데, 공급처의 상품코드는
+    //    품목을 정확히 가리키므로 한 번만 알려주면 다음부터 자동이다.
+    let gtinProductId: string | null = null;
+
+    if (gtin && !input.productId) {
+      const { data: mapped } = await supabase.rpc("lookup_product_by_gtin", { p_gtin: gtin });
+
+      gtinProductId = (mapped as string | null) ?? null;
+    }
+
+    // 4) 스캔 기록 (스캔 + 원장 + 재고 + 예외가 한 트랜잭션)
     const { data, error } = await supabase.rpc("record_inbound_scan", {
       p_trace_no: traceNo,
       p_weight: input.weight,
       p_scan_type: input.scanType,
-      p_product_id: input.productId ?? null,
+      p_product_id: input.productId ?? gtinProductId ?? null,
       p_fail_reason: failReason,
       p_fail_detail: failDetail,
       p_import_row_id: null,
@@ -240,6 +258,19 @@ export async function recordScanAction(input: {
     }
 
     const row = data as Record<string, unknown>;
+
+    // 나중에 사람이 상품을 지정할 때 학습하려면 그 박스의 상품코드를 알아야 한다.
+    // 실패해도 입고 자체는 이미 끝났으므로 흐름을 막지 않는다.
+    if (gtin && row.scan_id) {
+      const { error: gtinError } = await supabase.rpc("set_scan_gtin", {
+        p_scan_id: String(row.scan_id),
+        p_gtin: gtin,
+      });
+
+      if (gtinError) {
+        console.error("[inbound] 상품코드 기록 실패:", gtinError.message);
+      }
+    }
 
     // 처음 취급하는 고기면 이력 정보(축종·부위·등급)로 상품을 자동 생성한다.
     // 공공 API가 이미 알려준 값을 사람이 다시 입력하게 할 이유가 없다.
@@ -330,6 +361,20 @@ export async function resolveMappingAction(
       }
 
       throw new Error(error.message);
+    }
+
+    // 이 박스에 상품코드가 있었다면 "이 코드 = 이 상품"으로 기억한다.
+    // 이력조회가 부위를 주지 않아 trace_product_map 학습이 안 걸리는 경우에도
+    // 이쪽은 걸린다 — 실제로 되묻는 횟수를 줄여주는 건 이 경로다(30단계).
+    if (remember) {
+      const { error: learnError } = await supabase.rpc("learn_gtin_product", {
+        p_scan_id: scanId,
+        p_product_id: productId,
+      });
+
+      if (learnError) {
+        console.error("[inbound] 상품코드 학습 실패:", learnError.message);
+      }
     }
 
     revalidatePath(REVALIDATE_PATH);

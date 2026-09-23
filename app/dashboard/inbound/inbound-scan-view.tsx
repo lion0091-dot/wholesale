@@ -323,6 +323,9 @@ export function InboundScanView({
         labeledWeight: labeled,
         purchaseUnitPrice,
         purchaseSupplier: supplier.trim() || null,
+        // 바코드의 상품코드. 이력번호가 소 한 마리를 가리킨다면 이건 공급처가
+        // 부여한 품목 구분자다 — 이력조회가 부위를 안 주므로 이쪽으로 학습한다.
+        gtin: parsed.gtin ?? null,
       });
 
       setPending((prev) => prev.filter((item) => item.key !== key));
