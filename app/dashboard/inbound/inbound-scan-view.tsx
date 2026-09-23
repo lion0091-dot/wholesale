@@ -549,6 +549,15 @@ export function InboundScanView({
     let cancelled = false;
     let timer: number | undefined;
 
+    // code_128/qr_code로 좁힌 뒤로는 해당 안 되는 바코드(EAN-13 등)를 비추면
+    // 정말 아무 반응이 없다 — 카메라가 고장난 건지 헷갈릴 수 있어 한동안
+    // 못 읽으면 수동 입력을 안내한다.
+    const hintTimer = window.setTimeout(() => {
+      if (!cancelled) {
+        setNotice("카메라 인식이 잘 안 되면 위 칸에 이력번호를 직접 입력해주세요.");
+      }
+    }, 6000);
+
     // BarcodeDetector는 표준화 진행 중이라 TS lib에 아직 없다.
     const BarcodeDetectorCtor = (
       window as unknown as {
@@ -619,6 +628,7 @@ export function InboundScanView({
     return () => {
       cancelled = true;
       if (timer !== undefined) window.clearInterval(timer);
+      window.clearTimeout(hintTimer);
     };
   }, [cameraOn, stopCamera, processTraceInput]);
 
