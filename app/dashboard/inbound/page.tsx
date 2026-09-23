@@ -67,7 +67,7 @@ export default async function InboundPage() {
         .from("orders")
         .select("id, order_number, retailers ( restaurant_name )")
         .eq("wholesaler_id", scope.wholesalerId)
-        .in("status", ["confirmed", "shipping"])
+        .in("status", ["awaiting_stock", "confirmed", "shipping"])
         .order("ordered_at", { ascending: true })
         .limit(50),
     ]);

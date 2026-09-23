@@ -50,7 +50,13 @@ interface OrderDetail {
 }
 
 /** 알림톡 발송 이력은 별도 적재 테이블이 없어 상태 진행 순서로 역산해 표시한다. */
-const STAGE_ORDER: OrderStatus[] = ["pending", "confirmed", "shipping", "delivered"];
+const STAGE_ORDER: OrderStatus[] = [
+  "pending",
+  "awaiting_stock",
+  "confirmed",
+  "shipping",
+  "delivered",
+];
 
 /** 정상 진행 단계에서 벗어난 취소 관련 상태 */
 const CANCEL_FLOW_STATUSES: OrderStatus[] = ["cancel_requested", "cancel_rejected", "cancelled"];
