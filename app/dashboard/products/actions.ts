@@ -356,6 +356,16 @@ export async function deleteProductAction(productId: string): Promise<ActionResu
     const { data, error } = await query.select("id").maybeSingle();
 
     if (error) {
+      // 23503 = foreign_key_violation. product_has_stock_history()는 stock_ledger만
+      // 보므로, 재고 기록은 없지만 주문(order_items, ON DELETE RESTRICT)에 걸린
+      // 상품은 위 체크를 통과해 여기서 걸린다 — 어느 테이블이 막았든 사용자에게는
+      // 같은 안내(보관 유도)가 맞다.
+      if (error.code === "23503") {
+        throw new RbacError(
+          "이 상품을 참조하는 기록이 있어 삭제할 수 없습니다. 기록을 남겨야 하기 때문입니다 — 대신 '보관'으로 목록에서 감출 수 있습니다."
+        );
+      }
+
       throw new Error(error.message);
     }
 
