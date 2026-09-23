@@ -139,7 +139,10 @@ export default async function InboundPage() {
     // 화면에서 줄마다 조회하면 N+1이라 이력번호를 모아 한 번씩만 읽는다.
     const traceNos = [...new Set((scanRows ?? []).map((row) => String(row.trace_no)))];
 
-    let masterByTrace = new Map<string, { grade: string | null; origin: string | null }>();
+    let masterByTrace = new Map<
+      string,
+      { grade: string | null; origin: string | null; species: string | null }
+    >();
     let documentByTrace = new Map<
       string,
       {
@@ -155,7 +158,7 @@ export default async function InboundPage() {
       const [{ data: masterRows }, { data: docLineRows }] = await Promise.all([
         supabase
           .from("master_livestock")
-          .select("trace_no, grade, origin_country, source")
+          .select("trace_no, grade, origin_country, source, species_group")
           .in("trace_no", traceNos),
         // 취소 처리된 명세서는 참조 대상이 아니다. 줄의 소속 업체 제한은 RLS가 한다.
         supabase
@@ -176,6 +179,7 @@ export default async function InboundPage() {
               row.source as string | null,
               row.origin_country as string | null
             ),
+            species: (row.species_group as string | null) ?? null,
           },
         ])
       );
@@ -221,6 +225,7 @@ export default async function InboundPage() {
               row.purchase_unit_price === null ? null : Number(row.purchase_unit_price),
             purchaseSupplier: (row.purchase_supplier as string | null) ?? null,
             traceFound: Boolean(master),
+            apiSpecies: master?.species ?? null,
             apiGrade: master?.grade ?? null,
             apiOrigin: master?.origin ?? null,
             documentMatched: Boolean(document),

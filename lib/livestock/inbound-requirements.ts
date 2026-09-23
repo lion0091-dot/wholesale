@@ -60,6 +60,7 @@ export interface ScanFacts {
 
   /** 공공 이력조회가 이 번호를 찾았는지 */
   traceFound: boolean;
+  apiSpecies?: string | null;
   apiGrade?: string | null;
   apiOrigin?: string | null;
 
@@ -155,6 +156,24 @@ export function buildScanRequirementReport(facts: ScanFacts): ScanRequirementRep
     value: facts.traceNo ?? null,
     source: facts.traceNo ? "SCAN" : null,
     hint: facts.traceNo ? null : "바코드를 다시 찍어주세요.",
+    conflict: null,
+  });
+
+  // 축종 — 상품을 고르기 전에 뭘 고르는 건지부터 알아야 한다(사장님 지적:
+  // 이력조회가 부위를 안 주는 경우가 많아 축종이라도 화면에서 바로 보여야
+  // 드롭다운에서 엉뚱한 걸 고르지 않는다). 이력조회로만 채워진다 — 스캔이나
+  // 명세서엔 축종 필드 자체가 없다.
+  add({
+    key: "species",
+    label: "축종",
+    level: "RECOMMENDED",
+    value: facts.apiSpecies ?? null,
+    source: facts.apiSpecies ? "TRACE_API" : null,
+    hint: facts.apiSpecies
+      ? null
+      : facts.traceFound
+        ? "이력조회에 축종 정보가 없습니다."
+        : "이력조회가 이 번호를 찾지 못했습니다.",
     conflict: null,
   });
 

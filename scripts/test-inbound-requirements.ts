@@ -226,6 +226,35 @@ function field(report: ReturnType<typeof buildScanRequirementReport>, key: strin
   );
 }
 
+// 10) 축종 — 이력조회로만 채워지고, 부위 없이도(소는 부위를 안 줌) 상품을
+//     고르기 전에 뭘 고르는 건지 알 수 있어야 한다.
+{
+  const withSpecies = buildScanRequirementReport(facts({ apiSpecies: "돼지" }));
+
+  check(
+    "축종이 있으면 이력조회 출처로 표시",
+    field(withSpecies, "species")?.value === "돼지" &&
+      field(withSpecies, "species")?.source === "TRACE_API",
+  );
+  check("축종은 권장이라 필수 누락으로 안 셈", withSpecies.missingRequired === 0);
+
+  const noSpecies = buildScanRequirementReport(facts({ apiSpecies: null, traceFound: true }));
+
+  check(
+    "이력조회는 됐는데 축종 필드가 없으면 그 사실을 안내",
+    field(noSpecies, "species")?.hint === "이력조회에 축종 정보가 없습니다.",
+  );
+
+  const notFound = buildScanRequirementReport(
+    facts({ apiSpecies: null, traceFound: false }),
+  );
+
+  check(
+    "이력조회 자체가 실패했으면 다른 안내",
+    field(notFound, "species")?.hint?.includes("찾지 못했") === true,
+  );
+}
+
 if (failed > 0) {
   console.log(`\n${failed}건 실패`);
   process.exit(1);
