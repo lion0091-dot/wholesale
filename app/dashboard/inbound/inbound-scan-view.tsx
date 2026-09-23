@@ -220,9 +220,14 @@ export function InboundScanView({
   // 개수만큼 반복 호출하면 그대로 박스별 여러 행으로 쌓인다).
   const [splitMode, setSplitMode] = useState(false);
   const [splitTraceNo, setSplitTraceNo] = useState("");
-  const [splitRows, setSplitRows] = useState<Array<{ id: string; productId: string; weight: string }>>([
-    { id: "split-0", productId: "", weight: "" },
-    { id: "split-1", productId: "", weight: "" },
+  /**
+   * 방금 찍었는데 이력조회가 실패한 코드. 소·돼지가 섞여 온 박스는 공급처
+   * 박스 바코드밖에 없어 조회될 수가 없다 — 그 자리에서 쪼개기를 권한다.
+   */
+  const [splitCandidate, setSplitCandidate] = useState<string | null>(null);
+  const [splitRows, setSplitRows] = useState<Array<{ id: string; productId: string; weight: string; traceNo?: string }>>([
+    { id: "split-0", productId: "", weight: "", traceNo: "" },
+    { id: "split-1", productId: "", weight: "", traceNo: "" },
   ]);
   const [splitSubmitting, setSplitSubmitting] = useState(false);
 
@@ -373,7 +378,13 @@ export function InboundScanView({
               " 상품 관리에서 판매가를 넣고 '판매중'으로 바꿔야 고객에게 보입니다."
           );
         } else if (data.status === "EXCEPTION") {
-          setNotice("이력을 찾지 못해 '이력 확인 필요'로 기록했습니다. 입고 자체는 저장됐습니다.");
+          // 이력조회가 실패하는 흔한 이유 하나가 "공급처 박스 바코드를 찍었다"이다.
+          // 소·돼지가 섞여 온 박스는 박스 코드밖에 없어 조회될 리가 없다. 그 자리에서
+          // 쪼개기를 제안한다 — 나중에 목록에서 찾아 들어가는 것보다 낫다(사장님 확정).
+          setSplitCandidate(value);
+          setNotice(
+            "이력을 찾지 못해 '이력 확인 필요'로 기록했습니다. 입고 자체는 저장됐습니다."
+          );
         } else if (data.status === "PENDING_MAPPING") {
           setNotice("부위를 알 수 없어 자동 등록이 안 됩니다. 아래 목록에서 상품을 한 번만 지정해주세요.");
         } else if (data.purchaseAmount !== null) {
@@ -612,30 +623,39 @@ export function InboundScanView({
   };
 
   const addSplitRow = () => {
-    setSplitRows((prev) => [...prev, { id: `split-${Date.now()}`, productId: "", weight: "" }]);
+    setSplitRows((prev) => [...prev, { id: `split-${Date.now()}`, productId: "", weight: "", traceNo: "" }]);
   };
 
   const removeSplitRow = (id: string) => {
     setSplitRows((prev) => (prev.length <= 1 ? prev : prev.filter((row) => row.id !== id)));
   };
 
-  const updateSplitRow = (id: string, patch: Partial<{ productId: string; weight: string }>) => {
+  const updateSplitRow = (
+    id: string,
+    patch: Partial<{ productId: string; weight: string; traceNo: string }>,
+  ) => {
     setSplitRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   };
 
   /**
-   * 한 코드로 상품 여러 개를 나눠 입고한다. 코드마다 recordScanAction을 반복
+   * 한 박스를 상품 여러 개로 나눠 입고한다. 줄마다 recordScanAction을 반복
    * 호출할 뿐 — 이력번호에 UNIQUE 제약이 없다는 게 이미 잠긴 설계라(1단계) 같은
    * 코드로 여러 행이 쌓이는 데 새 백엔드 로직이 필요 없다. 중복 스캔 경고는
    * confirmDuplicate:true로 미리 넘겨 건너뛴다 — 여기서는 "같은 코드를 또 찍었다"가
    * 실수가 아니라 의도이기 때문이다.
+   *
+   * **줄마다 이력번호를 따로 받는다**(사장님 확정). 같은 소에서 나온 등심·안심이면
+   * 박스 코드 하나로 충분하지만, 소와 돼지가 섞여 온 박스는 안에 든 고기마다
+   * 이력번호가 따로 있다. 전부 박스 코드로 넣으면 나중에 그 고기가 나갈 때
+   * 거래명세서에 박스 번호가 찍힌다 — 축산물이력법상 거래내역에 남겨야 하는 건
+   * 그 고기의 이력번호지 박스 번호가 아니다.
    */
   const handleSplitSubmit = async () => {
     const parsed = parseBarcode(splitTraceNo);
-    const value = parsed.traceNo ?? splitTraceNo.trim();
+    const boxCode = parsed.traceNo ?? splitTraceNo.trim();
 
-    if (!value) {
-      setError("이력번호를 입력해주세요.");
+    if (!boxCode) {
+      setError("박스 코드를 입력해주세요.");
       return;
     }
 
@@ -652,13 +672,19 @@ export function InboundScanView({
     setError(null);
 
     for (const row of validRows) {
+      // 줄에 이력번호를 따로 찍었으면 그걸 쓰고, 비웠으면 박스 코드를 쓴다
+      // (같은 소에서 나온 부위들이면 박스 코드가 곧 이력번호다).
+      const rowParsed = parseBarcode(row.traceNo ?? "");
+      const rowTrace = (rowParsed.traceNo ?? (row.traceNo ?? "").trim()) || boxCode;
+
       const result = await recordScanAction({
-        traceNo: value,
+        traceNo: rowTrace,
         weight: Number.parseFloat(row.weight),
         scanType: "MANUAL",
         productId: row.productId,
         confirmDuplicate: true,
-        memo: "박스 나눠서 입고",
+        memo: rowTrace === boxCode ? "박스 나눠서 입고" : `박스 나눠서 입고 (박스 ${boxCode})`,
+        gtin: rowParsed.gtin ?? parsed.gtin ?? null,
       });
 
       if (!result.success) {
@@ -674,8 +700,8 @@ export function InboundScanView({
     setNotice(`박스 하나를 상품 ${validRows.length}개로 나눠 입고했습니다.`);
     setSplitTraceNo("");
     setSplitRows([
-      { id: "split-0", productId: "", weight: "" },
-      { id: "split-1", productId: "", weight: "" },
+      { id: "split-0", productId: "", weight: "", traceNo: "" },
+      { id: "split-1", productId: "", weight: "", traceNo: "" },
     ]);
     setSplitMode(false);
     router.refresh();
@@ -875,6 +901,49 @@ export function InboundScanView({
 
         {error && <div style={{ ...messageStyle, backgroundColor: "#fee2e2", color: "#991b1b" }}>{error}</div>}
         {notice && <div style={{ ...messageStyle, backgroundColor: "#eff6ff", color: "#1e40af" }}>{notice}</div>}
+
+        {splitCandidate && !splitMode && (
+          <div
+            style={{
+              ...messageStyle,
+              backgroundColor: "#fffbeb",
+              color: "#92400e",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "8px",
+              alignItems: "center",
+            }}
+          >
+            <span style={{ flex: "1 1 240px" }}>
+              공급처 박스 바코드일 수 있습니다. 소·돼지처럼 여러 품목이 섞인 박스라면 열어서
+              품목별로 나눠 넣어주세요.
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setSplitTraceNo(splitCandidate);
+                setSplitMode(true);
+                setSplitCandidate(null);
+              }}
+              style={{ ...buttonStyle, padding: "6px 12px", fontSize: "12px" }}
+            >
+              이 박스 쪼개기
+            </button>
+            <button
+              type="button"
+              onClick={() => setSplitCandidate(null)}
+              style={{
+                border: "none",
+                background: "none",
+                color: "#92400e",
+                fontSize: "12px",
+                cursor: "pointer",
+              }}
+            >
+              아니오
+            </button>
+          </div>
+        )}
       </section>
 
       {splitMode && (
@@ -917,6 +986,14 @@ export function InboundScanView({
                   placeholder="무게(kg)"
                   inputMode="decimal"
                   style={{ ...inputStyle, width: "110px" }}
+                />
+                {/* 소·돼지가 섞여 온 박스는 안에 든 고기마다 이력번호가 따로 있다.
+                    비우면 위 박스 코드를 그대로 쓴다(같은 소에서 나온 부위들인 경우). */}
+                <input
+                  value={row.traceNo ?? ""}
+                  onChange={(event) => updateSplitRow(row.id, { traceNo: event.target.value })}
+                  placeholder="이력번호(비우면 박스 코드)"
+                  style={{ ...inputStyle, width: "auto", flex: "1 1 190px", fontFamily: "monospace" }}
                 />
                 <button
                   type="button"
