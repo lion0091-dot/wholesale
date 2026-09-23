@@ -30,7 +30,7 @@ export interface ParsedImport {
 }
 
 /** 첫 줄에 탭이 있으면 엑셀 붙여넣기, 아니면 CSV로 본다. */
-function detectDelimiter(firstLine: string): string {
+export function detectDelimiter(firstLine: string): string {
   if (firstLine.includes("\t")) return "\t";
   if (firstLine.includes(";")) return ";";
 
@@ -38,7 +38,7 @@ function detectDelimiter(firstLine: string): string {
 }
 
 /** 따옴표로 감싼 칸 안의 구분자를 지키면서 한 줄을 쪼갠다. */
-function splitLine(line: string, delimiter: string): string[] {
+export function splitLine(line: string, delimiter: string): string[] {
   const cells: string[] = [];
   let current = "";
   let quoted = false;

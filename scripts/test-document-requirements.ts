@@ -1,0 +1,175 @@
+/**
+ * 명세서 미흡 항목 판정 확인.
+ *
+ *   npx tsc --outDir <out> --module commonjs --target es2022 --moduleResolution node \
+ *     --skipLibCheck scripts/test-document-requirements.ts
+ *   node <out>/scripts/test-document-requirements.js
+ */
+
+import { buildGapReport, buildSupplierRequestSummary } from "../lib/livestock/document-requirements";
+import type { DocumentLine } from "../lib/livestock/document-parser";
+
+function line(overrides: Partial<DocumentLine> = {}): DocumentLine {
+  return {
+    lineNo: 1,
+    raw: "",
+    itemName: "한우 등심",
+    traceNo: "002191840078",
+    quantity: null,
+    labeledWeight: 8.2,
+    unitPrice: 52000,
+    amount: 426400,
+    ...overrides,
+  };
+}
+
+const header = { supplierName: "대성축산", issuedOn: "2026-09-23", totalAmount: null };
+const linked = [{ lineNo: 1, productId: "prod-1" }];
+
+let failed = 0;
+
+function check(label: string, condition: boolean, detail = "") {
+  if (condition) {
+    console.log(`ok    ${label}`);
+  } else {
+    failed += 1;
+    console.log(`FAIL  ${label}${detail ? ` — ${detail}` : ""}`);
+  }
+}
+
+// 1) 다 갖춘 줄은 아무것도 안 걸린다.
+{
+  const report = buildGapReport(header, [line()], linked);
+  check(
+    "다 갖춘 줄은 미흡 항목 없음",
+    report.lineGaps.length === 0 && report.documentGaps.length === 0,
+    JSON.stringify(report.lineGaps),
+  );
+}
+
+// 2) 이력번호는 스캔이 채우므로 권장 수준이고, 채울 주체가 창고다.
+{
+  const report = buildGapReport(header, [line({ traceNo: null })], linked);
+  const gap = report.lineGaps[0]?.gaps.find((g) => g.code === "TRACE_MISSING");
+
+  check(
+    "이력번호 없음 → 권장 + 창고 스캔이 채움",
+    gap?.level === "RECOMMENDED" && gap?.source === "FROM_SCAN",
+    JSON.stringify(gap),
+  );
+  check("이력번호만 빠진 줄은 미완성으로 세지 않음", report.incompleteLineCount === 0);
+}
+
+// 3) 중량은 공급처에 요청해야 하는 필수 항목.
+{
+  const report = buildGapReport(header, [line({ labeledWeight: null })], linked);
+  const gap = report.lineGaps[0]?.gaps.find((g) => g.code === "WEIGHT_MISSING");
+
+  check(
+    "중량 없음 → 필수 + 공급처에 요청",
+    gap?.level === "REQUIRED" && gap?.source === "FROM_SUPPLIER",
+    JSON.stringify(gap),
+  );
+  check("필수가 빠지면 미완성 줄로 셈", report.incompleteLineCount === 1);
+}
+
+// 4) 단가와 금액 중 하나만 있으면 나머지는 계산 가능 → 미흡 아님.
+{
+  const onlyUnit = buildGapReport(header, [line({ amount: null })], linked);
+  const onlyAmount = buildGapReport(header, [line({ unitPrice: null })], linked);
+  const neither = buildGapReport(header, [line({ unitPrice: null, amount: null })], linked);
+
+  check(
+    "단가만 있어도 금액 계산 가능 → 미흡 아님",
+    !onlyUnit.lineGaps[0]?.gaps.some((g) => g.code === "PRICE_MISSING"),
+  );
+  check(
+    "금액만 있어도 미흡 아님",
+    !onlyAmount.lineGaps[0]?.gaps.some((g) => g.code === "PRICE_MISSING"),
+  );
+  check(
+    "둘 다 없으면 필수 누락",
+    neither.lineGaps[0]?.gaps.some(
+      (g) => g.code === "PRICE_MISSING" && g.level === "REQUIRED",
+    ) === true,
+  );
+}
+
+// 5) 상품 연결은 공급사가 화면에서 고르는 것.
+{
+  const report = buildGapReport(header, [line()], []);
+  const gap = report.lineGaps[0]?.gaps.find((g) => g.code === "PRODUCT_UNLINKED");
+
+  check(
+    "상품 미연결 → 필수 + 공급사가 화면에서 지정",
+    gap?.level === "REQUIRED" && gap?.source === "FROM_STAFF",
+    JSON.stringify(gap),
+  );
+}
+
+// 6) 품목도 이력번호도 없으면 상품 고르라는 말조차 못 한다.
+{
+  const report = buildGapReport(header, [line({ itemName: null, traceNo: null })], []);
+  const codes = report.lineGaps[0]?.gaps.map((g) => g.code) ?? [];
+
+  check(
+    "품목·이력번호 둘 다 없으면 ITEM_UNKNOWN (상품선택 요구가 아님)",
+    codes.includes("ITEM_UNKNOWN") && !codes.includes("PRODUCT_UNLINKED"),
+    codes.join(","),
+  );
+}
+
+// 7) 문서 단위 — 공급처명이 비면 필수.
+{
+  const report = buildGapReport({ supplierName: "  ", issuedOn: null }, [line()], linked);
+  const codes = report.documentGaps.map((g) => g.code);
+
+  check("공급처명 없음 → 문서 단위 필수", codes.includes("SUPPLIER_MISSING"));
+  check("서류 날짜 없음 → 권장", codes.includes("ISSUED_ON_MISSING"));
+}
+
+// 8) 서류 합계와 줄 합계가 다르면 잘못 읽었을 수 있다고 짚는다.
+{
+  const ok = buildGapReport({ ...header, totalAmount: 426400 }, [line()], linked);
+  const bad = buildGapReport({ ...header, totalAmount: 999999 }, [line()], linked);
+
+  check("합계가 맞으면 조용함", !ok.documentGaps.some((g) => g.code === "TOTAL_MISMATCH"));
+  check("합계가 다르면 경고", bad.documentGaps.some((g) => g.code === "TOTAL_MISMATCH"));
+}
+
+// 9) 줄이 하나도 안 읽히면 문서 단위로 알린다.
+{
+  const report = buildGapReport(header, [], []);
+
+  check("줄 0개 → NO_LINES", report.documentGaps.some((g) => g.code === "NO_LINES"));
+}
+
+// 10) 공급처에 요청할 것만 추려낸다 (중복 제거).
+{
+  const report = buildGapReport({ supplierName: "대성축산", issuedOn: "2026-09-23" }, [
+    line({ lineNo: 1, labeledWeight: null }),
+    line({ lineNo: 2, labeledWeight: null, unitPrice: null, amount: null }),
+  ], [
+    { lineNo: 1, productId: "p1" },
+    { lineNo: 2, productId: "p2" },
+  ]);
+  const summary = buildSupplierRequestSummary(report);
+
+  check(
+    "공급처 요청 목록은 중복 없이 2종",
+    summary.length === 2,
+    JSON.stringify(summary),
+  );
+  check(
+    "공급사·창고가 채울 항목은 요청 목록에서 빠짐",
+    !summary.some((text) => text.includes("이력번호") || text.includes("골라주세요")),
+    JSON.stringify(summary),
+  );
+}
+
+if (failed > 0) {
+  console.log(`\n${failed}건 실패`);
+  process.exit(1);
+}
+
+console.log("\n전부 통과");
