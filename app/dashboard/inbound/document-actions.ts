@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
 import { parseBarcode } from "@/lib/livestock/barcode-parser";
 import {
+  extractGroupMemberTraceNos,
   fetchTraceRecord,
   isMtraceConfigured,
   isPlausibleTraceNo,
@@ -84,7 +85,7 @@ export interface SavedDocument {
 async function ensureTraceCached(
   supabase: Awaited<ReturnType<typeof createClient>>,
   traceNo: string
-): Promise<{ found: boolean; notConfigured: boolean }> {
+): Promise<{ found: boolean; notConfigured: boolean; unregisteredMembers: string[] }> {
   const { data: cached } = await supabase
     .from("master_livestock")
     .select("trace_no")
@@ -92,18 +93,18 @@ async function ensureTraceCached(
     .maybeSingle();
 
   if (cached) {
-    return { found: true, notConfigured: false };
+    return { found: true, notConfigured: false, unregisteredMembers: [] };
   }
 
   if (!isMtraceConfigured()) {
-    return { found: false, notConfigured: true };
+    return { found: false, notConfigured: true, unregisteredMembers: [] };
   }
 
   try {
     const record = await fetchTraceRecord(traceNo);
 
     if (!record) {
-      return { found: false, notConfigured: false };
+      return { found: false, notConfigured: false, unregisteredMembers: [] };
     }
 
     const { error: upsertError } = await supabase.rpc("upsert_master_livestock", {
@@ -125,14 +126,47 @@ async function ensureTraceCached(
 
     if (upsertError) {
       console.error("[inbound-document] 이력 캐시 저장 실패:", upsertError.message);
-      return { found: false, notConfigured: false };
+      return { found: false, notConfigured: false, unregisteredMembers: [] };
     }
 
-    return { found: true, notConfigured: false };
+    // 로트면 "조회가 됐다"에서 끝내지 않는다 — 그 안에 적힌 개체번호 하나하나가
+    // 실제로 등록돼 있는지 다시 확인한다(사장님 지침 2026-09-24: 로트로 조회되고,
+    // 조회결과에 이력번호가 있고, 그 이력번호로도 조회가 돼야 한다). 가공장이
+    // 로트 구성내역을 잘못 입력해 허위/누락 번호가 섞이는 경우가 실제로 흔하다.
+    let unregisteredMembers: string[] = [];
+
+    if (record.traceKind === "group") {
+      const memberTraceNos = extractGroupMemberTraceNos(record.rawPayload);
+
+      const memberChecks = await Promise.all(
+        memberTraceNos.map(async (memberTraceNo) => {
+          try {
+            return { memberTraceNo, ok: (await fetchTraceRecord(memberTraceNo)) !== null };
+          } catch (error) {
+            // 개체 조회 자체가 실패해도(네트워크 등 일시적 오류) "등록 안 됨"으로
+            // 단정하지 않는다 — 로트 조회는 이미 성공했으니 진짜 미등록인지 재시도로
+            // 확인할 여지를 남긴다.
+            console.error(
+              `[inbound-document] 로트 ${traceNo}의 개체 ${memberTraceNo} 재확인 실패:`,
+              error instanceof Error ? error.message : String(error)
+            );
+            return { memberTraceNo, ok: true };
+          }
+        })
+      );
+
+      unregisteredMembers = memberChecks.filter((check) => !check.ok).map((check) => check.memberTraceNo);
+    }
+
+    return { found: true, notConfigured: false, unregisteredMembers };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[inbound-document] ${traceNo} 사전 이력 조회 실패:`, message);
-    return { found: false, notConfigured: error instanceof MtraceNotConfiguredError };
+    return {
+      found: false,
+      notConfigured: error instanceof MtraceNotConfiguredError,
+      unregisteredMembers: [],
+    };
   }
 }
 
@@ -162,9 +196,19 @@ async function precacheDocumentTraceNos(
     candidates.map(async (traceNo) => ({ traceNo, ...(await ensureTraceCached(supabase, traceNo)) }))
   );
 
-  return results
-    .filter((result) => !result.found && !result.notConfigured)
-    .map((result) => result.traceNo);
+  const unresolved: string[] = [];
+
+  for (const result of results) {
+    if (!result.found && !result.notConfigured) {
+      unresolved.push(result.traceNo);
+    }
+
+    // 로트 자체는 조회됐지만 그 안의 특정 개체번호가 등록 안 된 경우 —
+    // 이것도 공급처에 확인 요청해야 하는 번호다.
+    unresolved.push(...result.unregisteredMembers);
+  }
+
+  return [...new Set(unresolved)];
 }
 
 async function resolveDocumentScope() {

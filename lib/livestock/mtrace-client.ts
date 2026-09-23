@@ -392,6 +392,44 @@ async function callSource(source: TraceSource, traceNo: string): Promise<unknown
   return null;
 }
 
+/**
+ * 로트(묶음) 응답 안에 적힌 개체번호(pigNo/cattleNo)를 전부 뽑아낸다.
+ *
+ * 재고 단위로는 안 쓴다(로트번호 자체가 재고 단위 — 사장님 확정). 대신 그
+ * 안에 적힌 개체번호들이 진짜 등록된 번호인지 하나씩 다시 조회해 확인하는
+ * 용도다 — 가공장이 로트 구성내역을 잘못 입력해 허위/누락 리스트가 오는
+ * 경우가 실제로 흔하다고 알려짐(2026-09-24). rawPayload를 그대로 재귀
+ * 탐색해 pigNo/cattleNo를 전부 모은다(개체 수만큼 <item>이 반복되는 구조).
+ */
+export function extractGroupMemberTraceNos(rawPayload: unknown): string[] {
+  const ids = new Set<string>();
+  collectMemberIds(rawPayload, ids);
+  return [...ids];
+}
+
+function collectMemberIds(node: unknown, out: Set<string>): void {
+  if (!node || typeof node !== "object") return;
+
+  if (Array.isArray(node)) {
+    for (const item of node) collectMemberIds(item, out);
+    return;
+  }
+
+  const obj = node as Record<string, unknown>;
+
+  for (const key of ["pigNo", "cattleNo"]) {
+    const value = obj[key];
+
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      out.add(String(value).trim());
+    }
+  }
+
+  for (const value of Object.values(obj)) {
+    collectMemberIds(value, out);
+  }
+}
+
 /** 응답에 실제 이력 내용이 담겼는지 — 빈 껍데기(조회 결과 없음)면 false. */
 function hasRecord(tree: unknown): boolean {
   return (
