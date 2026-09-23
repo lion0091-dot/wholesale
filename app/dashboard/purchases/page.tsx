@@ -101,6 +101,7 @@ export default async function PurchasesPage({
       purchaseSupplier: (row.purchase_supplier as string | null) ?? null,
       status: String(row.status),
       scannedBy: (row.scanned_by as string | null) ?? null,
+      updatedAt: String(row.updated_at),
     }));
 
     const summaryRow = (summaryRows ?? [])[0] as Record<string, unknown> | undefined;

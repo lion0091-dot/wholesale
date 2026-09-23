@@ -26,6 +26,8 @@ export interface PurchaseRow {
   purchaseSupplier: string | null;
   status: string;
   scannedBy: string | null;
+  /** 낙관적 동시성 체크용 — 이 값 그대로 저장 요청에 실어 보낸다. */
+  updatedAt: string;
 }
 
 export interface PurchaseSummary {
@@ -107,12 +109,19 @@ export function PurchaseSettlementView({ rows, summary, products, filters }: Pro
       unitPrice,
       supplierName: supplierEdit.trim() || null,
       applyDefault,
+      expectedUpdatedAt: row.updatedAt,
     });
 
     setBusy(false);
 
     if (!result.success) {
       setError(result.error ?? "저장에 실패했습니다.");
+      // 충돌이면 내가 보던 값이 이미 낡은 것이다 — 편집을 닫고 최신값을 다시 불러온다.
+      // (그냥 두면 다음 저장 시도도 또 같은 낡은 updatedAt으로 보내 계속 막힌다.)
+      if (result.conflict) {
+        setEditing(null);
+        router.refresh();
+      }
       return;
     }
 

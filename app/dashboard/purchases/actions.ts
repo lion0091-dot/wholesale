@@ -8,6 +8,8 @@ export interface ActionResult<T = undefined> {
   success: boolean;
   error?: string;
   data?: T;
+  /** 낙관적 동시성 충돌(다른 사람이 먼저 저장함) — 화면에서 "다시 확인" 흐름을 타야 한다. */
+  conflict?: boolean;
 }
 
 /**
@@ -34,6 +36,11 @@ export async function updateInboundPurchaseAction(input: {
   supplierName?: string | null;
   /** 같은 상품의 기본 매입단가로도 저장할지 — 다음 스캔부터 자동으로 붙는다. */
   applyDefault?: boolean;
+  /**
+   * 화면이 마지막으로 읽은 updated_at. 그 사이에 다른 사람이 먼저 저장했으면
+   * DB가 조용히 덮어쓰지 않고 PRICE_CONFLICT로 되묻는다.
+   */
+  expectedUpdatedAt: string;
 }): Promise<ActionResult<{ purchaseAmount: number | null }>> {
   try {
     await requireOrgRole(PURCHASE_ROLES);
@@ -49,11 +56,24 @@ export async function updateInboundPurchaseAction(input: {
       p_unit_price: input.unitPrice,
       p_supplier_name: input.supplierName ?? null,
       p_apply_default: input.applyDefault ?? false,
+      p_expected_updated_at: input.expectedUpdatedAt,
     });
 
     if (error) {
       if (error.message.includes("SCAN_NOT_FOUND")) {
         throw new RbacError("해당 입고 기록을 찾을 수 없습니다.");
+      }
+
+      const conflict = error.message.match(/PRICE_CONFLICT:([^:]*):(\d{2}:\d{2})/);
+
+      if (conflict) {
+        const currentPrice = conflict[1] ? `${Number(conflict[1]).toLocaleString()}원` : "빈 값";
+
+        return {
+          success: false,
+          conflict: true,
+          error: `다른 분이 ${conflict[2]}에 먼저 ${currentPrice}으로 저장했습니다. 최신 값을 다시 확인해주세요.`,
+        };
       }
 
       throw new Error(error.message);
