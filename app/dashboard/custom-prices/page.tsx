@@ -60,7 +60,6 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
   let customers: CustomerOption[] = [];
   let products: ProductOption[] = [];
   let customAssigned: AssignedCustomPrice[] = [];
-  let hotDealAssigned: AssignedCustomPrice[] = [];
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -95,16 +94,7 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
     const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
     const allRows = customPriceResult.success ? customPriceResult.data ?? [] : [];
 
-    customAssigned = toAssigned(
-      allRows.filter((row) => row.kind === "custom"),
-      productMap,
-      customerMap
-    );
-    hotDealAssigned = toAssigned(
-      allRows.filter((row) => row.kind === "hot_deal"),
-      productMap,
-      customerMap
-    );
+    customAssigned = toAssigned(allRows, productMap, customerMap);
   }
 
   const initialRetailerId = customers.some((customer) => customer.id === requestedRetailerId)
@@ -116,28 +106,18 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>맞춤 단가 관리</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          거래 중인 고객(소매)별로 맞춤 단가·핫딜을 지정합니다. 지정하지 않은 상품은 기본 단가가
-          적용되며, 지정한 단가는 그 고객(소매)에게만 노출됩니다.
+          거래 중인 고객(소매)별로 맞춤 단가를 지정합니다. 지정하지 않은 상품은 기본 단가가
+          적용되며, 지정한 단가는 그 고객(소매)에게만 노출됩니다. 핫딜(전체 공개 특가)은
+          상품 등록/수정 화면에서 켭니다.
         </p>
       </header>
 
       <CustomPriceManager
-        kind="custom"
         title="맞춤 단가"
         description="우수 단골 고객에게 조용히 적용하는 표준 할인가입니다."
         customers={customers}
         products={products}
         assigned={customAssigned}
-        initialRetailerId={initialRetailerId}
-      />
-
-      <CustomPriceManager
-        kind="hot_deal"
-        title="핫딜"
-        description="재고처분 등 한정 수량 특가입니다. 고객별로 껐다 켰다 할 수 있어 소진되면 끄고, 재입고되면 다시 켜면 됩니다."
-        customers={customers}
-        products={products}
-        assigned={hotDealAssigned}
         initialRetailerId={initialRetailerId}
       />
     </div>

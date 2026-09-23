@@ -11,11 +11,11 @@ import type { Product, Wholesaler } from "@/types/database";
 
 export interface ShopCatalogItem {
   product: Product;
-  /** 켜진 핫딜 단가 > 켜진 맞춤 단가 > 기준 단가 순으로 결정된 실제 가격 */
+  /** 핫딜(상품 전체 공개) > 켜진 맞춤 단가 > 기준 단가 순으로 결정된 실제 가격 */
   effectivePrice: number;
-  /** 켜진 맞춤단가(kind='custom') 매핑이 적용됐는지 — 핫딜이 적용된 경우엔 false */
+  /** 켜진 맞춤단가 매핑이 적용됐는지 — 핫딜이 적용된 경우엔 false */
   isCustomPrice: boolean;
-  /** 켜진 핫딜(kind='hot_deal') 매핑이 적용됐는지 */
+  /** 상품의 hot_deal_active가 켜져 있어 모든 고객에게 공개 할인가로 보이는 상태인지 */
   isHotDeal: boolean;
 }
 
@@ -49,18 +49,21 @@ export interface CartEntryInput {
 
 /**
  * 상품 하나의 실제 노출가/가격상태를 결정한다.
- * 켜진 핫딜 단가 > 켜진 맞춤 단가 > 기준 단가 순으로 우선한다.
+ * 핫딜(상품 자체 속성, 전체 공개) > 켜진 맞춤 단가 > 기준 단가 순으로 우선한다.
  */
 export function resolveCatalogItem(
   product: Product,
-  hotDealPrice: number | undefined,
   customPrice: number | undefined
 ): ShopCatalogItem {
+  const hotDealActive = Boolean(product.hot_deal_active) && product.hot_deal_price !== null;
+
   return {
     product,
-    effectivePrice: hotDealPrice ?? customPrice ?? Number(product.base_price),
-    isCustomPrice: hotDealPrice === undefined && customPrice !== undefined,
-    isHotDeal: hotDealPrice !== undefined,
+    effectivePrice: hotDealActive
+      ? Number(product.hot_deal_price)
+      : customPrice ?? Number(product.base_price),
+    isCustomPrice: !hotDealActive && customPrice !== undefined,
+    isHotDeal: hotDealActive,
   };
 }
 

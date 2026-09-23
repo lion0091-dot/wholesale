@@ -5,9 +5,9 @@
  * - 공급사(도매) 식별 및 활성 상태 확인
  * - 접속 고객(식당) 바인딩 및 거래 관계 확인
  * - 모든 상품은 항상 전체 고객에게 기준 단가로 노출된다("숨겨진 상품" 개념 없음).
- *   그 고객에게 켜진(is_active) custom_prices 매핑이 있으면 그 가격으로 대체된다 —
- *   kind='hot_deal' 매핑이 있으면 그 가격이 최우선, 없으면 kind='custom' 매핑, 둘 다
- *   없거나 꺼져 있으면 기준 단가.
+ *   상품의 hot_deal_active가 켜져 있으면 그 가격이 최우선(비로그인 손님 포함 전체
+ *   공개 — 2026-09-24 재설계: 핫딜은 이제 거래처별 매핑이 아니라 상품 자체 속성이다).
+ *   핫딜이 없으면 그 고객에게 켜진(is_active) custom_prices 맞춤단가, 둘 다 없으면 기준 단가.
  *
  * 등록되지 않았거나 정지된 공급사 링크는 notFound()로 처리한다.
  *
@@ -81,39 +81,30 @@ async function resolveCustomer(
   };
 }
 
-interface EffectivePriceMaps {
-  /** product_id → 켜진 핫딜(kind='hot_deal') 단가 */
-  hotDeal: Map<string, number>;
-  /** product_id → 켜진 맞춤단가(kind='custom') 단가 */
-  custom: Map<string, number>;
-}
-
-/** 식당 전용 맞춤단가·핫딜 조회 (kind별로 분리, is_active=true만) */
+/** 식당 전용 맞춤단가 조회 (is_active=true만). 핫딜은 이제 products 자체 속성이라 여기서 안 본다. */
 async function loadCustomPrices(
   supabase: SupabaseServerClient,
   retailerId: string,
   productIds: string[]
-): Promise<EffectivePriceMaps> {
+): Promise<Map<string, number>> {
   if (productIds.length === 0) {
-    return { hotDeal: new Map(), custom: new Map() };
+    return new Map();
   }
 
   const { data } = await supabase
     .from("custom_prices")
-    .select("product_id, custom_price, kind")
+    .select("product_id, custom_price")
     .eq("retailer_id", retailerId)
     .eq("is_active", true)
     .in("product_id", productIds);
 
-  const hotDeal = new Map<string, number>();
   const custom = new Map<string, number>();
 
   for (const row of data ?? []) {
-    const target = row.kind === "hot_deal" ? hotDeal : custom;
-    target.set(row.product_id as string, Number(row.custom_price));
+    custom.set(row.product_id as string, Number(row.custom_price));
   }
 
-  return { hotDeal, custom };
+  return custom;
 }
 
 /**
@@ -170,20 +161,21 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
 
   const customer = await resolveCustomer(supabase, wholesaler.id);
 
-  // isLinked가 아니면(거래중지 등) retailerId가 있어도 핫딜/맞춤단가를 계산하지 않는다 —
-  // 그렇지 않으면 정지된 고객에게 여전히 핫딜 가격·배지가 노출된다.
-  const { hotDeal, custom } = customer.isLinked && customer.retailerId
+  // isLinked가 아니면(거래중지 등) retailerId가 있어도 맞춤단가를 계산하지 않는다 —
+  // 그렇지 않으면 정지된 고객에게 여전히 맞춤단가가 노출된다. 핫딜은 상품 자체
+  // 속성이라 이 조건과 무관하게(비로그인 손님 포함) 전체 공개된다.
+  const custom = customer.isLinked && customer.retailerId
     ? await loadCustomPrices(
         supabase,
         customer.retailerId,
         products.map((product) => product.id)
       )
-    : { hotDeal: new Map<string, number>(), custom: new Map<string, number>() };
+    : new Map<string, number>();
 
-  // 모든 상품은 항상 전체 고객에게 기준 단가로 노출된다. 켜진 핫딜 매핑이 있으면
-  // 그 가격이 최우선, 없으면 켜진 맞춤단가 매핑, 둘 다 없으면 기준 단가.
+  // 모든 상품은 항상 전체 고객에게 기준 단가로 노출된다. 상품의 핫딜이 켜져 있으면
+  // 그 가격이 최우선, 없으면 켜진 맞춤단가, 둘 다 없으면 기준 단가.
   const items: ShopCatalogItem[] = products.map((product) =>
-    resolveCatalogItem(product, hotDeal.get(product.id), custom.get(product.id))
+    resolveCatalogItem(product, custom.get(product.id))
   );
 
   return {

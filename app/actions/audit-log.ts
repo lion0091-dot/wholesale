@@ -35,8 +35,8 @@ interface AuditLogRow {
  * 시스템 타임스탬프는 사람이 알아볼 수 없는 "전산적 데이터"라 애초에 후보에서 뺀다 —
  * 컬럼이 나중에 더 추가돼도 화이트리스트에 없으면 자동으로 숨겨지는 게 안전하다.
  *
- * custom_prices의 kind(custom/hot_deal)는 등록 시 고정되고 안 바뀌는 값이라
- * 변경 이력에 넣을 의미가 없어 제외한다 — is_active(노출 on/off)만 보여준다.
+ * 핫딜은 2026-09-24부로 custom_prices(거래처별 매핑)가 아니라 products 자체
+ * 속성이라 products 이력에서 hot_deal_active/hot_deal_price로 보인다.
  */
 export type AuditLogTable = "products" | "custom_prices" | "orders";
 
@@ -46,6 +46,8 @@ const FIELD_LABELS: Record<AuditLogTable, Record<string, string>> = {
     unit: "단위",
     stock_quantity: "재고",
     is_active: "판매 상태",
+    hot_deal_active: "핫딜 여부",
+    hot_deal_price: "핫딜 가격",
   },
   custom_prices: {
     custom_price: "단가",

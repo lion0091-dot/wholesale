@@ -87,6 +87,8 @@ export function buildSampleProduct(kind: ProductSampleKey): { product: SamplePro
     created_by: null,
     updated_by: null,
     archived_at: null,
+    hot_deal_price: null,
+    hot_deal_active: false,
     isSample: true,
     sampleNote: sample.label,
   };

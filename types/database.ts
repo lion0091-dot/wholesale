@@ -125,6 +125,10 @@ export interface Product {
    * 대신 보관한다. 보관된 상품은 목록과 고객 카탈로그에서 제외된다.
    */
   archived_at: string | null;
+  /** 핫딜 할인가. hot_deal_active가 꺼져 있으면 값이 남아 있어도 적용 안 됨. */
+  hot_deal_price: number | null;
+  /** 켜져 있으면 모든 고객(비로그인 포함)에게 hot_deal_price가 기준가 대신 보인다. */
+  hot_deal_active: boolean;
 }
 
 export interface CustomPrice {

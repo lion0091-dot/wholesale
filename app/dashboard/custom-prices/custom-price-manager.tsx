@@ -8,7 +8,6 @@ import {
   setCustomPrice,
   setCustomPriceForAllAction,
   toggleCustomPriceActiveAction,
-  type CustomPriceKind,
 } from "@/app/actions/custom_price";
 import { MiniToggle } from "@/components/mini-toggle";
 
@@ -38,7 +37,6 @@ export interface AssignedCustomPrice {
 }
 
 interface CustomPriceManagerProps {
-  kind: CustomPriceKind;
   title: string;
   description: string;
   customers: CustomerOption[];
@@ -86,7 +84,6 @@ function discountRate(basePrice: number, customPrice: number) {
 }
 
 export function CustomPriceManager({
-  kind,
   title,
   description,
   customers,
@@ -95,7 +92,7 @@ export function CustomPriceManager({
   initialRetailerId,
 }: CustomPriceManagerProps) {
   const router = useRouter();
-  const accentColor = kind === "hot_deal" ? "#dc2626" : "#166534";
+  const accentColor = "#166534";
   const [retailerId, setRetailerId] = useState(initialRetailerId ?? customers[0]?.id ?? "");
   const [productId, setProductId] = useState(products[0]?.id ?? "");
   const [price, setPrice] = useState("");
@@ -136,7 +133,7 @@ export function CustomPriceManager({
     setMessage(null);
 
     if (isAllSelected) {
-      const result = await setCustomPriceForAllAction(productId, kind, Number.parseFloat(price));
+      const result = await setCustomPriceForAllAction(productId, Number.parseFloat(price));
 
       setPending(false);
 
@@ -161,7 +158,6 @@ export function CustomPriceManager({
     const formData = new FormData();
     formData.set("retailer_id", retailerId);
     formData.set("product_id", productId);
-    formData.set("kind", kind);
     formData.set("custom_price", price);
 
     const result = await setCustomPrice(formData);
@@ -220,7 +216,7 @@ export function CustomPriceManager({
     setBulkTogglePending(nextActive ? "on" : "off");
     setMessage(null);
 
-    const result = await bulkToggleCustomPriceActiveAction(bulkToggleProductId, kind, nextActive);
+    const result = await bulkToggleCustomPriceActiveAction(bulkToggleProductId, nextActive);
 
     setBulkTogglePending(null);
 
@@ -250,11 +246,11 @@ export function CustomPriceManager({
 
         <div className="dash-form-grid-3">
           <div>
-            <label htmlFor={`${kind}_retailer_id`} style={labelStyle}>
+            <label htmlFor={`custom_retailer_id`} style={labelStyle}>
               고객(소매) *
             </label>
             <select
-              id={`${kind}_retailer_id`}
+              id={`custom_retailer_id`}
               value={retailerId}
               onChange={(event) => setRetailerId(event.target.value)}
               required
@@ -273,11 +269,11 @@ export function CustomPriceManager({
           </div>
 
           <div>
-            <label htmlFor={`${kind}_product_id`} style={labelStyle}>
+            <label htmlFor={`custom_product_id`} style={labelStyle}>
               상품 *
             </label>
             <select
-              id={`${kind}_product_id`}
+              id={`custom_product_id`}
               value={productId}
               onChange={(event) => setProductId(event.target.value)}
               required
@@ -293,11 +289,11 @@ export function CustomPriceManager({
           </div>
 
           <div>
-            <label htmlFor={`${kind}_custom_price`} style={labelStyle}>
+            <label htmlFor={`custom_custom_price`} style={labelStyle}>
               단가 (원) *
             </label>
             <input
-              id={`${kind}_custom_price`}
+              id={`custom_custom_price`}
               type="number"
               min="0"
               step="100"
@@ -478,7 +474,7 @@ export function CustomPriceManager({
             }}
           >
             <span style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>
-              {kind === "hot_deal" ? "핫딜단가 일괄 켜기/끄기" : "맞춤단가 일괄 켜기/끄기"}:
+              맞춤단가 일괄 켜기/끄기:
             </span>
             <select
               value={bulkToggleProductId}

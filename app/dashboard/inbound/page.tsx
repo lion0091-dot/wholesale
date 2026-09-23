@@ -49,6 +49,9 @@ export default async function InboundPage() {
   // 건이 그 창밖으로 밀려나 잘못 "아직 안 들어옴"으로 보일 수 있어, 이 줄들의
   // 이력번호만 따로 모아 inbound_scans 전체에서 존재 여부를 확인한다.
   let awaitingDocumentLines: AwaitingDocumentLine[] = [];
+  // 창고 구조가 업체마다 달라(플랫폼) 고정 위치 목록 대신, 이 업체가 그동안
+  // 직접 입력한 위치 이름을 제안 목록으로 쓴다.
+  let storageLocationSuggestions: string[] = [];
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -63,7 +66,7 @@ export default async function InboundPage() {
         supabase
           .from("inbound_scans")
           .select(
-            "id, trace_no, product_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_unit_price, purchase_amount, purchase_supplier, scanned_by"
+            "id, trace_no, product_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_unit_price, purchase_amount, purchase_supplier, scanned_by, storage_location, storage_location_photo_path"
           )
           .eq("wholesaler_id", scope.wholesalerId)
           .order("created_at", { ascending: false })
@@ -330,7 +333,19 @@ export default async function InboundPage() {
       purchaseAmount: row.purchase_amount === null ? null : Number(row.purchase_amount),
       purchaseSupplier: (row.purchase_supplier as string | null) ?? null,
       scannedByName: row.scanned_by ? (scannerNameById.get(String(row.scanned_by)) ?? "직원") : null,
+      storageLocation: (row.storage_location as string | null) ?? null,
+      storageLocationPhotoPath: (row.storage_location_photo_path as string | null) ?? null,
     }));
+
+    // 업체마다 창고 구조가 달라 고정 목록을 안 두고, 그동안 이 업체가 직접
+    // 입력했던 위치 이름을 골라 쓸 수 있게 제안한다(플랫폼 여러 업체 대응).
+    storageLocationSuggestions = [
+      ...new Set(
+        scans
+          .map((scan) => scan.storageLocation)
+          .filter((value): value is string => Boolean(value))
+      ),
+    ].sort((a, b) => a.localeCompare(b, "ko"));
   }
 
   const configured = configuredTraceSources();
@@ -376,6 +391,7 @@ export default async function InboundPage() {
         scanRequirements={scanRequirements}
         pendingDocumentTraceNos={pendingDocumentTraceNos}
         awaitingDocumentLines={awaitingDocumentLines}
+        storageLocationSuggestions={storageLocationSuggestions}
       />
     </div>
   );

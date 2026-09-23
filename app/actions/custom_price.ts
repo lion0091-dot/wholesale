@@ -11,8 +11,6 @@ export interface ActionResult<T = undefined> {
   data?: T;
 }
 
-export type CustomPriceKind = "custom" | "hot_deal";
-
 export interface CustomPriceRow {
   id: string;
   organization_id: string | null;
@@ -20,7 +18,6 @@ export interface CustomPriceRow {
   retailer_id: string;
   product_id: string;
   custom_price: number;
-  kind: CustomPriceKind;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -38,12 +35,6 @@ function toResult(error: unknown): ActionResult<never> {
     success: false,
     error: error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.",
   };
-}
-
-function assertKind(kind: string): asserts kind is CustomPriceKind {
-  if (kind !== "custom" && kind !== "hot_deal") {
-    throw new RbacError("올바르지 않은 단가 종류입니다.");
-  }
 }
 
 /** 현재 조직 컨텍스트 + 연결된 레거시 wholesaler_id 확보 */
@@ -89,10 +80,7 @@ export async function setCustomPrice(formData: FormData): Promise<ActionResult<{
 
     const retailerId = ((formData.get("retailer_id") as string) || "").trim();
     const productId = ((formData.get("product_id") as string) || "").trim();
-    const kind = ((formData.get("kind") as string) || "custom").trim();
     const customPrice = Number.parseFloat((formData.get("custom_price") as string) || "");
-
-    assertKind(kind);
 
     if (!UUID_PATTERN.test(retailerId) || !UUID_PATTERN.test(productId)) {
       throw new RbacError("고객사와 상품을 올바르게 선택해주세요.");
@@ -126,13 +114,12 @@ export async function setCustomPrice(formData: FormData): Promise<ActionResult<{
           wholesaler_id: wholesalerId,
           retailer_id: retailerId,
           product_id: productId,
-          kind,
           custom_price: customPrice,
           // 꺼져 있던 행을 이 폼으로 다시 저장하면 가격만 바뀌고 꺼진 채로 남는 문제 방지 —
           // 노출 on/off는 별도 토글로 다루고, 이 폼의 저장은 항상 "켜서 반영"을 의미한다.
           is_active: true,
         },
-        { onConflict: "retailer_id,product_id,kind" }
+        { onConflict: "retailer_id,product_id" }
       )
       .select("id")
       .single();
@@ -154,7 +141,6 @@ export async function setCustomPrice(formData: FormData): Promise<ActionResult<{
 // ====================================================================
 export async function setCustomPriceForAllAction(
   productId: string,
-  kind: CustomPriceKind,
   customPrice: number
 ): Promise<ActionResult<{ created: number; skipped: number }>> {
   try {
@@ -162,8 +148,6 @@ export async function setCustomPriceForAllAction(
       "owner",
       "manager",
     ]);
-
-    assertKind(kind);
 
     if (!UUID_PATTERN.test(productId)) {
       throw new RbacError("상품을 올바르게 선택해주세요.");
@@ -190,8 +174,7 @@ export async function setCustomPriceForAllAction(
       supabase
         .from("custom_prices")
         .select("retailer_id, is_active")
-        .eq("product_id", productId)
-        .eq("kind", kind),
+        .eq("product_id", productId),
     ]);
 
     // 이미 켜져 있는 고객만 "건드리지 않음"으로 간주한다. 꺼져 있는 고객은 옛 가격이
@@ -213,11 +196,10 @@ export async function setCustomPriceForAllAction(
         wholesaler_id: wholesalerId,
         retailer_id: retailerId,
         product_id: productId,
-        kind,
         custom_price: customPrice,
         is_active: true,
       })),
-      { onConflict: "retailer_id,product_id,kind" }
+      { onConflict: "retailer_id,product_id" }
     );
 
     if (error) {
@@ -235,10 +217,9 @@ export async function setCustomPriceForAllAction(
 }
 
 // ====================================================================
-// 3. 맞춤 단가/핫딜 조회 (조직 전체 또는 특정 고객사, 종류별)
+// 3. 맞춤 단가 조회 (조직 전체 또는 특정 고객사)
 // ====================================================================
 export async function listCustomPrices(
-  kind?: CustomPriceKind,
   retailerId?: string
 ): Promise<ActionResult<CustomPriceRow[]>> {
   try {
@@ -247,15 +228,10 @@ export async function listCustomPrices(
     let query = supabase
       .from("custom_prices")
       .select(
-        "id, organization_id, wholesaler_id, retailer_id, product_id, custom_price, kind, is_active, created_at, updated_at"
+        "id, organization_id, wholesaler_id, retailer_id, product_id, custom_price, is_active, created_at, updated_at"
       )
       .eq("organization_id", organizationId)
       .order("updated_at", { ascending: false });
-
-    if (kind) {
-      assertKind(kind);
-      query = query.eq("kind", kind);
-    }
 
     if (retailerId) {
       if (!UUID_PATTERN.test(retailerId)) {
@@ -316,19 +292,14 @@ export async function toggleCustomPriceActiveAction(
 }
 
 // ====================================================================
-// 5. 상품 단위 일괄 on/off (그 상품의 그 종류 매핑 전체를 한 번에 전환)
+// 5. 상품 단위 일괄 on/off (그 상품의 맞춤단가 매핑 전체를 한 번에 전환)
 // ====================================================================
 export async function bulkToggleCustomPriceActiveAction(
   productId: string,
-  kind: CustomPriceKind,
   isActive: boolean
 ): Promise<ActionResult<{ updated: number }>> {
   try {
     const { supabase, organizationId } = await resolveOwnerScope(["owner", "manager"]);
-
-    // Server Action은 HTTP 엔드포인트로도 직접 호출 가능하므로 TS 타입만으로는
-    // 부족하다 — 컴파일 타입 보호와 별개로 런타임 검증을 유지한다.
-    assertKind(kind);
 
     if (!UUID_PATTERN.test(productId)) {
       throw new RbacError("상품을 올바르게 선택해주세요.");
@@ -339,7 +310,6 @@ export async function bulkToggleCustomPriceActiveAction(
       .update({ is_active: isActive })
       .eq("organization_id", organizationId)
       .eq("product_id", productId)
-      .eq("kind", kind)
       .select("id");
 
     if (error) {

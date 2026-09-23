@@ -774,3 +774,101 @@ export async function getInboundConfigAction(): Promise<ActionResult<{ traceLook
     return toResult(error);
   }
 }
+
+/** 위치 사진 한 장 한도 — 참고용이라 명세서 파일보다 훨씬 작게 잡는다. */
+const MAX_LOCATION_PHOTO_BYTES = 4 * 1024 * 1024;
+
+/**
+ * 보관 위치 지정(선택) — 입고 시점이 아니어도 언제든 나중에 채울 수 있다
+ * (2026-09-24, "시간 되면" 지정). 텍스트는 업체마다 자유 형식이고, 사진은
+ * 참고용(사람이 보고 알아보는 용도, AI 인식 아님)이라 완전히 선택사항이다.
+ *
+ * 사진 업로드가 실패해도 위치 이름은 그대로 저장한다 — 사진은 덤이지 필수가
+ * 아니다. 기존 사진을 지우지 않으려면(사진 없이 이름만 고칠 때) photoPath를
+ * undefined로 두고, 사진 자체를 지우려면 formData에 파일을 안 실은 채
+ * clearPhoto=true를 같이 보낸다.
+ */
+export async function setScanStorageLocationAction(
+  formData: FormData
+): Promise<ActionResult<{ photoPath: string | null; photoWarning: string | null }>> {
+  try {
+    const { supabase, wholesalerId } = await resolveInboundScope();
+
+    const scanId = String(formData.get("scanId") ?? "");
+    const location = String(formData.get("location") ?? "");
+    const clearPhoto = formData.get("clearPhoto") === "true";
+
+    if (!scanId) {
+      throw new RbacError("입고 건을 찾을 수 없습니다.");
+    }
+
+    let photoPath: string | null = null;
+    let photoWarning: string | null = null;
+    const file = formData.get("photo");
+
+    if (file instanceof File && file.size > 0) {
+      if (file.size > MAX_LOCATION_PHOTO_BYTES) {
+        photoWarning = "사진이 너무 큽니다(4MB 이하). 위치 이름만 저장했습니다.";
+      } else {
+        const safeName = file.name.replace(/[^\w.\-가-힣]/g, "_").slice(-80) || "location.jpg";
+        const path = `${wholesalerId}/${scanId}/${Date.now()}_${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("scan-location-photos")
+          .upload(path, Buffer.from(await file.arrayBuffer()), {
+            contentType: file.type || "image/jpeg",
+            upsert: true,
+          });
+
+        if (uploadError) {
+          photoWarning = "사진 업로드에 실패했습니다. 위치 이름만 저장했습니다.";
+        } else {
+          photoPath = path;
+        }
+      }
+    }
+
+    const { data, error } = await supabase.rpc("set_scan_storage_location", {
+      p_scan_id: scanId,
+      p_location: location,
+      // 사진을 새로 안 올렸으면(그리고 지우라는 것도 아니면) 기존 값을 건드리지
+      // 않는다 — RPC에 NULL을 그냥 넘기면 기존 사진이 지워지므로, 그 경우만
+      // 별도 처리(clearPhoto 또는 새 업로드 성공)에서 photoPath를 채운다.
+      p_photo_path: photoPath,
+      p_keep_existing_photo: !clearPhoto && photoPath === null,
+    });
+
+    if (error) throw new Error(error.message);
+
+    if (!data) {
+      throw new RbacError("해당 입고 건을 찾을 수 없습니다.");
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+
+    return { success: true, data: { photoPath, photoWarning } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** 위치 참고 사진 열람용 서명 링크 — 비공개 버킷이라 매번 새로 발급한다. */
+export async function getScanLocationPhotoUrlAction(
+  photoPath: string
+): Promise<ActionResult<string>> {
+  try {
+    const { supabase } = await resolveInboundScope();
+
+    const { data, error } = await supabase.storage
+      .from("scan-location-photos")
+      .createSignedUrl(photoPath, 60 * 5);
+
+    if (error || !data) {
+      throw new RbacError("사진 링크를 만들지 못했습니다.");
+    }
+
+    return { success: true, data: data.signedUrl };
+  } catch (error) {
+    return toResult(error);
+  }
+}

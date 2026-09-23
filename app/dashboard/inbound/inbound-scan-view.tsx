@@ -8,6 +8,8 @@ import {
   resolveMappingAction,
   resolveMappingToOrderAction,
   voidScanAction,
+  setScanStorageLocationAction,
+  getScanLocationPhotoUrlAction,
   type ScanType,
 } from "./actions";
 import { parseBarcode } from "@/lib/livestock/barcode-parser";
@@ -58,6 +60,10 @@ export interface InboundScanRow {
   purchaseSupplier: string | null;
   /** 여러 직원이 섞여서 스캔할 때 누가 찍었는지 — 없으면(탈퇴 등) null */
   scannedByName: string | null;
+  /** 보관 위치(선택, 자유 텍스트) — 업체마다 창고 구조가 달라 고정 목록이 없다. */
+  storageLocation: string | null;
+  /** 위치 참고 사진 경로(선택). private 버킷이라 볼 때마다 서명 링크를 새로 받는다. */
+  storageLocationPhotoPath: string | null;
   /**
    * 개발용 미리보기 행 — DB에 없다. 5가지 이력번호 유형이 화면에서 각각 어떻게
    * 보이는지 실제 API·DB 호출 없이 확인하려고 만들었다. 실제 동작은 하지 않으므로
@@ -121,6 +127,8 @@ interface Props {
    * 로트번호를 손으로 옮겨 적어야 할 때의 보조 수단 — 스캔 자체를 대체하지 않는다).
    */
   awaitingDocumentLines: AwaitingDocumentLine[];
+  /** 이 업체가 그동안 직접 입력한 위치 이름 — 고정 목록 대신 제안용으로 쓴다. */
+  storageLocationSuggestions: string[];
 }
 
 export interface AwaitingDocumentLine {
@@ -231,6 +239,7 @@ export function InboundScanView({
   scanRequirements,
   pendingDocumentTraceNos,
   awaitingDocumentLines,
+  storageLocationSuggestions,
 }: Props) {
   const router = useRouter();
 
@@ -530,6 +539,69 @@ export function InboundScanView({
     setError(null);
     setNotice(`"${line.traceNo}"를 입력칸에 채웠습니다 — 실중량을 확인하고 Enter를 눌러주세요.`);
     weightInputRef.current?.focus();
+  };
+
+  // 보관 위치 지정(선택) — 입고 시점이 아니어도 나중에 언제든 채울 수 있다.
+  const [locationEditScanId, setLocationEditScanId] = useState<string | null>(null);
+  const [locationDraft, setLocationDraft] = useState("");
+  const [locationPhotoFile, setLocationPhotoFile] = useState<File | null>(null);
+  const [savingLocation, setSavingLocation] = useState(false);
+  const locationPhotoInputRef = useRef<HTMLInputElement>(null);
+
+  const openLocationEditor = (scan: InboundScanRow) => {
+    setLocationEditScanId(scan.id);
+    setLocationDraft(scan.storageLocation ?? "");
+    setLocationPhotoFile(null);
+    if (locationPhotoInputRef.current) locationPhotoInputRef.current.value = "";
+  };
+
+  const handleSaveLocation = async (scanId: string) => {
+    setSavingLocation(true);
+
+    const formData = new FormData();
+    formData.append("scanId", scanId);
+    formData.append("location", locationDraft);
+    if (locationPhotoFile) formData.append("photo", locationPhotoFile);
+
+    const result = await setScanStorageLocationAction(formData);
+
+    setSavingLocation(false);
+
+    if (!result.success) {
+      setError(result.error ?? "위치 저장에 실패했습니다.");
+      return;
+    }
+
+    setRows((prev) =>
+      prev.map((row) =>
+        row.id === scanId
+          ? {
+              ...row,
+              storageLocation: locationDraft.trim() || null,
+              storageLocationPhotoPath: result.data?.photoPath ?? row.storageLocationPhotoPath,
+            }
+          : row
+      )
+    );
+
+    if (result.data?.photoWarning) {
+      setNotice(result.data.photoWarning);
+    } else {
+      setNotice("보관 위치를 저장했습니다.");
+    }
+
+    setLocationEditScanId(null);
+  };
+
+  const handleViewLocationPhoto = async (photoPath: string) => {
+    const result = await getScanLocationPhotoUrlAction(photoPath);
+
+    if (!result.success || !result.data) {
+      setError(result.error ?? "사진을 불러오지 못했습니다.");
+      return;
+    }
+
+    window.open(result.data, "_blank", "noopener,noreferrer");
   };
 
   const handleWeightKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1322,6 +1394,78 @@ export function InboundScanView({
                     <p style={{ fontSize: "11px", color: "#64748b", margin: "2px 0 0", width: "100%" }}>
                       {scan.sampleNote}
                     </p>
+                  )}
+
+                  {!scan.isSample && (
+                    <div style={{ width: "100%", display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+                      {scan.storageLocation && (
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            backgroundColor: "#f1f5f9",
+                            color: "#334155",
+                            borderRadius: "4px",
+                            padding: "3px 7px",
+                          }}
+                        >
+                          📍 {scan.storageLocation}
+                        </span>
+                      )}
+
+                      {scan.storageLocationPhotoPath && (
+                        <button
+                          type="button"
+                          onClick={() => void handleViewLocationPhoto(scan.storageLocationPhotoPath!)}
+                          style={{ ...buttonStyle, padding: "3px 8px", fontSize: "11px" }}
+                        >
+                          위치 사진 보기
+                        </button>
+                      )}
+
+                      {locationEditScanId === scan.id ? (
+                        <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                          <input
+                            list="storage-location-suggestions"
+                            value={locationDraft}
+                            onChange={(event) => setLocationDraft(event.target.value)}
+                            placeholder="예: 냉장고1-상단"
+                            style={{ ...inputStyle, width: "auto", padding: "5px 8px", fontSize: "12px" }}
+                          />
+                          <input
+                            ref={locationPhotoInputRef}
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={(event) => setLocationPhotoFile(event.target.files?.[0] ?? null)}
+                            style={{ fontSize: "11px", width: "150px" }}
+                          />
+                          <button
+                            type="button"
+                            disabled={savingLocation}
+                            onClick={() => void handleSaveLocation(scan.id)}
+                            style={{ ...buttonStyle, padding: "5px 10px", fontSize: "12px" }}
+                          >
+                            {savingLocation ? "저장 중…" : "저장"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLocationEditScanId(null)}
+                            style={{ border: "none", background: "none", color: "#94a3b8", fontSize: "12px", cursor: "pointer" }}
+                          >
+                            취소
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openLocationEditor(scan)}
+                          style={{ border: "none", background: "none", color: "#2563eb", fontSize: "11px", cursor: "pointer" }}
+                        >
+                          {scan.storageLocation ? "위치 수정" : "위치 지정(선택)"}
+                        </button>
+                      )}
+                    </div>
                   )}
 
                   {(() => {

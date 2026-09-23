@@ -111,6 +111,8 @@ export function buildSampleInboundRow(kind: InboundSampleKey): InboundScanRow {
     purchaseAmount: null,
     purchaseSupplier: null,
     scannedByName: "샘플",
+    storageLocation: null,
+    storageLocationPhotoPath: null,
     isSample: true,
     sampleNote: sample.note,
     sampleRequirementReport: sample.requirementFacts

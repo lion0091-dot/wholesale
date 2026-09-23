@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
-import { listCustomPrices, type CustomPriceKind } from "@/app/actions/custom_price";
+import { listCustomPrices } from "@/app/actions/custom_price";
 import type { HistoryPickerItem } from "./history-picker-list";
 
 /** wholesaler_retailers + retailers 조인 응답 형태 (custom-prices/page.tsx와 동일) */
@@ -16,10 +16,11 @@ function relationName(row: RelationRow): string {
 }
 
 /**
- * 맞춤단가/핫딜 이력 메뉴 공용 로더 — /dashboard/custom-prices와 동일한 방식으로
- * 상품명·거래처명을 조인해 "대상 찾기" 목록을 만든다. kind로 맞춤단가/핫딜을 나눈다.
+ * 맞춤단가 이력 메뉴 로더 — /dashboard/custom-prices와 동일한 방식으로
+ * 상품명·거래처명을 조인해 "대상 찾기" 목록을 만든다. 핫딜은 이제 상품 자체
+ * 속성이라 상품 변경이력(/dashboard/history/products)에서 확인한다.
  */
-export async function loadCustomPriceHistoryItems(kind: CustomPriceKind): Promise<HistoryPickerItem[]> {
+export async function loadCustomPriceHistoryItems(): Promise<HistoryPickerItem[]> {
   const scope = await getSupplierScope();
 
   if (!scope?.wholesalerId) {
@@ -38,7 +39,7 @@ export async function loadCustomPriceHistoryItems(kind: CustomPriceKind): Promis
       .from("products")
       .select("id, name")
       .eq("wholesaler_id", scope.wholesalerId),
-    listCustomPrices(kind),
+    listCustomPrices(),
   ]);
 
   const customerMap = new Map(
