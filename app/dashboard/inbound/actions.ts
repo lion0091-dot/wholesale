@@ -219,15 +219,30 @@ export async function recordScanAction(input: {
       }
     }
 
-    // 3) 이 바코드를 전에 본 적 있으면 그때 지정한 상품에 바로 붙인다.
-    //    이력조회는 부위를 주지 않아 매번 되묻게 되는데, 공급처의 상품코드는
-    //    품목을 정확히 가리키므로 한 번만 알려주면 다음부터 자동이다.
-    let gtinProductId: string | null = null;
+    // 3) 상품을 자동으로 정할 수 있는지 본다. 사람이 직접 고른 값이 없을 때만.
+    //
+    //    순서: 바코드 상품코드 → 명세서 줄.
+    //    상품코드(GTIN)가 더 정확하다 — 품목 자체에 붙은 코드라 같은 소에서 나온
+    //    등심과 안심을 구분한다. 명세서는 이력번호 단위라, 한 마리가 여러 부위로
+    //    쪼개져 여러 줄에 걸쳐 있으면 어느 줄인지 알 수 없다(그 경우 DB 함수가
+    //    NULL을 돌려줘 되묻는다).
+    let autoProductId: string | null = null;
 
-    if (gtin && !input.productId) {
-      const { data: mapped } = await supabase.rpc("lookup_product_by_gtin", { p_gtin: gtin });
+    if (!input.productId) {
+      if (gtin) {
+        const { data: mapped } = await supabase.rpc("lookup_product_by_gtin", { p_gtin: gtin });
 
-      gtinProductId = (mapped as string | null) ?? null;
+        autoProductId = (mapped as string | null) ?? null;
+      }
+
+      // 명세서를 먼저 올려둔 물건은 여기서 확정된다 — 찍기만 하면 끝난다.
+      if (!autoProductId) {
+        const { data: fromDocument } = await supabase.rpc("lookup_product_by_document_trace", {
+          p_trace_no: traceNo,
+        });
+
+        autoProductId = (fromDocument as string | null) ?? null;
+      }
     }
 
     // 4) 스캔 기록 (스캔 + 원장 + 재고 + 예외가 한 트랜잭션)
@@ -235,7 +250,7 @@ export async function recordScanAction(input: {
       p_trace_no: traceNo,
       p_weight: input.weight,
       p_scan_type: input.scanType,
-      p_product_id: input.productId ?? gtinProductId ?? null,
+      p_product_id: input.productId ?? autoProductId ?? null,
       p_fail_reason: failReason,
       p_fail_detail: failDetail,
       p_import_row_id: null,
