@@ -326,7 +326,78 @@ export async function loadSupplierFormatAction(
   }
 }
 
-/** 잘못 올린 서류 치우기. 재고와 무관하므로 삭제가 안전하다. */
+/**
+ * 잘못 올린 서류를 목록에서 치운다 — **지우지 않고 감춘다.**
+ *
+ * 공급처 명세서는 매입 증빙이고, 축산물이력법상 매입에 관한 기록은 매입한 날부터
+ * 1년간 보관해야 한다(매출은 2년). 그래서 기본 동작은 삭제가 아니라 취소 처리다.
+ * 기록이 있는 상품을 삭제 대신 '보관'으로 감추게 한 12단계와 같은 판단이다.
+ */
+export async function discardInboundDocumentAction(
+  documentId: string
+): Promise<ActionResult> {
+  try {
+    const { supabase, wholesalerId } = await resolveDocumentScope();
+
+    const { error } = await supabase
+      .from("inbound_documents")
+      .update({ status: "DISCARDED" })
+      .eq("id", documentId)
+      .eq("wholesaler_id", wholesalerId);
+
+    if (error) throw error;
+
+    revalidatePath(REVALIDATE_PATH);
+
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** 취소 처리된 서류를 되살린다. */
+export async function restoreInboundDocumentAction(
+  documentId: string
+): Promise<ActionResult> {
+  try {
+    const { supabase, wholesalerId } = await resolveDocumentScope();
+
+    const { data: existing } = await supabase
+      .from("inbound_documents")
+      .select("id, inbound_document_lines(count)")
+      .eq("id", documentId)
+      .eq("wholesaler_id", wholesalerId)
+      .maybeSingle();
+
+    if (!existing) {
+      throw new RbacError("해당 명세서를 찾을 수 없습니다.");
+    }
+
+    const counts = existing.inbound_document_lines as Array<{ count: number }> | null;
+
+    const { error } = await supabase
+      .from("inbound_documents")
+      .update({ status: (counts?.[0]?.count ?? 0) > 0 ? "PENDING" : "DRAFT" })
+      .eq("id", documentId)
+      .eq("wholesaler_id", wholesalerId);
+
+    if (error) throw error;
+
+    revalidatePath(REVALIDATE_PATH);
+
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
+ * 원본까지 완전히 지운다 — 되돌릴 수 없다.
+ *
+ * 남의 서류나 엉뚱한 사진을 올린 경우처럼 애초에 우리 기록이면 안 되는 것만
+ * 해당한다. 그래서 **취소 처리된 서류만** 지울 수 있게 두 단계로 나눴다.
+ * 보관기간(매입 1년) 안의 진짜 매입 증빙을 실수로 날리지 않게 하려는 것이다.
+ */
 export async function deleteInboundDocumentAction(
   documentId: string
 ): Promise<ActionResult> {
@@ -335,13 +406,17 @@ export async function deleteInboundDocumentAction(
 
     const { data: existing } = await supabase
       .from("inbound_documents")
-      .select("id, storage_path")
+      .select("id, status, storage_path")
       .eq("id", documentId)
       .eq("wholesaler_id", wholesalerId)
       .maybeSingle();
 
     if (!existing) {
       throw new RbacError("해당 명세서를 찾을 수 없습니다.");
+    }
+
+    if (String(existing.status) !== "DISCARDED") {
+      throw new RbacError("먼저 '취소 처리'를 한 뒤에 완전히 지울 수 있습니다.");
     }
 
     if (existing.storage_path) {

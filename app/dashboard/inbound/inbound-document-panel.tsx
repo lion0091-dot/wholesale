@@ -14,10 +14,13 @@ import {
 import { buildGapReport, buildSupplierRequestSummary } from "@/lib/livestock/document-requirements";
 import {
   deleteInboundDocumentAction,
+  discardInboundDocumentAction,
   extractDocumentTableAction,
   getDocumentFileUrlAction,
   loadSupplierFormatAction,
+  restoreInboundDocumentAction,
   saveInboundDocumentAction,
+  type ActionResult,
   type DocumentLineInput,
 } from "./document-actions";
 import type { ScanProductOption } from "./inbound-scan-view";
@@ -168,6 +171,26 @@ export function InboundDocumentPanel({
     () => buildSupplierRequestSummary(gapReport),
     [gapReport],
   );
+
+  const runOnDocument = async (
+    documentId: string,
+    action: (id: string) => Promise<ActionResult>,
+    successMessage: string,
+  ) => {
+    setBusyDocumentId(documentId);
+
+    const result = await action(documentId);
+
+    setBusyDocumentId(null);
+
+    if (result.success) {
+      setError(null);
+      setNotice(successMessage);
+      router.refresh();
+    } else {
+      setError(result.error ?? "처리하지 못했습니다.");
+    }
+  };
 
   const reset = () => {
     setMode("idle");
@@ -569,11 +592,25 @@ export function InboundDocumentPanel({
                           padding: "8px 0",
                           borderTop: "1px solid #e2e8f0",
                           fontSize: "13px",
+                          opacity: document.status === "DISCARDED" ? 0.55 : 1,
                         }}
                       >
                         <span style={{ fontWeight: 600, color: "#0f172a" }}>
                           {document.supplierName ?? "공급처 미입력"}
                         </span>
+                        {document.status === "DISCARDED" ? (
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              borderRadius: "5px",
+                              padding: "2px 6px",
+                              color: "#475569",
+                              backgroundColor: "#e2e8f0",
+                            }}
+                          >
+                            취소됨
+                          </span>
+                        ) : null}
                         <span style={{ color: "#64748b" }}>
                           {document.issuedOn ?? document.createdAt.slice(0, 10)}
                         </span>
@@ -621,35 +658,61 @@ export function InboundDocumentPanel({
                           ) : (
                             <span style={{ fontSize: "12px", color: "#94a3b8" }}>원본 없음</span>
                           )}
-                          <button
-                            type="button"
-                            disabled={busyDocumentId === document.id}
-                            onClick={async () => {
-                              if (
-                                !window.confirm(
-                                  "이 명세서를 지웁니다. 보관된 원본도 함께 사라집니다.",
+                          {document.status === "DISCARDED" ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={busyDocumentId === document.id}
+                                onClick={() =>
+                                  void runOnDocument(
+                                    document.id,
+                                    restoreInboundDocumentAction,
+                                    "명세서를 되살렸습니다.",
+                                  )
+                                }
+                                style={linkButton}
+                              >
+                                되살리기
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busyDocumentId === document.id}
+                                onClick={() => {
+                                  if (
+                                    !window.confirm(
+                                      "원본까지 완전히 지웁니다. 되돌릴 수 없습니다.\n\n매입 명세서는 축산물이력법상 1년간 보관해야 합니다. 애초에 잘못 올린 서류만 지워주세요.",
+                                    )
+                                  ) {
+                                    return;
+                                  }
+
+                                  void runOnDocument(
+                                    document.id,
+                                    deleteInboundDocumentAction,
+                                    "명세서를 완전히 지웠습니다.",
+                                  );
+                                }}
+                                style={{ ...linkButton, color: "#b91c1c" }}
+                              >
+                                완전 삭제
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={busyDocumentId === document.id}
+                              onClick={() =>
+                                void runOnDocument(
+                                  document.id,
+                                  discardInboundDocumentAction,
+                                  "목록에서 감췄습니다. 원본은 그대로 남아 있습니다.",
                                 )
-                              ) {
-                                return;
                               }
-
-                              setBusyDocumentId(document.id);
-
-                              const result = await deleteInboundDocumentAction(document.id);
-
-                              setBusyDocumentId(null);
-
-                              if (result.success) {
-                                setNotice("명세서를 지웠습니다.");
-                                router.refresh();
-                              } else {
-                                setError(result.error ?? "지우지 못했습니다.");
-                              }
-                            }}
-                            style={{ ...linkButton, color: "#b91c1c" }}
-                          >
-                            삭제
-                          </button>
+                              style={linkButton}
+                            >
+                              취소 처리
+                            </button>
+                          )}
                         </span>
                       </li>
                     ))}
