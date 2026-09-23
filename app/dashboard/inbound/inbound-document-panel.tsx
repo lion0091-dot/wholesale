@@ -40,6 +40,7 @@ import type { ScanProductOption } from "./inbound-scan-view";
 const FIELD_LABELS: Record<DocumentField, string> = {
   itemName: "품목",
   traceNo: "이력번호",
+  partName: "부위",
   grade: "등급",
   origin: "원산지",
   quantity: "수량",
@@ -51,6 +52,7 @@ const FIELD_LABELS: Record<DocumentField, string> = {
 const FIELD_ORDER: DocumentField[] = [
   "itemName",
   "traceNo",
+  "partName",
   "grade",
   "origin",
   "quantity",
@@ -95,6 +97,7 @@ function emptyLine(lineNo: number): EditableLine {
     raw: "",
     itemName: null,
     traceNo: null,
+    partName: null,
     grade: null,
     origin: null,
     quantity: null,
@@ -418,6 +421,7 @@ export function InboundDocumentPanel({
         itemName: line.itemName,
         productId: line.productId,
         traceNo: line.traceNo,
+        partName: line.partName,
         grade: line.grade,
         origin: line.origin,
         quantity: line.quantity,
@@ -965,6 +969,7 @@ export function InboundDocumentPanel({
                       <th style={thStyle}>품목</th>
                       <th style={thStyle}>내 상품</th>
                       <th style={thStyle}>이력번호</th>
+                      <th style={thStyle}>부위</th>
                       <th style={thStyle}>등급</th>
                       <th style={thStyle}>원산지</th>
                       <th style={thStyle}>중량(kg)</th>
@@ -1013,6 +1018,16 @@ export function InboundDocumentPanel({
                                 updateLine(line.lineNo, { traceNo: event.target.value || null })
                               }
                               style={cellInput}
+                            />
+                          </td>
+                          <td style={tdStyle}>
+                            <input
+                              value={line.partName ?? ""}
+                              onChange={(event) =>
+                                updateLine(line.lineNo, { partName: event.target.value || null })
+                              }
+                              placeholder="등심 등"
+                              style={{ ...cellInput, minWidth: "70px" }}
                             />
                           </td>
                           <td style={tdStyle}>

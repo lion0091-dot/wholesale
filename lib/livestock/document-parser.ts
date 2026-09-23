@@ -16,6 +16,7 @@ import { detectDelimiter, splitLine } from "./import-parser";
 export type DocumentField =
   | "itemName"
   | "traceNo"
+  | "partName"
   | "grade"
   | "origin"
   | "quantity"
@@ -41,6 +42,13 @@ export interface DocumentLine {
   raw: string;
   itemName: string | null;
   traceNo: string | null;
+  /**
+   * 부위(안심/등심/삼겹살 등). 보통 품목명 칸에 같이 적혀 오지만(예: "한우
+   * 등심 1++"), 화면에서 사람이 따로 뽑아 적으면 자동 상품 생성이 "(부위
+   * 미지정)" 대신 이 값을 쓴다(2026-09-24, 사장님 확정: 명세서 기반이니
+   * 부위를 모를 일이 없어야 한다).
+   */
+  partName: string | null;
   /** 1++, 1+, 1, 2, 3 등. 이력번호가 있으면 공공조회 값이 우선이다. */
   grade: string | null;
   /** 국내산 / 미국산 등. 원산지 허위표시로 이어질 수 있어 필수로 본다. */
@@ -58,6 +66,11 @@ export interface DocumentLine {
  */
 const HEADER_PATTERNS: Array<{ field: DocumentField; patterns: RegExp[] }> = [
   { field: "traceNo", patterns: [/이력/, /개체번호/, /묶음번호/, /trace/i] },
+  // 실제로는 "품명(규격/부위)"처럼 품목명 칸에 부위가 같이 적혀 오는 경우가
+  // 대부분이라(2026-09-24 실제 명세서 서식으로 확인) 이 패턴이 걸리는 일은
+  // 드물다. 그래도 부위를 따로 칸으로 주는 공급처가 있을 수 있어 남겨둔다 —
+  // 못 걸리면 화면에서 사람이 직접 입력한다.
+  { field: "partName", patterns: [/부위/, /부속/] },
   { field: "grade", patterns: [/등급/, /육질/, /grade/i] },
   { field: "origin", patterns: [/원산지/, /산지/, /origin/i] },
   {
@@ -351,6 +364,7 @@ export function applyColumnMap(
     // 셀에 바코드 원문이 그대로 들어있는 경우가 있어 한 번 태운다.
     const traceNo = rawTrace ? (parseBarcode(rawTrace).traceNo ?? rawTrace) : null;
     const itemName = pick("itemName") || null;
+    const partName = pick("partName") || null;
     // "1++등급" 같은 표기에서 등급만 남긴다.
     const rawGrade = pick("grade");
     const gradeMatch = rawGrade.match(GRADE_PATTERN);
@@ -370,6 +384,7 @@ export function applyColumnMap(
       raw: row.join(" | "),
       itemName,
       traceNo,
+      partName,
       grade,
       origin,
       quantity,

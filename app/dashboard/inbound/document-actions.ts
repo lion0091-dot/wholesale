@@ -42,6 +42,7 @@ export interface DocumentLineInput {
   itemName?: string | null;
   productId?: string | null;
   traceNo?: string | null;
+  partName?: string | null;
   grade?: string | null;
   origin?: string | null;
   quantity?: number | null;
@@ -353,6 +354,7 @@ export async function saveInboundDocumentAction(
       item_name: line.itemName?.trim() || null,
       product_id: line.productId || null,
       trace_no: line.traceNo?.trim() || null,
+      part_name: line.partName?.trim() || null,
       grade: line.grade?.trim() || null,
       origin: line.origin?.trim() || null,
       quantity: line.quantity ?? null,

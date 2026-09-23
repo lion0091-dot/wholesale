@@ -15,6 +15,7 @@ function line(overrides: Partial<DocumentLine> = {}): DocumentLine {
     raw: "",
     itemName: "한우 등심",
     traceNo: "002191840078",
+    partName: null,
     grade: "1++",
     origin: "국내산",
     quantity: null,
