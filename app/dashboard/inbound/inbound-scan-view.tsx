@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { composeProductDisplayName } from "@/lib/products/display-name";
-import { recordScanAction, resolveMappingAction, voidScanAction, type ScanType } from "./actions";
+import {
+  recordScanAction,
+  resolveMappingAction,
+  resolveMappingToOrderAction,
+  voidScanAction,
+  type ScanType,
+} from "./actions";
 import { parseBarcode } from "@/lib/livestock/barcode-parser";
 import {
   calcPurchaseAmount,
@@ -20,6 +26,13 @@ export interface ScanProductOption {
   subcategory: string | null;
   grade: string | null;
   unit: string;
+}
+
+/** 확정·배송중 발주서 — "이 박스 특정 주문으로 바로 보내기"의 배정 대상 후보. */
+export interface ShippableOrderOption {
+  id: string;
+  orderNumber: string;
+  retailerName: string;
 }
 
 export interface InboundScanRow {
@@ -39,6 +52,13 @@ export interface InboundScanRow {
   purchaseUnitPrice: number | null;
   purchaseAmount: number | null;
   purchaseSupplier: string | null;
+  /**
+   * 개발용 미리보기 행 — DB에 없다. 4가지 이력번호 유형이 화면에서 각각 어떻게
+   * 보이는지 실제 API·DB 호출 없이 확인하려고 만들었다. 실제 동작은 하지 않으므로
+   * 목록에서 이 값이 true면 상품 지정·주문 배정·취소를 전부 숨긴다.
+   */
+  isSample?: boolean;
+  sampleNote?: string;
 }
 
 const STATUS_BADGE: Record<InboundScanRow["status"], { label: string; bg: string; color: string }> = {
@@ -75,10 +95,30 @@ function hasBarcodeDetector(): boolean {
 interface Props {
   initialScans: InboundScanRow[];
   products: ScanProductOption[];
+  shippableOrders: ShippableOrderOption[];
 }
 
-export function InboundScanView({ initialScans, products }: Props) {
+export function InboundScanView({ initialScans, products, shippableOrders }: Props) {
   const router = useRouter();
+
+  // 상품 확인 필요/이력 확인 필요 행 중 "특정 주문으로 바로 보내기" 패널을 펼친 스캔 id.
+  const [orderTargetScanId, setOrderTargetScanId] = useState<string | null>(null);
+  const [orderTargetProductId, setOrderTargetProductId] = useState("");
+  const [orderTargetOrderId, setOrderTargetOrderId] = useState("");
+  const [resolvingToOrder, setResolvingToOrder] = useState(false);
+
+  // 공급자가 서로 다른 상품을 한 박스·한 코드로 묶어 보낸 경우 — 코드는 하나만
+  // 찍고, 실제 내용물별로 상품·무게를 나눠 입력한다("이 박스 안에 뭐가 들었는지"는
+  // 코드만 봐서는 알 수 없고 사람이 박스를 열어봐야 안다 — 그래서 프론트 전용 기능
+  // 이다. 백엔드는 새 개념이 필요 없다 — 같은 trace_no로 recordScanAction을 상품
+  // 개수만큼 반복 호출하면 그대로 박스별 여러 행으로 쌓인다).
+  const [splitMode, setSplitMode] = useState(false);
+  const [splitTraceNo, setSplitTraceNo] = useState("");
+  const [splitRows, setSplitRows] = useState<Array<{ id: string; productId: string; weight: string }>>([
+    { id: "split-0", productId: "", weight: "" },
+    { id: "split-1", productId: "", weight: "" },
+  ]);
+  const [splitSubmitting, setSplitSubmitting] = useState(false);
 
   const [traceNo, setTraceNo] = useState("");
   // 저울에 찍힌 실중량. 재고·매입금액의 기준이 되는 값이다.
@@ -424,6 +464,198 @@ export function InboundScanView({ initialScans, products }: Props) {
     router.refresh();
   };
 
+  const handleResolveToOrder = async (scanId: string) => {
+    if (!orderTargetProductId || !orderTargetOrderId) {
+      setError("상품과 주문을 모두 선택해주세요.");
+      return;
+    }
+
+    setResolvingToOrder(true);
+    const result = await resolveMappingToOrderAction(
+      scanId,
+      orderTargetProductId,
+      orderTargetOrderId,
+      true
+    );
+    setResolvingToOrder(false);
+
+    if (!result.success) {
+      setError(result.error ?? "주문 배정에 실패했습니다.");
+      return;
+    }
+
+    if (result.data?.partMismatch) {
+      setError(
+        `⚠️ 이 박스의 이력 부위는 '${result.data.tracePart}'인데 고르신 상품은 '${result.data.productPart}'입니다. 맞는지 확인해주세요.`
+      );
+    } else {
+      setNotice(
+        `상품을 지정하고 주문에 ${result.data?.taken ?? 0}${
+          products.find((product) => product.id === orderTargetProductId)?.unit ?? "kg"
+        }만큼 바로 배정했습니다.`
+      );
+    }
+
+    setOrderTargetScanId(null);
+    setOrderTargetProductId("");
+    setOrderTargetOrderId("");
+    router.refresh();
+  };
+
+  const addSplitRow = () => {
+    setSplitRows((prev) => [...prev, { id: `split-${Date.now()}`, productId: "", weight: "" }]);
+  };
+
+  const removeSplitRow = (id: string) => {
+    setSplitRows((prev) => (prev.length <= 1 ? prev : prev.filter((row) => row.id !== id)));
+  };
+
+  const updateSplitRow = (id: string, patch: Partial<{ productId: string; weight: string }>) => {
+    setSplitRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+  };
+
+  /**
+   * 한 코드로 상품 여러 개를 나눠 입고한다. 코드마다 recordScanAction을 반복
+   * 호출할 뿐 — 이력번호에 UNIQUE 제약이 없다는 게 이미 잠긴 설계라(1단계) 같은
+   * 코드로 여러 행이 쌓이는 데 새 백엔드 로직이 필요 없다. 중복 스캔 경고는
+   * confirmDuplicate:true로 미리 넘겨 건너뛴다 — 여기서는 "같은 코드를 또 찍었다"가
+   * 실수가 아니라 의도이기 때문이다.
+   */
+  const handleSplitSubmit = async () => {
+    const parsed = parseBarcode(splitTraceNo);
+    const value = parsed.traceNo ?? splitTraceNo.trim();
+
+    if (!value) {
+      setError("이력번호를 입력해주세요.");
+      return;
+    }
+
+    const validRows = splitRows.filter(
+      (row) => row.productId && Number.parseFloat(row.weight) > 0
+    );
+
+    if (validRows.length < 2) {
+      setError("상품을 2개 이상 고르고 무게를 입력해주세요.");
+      return;
+    }
+
+    setSplitSubmitting(true);
+    setError(null);
+
+    for (const row of validRows) {
+      const result = await recordScanAction({
+        traceNo: value,
+        weight: Number.parseFloat(row.weight),
+        scanType: "MANUAL",
+        productId: row.productId,
+        confirmDuplicate: true,
+        memo: "박스 나눠서 입고",
+      });
+
+      if (!result.success) {
+        const productName =
+          products.find((product) => product.id === row.productId)?.name ?? "상품";
+        setError(`${productName} 처리 중 실패했습니다: ${result.error}`);
+        setSplitSubmitting(false);
+        return;
+      }
+    }
+
+    setSplitSubmitting(false);
+    setNotice(`박스 하나를 상품 ${validRows.length}개로 나눠 입고했습니다.`);
+    setSplitTraceNo("");
+    setSplitRows([
+      { id: "split-0", productId: "", weight: "" },
+      { id: "split-1", productId: "", weight: "" },
+    ]);
+    setSplitMode(false);
+    router.refresh();
+  };
+
+  /**
+   * 개발용 미리보기 — 4가지 이력번호 유형이 화면에서 어떻게 보이는지 실제 API·DB
+   * 호출 없이 확인한다. 로컬 상태에만 얹으므로 새로고침하면 사라진다.
+   */
+  const SAMPLE_KINDS = {
+    NORMAL_INDIVIDUAL: {
+      label: "① 일반 개체 (API 확인됨)",
+      traceNo: "002191840078",
+      weight: 8.2,
+      status: "NORMAL" as const,
+      productName: "한우 등심 1++",
+      note: "정부 이력제 API로 바로 조회된 정상 케이스입니다.",
+    },
+    NORMAL_GROUP: {
+      label: "② 정부 발행 묶음 (API 확인됨)",
+      traceNo: "L01234567890123",
+      weight: 15.0,
+      status: "NORMAL" as const,
+      productName: "한우 갈비 1+",
+      note: "여러 마리를 묶은 정부 발행 묶음번호 — 개체번호와 같은 API로 조회됩니다.",
+    },
+    SUPPLIER_BUNDLE: {
+      label: "③ 공급자 자체 묶음 (API에 없음)",
+      traceNo: "SUPP-LOT-0913-A",
+      weight: 5.0,
+      status: "EXCEPTION" as const,
+      productName: null,
+      note: "정부 API에 없는 공급자 자체 코드 — 상품을 직접 지정해야 재고에 반영됩니다.",
+    },
+    ORDER_BUNDLE: {
+      label: "④ 고객주문용 공급자 묶음 (API에 없음, 주문 배정 대상)",
+      traceNo: "SUPP-ORD-2603-01",
+      weight: 3.0,
+      status: "EXCEPTION" as const,
+      productName: null,
+      note: "고객 주문 때문에 공급자가 특별히 만들어 온 묶음 — \"주문에 바로 배정\" 기능의 대상입니다.",
+    },
+  } satisfies Record<
+    string,
+    {
+      label: string;
+      traceNo: string;
+      weight: number;
+      status: InboundScanRow["status"];
+      productName: string | null;
+      note: string;
+    }
+  >;
+
+  const addSampleRow = (kind: keyof typeof SAMPLE_KINDS) => {
+    const sample = SAMPLE_KINDS[kind];
+
+    setRows((prev) => [
+      {
+        id: `sample-${kind}-${Date.now()}`,
+        traceNo: sample.traceNo,
+        productId: null,
+        productName: sample.productName,
+        weight: sample.weight,
+        unit: "kg",
+        scanType: "MANUAL",
+        status: sample.status,
+        remainingWeight: sample.status === "NORMAL" ? sample.weight : 0,
+        createdAt: new Date().toISOString(),
+        labeledWeight: null,
+        weightVariance: null,
+        purchaseUnitPrice: null,
+        purchaseAmount: null,
+        purchaseSupplier: null,
+        isSample: true,
+        sampleNote: sample.note,
+      },
+      ...prev,
+    ]);
+  };
+
+  const removeSampleRow = (id: string) => {
+    setRows((prev) => prev.filter((row) => row.id !== id));
+  };
+
+  const clearSampleRows = () => {
+    setRows((prev) => prev.filter((row) => !row.isSample));
+  };
+
   const handleVoid = async (scan: InboundScanRow) => {
     if (!window.confirm(`${scan.traceNo} (${scan.weight}${scan.unit}) 입고를 취소하시겠습니까?`)) {
       return;
@@ -554,6 +786,14 @@ export function InboundScanView({ initialScans, products }: Props) {
               카메라 끄기
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => setSplitMode((prev) => !prev)}
+            style={{ ...buttonStyle, marginLeft: "auto" }}
+          >
+            {splitMode ? "박스 나눠서 입고 닫기" : "박스 나눠서 입고 (상품 여러 개)"}
+          </button>
         </div>
 
         {liveVariance && (
@@ -598,6 +838,109 @@ export function InboundScanView({ initialScans, products }: Props) {
         {notice && <div style={{ ...messageStyle, backgroundColor: "#eff6ff", color: "#1e40af" }}>{notice}</div>}
       </section>
 
+      {splitMode && (
+        <section style={panelStyle}>
+          <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "6px" }}>
+            박스 나눠서 입고
+          </div>
+          <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 10px" }}>
+            공급자가 서로 다른 상품을 한 박스에 코드 하나로 묶어 보낸 경우입니다. 코드는 한 번만
+            입력하고, 박스를 열어 실제로 들어있는 상품마다 무게를 나눠 입력해주세요.
+          </p>
+
+          <input
+            value={splitTraceNo}
+            onChange={(event) => setSplitTraceNo(event.target.value)}
+            placeholder="박스에 적힌 이력번호/코드 (한 번만)"
+            style={{ ...inputStyle, marginBottom: "10px" }}
+          />
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            {splitRows.map((row) => (
+              <div key={row.id} style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                <select
+                  value={row.productId}
+                  onChange={(event) => updateSplitRow(row.id, { productId: event.target.value })}
+                  aria-label="상품 선택"
+                  style={{ ...inputStyle, width: "auto", flex: "1 1 220px" }}
+                >
+                  <option value="">상품 선택…</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {composeProductDisplayName(product.category, product.name)}
+                      {product.grade ? ` (${product.grade})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={row.weight}
+                  onChange={(event) => updateSplitRow(row.id, { weight: event.target.value })}
+                  placeholder="무게(kg)"
+                  inputMode="decimal"
+                  style={{ ...inputStyle, width: "110px" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeSplitRow(row.id)}
+                  disabled={splitRows.length <= 1}
+                  style={{ ...buttonStyle, padding: "6px 10px", fontSize: "12px" }}
+                >
+                  삭제
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
+            <button type="button" onClick={addSplitRow} style={buttonStyle}>
+              + 상품 추가
+            </button>
+            <button
+              type="button"
+              disabled={splitSubmitting}
+              onClick={() => void handleSplitSubmit()}
+              style={{
+                ...buttonStyle,
+                backgroundColor: "#0f172a",
+                color: "#fff",
+                opacity: splitSubmitting ? 0.6 : 1,
+              }}
+            >
+              {splitSubmitting ? "입고 중…" : "전체 입고"}
+            </button>
+          </div>
+        </section>
+      )}
+
+      <section style={{ ...panelStyle, backgroundColor: "#fafaf9" }}>
+        <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "6px" }}>
+          개발용 샘플 보기
+        </div>
+        <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 10px" }}>
+          실제 API·DB를 안 건드리고 화면에만 미리보기 행을 띄웁니다 — 검토용이며 새로고침하면
+          사라집니다.
+        </p>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          {(Object.keys(SAMPLE_KINDS) as Array<keyof typeof SAMPLE_KINDS>).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => addSampleRow(kind)}
+              style={{ ...buttonStyle, fontSize: "12px" }}
+            >
+              {SAMPLE_KINDS[kind].label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={clearSampleRows}
+            style={{ ...buttonStyle, fontSize: "12px", borderColor: "#fca5a5", color: "#b91c1c" }}
+          >
+            샘플 전체 지우기
+          </button>
+        </div>
+      </section>
+
       <section style={panelStyle}>
         <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "10px" }}>
           입고 내역 <span style={{ color: "#94a3b8", fontWeight: 400 }}>최근 100건</span>
@@ -617,7 +960,8 @@ export function InboundScanView({ initialScans, products }: Props) {
 
             {rows.map((scan) => {
               const badge = STATUS_BADGE[scan.status];
-              const needsProduct = scan.status === "PENDING_MAPPING" || scan.status === "EXCEPTION";
+              const needsProduct =
+                !scan.isSample && (scan.status === "PENDING_MAPPING" || scan.status === "EXCEPTION");
 
               return (
                 <div key={scan.id} style={rowStyle}>
@@ -665,7 +1009,28 @@ export function InboundScanView({ initialScans, products }: Props) {
                     >
                       {badge.label}
                     </span>
+
+                    {scan.isSample && (
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          backgroundColor: "#e0e7ff",
+                          color: "#3730a3",
+                          borderRadius: "4px",
+                          padding: "3px 7px",
+                        }}
+                      >
+                        샘플
+                      </span>
+                    )}
                   </div>
+
+                  {scan.isSample && scan.sampleNote && (
+                    <p style={{ fontSize: "11px", color: "#64748b", margin: "2px 0 0", width: "100%" }}>
+                      {scan.sampleNote}
+                    </p>
+                  )}
 
                   <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                     {needsProduct && (
@@ -685,16 +1050,99 @@ export function InboundScanView({ initialScans, products }: Props) {
                       </select>
                     )}
 
-                    {scan.status !== "VOIDED" && (
+                    {needsProduct && shippableOrders.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => void handleVoid(scan)}
+                        onClick={() =>
+                          setOrderTargetScanId(orderTargetScanId === scan.id ? null : scan.id)
+                        }
                         style={{ ...buttonStyle, padding: "6px 10px", fontSize: "12px" }}
                       >
-                        취소
+                        {orderTargetScanId === scan.id ? "취소" : "주문에 바로 배정"}
                       </button>
                     )}
+
+                    {scan.isSample ? (
+                      <button
+                        type="button"
+                        onClick={() => removeSampleRow(scan.id)}
+                        style={{ ...buttonStyle, padding: "6px 10px", fontSize: "12px" }}
+                      >
+                        삭제
+                      </button>
+                    ) : (
+                      scan.status !== "VOIDED" && (
+                        <button
+                          type="button"
+                          onClick={() => void handleVoid(scan)}
+                          style={{ ...buttonStyle, padding: "6px 10px", fontSize: "12px" }}
+                        >
+                          취소
+                        </button>
+                      )
+                    )}
                   </div>
+
+                  {orderTargetScanId === scan.id && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "6px",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        width: "100%",
+                        marginTop: "6px",
+                        padding: "8px",
+                        backgroundColor: "#f8fafc",
+                        borderRadius: "8px",
+                      }}
+                    >
+                      <span style={{ fontSize: "12px", color: "#475569" }}>
+                        고객이 요청해서 들어온 박스를 바로 그 주문으로 보냅니다 —
+                      </span>
+                      <select
+                        value={orderTargetProductId}
+                        onChange={(event) => setOrderTargetProductId(event.target.value)}
+                        aria-label="배정할 상품"
+                        style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: "12px" }}
+                      >
+                        <option value="">상품 선택…</option>
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {composeProductDisplayName(product.category, product.name)}
+                            {product.grade ? ` (${product.grade})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={orderTargetOrderId}
+                        onChange={(event) => setOrderTargetOrderId(event.target.value)}
+                        aria-label="배정할 주문"
+                        style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: "12px" }}
+                      >
+                        <option value="">주문 선택…</option>
+                        {shippableOrders.map((order) => (
+                          <option key={order.id} value={order.id}>
+                            {order.orderNumber} · {order.retailerName}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={resolvingToOrder}
+                        onClick={() => void handleResolveToOrder(scan.id)}
+                        style={{
+                          ...buttonStyle,
+                          padding: "6px 10px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          opacity: resolvingToOrder ? 0.6 : 1,
+                        }}
+                      >
+                        {resolvingToOrder ? "배정 중…" : "배정 확정"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}

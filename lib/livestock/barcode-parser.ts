@@ -90,10 +90,37 @@ function stripParentheses(value: string): string {
   return value.replace(/\((\d{2,4})\)/g, "$1");
 }
 
+/**
+ * parseGs1이 실제로 처리할 줄 아는 AI 코드 전체(고정길이 + 가변길이 + 계량).
+ * "01"(GTIN)만 하드코딩해 판별하던 예전 방식은 AI "00"(SSCC)으로 시작하는
+ * 상자 단위 물류 라벨(박스 여러 개를 묶은 겉박스)을 놓쳤다 — 구분자 없이 고정길이
+ * 필드만 이어붙으면 문자열 전체가 숫자만 남아 뒤의 이력번호까지 못 찾는 사고였다.
+ */
+const KNOWN_VARIABLE_AI2 = new Set(["10", "21"]);
+const KNOWN_VARIABLE_AI3 = new Set(["240", "241", "251"]);
+
+function startsWithKnownAi(strippedValue: string): boolean {
+  const ai2 = strippedValue.slice(0, 2);
+  const ai3 = strippedValue.slice(0, 3);
+
+  return (
+    ai2 in FIXED_LENGTH_AI ||
+    KNOWN_VARIABLE_AI2.has(ai2) ||
+    KNOWN_VARIABLE_AI3.has(ai3) ||
+    MEASURE_AI_PREFIX.test(ai3)
+  );
+}
+
 function looksLikeGs1(value: string): boolean {
-  return value.includes(GS) || /^\(?\d{2,4}\)?/.test(value) === false
-    ? value.includes(GS)
-    : /^(\(01\)|01)\d{14}/.test(value) || /^\(\d{2,4}\)/.test(value) || value.includes(GS);
+  if (value.includes(GS)) {
+    return true;
+  }
+
+  if (/^\(\d{2,4}\)/.test(value)) {
+    return true;
+  }
+
+  return startsWithKnownAi(stripParentheses(value));
 }
 
 /**

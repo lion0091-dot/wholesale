@@ -350,6 +350,86 @@ export async function resolveMappingAction(
   }
 }
 
+/**
+ * 상품 미확정/예외 건을 상품 지정과 동시에 특정 주문으로 배정한다.
+ *
+ * 고객이 미리 요청해서 들어온, 공공 API에 없는 공급자 자체 묶음 같은 경우를 위한 경로다.
+ * "상품 지정 → 주문 확정 대기 → 출고 스캔"을 화면 세 개로 오가지 않고 한 번에 끝낸다.
+ * DB가 resolve_inbound_mapping + record_outbound_scan을 한 트랜잭션으로 묶어서
+ * 실행하므로, 뒤쪽(주문 배정)이 실패하면 앞쪽(상품 지정)도 함께 롤백된다.
+ */
+export interface ResolveToOrderResult extends MappingResult {
+  taken: number;
+  remainingNeeded: number;
+}
+
+export async function resolveMappingToOrderAction(
+  scanId: string,
+  productId: string,
+  orderId: string,
+  remember = true
+): Promise<ActionResult<ResolveToOrderResult>> {
+  try {
+    const { supabase } = await resolveInboundScope();
+
+    const { data, error } = await supabase.rpc("resolve_inbound_mapping_to_order", {
+      p_scan_id: scanId,
+      p_product_id: productId,
+      p_order_id: orderId,
+      p_remember: remember,
+    });
+
+    if (error) {
+      if (error.message.includes("PRODUCT_NOT_FOUND")) {
+        throw new RbacError("선택한 상품을 찾을 수 없습니다.");
+      }
+      if (error.message.includes("SCAN_ALREADY_RESOLVED")) {
+        throw new RbacError("이미 처리된 입고입니다. 새로고침 후 확인해주세요.");
+      }
+      if (error.message.includes("ORDER_NOT_FOUND")) {
+        throw new RbacError("발주서를 찾을 수 없습니다.");
+      }
+      if (error.message.includes("ORDER_NOT_SHIPPABLE")) {
+        throw new RbacError("확정 또는 배송중 상태의 발주서만 배정할 수 있습니다.");
+      }
+      if (error.message.includes("PRODUCT_NOT_IN_ORDER")) {
+        throw new RbacError("고른 주문에 이 상품이 없습니다. 상품이나 주문을 다시 확인해주세요.");
+      }
+      if (error.message.includes("PRODUCT_ALREADY_FULFILLED")) {
+        throw new RbacError("이 주문은 해당 상품 수량을 이미 다 채웠습니다.");
+      }
+
+      const expired = error.message.match(/BOX_EXPIRED:(\d{4}-\d{2}-\d{2})/);
+      if (expired) {
+        throw new RbacError(`유통기한이 지난 박스입니다 (${expired[1]}). 배정할 수 없습니다.`);
+      }
+
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+    revalidatePath("/dashboard/products");
+    revalidatePath("/dashboard/outbound");
+
+    const row = (data ?? {}) as Record<string, unknown>;
+    const resolveRow = (row.resolve ?? {}) as Record<string, unknown>;
+    const outboundRow = (row.outbound ?? {}) as Record<string, unknown>;
+
+    return {
+      success: true,
+      data: {
+        partMismatch: Boolean(resolveRow.part_mismatch),
+        tracePart: (resolveRow.trace_part as string | null) ?? null,
+        productPart: (resolveRow.product_part as string | null) ?? null,
+        taken: Number(outboundRow.taken ?? 0),
+        remainingNeeded: Number(outboundRow.remaining_needed ?? 0),
+      },
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
 /** 오스캔 취소 — 삭제가 아니라 역분개로 처리된다. */
 export async function voidScanAction(scanId: string, reason?: string): Promise<ActionResult> {
   try {

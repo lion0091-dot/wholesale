@@ -1,7 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
-import { InboundScanView, type InboundScanRow, type ScanProductOption } from "./inbound-scan-view";
+import {
+  InboundScanView,
+  type InboundScanRow,
+  type ScanProductOption,
+  type ShippableOrderOption,
+} from "./inbound-scan-view";
 import { InboundImportPanel } from "./inbound-import-panel";
 import { isMtraceConfigured, configuredTraceSources } from "@/lib/livestock/mtrace-client";
 
@@ -25,13 +30,17 @@ export default async function InboundPage() {
 
   let scans: InboundScanRow[] = [];
   let products: ScanProductOption[] = [];
+  let shippableOrders: ShippableOrderOption[] = [];
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
 
     // 입고 내역은 계속 쌓이기만 하므로 최근 100건만 불러온다. 현장에서 보는 건
     // "방금 찍은 것들"이고, 과거 조회는 이력관리 메뉴가 따로 담당한다.
-    const [{ data: scanRows }, { data: productRows }] = await Promise.all([
+    // 주문 목록은 출고 스캔 화면(app/dashboard/outbound/page.tsx)과 같은 기준
+    // (확정·배송중만)이다 — "이 박스 특정 주문으로 바로 보내기"가 결국 출고 스캔을
+    // 대신 호출하므로 같은 상태만 배정 대상이어야 한다.
+    const [{ data: scanRows }, { data: productRows }, { data: orderRows }] = await Promise.all([
       supabase
         .from("inbound_scans")
         .select(
@@ -46,9 +55,27 @@ export default async function InboundPage() {
         .eq("wholesaler_id", scope.wholesalerId)
         .eq("is_active", true)
         .order("name", { ascending: true }),
+      supabase
+        .from("orders")
+        .select("id, order_number, retailers ( restaurant_name )")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .in("status", ["confirmed", "shipping"])
+        .order("ordered_at", { ascending: true })
+        .limit(50),
     ]);
 
     products = (productRows ?? []) as ScanProductOption[];
+
+    shippableOrders = ((orderRows ?? []) as Array<Record<string, unknown>>).map((row) => {
+      const retailer = Array.isArray(row.retailers) ? row.retailers[0] : row.retailers;
+
+      return {
+        id: String(row.id),
+        orderNumber: String(row.order_number),
+        retailerName:
+          ((retailer as Record<string, unknown> | null)?.restaurant_name as string | null) ?? "거래처",
+      };
+    });
 
     const productNames = new Map(products.map((product) => [product.id, product.name]));
 
@@ -105,7 +132,7 @@ export default async function InboundPage() {
 
       <InboundImportPanel />
 
-      <InboundScanView initialScans={scans} products={products} />
+      <InboundScanView initialScans={scans} products={products} shippableOrders={shippableOrders} />
     </div>
   );
 }

@@ -51,7 +51,9 @@ const TYPE_PATTERNS = [
 ];
 
 export function stripTypes(path) {
-  let source = readFileSync(path, "utf8");
+  // Windows 체크아웃은 CRLF라 아래 패턴들의 리터럴 \n이 매칭되지 않는다(예:
+  // interface 블록 제거 정규식). 평가용 임시 문자열이라 LF로 정규화해도 무해하다.
+  let source = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
 
   for (const pattern of TYPE_PATTERNS) {
     source = source.replace(pattern, "");

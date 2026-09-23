@@ -9,12 +9,25 @@
  * 소스만 시도하고, 미설정 소스는 조용히 건너뛴다 — 소·돼지만 취급하는 업체는
  * MTRACE_API_KEY 하나만 넣으면 된다.
  *
- * 국내산(①②)은 2026-09-23에 공식 활용가이드(축산물품질평가원_축산물통합이력정보조회
+ * 국내산(①③)은 2026-09-23에 공식 활용가이드(축산물품질평가원_축산물통합이력정보조회
  * v2.10)로 실주소·파라미터·응답 구조를 확인했다 — 아래 KAPE_ANIMAL_TRACE_ENDPOINT
  * 참고. **부위(部位) 필드는 실제로 없다** — 가이드의 응답 필드 목록에 아예 없어
  * 예상대로 확인됨. 개체번호는 소 한 마리를 가리킬 뿐이라 그렇다. 스캔은
  * PENDING_MAPPING으로 남고 사용자에게 한 번 되묻는다(잠긴 설계 결정 4번).
- * 수입 축산물(②)은 여전히 미확인이다.
+ *
+ * 수입 축산물(②)은 2026-09-23 조사 결과 **①③과 운영 체계 자체가 다르다는 것만
+ * 확인했고, 실주소는 여전히 미확인이다**:
+ *  - data.go.kr의 "농림축산검역본부_수입축산물이력정보"(15118023)는 "LINK형" 데이터다
+ *    — KAPE 이력 API처럼 apis.data.go.kr 게이트웨이에 실제로 얹혀 있는 게 아니라,
+ *    운영기관 자체 사이트(meatwatch.go.kr)로 안내만 한다.
+ *  - 즉 data.go.kr 계정 공용 인증키(KAPE_MARKET_PRICE_API_KEY 등)로 되는
+ *    ①의 폴백 전략이 여기는 아예 통하지 않는다 — 인증 체계 자체가 분리돼 있다.
+ *  - meatwatch.go.kr은 "기업 회원가입 → 오픈서비스 이용안내 → 기업전용 오픈서비스
+ *    신청 → 가이드 다운로드 + 개별 키 발급" 절차를 따로 밟아야 한다(회원가입 뒤
+ *    문서가 열려 있어 로그인 없이는 실주소·파라미터를 확인할 수 없었다).
+ *  - 그래서 아래 meatwatch 설정에는 fallbackDataGoKrKey()를 걸지 않는다 — 실패가
+ *    뻔한 호출을 한 번 더 보내는 낭비이고, "그냥 안 됐나 보다"로 넘어가는 대신
+ *    설정 화면에 "MEATWATCH_API_KEY 별도 발급 필요"라고 정확히 안내하는 게 낫다.
  *
  * 파싱은 정확한 XML 경로에 의존하지 않고 트리를 재귀 탐색해 후보 키를 찾는다
  * (kape-client.ts와 같은 전략). 원본 응답은 master_livestock.raw_payload에
@@ -87,14 +100,16 @@ function sourceConfig(source: TraceSource): SourceConfig {
     case "meatwatch":
       return {
         label: "meatwatch_imported",
-        // ⚠️ 이 주소는 미확인이다. 실제로 연결되는지 확인된 바 없으므로
-        //    MEATWATCH_API_ENDPOINT로 덮어쓸 것.
+        // ⚠️ 이 주소는 근거 없는 추정치다. data.go.kr 15118023이 "LINK형"으로 확인돼
+        //    apis.data.go.kr 게이트웨이에 실제로 존재하지 않을 가능성이 크다(위 헤더
+        //    코멘트 참고). meatwatch.go.kr 기업 회원가입 후 발급되는 가이드로 확정
+        //    전까지는 MEATWATCH_API_ENDPOINT로 덮어쓰기 전제.
         endpoints: candidates(process.env.MEATWATCH_API_ENDPOINT, [
           "http://apis.data.go.kr/B552895/imported/trace/traceNoSearch",
         ]),
-        // 수입 이력은 운영 기관이 달라 공용키가 통하지 않을 수 있다 — 그래도
-        // 전용 키가 없으면 한 번은 시도해본다.
-        apiKey: process.env.MEATWATCH_API_KEY ?? fallbackDataGoKrKey(),
+        // meatwatch.go.kr은 data.go.kr과 별도의 회원가입·키 발급 체계다 — 공용키
+        // 폴백이 통할 수가 없어 걸지 않는다(위 헤더 코멘트 참고).
+        apiKey: process.env.MEATWATCH_API_KEY,
       };
     case "poultry":
       // 공식 가이드(v2.10)에 닭/오리/계란(FOWL·DUCK·EGG)도 같은 animalTrace
