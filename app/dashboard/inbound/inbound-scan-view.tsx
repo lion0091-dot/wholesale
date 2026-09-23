@@ -100,6 +100,9 @@ interface Props {
   shippableOrders: ShippableOrderOption[];
 }
 
+/** 오픈 직전 Vercel에서 이 값을 지우거나 false로 바꾸면 샘플 패널이 전부 사라진다. */
+const SHOW_DEV_SAMPLES = process.env.NEXT_PUBLIC_SHOW_DEV_SAMPLES === "true";
+
 export function InboundScanView({ initialScans, products, shippableOrders }: Props) {
   const router = useRouter();
 
@@ -844,17 +847,19 @@ export function InboundScanView({ initialScans, products, shippableOrders }: Pro
         </section>
       )}
 
-      <section style={panelStyle}>
-        <DevSamplePanel
-          kinds={INBOUND_SAMPLE_KINDS}
-          onAdd={addSampleRow}
-          onClearAll={clearSampleRows}
-          hasSamples={rows.some((row) => row.isSample)}
-          description="실제 API·DB를 안 건드리고 화면에만 미리보기 행을 띄웁니다 — 검토용이며 새로고침하면 사라집니다."
-          buttonStyle={{ ...buttonStyle, fontSize: "12px" }}
-          containerStyle={{ padding: 0 }}
-        />
-      </section>
+      {SHOW_DEV_SAMPLES && (
+        <section style={panelStyle}>
+          <DevSamplePanel
+            kinds={INBOUND_SAMPLE_KINDS}
+            onAdd={addSampleRow}
+            onClearAll={clearSampleRows}
+            hasSamples={rows.some((row) => row.isSample)}
+            description="실제 API·DB를 안 건드리고 화면에만 미리보기 행을 띄웁니다 — 검토용이며 새로고침하면 사라집니다."
+            buttonStyle={{ ...buttonStyle, fontSize: "12px" }}
+            containerStyle={{ padding: 0 }}
+          />
+        </section>
+      )}
 
       <section style={panelStyle}>
         <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "10px" }}>

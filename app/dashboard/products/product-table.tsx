@@ -63,6 +63,9 @@ interface ProductTableProps {
   marketPrices?: MarketPriceIndex;
 }
 
+/** 오픈 직전 Vercel에서 이 값을 지우거나 false로 바꾸면 샘플 패널이 전부 사라진다. */
+const SHOW_DEV_SAMPLES = process.env.NEXT_PUBLIC_SHOW_DEV_SAMPLES === "true";
+
 function stockBadge(quantity: number, unit: string) {
   if (quantity <= 0) {
     return { label: "품절", bg: "#fee2e2", color: "#991b1b", text: `0 ${unit}` };
@@ -428,15 +431,17 @@ export function ProductTable({
         </select>
       </div>
 
-      <DevSamplePanel
-        kinds={PRODUCT_SAMPLE_KINDS}
-        onAdd={addSampleProduct}
-        onClearAll={clearSampleProducts}
-        hasSamples={sampleProducts.length > 0}
-        description="입고 4가지 유형이 확정되면 어떻게 보이는지 미리보기 — 실제 API·DB는 안 건드립니다."
-        buttonStyle={chipButtonStyle}
-        containerStyle={{ borderBottom: "1px solid #e2e8f0" }}
-      />
+      {SHOW_DEV_SAMPLES && (
+        <DevSamplePanel
+          kinds={PRODUCT_SAMPLE_KINDS}
+          onAdd={addSampleProduct}
+          onClearAll={clearSampleProducts}
+          hasSamples={sampleProducts.length > 0}
+          description="입고 4가지 유형이 확정되면 어떻게 보이는지 미리보기 — 실제 API·DB는 안 건드립니다."
+          buttonStyle={chipButtonStyle}
+          containerStyle={{ borderBottom: "1px solid #e2e8f0" }}
+        />
+      )}
 
       {error && (
         <div
