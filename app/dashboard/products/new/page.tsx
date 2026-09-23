@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { getSupplierScope } from "@/lib/supplier/scope";
 import { ProductFormView } from "../product-form-view";
 import { fetchSubcategoriesByCategory } from "../get-subcategories";
 
@@ -8,7 +7,6 @@ export const metadata = {
 };
 
 export default async function NewProductPage() {
-  const scope = await getSupplierScope();
   const supabase = await createClient();
   const { data } = await supabase
     .from("product_categories")
@@ -20,7 +18,6 @@ export default async function NewProductPage() {
 
   return (
     <ProductFormView
-      isDemoMode={!scope?.wholesalerId}
       categories={categories}
       subcategoriesByCategory={subcategoriesByCategory}
     />

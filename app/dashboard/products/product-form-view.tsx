@@ -435,21 +435,6 @@ export function ProductFormView({
         </p>
       </header>
 
-      {isDemoMode && (
-        <div
-          style={{
-            backgroundColor: "#fef3c7",
-            border: "1px solid #fde68a",
-            color: "#92400e",
-            fontSize: "13px",
-            padding: "12px 16px",
-            borderRadius: "8px",
-          }}
-        >
-          ℹ️ 미인증(데모) 상태입니다. 입력 화면은 확인할 수 있으나 저장은 로그인 후에 가능합니다.
-        </div>
-      )}
-
       <form
         id={FORM_ID}
         onSubmit={handleSubmit}
