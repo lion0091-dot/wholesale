@@ -67,6 +67,8 @@ export interface ScanFacts {
   /** 같은 이력번호의 명세서 줄을 찾았는지 */
   documentMatched: boolean;
   documentSupplier?: string | null;
+  /** 명세서에 공급처가 적은 품목명 원문. 이력조회가 부위를 안 줘도 이게 부위를 말해준다. */
+  documentItemName?: string | null;
   documentGrade?: string | null;
   documentOrigin?: string | null;
   documentUnitPrice?: number | null;
@@ -174,6 +176,24 @@ export function buildScanRequirementReport(facts: ScanFacts): ScanRequirementRep
       : facts.traceFound
         ? "이력조회에 축종 정보가 없습니다."
         : "이력조회가 이 번호를 찾지 못했습니다.",
+    conflict: null,
+  });
+
+  // 명세서 품목명 — 이력조회가 부위를 못 줘도 공급처가 자기 명세서엔 부위를
+  // 적어 보낸다(사장님 지적: "돈 삼겹 냉장"처럼). 등급·원산지처럼 구조화된 값이
+  // 아니라 원문 그대로라 정답 판정에는 못 쓰지만, 사람이 상품을 고를 때 보는
+  // 참고 정보로는 이력조회보다 오히려 낫다.
+  add({
+    key: "documentItemName",
+    label: "명세서 품목명",
+    level: "RECOMMENDED",
+    value: facts.documentItemName ?? null,
+    source: facts.documentItemName ? "DOCUMENT" : null,
+    hint: facts.documentItemName
+      ? null
+      : facts.documentMatched
+        ? "연결된 명세서 줄에 품목명이 비어 있습니다."
+        : "연결된 명세서가 없습니다.",
     conflict: null,
   });
 

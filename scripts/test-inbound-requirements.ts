@@ -255,6 +255,47 @@ function field(report: ReturnType<typeof buildScanRequirementReport>, key: strin
   );
 }
 
+// 11) 명세서 품목명 — 이력조회가 부위를 못 줘도 명세서 원문 품목명이 사람에게
+//     부위를 알려주는 참고 정보가 돼야 한다.
+{
+  const withItemName = buildScanRequirementReport(
+    facts({ apiSpecies: null, apiGrade: null, documentItemName: "채끝 1++" }),
+  );
+
+  check(
+    "명세서 품목명이 있으면 명세서 출처로 그대로 표시",
+    field(withItemName, "documentItemName")?.value === "채끝 1++" &&
+      field(withItemName, "documentItemName")?.source === "DOCUMENT",
+  );
+  check("품목명은 권장이라 필수 누락으로 안 셈", withItemName.missingRequired === 0);
+
+  const matchedNoItemName = buildScanRequirementReport(
+    facts({ documentItemName: null, documentMatched: true }),
+  );
+
+  check(
+    "명세서는 연결됐는데 품목명이 비어 있으면 그 사실을 안내",
+    field(matchedNoItemName, "documentItemName")?.hint === "연결된 명세서 줄에 품목명이 비어 있습니다.",
+  );
+
+  const noDocument = buildScanRequirementReport(
+    facts({
+      documentItemName: null,
+      documentMatched: false,
+      documentSupplier: null,
+      documentGrade: null,
+      documentOrigin: null,
+      documentUnitPrice: null,
+      documentLabeledWeight: null,
+    }),
+  );
+
+  check(
+    "연결된 명세서 자체가 없으면 다른 안내",
+    field(noDocument, "documentItemName")?.hint === "연결된 명세서가 없습니다.",
+  );
+}
+
 if (failed > 0) {
   console.log(`\n${failed}건 실패`);
   process.exit(1);

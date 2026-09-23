@@ -147,6 +147,7 @@ export default async function InboundPage() {
       string,
       {
         supplier: string | null;
+        itemName: string | null;
         grade: string | null;
         origin: string | null;
         unitPrice: number | null;
@@ -164,7 +165,7 @@ export default async function InboundPage() {
         supabase
           .from("inbound_document_lines")
           .select(
-            "trace_no, grade, origin, unit_price, labeled_weight, inbound_documents!inner(supplier_name, status)"
+            "trace_no, item_name, grade, origin, unit_price, labeled_weight, inbound_documents!inner(supplier_name, status)"
           )
           .in("trace_no", traceNos)
           .neq("inbound_documents.status", "DISCARDED"),
@@ -197,6 +198,7 @@ export default async function InboundPage() {
 
         documentByTrace.set(key, {
           supplier: ((document as Record<string, unknown> | null)?.supplier_name as string | null) ?? null,
+          itemName: (row.item_name as string | null) ?? null,
           grade: (row.grade as string | null) ?? null,
           origin: (row.origin as string | null) ?? null,
           unitPrice: row.unit_price === null ? null : Number(row.unit_price),
@@ -230,6 +232,7 @@ export default async function InboundPage() {
             apiOrigin: master?.origin ?? null,
             documentMatched: Boolean(document),
             documentSupplier: document?.supplier ?? null,
+            documentItemName: document?.itemName ?? null,
             documentGrade: document?.grade ?? null,
             documentOrigin: document?.origin ?? null,
             documentUnitPrice: document?.unitPrice ?? null,
