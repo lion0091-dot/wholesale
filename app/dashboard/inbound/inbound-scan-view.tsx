@@ -229,6 +229,12 @@ export function InboundScanView({
    * 박스 바코드밖에 없어 조회될 수가 없다 — 그 자리에서 쪼개기를 권한다.
    */
   const [splitCandidate, setSplitCandidate] = useState<string | null>(null);
+  /**
+   * "이 박스 쪼개기" 제안에 "아니오"(상품 1개 맞음)로 답한 이력번호들.
+   * 그냥 사라지게 두면 나중에 상품을 지정할 때 "이거 확인은 한 거였나"를 알 수 없어서,
+   * 상품 지정 칸 옆에 계속 눈에 띄게 남겨둔다(사장님 요청 — 강제 차단은 아니고 기록만).
+   */
+  const [declinedSplitTraceNos, setDeclinedSplitTraceNos] = useState<Set<string>>(new Set());
   const [splitRows, setSplitRows] = useState<Array<{ id: string; productId: string; weight: string; traceNo?: string }>>([
     { id: "split-0", productId: "", weight: "", traceNo: "" },
     { id: "split-1", productId: "", weight: "", traceNo: "" },
@@ -954,7 +960,10 @@ export function InboundScanView({
             </button>
             <button
               type="button"
-              onClick={() => setSplitCandidate(null)}
+              onClick={() => {
+                setDeclinedSplitTraceNos((prev) => new Set(prev).add(splitCandidate));
+                setSplitCandidate(null);
+              }}
               style={{
                 border: "none",
                 background: "none",
@@ -1168,6 +1177,14 @@ export function InboundScanView({
 
                     return report ? <ScanRequirementList report={report} /> : null;
                   })()}
+
+                  {needsProduct && declinedSplitTraceNos.has(scan.traceNo) && (
+                    <p style={{ fontSize: "11px", color: "#92400e", margin: "2px 0 0", width: "100%" }}>
+                      ⚠ 쪼개기 안 함으로 확인됨 — 아래에서 상품을 하나로 지정하면 이 무게 전체가 그
+                      상품 재고로 들어갑니다. 실제로 여러 상품이 섞인 박스라면 취소하고 "박스 나눠서
+                      입고"로 다시 입력하세요.
+                    </p>
+                  )}
 
                   <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                     {needsProduct && (
