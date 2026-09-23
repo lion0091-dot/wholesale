@@ -37,6 +37,12 @@ interface SidebarShellProps {
   /** 사이드바 상단 브랜드 블록 (제목/부제/배지 등, 호출부가 구성) */
   brand: ReactNode;
   navGroups: SidebarNavItem[][];
+  /**
+   * 좁은 화면(.dash-sidebar와 같은 900px 기준)에서 navGroups 대신 보여줄 축약 메뉴.
+   * 생략하면 PC와 동일한 navGroups를 그대로 쓴다 — 관리자 화면(admin-shell)처럼
+   * 축약이 필요 없는 곳은 그냥 안 넘기면 된다.
+   */
+  mobileNavGroups?: SidebarNavItem[][];
   /** 어느 메뉴에도 안 걸릴 때(예: 루트 대시보드) 헤더에 보여줄 기본 라벨 */
   fallbackLabel: string;
   /** 사이드바 하단 블록 (표시 이름, 서비스 홈 링크 등) */
@@ -50,9 +56,12 @@ interface SidebarShellProps {
   children: ReactNode;
 }
 
+const MOBILE_BREAKPOINT_QUERY = "(max-width: 900px)";
+
 export function SidebarShell({
   brand,
   navGroups,
+  mobileNavGroups,
   fallbackLabel,
   footer,
   headerSubtitle,
@@ -62,6 +71,21 @@ export function SidebarShell({
 }: SidebarShellProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // 서버 렌더는 항상 PC 메뉴로 시작한다 — 뷰포트는 클라이언트에서만 알 수 있어
+  // 첫 렌더에 mobileNavGroups를 쓰면 하이드레이션 시점에 깜빡인다.
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+
+  useEffect(() => {
+    if (!mobileNavGroups) return;
+
+    const media = window.matchMedia(MOBILE_BREAKPOINT_QUERY);
+
+    setIsMobileViewport(media.matches);
+    const onChange = (event: MediaQueryListEvent) => setIsMobileViewport(event.matches);
+
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, [mobileNavGroups]);
 
   // 모바일 드로어는 경로 이동 시 자동으로 닫는다.
   useEffect(() => {
@@ -70,8 +94,10 @@ export function SidebarShell({
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-  const navItems = navGroups.flat();
-  const currentLabel = navItems.find((item) => isActive(item.href))?.label ?? fallbackLabel;
+  const displayedNavGroups = mobileNavGroups && isMobileViewport ? mobileNavGroups : navGroups;
+  // 라벨 조회는 항상 전체 메뉴(navGroups) 기준 — 축약 메뉴에 없는 페이지를 들어가도
+  // 헤더 제목이 fallbackLabel로 빠지지 않아야 한다.
+  const currentLabel = navGroups.flat().find((item) => isActive(item.href))?.label ?? fallbackLabel;
 
   return (
     <div className="dash-shell" data-sidebar-open={sidebarOpen}>
@@ -87,7 +113,7 @@ export function SidebarShell({
         {brand}
 
         <nav style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-          {navGroups.map((group, groupIndex) => (
+          {displayedNavGroups.map((group, groupIndex) => (
             <div key={groupIndex} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
               {groupIndex > 0 && (
                 <div

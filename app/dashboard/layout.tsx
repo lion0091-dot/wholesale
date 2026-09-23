@@ -60,6 +60,28 @@ const ORG_ROLE_LABELS: Record<string, string> = {
   staff: "직원",
 };
 
+/**
+ * 모바일(900px 이하)용 축약 메뉴 — 전체 메뉴 방대함 문제 때문에 도입 (2026-09-23).
+ * 현장에서 채널 메시지로 오는 입고·출고·발주를 바로 처리할 수 있는 항목만 남긴다.
+ * 발주 상태변경/배송의뢰서/수금확인/재고확인은 기존 PC 화면이 필터·이력 등으로
+ * 무거워서 그대로 못 쓰고, /dashboard/quick/* 에 가벼운 전용 화면을 따로 뒀다.
+ */
+const MOBILE_FIELD_NAV: DashboardNavItem[] = [
+  { label: "입고 스캔", href: "/dashboard/inbound", icon: "📦", ready: true },
+  { label: "출고 스캔", href: "/dashboard/outbound", icon: "🚚", ready: true },
+  { label: "발주 처리", href: "/dashboard/quick/orders", icon: "🧾", ready: true },
+  { label: "배송의뢰서", href: "/dashboard/quick/delivery-request", icon: "📄", ready: true },
+  { label: "수금 확인", href: "/dashboard/quick/settle", icon: "💰", ready: true },
+  { label: "재고 확인", href: "/dashboard/quick/stock", icon: "🥩", ready: true },
+];
+
+const MOBILE_DASHBOARD_ITEM: DashboardNavItem = {
+  label: "대시보드",
+  href: "/dashboard",
+  icon: "📊",
+  ready: true,
+};
+
 export default async function DashboardLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -120,9 +142,18 @@ export default async function DashboardLayout({
     }
   }
 
+  // super_admin 감독 열람이나 owner/manager는 대시보드(개요)까지, staff는 현장 처리만.
+  const isOwnerOrManager =
+    Boolean(context?.isSuperAdmin) || context?.orgRole === "owner" || context?.orgRole === "manager";
+
+  const mobileNavGroups: DashboardNavItem[][] = isOwnerOrManager
+    ? [[MOBILE_DASHBOARD_ITEM], MOBILE_FIELD_NAV]
+    : [MOBILE_FIELD_NAV];
+
   return (
     <DashboardShell
       navGroups={NAV_GROUPS}
+      mobileNavGroups={mobileNavGroups}
       organizationName={organizationName}
       displayName={displayName}
       roleLabel={roleLabel}

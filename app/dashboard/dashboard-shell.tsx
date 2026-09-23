@@ -17,6 +17,8 @@ export type DashboardNavItem = SidebarNavItem;
 
 interface DashboardShellProps {
   navGroups: DashboardNavItem[][];
+  /** 좁은 화면에서 navGroups 대신 보여줄 축약 메뉴 (SidebarShell 참고) */
+  mobileNavGroups?: DashboardNavItem[][];
   organizationName: string;
   /** 표시용 계정 이름 (profiles.name → 카카오 닉네임 → "사용자"). 항상 값이 있다. */
   displayName: string;
@@ -29,6 +31,7 @@ interface DashboardShellProps {
 
 export function DashboardShell({
   navGroups,
+  mobileNavGroups,
   organizationName,
   displayName,
   roleLabel,
@@ -39,6 +42,7 @@ export function DashboardShell({
   return (
     <SidebarShell
       navGroups={navGroups}
+      mobileNavGroups={mobileNavGroups}
       fallbackLabel="도매업체 통합관리시스템"
       headerSubtitle={organizationName}
       mainMaxWidth="1100px"
