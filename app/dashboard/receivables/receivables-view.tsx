@@ -8,7 +8,7 @@ import {
   settleCreditOrdersAction,
   type ReceivableAuditEntry,
 } from "./actions";
-import type { ReceivableCustomerGroup } from "./receivable-types";
+import type { ReceivableCustomerGroup } from "@/lib/orders/receivables";
 
 interface ReceivablesViewProps {
   groups: ReceivableCustomerGroup[];

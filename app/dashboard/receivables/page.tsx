@@ -1,92 +1,19 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
-import { computeDueAt, isOverdue } from "@/lib/orders/receivables";
+import {
+  buildReceivableGroups,
+  type ReceivableCreditOrderRow,
+  type ReceivableCustomerGroup,
+  type ReceivableRelationRow,
+} from "@/lib/orders/receivables";
 import { formatWon } from "@/lib/orders/status";
 import { getAlimtalkSettingsAction } from "@/app/actions/alimtalk-settings";
 import { ReceivablesView } from "./receivables-view";
-import type { ReceivableCustomerGroup, ReceivableOrderRow } from "./receivable-types";
 
 export const metadata = {
   title: "미수금 정산 | 도매업체 통합관리시스템",
 };
-
-/** wholesaler_retailers 조회 응답 (거래처별 여신/연체 기준) */
-interface RelationRow {
-  retailer_id: string;
-  credit_limit: number;
-  outstanding_balance: number;
-  settlement_due_days: number;
-  retailers:
-    | { restaurant_name: string }
-    | Array<{ restaurant_name: string }>
-    | null;
-}
-
-/** 미정산 외상 주문 조회 응답 */
-interface CreditOrderRow {
-  id: string;
-  order_number: string;
-  retailer_id: string;
-  total_amount: number;
-  ordered_at: string;
-}
-
-function buildGroups(
-  relations: RelationRow[],
-  creditOrders: CreditOrderRow[]
-): ReceivableCustomerGroup[] {
-  const ordersByRetailer = new Map<string, CreditOrderRow[]>();
-
-  for (const order of creditOrders) {
-    const list = ordersByRetailer.get(order.retailer_id) ?? [];
-    list.push(order);
-    ordersByRetailer.set(order.retailer_id, list);
-  }
-
-  const groups = relations.map((relation) => {
-    const retailer = Array.isArray(relation.retailers) ? relation.retailers[0] : relation.retailers;
-    const dueDays = relation.settlement_due_days;
-
-    const orders: ReceivableOrderRow[] = (ordersByRetailer.get(relation.retailer_id) ?? [])
-      .map((order) => {
-        const dueAt = computeDueAt(order.ordered_at, dueDays);
-
-        return {
-          id: order.id,
-          orderNumber: order.order_number,
-          totalAmount: Number(order.total_amount),
-          orderedAt: order.ordered_at,
-          dueAt,
-          isOverdue: isOverdue(dueAt),
-        };
-      })
-      .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
-
-    return {
-      retailerId: relation.retailer_id,
-      restaurantName: retailer?.restaurant_name ?? "이름 미등록 고객(소매)",
-      creditLimit: Number(relation.credit_limit ?? 0),
-      outstandingBalance: Number(relation.outstanding_balance ?? 0),
-      settlementDueDays: dueDays,
-      orders,
-    };
-  });
-
-  // 미정산 외상 주문이 있는 거래처만 남기고, 연체 있는 쪽 → 미수금 큰 쪽 순으로 보여준다.
-  return groups
-    .filter((group) => group.orders.length > 0)
-    .sort((a, b) => {
-      const aOverdue = a.orders.some((order) => order.isOverdue);
-      const bOverdue = b.orders.some((order) => order.isOverdue);
-
-      if (aOverdue !== bOverdue) {
-        return aOverdue ? -1 : 1;
-      }
-
-      return b.outstandingBalance - a.outstandingBalance;
-    });
-}
 
 export default async function DashboardReceivablesPage() {
   const scope = await getSupplierScope();
@@ -116,7 +43,10 @@ export default async function DashboardReceivablesPage() {
         .neq("status", "cancelled"),
     ]);
 
-    groups = buildGroups((relations ?? []) as RelationRow[], (creditOrders ?? []) as CreditOrderRow[]);
+    groups = buildReceivableGroups(
+      (relations ?? []) as ReceivableRelationRow[],
+      (creditOrders ?? []) as ReceivableCreditOrderRow[]
+    );
   }
 
   // 리마인드 발송 버튼은 실제로 보낼 수 있는 상태(계정/비밀번호/발신정보/이 템플릿 코드까지
