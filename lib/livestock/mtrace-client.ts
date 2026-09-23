@@ -159,6 +159,15 @@ export interface MtraceRecord {
 
 export class MtraceError extends Error {}
 
+/**
+ * 이 이력번호가 필요로 하는 기관의 인증키가 아예 없어서 난 오류 — 재시도해도
+ * 절대 통과하지 않는다. isMtraceConfigured()는 "셋 중 하나라도" 키가 있으면
+ * true를 돌려주므로, 소·돼지 키만 있고 닭 키가 없는데 닭을 스캔한 경우처럼
+ * "전체적으로는 설정됨"과 "이 건에 필요한 소스는 미설정"이 갈릴 수 있다.
+ * 그 차이를 호출부(actions.ts)가 구분해 안내 문구를 바꿀 수 있도록 별도 타입으로 던진다.
+ */
+export class MtraceNotConfiguredError extends MtraceError {}
+
 /** 어느 소스든 하나라도 키가 있으면 이력 조회가 동작한다. */
 export function isMtraceConfigured(): boolean {
   return (["mtrace", "meatwatch", "poultry"] as TraceSource[]).some(
@@ -344,7 +353,7 @@ async function callSource(source: TraceSource, traceNo: string): Promise<unknown
   const config = sourceConfig(source);
 
   if (!config.apiKey) {
-    throw new MtraceError(`${source} 인증키 미설정`);
+    throw new MtraceNotConfiguredError(`${source} 인증키 미설정`);
   }
 
   const known = resolvedEndpoint.get(source);
@@ -527,7 +536,7 @@ export async function fetchTraceRecord(traceNoInput: string): Promise<MtraceReco
   }
 
   if (attempted === 0) {
-    throw new MtraceError("이력 조회 인증키가 설정되지 않았습니다.");
+    throw new MtraceNotConfiguredError("이력 조회 인증키가 설정되지 않았습니다.");
   }
 
   if (lastError) {

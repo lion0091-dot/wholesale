@@ -230,14 +230,16 @@ export default async function InboundPage() {
     const scannerNameById = new Map<string, string>();
 
     if (scannedByIds.length > 0) {
-      const { data: scannerProfiles } = await supabase
-        .from("profiles")
-        .select("id, name")
-        .in("id", scannedByIds);
+      // profiles를 직접 조회하면 RLS(본인 행 또는 super_admin만 SELECT 가능)에 막혀
+      // 본인 이름만 보인다 — 여러 직원이 섞여 찍는 화면이라 남의 이름도 봐야 한다.
+      // list_wholesaler_member_names()는 이 조회를 위해 이미 있는 SECURITY DEFINER RPC다.
+      const { data: memberNames } = await supabase.rpc("list_wholesaler_member_names", {
+        p_wholesaler_id: scope.wholesalerId,
+      });
 
-      ((scannerProfiles ?? []) as Array<{ id: string; name: string | null }>).forEach((profile) => {
-        if (profile.name) {
-          scannerNameById.set(profile.id, profile.name);
+      ((memberNames ?? []) as Array<{ user_id: string; name: string | null }>).forEach((member) => {
+        if (member.name) {
+          scannerNameById.set(member.user_id, member.name);
         }
       });
     }

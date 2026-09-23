@@ -8,6 +8,7 @@ import {
   fetchTraceRecord,
   isMtraceConfigured,
   isPlausibleTraceNo,
+  MtraceNotConfiguredError,
 } from "@/lib/livestock/mtrace-client";
 
 export interface ActionResult<T = undefined> {
@@ -230,6 +231,10 @@ export async function recordScanAction(input: {
           console.error(`[mtrace] ${traceNo} 이력 조회 실패:`, message);
           failReason = "API_ERROR";
           failDetail = message.slice(0, 500);
+          // isMtraceConfigured()는 "셋 중 하나라도" 키가 있으면 true라 여기까지 왔지만,
+          // 이 번호가 실제로 필요로 하는 기관(예: 닭인데 POULTRY_TRACE_API_KEY 없음)은
+          // 여전히 미설정일 수 있다 — 그 경우도 "재시도해도 절대 안 통과"로 안내해야 한다.
+          failIsNotConfigured = error instanceof MtraceNotConfiguredError;
         }
       }
     }
