@@ -25,6 +25,8 @@ insert into public.products (id,wholesaler_id,name,category,subcategory,origin,g
  ('cccccccc-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-000000000001','국내산 삼겹살','돼지','삼겹살','국내산','1등급',18000,'kg',0),
  ('cccccccc-0000-0000-0000-000000000002','aaaaaaaa-0000-0000-0000-000000000001','국내산 목살','돼지','목살','국내산','1등급',16000,'kg',0);
 
+-- 테스트 전용: 실서비스에서는 service_role만 실행 가능(20260930000098). 로컬 테스트 세션에만 다시 연다.
+grant execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date) to authenticated;
 set role authenticated; set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 
 -- 박스 4개: 삼겹살 6.0 + 4.0(기한 D+10) / 목살 3.0 + 3.0(기한 D+5)

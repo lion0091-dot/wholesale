@@ -125,9 +125,12 @@ function toNumber(value: string): number | null {
 export function InboundDocumentPanel({
   products,
   documents,
+  canManageDocuments,
 }: {
   products: ScanProductOption[];
   documents: InboundDocumentRow[];
+  /** 완전 삭제(원본 포함)는 owner/manager만 — 매입 증빙 1년 보관 의무. */
+  canManageDocuments: boolean;
 }) {
   const router = useRouter();
   const [busyDocumentId, setBusyDocumentId] = useState<string | null>(null);
@@ -853,28 +856,34 @@ export function InboundDocumentPanel({
                               >
                                 되살리기
                               </button>
-                              <button
-                                type="button"
-                                disabled={busyDocumentId === document.id}
-                                onClick={() => {
-                                  if (
-                                    !window.confirm(
-                                      "원본까지 완전히 지웁니다. 되돌릴 수 없습니다.\n\n매입 명세서는 축산물이력법상 1년간 보관해야 합니다. 애초에 잘못 올린 서류만 지워주세요.",
-                                    )
-                                  ) {
-                                    return;
-                                  }
+                              {canManageDocuments ? (
+                                <button
+                                  type="button"
+                                  disabled={busyDocumentId === document.id}
+                                  onClick={() => {
+                                    if (
+                                      !window.confirm(
+                                        "원본까지 완전히 지웁니다. 되돌릴 수 없습니다.\n\n매입 명세서는 축산물이력법상 1년간 보관해야 합니다. 애초에 잘못 올린 서류만 지워주세요.",
+                                      )
+                                    ) {
+                                      return;
+                                    }
 
-                                  void runOnDocument(
-                                    document.id,
-                                    deleteInboundDocumentAction,
-                                    "명세서를 완전히 지웠습니다.",
-                                  );
-                                }}
-                                style={{ ...linkButton, color: "#b91c1c" }}
-                              >
-                                완전 삭제
-                              </button>
+                                    void runOnDocument(
+                                      document.id,
+                                      deleteInboundDocumentAction,
+                                      "명세서를 완전히 지웠습니다.",
+                                    );
+                                  }}
+                                  style={{ ...linkButton, color: "#b91c1c" }}
+                                >
+                                  완전 삭제
+                                </button>
+                              ) : (
+                                <span style={{ fontSize: "12px", color: "#94a3b8" }}>
+                                  완전 삭제는 관리자만
+                                </span>
+                              )}
                             </>
                           ) : (
                             <button

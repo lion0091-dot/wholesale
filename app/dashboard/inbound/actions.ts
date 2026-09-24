@@ -10,6 +10,7 @@ import {
   isPlausibleTraceNo,
   MtraceNotConfiguredError,
 } from "@/lib/livestock/mtrace-client";
+import { cacheTraceRecord } from "@/lib/livestock/master-cache";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -102,8 +103,19 @@ async function resolveInboundScope() {
     throw new RbacError("공급사 업체 정보가 없어 입고를 처리할 수 없습니다.");
   }
 
-  return { supabase, context, wholesalerId };
+  // 원가(매입단가)를 정할 수 있는 사람인가 — DB의 can_manage_wholesaler()와 같은 기준.
+  // 조직 없이 profile_id로 업체가 잡힌 경우는 원 가입자(owner) 본인이다.
+  const canManagePurchase =
+    context.isSuperAdmin ||
+    context.orgRole === "owner" ||
+    context.orgRole === "manager" ||
+    !context.organizationId;
+
+  return { supabase, context, wholesalerId, canManagePurchase };
 }
+
+const PURCHASE_PRICE_FORBIDDEN_MESSAGE =
+  "매입단가는 관리자(owner/manager)만 입력할 수 있습니다. 단가 칸을 비우고 입고하면 상품의 기본 매입단가가 적용됩니다.";
 
 function toNumberOrNull(value: unknown): number | null {
   return value === null || value === undefined ? null : Number(value);
@@ -158,7 +170,13 @@ export async function recordScanAction(input: {
   importRowId?: string | null;
 }): Promise<ActionResult<ScanResult | { duplicate: DuplicateWarning }>> {
   try {
-    const { supabase } = await resolveInboundScope();
+    const { supabase, canManagePurchase } = await resolveInboundScope();
+
+    // 원가는 관리자만 정한다(정책, 2026-09-24). DB(record_inbound_scan)도 같은 검사를 하지만
+    // 정부 API 호출 전에 여기서 먼저 끊어야 헛호출·예외 기록이 안 남는다.
+    if (input.purchaseUnitPrice !== null && input.purchaseUnitPrice !== undefined && !canManagePurchase) {
+      throw new RbacError(PURCHASE_PRICE_FORBIDDEN_MESSAGE);
+    }
 
     const traceNo = input.traceNo.trim().toUpperCase();
     const gtin = input.gtin?.trim() || null;
@@ -208,26 +226,8 @@ export async function recordScanAction(input: {
           const record = await fetchTraceRecord(traceNo);
 
           if (record) {
-            const { error: upsertError } = await supabase.rpc("upsert_master_livestock", {
-              p_trace_no: record.traceNo,
-              p_trace_kind: record.traceKind,
-              p_source: record.source,
-              p_raw_payload: record.rawPayload,
-              p_species: record.species,
-              p_species_group: record.speciesGroup,
-              p_part_name: record.partName,
-              p_grade: record.grade,
-              p_slaughter_date: record.slaughterDate,
-              p_butchery_place: record.butcheryPlace,
-              p_farm_name: record.farmName,
-              p_origin_country: record.originCountry,
-              p_importer_name: record.importerName,
-              p_packing_date: record.packingDate,
-            });
-
-            if (upsertError) {
-              throw new Error(upsertError.message);
-            }
+            // 공용 캐시 적재는 service_role로만 (lib/livestock/master-cache.ts 주석 참고).
+            await cacheTraceRecord(record);
           } else {
             failReason = "NOT_FOUND";
           }
@@ -299,6 +299,10 @@ export async function recordScanAction(input: {
       // 호출부(processImportChunkAction)가 행 상태를 건드리지 않고 넘어가게 구분한다.
       if (error.message.includes(IMPORT_ROW_UNIQUE_INDEX)) {
         throw new RbacError(IMPORT_ROW_ALREADY_PROCESSED);
+      }
+
+      if (error.message.includes("FORBIDDEN_PURCHASE_PRICE")) {
+        throw new RbacError(PURCHASE_PRICE_FORBIDDEN_MESSAGE);
       }
 
       throw new Error(error.message);

@@ -350,6 +350,16 @@ export default async function InboundPage() {
 
   const configured = configuredTraceSources();
 
+  // 원가(매입단가) 입력·명세서 완전 삭제 같은 관리 행위 권한 — DB의 can_manage_wholesaler()와
+  // 같은 기준(owner 본인 / 조직 owner·manager / super_admin). 조직 없이 업체가 잡힌 건 owner다.
+  const canManage = Boolean(
+    scope &&
+      (scope.isSuperAdmin ||
+        scope.orgRole === "owner" ||
+        scope.orgRole === "manager" ||
+        (!scope.organizationId && scope.wholesalerId))
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <header>
@@ -380,7 +390,7 @@ export default async function InboundPage() {
         </div>
       )}
 
-      <InboundDocumentPanel products={products} documents={documents} />
+      <InboundDocumentPanel products={products} documents={documents} canManageDocuments={canManage} />
 
       <InboundImportPanel />
 
@@ -392,6 +402,7 @@ export default async function InboundPage() {
         pendingDocumentTraceNos={pendingDocumentTraceNos}
         awaitingDocumentLines={awaitingDocumentLines}
         storageLocationSuggestions={storageLocationSuggestions}
+        canEditPurchasePrice={canManage}
       />
     </div>
   );

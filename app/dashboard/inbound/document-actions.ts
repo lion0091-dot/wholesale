@@ -11,6 +11,7 @@ import {
   isPlausibleTraceNo,
   MtraceNotConfiguredError,
 } from "@/lib/livestock/mtrace-client";
+import { cacheTraceRecord } from "@/lib/livestock/master-cache";
 
 /**
  * 공급처 원본 명세서 저장 (29단계 A).
@@ -125,27 +126,9 @@ async function ensureTraceCached(
       return { found: false, notConfigured: false, unregisteredMembers: [] };
     }
 
-    const { error: upsertError } = await supabase.rpc("upsert_master_livestock", {
-      p_trace_no: record.traceNo,
-      p_trace_kind: record.traceKind,
-      p_source: record.source,
-      p_raw_payload: record.rawPayload,
-      p_species: record.species,
-      p_species_group: record.speciesGroup,
-      p_part_name: record.partName,
-      p_grade: record.grade,
-      p_slaughter_date: record.slaughterDate,
-      p_butchery_place: record.butcheryPlace,
-      p_farm_name: record.farmName,
-      p_origin_country: record.originCountry,
-      p_importer_name: record.importerName,
-      p_packing_date: record.packingDate,
-    });
-
-    if (upsertError) {
-      console.error("[inbound-document] 이력 캐시 저장 실패:", upsertError.message);
-      return { found: false, notConfigured: false, unregisteredMembers: [] };
-    }
+    // 공용 캐시 적재는 service_role로만 (lib/livestock/master-cache.ts). 저장 실패는
+    // 아래 catch로 떨어져 found:false(설정 문제면 notConfigured)로 처리된다.
+    await cacheTraceRecord(record);
 
     // 로트면 "조회가 됐다"에서 끝내지 않는다 — 그 안에 적힌 개체번호 하나하나가
     // 실제로 등록돼 있는지 다시 확인한다(사장님 지침 2026-09-24: 로트로 조회되고,
@@ -462,7 +445,15 @@ async function resolveDocumentScope() {
     throw new RbacError("공급사 업체 정보가 없어 명세서를 저장할 수 없습니다.");
   }
 
-  return { supabase, context, wholesalerId };
+  // 관리 행위(완전 삭제)를 할 수 있는 사람인가 — DB의 can_manage_wholesaler()와 같은 기준.
+  // 조직 없이 profile_id로 업체가 잡힌 경우는 원 가입자(owner) 본인이다.
+  const canManage =
+    context.isSuperAdmin ||
+    context.orgRole === "owner" ||
+    context.orgRole === "manager" ||
+    !context.organizationId;
+
+  return { supabase, context, wholesalerId, canManage };
 }
 
 /** 대소문자·공백 차이로 공급처 학습이 갈라지지 않게 맞춘다. */
@@ -512,6 +503,26 @@ export async function saveInboundDocumentAction(
 
     if (lines.length === 0 && !hasFile) {
       throw new RbacError("저장할 품목도 파일도 없습니다.");
+    }
+
+    // 줄에 지목된 상품은 전부 이 업체 것이어야 한다. DB RLS(20260930000098)도 막지만,
+    // 문서 행을 먼저 만든 뒤 줄에서 실패하면 껍데기 정리가 필요해지므로 앞에서 거른다.
+    const requestedProductIds = [
+      ...new Set(lines.map((line) => line.productId).filter((id): id is string => Boolean(id))),
+    ];
+
+    if (requestedProductIds.length > 0) {
+      const { data: ownedRows } = await supabase
+        .from("products")
+        .select("id")
+        .eq("wholesaler_id", wholesalerId)
+        .in("id", requestedProductIds);
+
+      const owned = new Set(((ownedRows ?? []) as Array<{ id: string }>).map((row) => row.id));
+
+      if (requestedProductIds.some((id) => !owned.has(id))) {
+        throw new RbacError("이 업체 상품이 아닌 항목이 섞여 있습니다. 상품을 다시 선택해주세요.");
+      }
     }
 
     const { data: created, error: insertError } = await supabase
@@ -586,7 +597,9 @@ export async function saveInboundDocumentAction(
         raw_text: line.raw ?? null,
         item_name: line.itemName?.trim() || null,
         product_id: line.productId || null,
-        trace_no: line.traceNo?.trim() || null,
+        // 스캔 쪽은 항상 대문자로 정규화하므로 여기서도 맞춘다 — 소문자 'l'로 적힌
+        // 로트번호가 자동 상품 확정에서 빠지던 문제(2026-09-24 점검).
+        trace_no: line.traceNo?.trim().toUpperCase() || null,
         part_name: line.partName?.trim() || null,
         grade: line.grade?.trim() || null,
         origin: line.origin?.trim() || null,
@@ -606,8 +619,13 @@ export async function saveInboundDocumentAction(
         .insert(lineRows);
 
       if (linesError) {
-        // 품목을 읽어놓고 저장에 실패한 경우다. 껍데기 문서만 남기지 않고 되돌린다.
-        await supabase.from("inbound_documents").delete().eq("id", documentId);
+        // 품목을 읽어놓고 저장에 실패한 경우다. 껍데기 문서가 예정 목록에 뜨지 않게
+        // 취소 처리한다 — 완전 삭제는 owner/manager 전용이라(20260930000098) staff의
+        // 저장 실패 정리에 쓸 수 없다. 남은 껍데기는 목록에서 관리자가 지울 수 있다.
+        await supabase
+          .from("inbound_documents")
+          .update({ status: "DISCARDED", note: "품목 저장 실패로 자동 취소됨" })
+          .eq("id", documentId);
         throw linesError;
       }
     }
@@ -816,7 +834,12 @@ export async function deleteInboundDocumentAction(
   documentId: string
 ): Promise<ActionResult> {
   try {
-    const { supabase, wholesalerId } = await resolveDocumentScope();
+    const { supabase, wholesalerId, canManage } = await resolveDocumentScope();
+
+    // 매입 증빙(1년 보관 의무)이라 완전 삭제는 관리자만. DB DELETE 정책도 같은 기준(20260930000098).
+    if (!canManage) {
+      throw new RbacError("명세서 완전 삭제는 관리자(owner/manager)만 할 수 있습니다. 취소 처리는 가능합니다.");
+    }
 
     const { data: existing } = await supabase
       .from("inbound_documents")

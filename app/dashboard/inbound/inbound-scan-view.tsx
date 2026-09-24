@@ -129,6 +129,8 @@ interface Props {
   awaitingDocumentLines: AwaitingDocumentLine[];
   /** 이 업체가 그동안 직접 입력한 위치 이름 — 고정 목록 대신 제안용으로 쓴다. */
   storageLocationSuggestions: string[];
+  /** 매입단가 칸 노출 여부 — owner/manager/super_admin만 true. 직원은 칸이 없고 값도 안 보낸다. */
+  canEditPurchasePrice: boolean;
 }
 
 export interface AwaitingDocumentLine {
@@ -240,6 +242,7 @@ export function InboundScanView({
   pendingDocumentTraceNos,
   awaitingDocumentLines,
   storageLocationSuggestions,
+  canEditPurchasePrice,
 }: Props) {
   const router = useRouter();
 
@@ -344,7 +347,8 @@ export function InboundScanView({
         return;
       }
 
-      const typedPrice = Number.parseFloat(unitPrice);
+      // 매입단가는 관리자(owner/manager)만 정한다 — 직원 화면은 칸 자체가 없고 값을 보내지 않는다.
+      const typedPrice = canEditPurchasePrice ? Number.parseFloat(unitPrice) : Number.NaN;
       const purchaseUnitPrice = Number.isFinite(typedPrice) && typedPrice >= 0 ? typedPrice : null;
 
       setError(null);
@@ -463,7 +467,7 @@ export function InboundScanView({
 
       router.refresh();
     },
-    [router, labeledWeight, unitPrice, supplier]
+    [router, labeledWeight, unitPrice, supplier, canEditPurchasePrice]
   );
 
   /**
@@ -971,21 +975,23 @@ export function InboundScanView({
             />
           </div>
 
-          <div style={{ width: "120px" }}>
-            <label htmlFor="unit_price" style={labelStyle}>
-              매입단가 (원/kg)
-            </label>
-            <input
-              id="unit_price"
-              type="number"
-              min="0"
-              step="100"
-              value={unitPrice}
-              onChange={(event) => setUnitPrice(event.target.value)}
-              placeholder="상품 기본값"
-              style={inputStyle}
-            />
-          </div>
+          {canEditPurchasePrice ? (
+            <div style={{ width: "120px" }}>
+              <label htmlFor="unit_price" style={labelStyle}>
+                매입단가 (원/kg)
+              </label>
+              <input
+                id="unit_price"
+                type="number"
+                min="0"
+                step="100"
+                value={unitPrice}
+                onChange={(event) => setUnitPrice(event.target.value)}
+                placeholder="상품 기본값"
+                style={inputStyle}
+              />
+            </div>
+          ) : null}
 
           <div style={{ width: "130px" }}>
             <label htmlFor="purchase_supplier" style={labelStyle}>

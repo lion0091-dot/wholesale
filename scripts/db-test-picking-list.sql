@@ -18,6 +18,8 @@ insert into public.products (id,wholesaler_id,name,category,subcategory,origin,g
  ('cccccccc-0000-0000-0000-000000000002','aaaaaaaa-0000-0000-0000-000000000001','한우 등심','소','등심','국내산','1++',68000,'kg',0),
  ('cccccccc-0000-0000-0000-000000000003','aaaaaaaa-0000-0000-0000-000000000001','한우 채끝','소','채끝','국내산','1+',52000,'kg',0);
 
+-- 테스트 전용: 실서비스에서는 service_role만 실행 가능(20260930000098). 로컬 테스트 세션에만 다시 연다.
+grant execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date) to authenticated;
 set role authenticated; set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 -- 등심 박스 3개: A(오래됨) 8.2 / B 7.5 / C 6.0, 채끝 1개 5.0
 select public.upsert_master_livestock('002111111111','individual','mtrace_livestock','{}'::jsonb,'한우','소','등심','1++',current_date-5,'○○도축장');
