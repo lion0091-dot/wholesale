@@ -29,6 +29,9 @@ export const AUTH_CALLBACK_PATH = "/auth/callback";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export const BUYER_AUTH_REQUIRED_MESSAGE =
+  "카카오 로그인이 필요합니다. 미니샵에서 [카카오로 3초 시작하기]를 눌러 인증해주세요.";
+
 /** 사용자에게 그대로 보여줄 안내 문구를 담은 인증/권한 오류 */
 export class BuyerAuthError extends Error {
   readonly code: BuyerAuthErrorCode;
@@ -300,10 +303,7 @@ export async function requireLinkedBuyer(
   } = await supabase.auth.getUser();
 
   if (!user) {
-    throw new BuyerAuthError(
-      "auth_required",
-      "카카오 로그인이 필요합니다. 미니샵에서 [카카오로 3초 시작하기]를 눌러 인증해주세요."
-    );
+    throw new BuyerAuthError("auth_required", BUYER_AUTH_REQUIRED_MESSAGE);
   }
 
   const { data: profile } = await supabase

@@ -37,7 +37,8 @@ vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
     throw new Error(`NEXT_REDIRECT:${url}`);
   },
+  // 실제 Next의 notFound()처럼 digest를 가진 오류를 던진다 — 액션의 isShopNotFoundError 분기가 이걸 본다.
   notFound: () => {
-    throw new Error("NEXT_NOT_FOUND");
+    throw Object.assign(new Error("NEXT_NOT_FOUND"), { digest: "NEXT_HTTP_ERROR_FALLBACK;404" });
   },
 }));

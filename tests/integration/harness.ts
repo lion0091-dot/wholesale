@@ -96,6 +96,18 @@ export interface World {
   wholesalerA: string;
   wholesalerB: string;
   retailerR: string;
+  shopTokenA: string;
+  shopTokenB: string;
+  /** 공급사 A와 거래관계를 맺은 고객을 새로 만든다(기본: 거래중, 외상 불가, 프로필 완성). */
+  createRetailer(options?: {
+    status?: string;
+    creditLimit?: number;
+    outstanding?: number;
+    allowedPaymentMethods?: string[];
+    restaurantName?: string;
+    deliveryAddress?: string;
+    phone?: string;
+  }): Promise<{ user: TestUser; retailerId: string; relationshipId: string }>;
   createProduct(overrides?: Record<string, unknown>): Promise<WorldProduct>;
   createOrder(options: {
     status?: string;
@@ -230,8 +242,12 @@ async function buildWorld(tracker: Tracker): Promise<World> {
     "wholesaler_retailers"
   );
 
+  const { data: tokenRows } = await admin.from("wholesalers").select("id, shop_token").in("id", [wholesalerA, wholesalerB]);
+  const tokenOf = (id: string) => String(tokenRows?.find((row) => row.id === id)?.shop_token);
+
   const productIds: string[] = [];
   const orderIds: string[] = [];
+  let retailerSeq = 0;
 
   return {
     runId,
@@ -239,6 +255,54 @@ async function buildWorld(tracker: Tracker): Promise<World> {
     wholesalerA,
     wholesalerB,
     retailerR: retailerRowId,
+    shopTokenA: tokenOf(wholesalerA),
+    shopTokenB: tokenOf(wholesalerB),
+
+    async createRetailer(options = {}) {
+      retailerSeq += 1;
+
+      const user = await createAuthUser(`retailer-x${retailerSeq}-${runId}@itest.local`, tracker);
+      const retailerId = randomUUID();
+      const relationshipId = randomUUID();
+
+      must(await admin.from("profiles").delete().eq("id", user.id), "profiles 초기화");
+      must(
+        await admin.from("profiles").insert({
+          id: user.id,
+          role: "retailer",
+          name: options.restaurantName ?? `식당X${retailerSeq}`,
+          phone: options.phone ?? "01011112222",
+          is_supplier: false,
+          is_verified: false,
+        }),
+        "profiles"
+      );
+      tracker.retailers.push(retailerId);
+      must(
+        await admin.from("retailers").insert({
+          id: retailerId,
+          profile_id: user.id,
+          restaurant_name: options.restaurantName ?? `식당X${retailerSeq}-${runId}`,
+          representative_name: "사장",
+          delivery_address: options.deliveryAddress ?? "서울 어딘가",
+        }),
+        "retailers"
+      );
+      must(
+        await admin.from("wholesaler_retailers").insert({
+          id: relationshipId,
+          wholesaler_id: wholesalerA,
+          retailer_id: retailerId,
+          status: options.status ?? "active",
+          outstanding_balance: options.outstanding ?? 0,
+          credit_limit: options.creditLimit ?? 0,
+          allowed_payment_methods: options.allowedPaymentMethods ?? ["prepaid"],
+        }),
+        "wholesaler_retailers"
+      );
+
+      return { user, retailerId, relationshipId };
+    },
 
     async createProduct(overrides = {}) {
       const id = randomUUID();

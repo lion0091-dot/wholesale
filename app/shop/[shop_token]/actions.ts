@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { BuyerAuthError, requireLinkedBuyer, type LinkedBuyer } from "@/lib/auth/buyer-auth";
+import { BUYER_AUTH_REQUIRED_MESSAGE, BuyerAuthError, requireLinkedBuyer, type LinkedBuyer } from "@/lib/auth/buyer-auth";
 import {
   sendCancelRequestNotificationToWholesaler,
   sendCreditLimitExceededNotificationToRetailer,
@@ -156,6 +156,17 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
       };
     }
 
+    // 로그인 여부를 카탈로그 조회보다 먼저 본다 — wholesalers RLS는 비로그인에게 공급사 행을 안 보여줘서
+    // (세션 만료 포함) 카탈로그가 notFound가 되고, 그러면 "링크가 유효하지 않다"로 잘못 안내된다.
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new BuyerAuthError("auth_required", BUYER_AUTH_REQUIRED_MESSAGE);
+    }
+
     const catalog = await loadShopCatalog(input.shopToken);
     const lines = toCartLines(catalog, input.items ?? []);
     const validation = validateCart(lines, Number(catalog.wholesaler.min_order_amount));
@@ -181,8 +192,6 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
     const totalAmount = validation.totals.totalAmount;
     const orderNumber = buildOrderNumber();
     const paymentMethod: PaymentMethod = input.paymentMethod === "on_credit" ? "on_credit" : "prepaid";
-    const supabase = await createClient();
-
     const buyer = await requireLinkedBuyer(supabase, input.shopToken);
 
     // 1) 발주서 저장

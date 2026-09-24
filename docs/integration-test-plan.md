@@ -28,6 +28,9 @@
   - 첫 영역: `orders.itest.ts` 23건(4번 출고·주문 — `updateOrderStatusAction`·`updateOrderTrackingAction`·`getHistoricalOrdersAction`).
   - 둘째 영역: `inbound.itest.ts` 26건(3번 입고 — `recordScanAction`·`voidScanAction`·`resolveMappingAction`). 정부 API(`fetchTraceRecord`·`isMtraceConfigured`)만 `vi.mock`, 공용 캐시 적재는 실제(service_role). 하네스에 `newTraceNo`·`seedTrace`·`createDocumentLine` 추가, 정리는 `trace_no` 컬럼 테이블도 훑는다.
   - 셋째 영역: `outbound.itest.ts` 16건(4번 출고 — `recordOutboundScanAction`·`getOutboundProgressAction`·`getPickingListAction`·`previewShipmentAction`·`finalizeShipmentAction`). 입고 액션으로 박스를 만들고 주문 확정으로 자동 배정을 태운 뒤 출고. 권한·타사 격리, 정정 스캔→마감 금액 확정, 부족 마감(`SHIPMENT_SHORT` 확인 흐름), DB 오류 코드의 현장 문구 번역(날것 코드 미노출), 부위 불일치·임박 박스 응답.
+  - 넷째 영역: `shop-order.itest.ts` 30건(바이어 주문 — `submitOrderAction`·`requestOrderCancelAction`·`loadShopOrderHistoryPageAction`). 알림톡 모듈만 `vi.mock`. 하네스에 `createRetailer`·`shopTokenA/B` 추가, `setup.ts`의 `notFound` 대역이 실제 Next처럼 `digest`를 가진 오류를 던지게 고침(`isShopNotFoundError` 분기용). 신원·링크 게이트, 서버 재계산(끼워 보낸 단가 무시·맞춤단가·핫딜가), 프로필 자리표시자 채우기, 카탈로그 규칙, 핫딜·외상 한도 **동시 요청 경쟁 2건**(하나만 성공·유령 주문/초과 소진 없음), 취소 요청, 내역 격리.
+  - **[발견→수정됨] `submitOrderAction`이 비로그인(세션 만료)을 '이 미니샵 링크가 더 이상 유효하지 않습니다'로 안내하던 문제** — 로그인 확인(`requireLinkedBuyer`)보다 카탈로그 조회(`loadShopCatalog`)를 먼저 하는데 `wholesalers` RLS가 비로그인에게 공급사 행을 안 보여 notFound가 되기 때문이었다. 보안 문제는 아니고 안내·`requiresAuth`(클라이언트의 로그인 게이트)만 틀어졌다. 사장님 결정으로 수정: 액션이 카탈로그 조회 전에 세션 유무를 먼저 확인해 `BuyerAuthError(auth_required)`를 던진다(문구는 `lib/auth/buyer-auth.ts`의 `BUYER_AUTH_REQUIRED_MESSAGE` 상수로 `requireLinkedBuyer`와 공유). 테스트는 수정 후 기대값(`requiresAuth: true`)으로 고정.
+  - **바이어 카탈로그 규칙(테스트로 확인)**: 재고보다 많이 담으면 오류가 아니라 재고 수량으로 조용히 줄여 접수, 발주정지·품절·타사·없는 상품은 카탈로그에서 조용히 빠지고 전부 빠져야 '장바구니에 담긴 품목이 없습니다'.
   - **입고 자동 생성 규칙(테스트로 확인)**: 축종(`species_group`)만 알면 부위가 없어도 `(부위 미지정)` 상품으로 자동 생성된다. 상품 확인 대기(PENDING_MAPPING)로 남는 건 **축종을 모를 때뿐** — 옛 DB 테스트 주석("부위 없으면 자동 생성 안 함")과 다르니 새 테스트는 이 기준으로 쓴다.
 
 ## 진행 상태 표시
@@ -231,5 +234,5 @@ bash scripts/db-test-order-stock-concurrency.sh
 
 1. ~~서버 액션 테스트용 인증 하네스 구축~~ — 완료(위 "서버 액션 하네스 구현됨")
 2. ~~영역 하나를 먼저 끝까지~~ — 4.출고·주문 완료(`orders.itest.ts`, 발주 상태 변경·운송장·이력 조회)
-3. 나머지 영역 순서대로 확장(2.상품 → 6.서류 …). 3번에서 아직 안 덮은 것: 엑셀 대량 입고(`processImportChunkAction`)·명세서 업로드/사전조회(`document-actions.ts`, 파일 파싱·PDF 얽힘). 4번에서 아직 안 덮은 것: 바이어 주문 생성(`app/shop/[shop_token]/actions.ts`)
+3. 나머지 영역 순서대로 확장(2.상품 → 6.서류 …). 3번에서 아직 안 덮은 것: 엑셀 대량 입고(`processImportChunkAction`)·명세서 업로드/사전조회(`document-actions.ts`, 파일 파싱·PDF 얽힘). 바이어 주문에서 아직 안 덮은 것: PG 결제창(`initiatePgPaymentAction`, 토스 계정 필요).
 4. 5번의 PG 콜백 유실 건은 테스트로 재현까지만 하고, 실제 수정 여부는 별도로 결정
