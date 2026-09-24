@@ -15,7 +15,7 @@ import { fetchShopOrderPage } from "@/lib/shop/order-history";
 import { validateCancelReason, type ShopOrder } from "@/lib/shop/order-history-types";
 import { validateCart } from "@/lib/shop/order-policy";
 import { isRetailerNamePlaceholder } from "@/lib/shop/retailer-placeholder";
-import { createOrderWithItems, buildOrderNumber } from "@/lib/orders/create-order";
+import { createOrderWithItems, buildOrderNumber, discardUnfulfilledOrder } from "@/lib/orders/create-order";
 import { reconcileStalePgPaymentsForRetailer } from "@/lib/payments/pg-reconcile";
 import { fetchTrackingStatus, type TrackingResult } from "@/lib/verification/sweettracker";
 import { composeProductDisplayName } from "@/lib/products/display-name";
@@ -238,8 +238,8 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
       });
 
       if (creditError) {
-        // 잔액 반영에 실패한 외상 주문은 남겨두지 않는다 (order_items는 CASCADE로 함께 삭제).
-        await supabase.from("orders").delete().eq("id", orderId);
+        // 잔액 반영에 실패한 외상 주문은 남겨두지 않는다 (품목·소진된 핫딜 한도까지 함께 정리).
+        await discardUnfulfilledOrder(supabase, orderId);
 
         const isCreditLimitExceeded = creditError.message.includes("CREDIT_LIMIT_EXCEEDED");
 
