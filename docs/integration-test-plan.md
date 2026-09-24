@@ -31,6 +31,8 @@
   - 넷째 영역: `shop-order.itest.ts` 30건(바이어 주문 — `submitOrderAction`·`requestOrderCancelAction`·`loadShopOrderHistoryPageAction`). 알림톡 모듈만 `vi.mock`. 하네스에 `createRetailer`·`shopTokenA/B` 추가, `setup.ts`의 `notFound` 대역이 실제 Next처럼 `digest`를 가진 오류를 던지게 고침(`isShopNotFoundError` 분기용). 신원·링크 게이트, 서버 재계산(끼워 보낸 단가 무시·맞춤단가·핫딜가), 프로필 자리표시자 채우기, 카탈로그 규칙, 핫딜·외상 한도 **동시 요청 경쟁 2건**(하나만 성공·유령 주문/초과 소진 없음), 취소 요청, 내역 격리.
   - **[발견→수정됨] `submitOrderAction`이 비로그인(세션 만료)을 '이 미니샵 링크가 더 이상 유효하지 않습니다'로 안내하던 문제** — 로그인 확인(`requireLinkedBuyer`)보다 카탈로그 조회(`loadShopCatalog`)를 먼저 하는데 `wholesalers` RLS가 비로그인에게 공급사 행을 안 보여 notFound가 되기 때문이었다. 보안 문제는 아니고 안내·`requiresAuth`(클라이언트의 로그인 게이트)만 틀어졌다. 사장님 결정으로 수정: 액션이 카탈로그 조회 전에 세션 유무를 먼저 확인해 `BuyerAuthError(auth_required)`를 던진다(문구는 `lib/auth/buyer-auth.ts`의 `BUYER_AUTH_REQUIRED_MESSAGE` 상수로 `requireLinkedBuyer`와 공유). 테스트는 수정 후 기대값(`requiresAuth: true`)으로 고정.
   - **바이어 카탈로그 규칙(테스트로 확인)**: 재고보다 많이 담으면 오류가 아니라 재고 수량으로 조용히 줄여 접수, 발주정지·품절·타사·없는 상품은 카탈로그에서 조용히 빠지고 전부 빠져야 '장바구니에 담긴 품목이 없습니다'.
+  - 다섯째 영역: `products.itest.ts` 25건(2번 상품 — 등록·수정·판매 토글·재고 조정·삭제·보관·기본 품목·판매가 일괄·재고 구성 9개 액션). 외부 API 없음. 상품 관리는 owner/manager 전용(직원·고객·비로그인 8개 액션 전부 거부, 매니저 허용), 타사 격리, 폼 검증 9종, 콤마 가격 파싱, 서버가 소유 공급사 강제, **정체성 잠금(축종·상품명·원산지는 바꿔 보내도 불변)**, 재고 값 무시, `updated_at` 낙관적 잠금, 발주정지 stop/resume/none 및 핫딜 오프 페어(재고 0이면 유지·원래 핫딜 안 쓰던 상품의 수동 정지 유지), 삭제(기록 있으면 보관 안내·주문에 걸린 상품은 FK 문구 미노출)·보관·복원, 기본 품목 1회, 일괄 가격 집계(updated/skipped/notFound).
+  - **[발견·결정 대기] 상품 중복 등록은 어디서도 막지 않는다** — 축종+상품명+원산지가 같은 상품을 `createProductAction`으로 두 번 등록하면 둘 다 만들어진다. 서버 액션에도 화면 폼(`product-form-view.tsx`)에도 중복 검사가 없고 DB 유니크도 없다(위 2절의 "앱에서만 막고"는 사실이 아니었다 — 막히는 건 등록 *후* 정체성 변경뿐). 입고 자동 생성은 축종+부위+등급으로 기존 상품을 재사용하니 수동 등록만 중복이 생길 수 있다. 테스트는 현재 동작을 `[발견]`으로 고정. 막을지는 사장님 결정(막는다면 서버 액션 검사, 필요시 DB 유니크는 기존 중복 정리 후).
   - **입고 자동 생성 규칙(테스트로 확인)**: 축종(`species_group`)만 알면 부위가 없어도 `(부위 미지정)` 상품으로 자동 생성된다. 상품 확인 대기(PENDING_MAPPING)로 남는 건 **축종을 모를 때뿐** — 옛 DB 테스트 주석("부위 없으면 자동 생성 안 함")과 다르니 새 테스트는 이 기준으로 쓴다.
 
 ## 진행 상태 표시
@@ -92,8 +94,8 @@
 
 ## 2. 상품 관리
 
-- ⬜ 축종+상품명+원산지 조합 중복 생성 시도 → 거부 — **앱(서버 액션)에서만 막고 DB 유니크 없음**(정보, `db-test-product-management.sql`). 본인 데이터만 어지럽히는 수준이라 DB 제약은 보류.
-- ⬜ 저장 후 잠긴 필드(축종/원산지) 변경 시도 → 거부 — 위와 같음(폼 읽기전용 + 서버 액션이 그 컬럼을 안 보냄, DB 잠금 없음).
+- ⬜ 축종+상품명+원산지 조합 중복 생성 시도 → **현재는 막히지 않음**(서버 액션·화면·DB 모두 검사 없음, `products.itest.ts`의 `[발견]`). 본인 데이터만 어지럽히는 수준이라 급하진 않지만 정책 결정 필요.
+- ✅ 저장 후 잠긴 필드(축종/상품명/원산지) 변경 시도 → 바꿔 보내도 안 바뀜(서버 액션이 그 컬럼을 UPDATE에 안 실음, `products.itest.ts`). DB 잠금은 없어 직접 UPDATE는 가능(본인 상품 한정).
 - 🟩 이미 거래(주문/입고) 기록 있는 상품 완전삭제 시도 → DB가 FK로 막음(order_items·stock_ledger RESTRICT). `product_has_stock_history`로 앱이 보관 유도. 보관하면 판매 꺼짐·고객에게 안 보임·주문 불가, 해제 시 판매는 꺼진 채 복귀 (`db-test-product-management.sql`)
 - 🟩 세트 조립: 원재료 재고 부족 → 실패 (`db-test-product-bundles.sql` — 점검 1의 자동배정 박스 스캔 수정으로 이 스크립트가 끝까지 통과하게 됨)
 - 🟩 세트 조립: 유통기한 지난 박스 제외 / 보관 처리된 구성품 → 차단 (`db-test-fifo-bundle-integrity.sql`)
@@ -103,8 +105,8 @@
 - 🟩 다른 공급사 상품ID로 접근 시도 → 거부 (`db-test-tenant-gate-null.sql`, `db-test-access-isolation.sql`)
 - 🟩 핫딜 판매한도 도달 후 추가 주문 시 자동 차단 — 품목 트리거·reserve 둘 다 HOT_DEAL_QUOTA_EXCEEDED (`db-test-access-isolation.sql`). 카탈로그가 기준가로 되돌아가는 건 앱 레벨.
 - 🟩 발주정지 — 재고 0이면 자동 정지(out_of_stock), 재입고돼도 유지(잠긴 결정 3), 정지 중엔 재고 있어도 주문 불가(103), 수동 재개·수동 정지·잘못된 사유값 거부 (`db-test-product-management.sql`). "핫딜 끄면 발주정지 자동 해제(재고 0이면 유지)"는 서버 액션 로직이라 코드 확인만.
-- ⬜ 판매가 일괄등록 CSV 형식 깨짐/필수 칸 없음 → 에러 처리 (서버 액션)
-- ⬜ (정상) 상품 생성/수정/삭제(보관) 기본 흐름 (서버 액션 하네스)
+- ✅ 판매가 일괄등록 — 빈 목록·5,000행 초과 거부, 값 없는 줄 건너뜀, 깨진 ID·타사·보관 상품은 못 찾음으로 집계 (`products.itest.ts`). CSV 파일 파싱 자체는 `price-import.test.ts` 단위테스트.
+- ✅ (정상) 상품 생성/수정/삭제(보관) 기본 흐름 (`products.itest.ts`)
 
 ## 3. 입고
 
@@ -234,5 +236,5 @@ bash scripts/db-test-order-stock-concurrency.sh
 
 1. ~~서버 액션 테스트용 인증 하네스 구축~~ — 완료(위 "서버 액션 하네스 구현됨")
 2. ~~영역 하나를 먼저 끝까지~~ — 4.출고·주문 완료(`orders.itest.ts`, 발주 상태 변경·운송장·이력 조회)
-3. 나머지 영역 순서대로 확장(2.상품 → 6.서류 …). 3번에서 아직 안 덮은 것: 엑셀 대량 입고(`processImportChunkAction`)·명세서 업로드/사전조회(`document-actions.ts`, 파일 파싱·PDF 얽힘). 바이어 주문에서 아직 안 덮은 것: PG 결제창(`initiatePgPaymentAction`, 토스 계정 필요).
+3. 나머지 영역 순서대로 확장(6.서류 …). 3번에서 아직 안 덮은 것: 엑셀 대량 입고(`processImportChunkAction`)·명세서 업로드/사전조회(`document-actions.ts`, 파일 파싱·PDF 얽힘). 바이어 주문에서 아직 안 덮은 것: PG 결제창(`initiatePgPaymentAction`, 토스 계정 필요).
 4. 5번의 PG 콜백 유실 건은 테스트로 재현까지만 하고, 실제 수정 여부는 별도로 결정
