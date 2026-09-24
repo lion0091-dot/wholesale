@@ -53,16 +53,16 @@ const VALID_STATUSES: OrderStatus[] = [
 const INSUFFICIENT_STOCK_PATTERN = /INSUFFICIENT_STOCK:(.*?):([\d.]+):([\d.]+)/;
 
 function translateStockError(message: string): string | null {
-  const matched = message.match(INSUFFICIENT_STOCK_PATTERN);
+  const stockMatch = message.match(INSUFFICIENT_STOCK_PATTERN);
 
-  if (!matched) {
-    return null;
+  if (stockMatch) {
+    const [, productName, available, requested] = stockMatch;
+    const trim = (value: string) => String(Number(value));
+
+    return `재고가 부족해 확정할 수 없습니다 — ${productName}: 보유 ${trim(available)}, 주문 ${trim(requested)}. 입고를 먼저 등록하거나 상품 재고를 조정해주세요.`;
   }
 
-  const [, productName, available, requested] = matched;
-  const trim = (value: string) => String(Number(value));
-
-  return `재고가 부족해 확정할 수 없습니다 — ${productName}: 보유 ${trim(available)}, 주문 ${trim(requested)}. 입고를 먼저 등록하거나 상품 재고를 조정해주세요.`;
+  return null;
 }
 
 function toResult(error: unknown): ActionResult<never> {

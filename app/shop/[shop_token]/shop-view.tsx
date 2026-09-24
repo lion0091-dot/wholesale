@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { claimShopAccessAction } from "@/app/actions/buyer-auth";
@@ -33,7 +33,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
   );
 
   // 탭별 품목(기본 납품 품목 / 핫딜)을 먼저 분리해 카운트와 목록에 함께 사용한다.
-  // 핫딜은 상품 속성이 아니라 "지금 이 고객에게 켜진 핫딜 매핑이 있는지"로 갈린다.
+  // 핫딜은 상품 자체 속성(hot_deal_active)이라 비로그인 손님 포함 전체 공개다(2026-09-24 재설계).
   const { normalItems, hotDealItems } = useMemo(() => {
     const normal: ShopCatalogItem[] = [];
     const hotdeal: ShopCatalogItem[] = [];
@@ -48,6 +48,13 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
 
     return { normalItems: normal, hotDealItems: hotdeal };
   }, [catalog.items]);
+
+  // 핫딜 탭을 보던 중 마지막 핫딜 상품이 꺼지면(공급사가 오프) 빈 탭에 갇히지 않도록 되돌린다.
+  useEffect(() => {
+    if (activeTab === "hotdeal" && hotDealItems.length === 0) {
+      setActiveTab("normal");
+    }
+  }, [activeTab, hotDealItems.length]);
 
   const tabItems = activeTab === "normal" ? normalItems : hotDealItems;
 
@@ -131,6 +138,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
           <button
             type="button"
             aria-pressed={activeTab === "hotdeal"}
+            disabled={hotDealItems.length === 0}
             onClick={() => handleTabChange("hotdeal")}
             style={{
               padding: "10px",
@@ -138,9 +146,10 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
               border: "none",
               fontSize: "14px",
               fontWeight: 700,
-              cursor: "pointer",
-              backgroundColor: activeTab === "hotdeal" ? "#dc2626" : "#fee2e2",
-              color: activeTab === "hotdeal" ? "#ffffff" : "#b91c1c",
+              cursor: hotDealItems.length === 0 ? "not-allowed" : "pointer",
+              backgroundColor:
+                hotDealItems.length === 0 ? "#f1f5f9" : activeTab === "hotdeal" ? "#dc2626" : "#fee2e2",
+              color: hotDealItems.length === 0 ? "#94a3b8" : activeTab === "hotdeal" ? "#ffffff" : "#b91c1c",
             }}
           >
             🔥 핫딜 {hotDealItems.length}
@@ -172,7 +181,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
 
       <div style={{ padding: "16px" }}>
 
-        {catalog.customer.isLinked && (
+        {catalog.customer.isLinked ? (
           <div
             style={{
               backgroundColor: "#eff6ff",
@@ -186,50 +195,70 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
           >
             ✓ <strong>{catalog.customer.restaurantName}</strong> 전용 계약 단가가 적용된 가격입니다.
           </div>
-        )}
-
-        {activeTab === "hotdeal" && !catalog.customer.isLinked ? (
+        ) : (
+          // 다른 공급사 경로로 먼저 로그인한 계정이 이 공급사 링크를 열었을 때를 위한
+          // 수동 단골 등록 진입점(보통은 카카오 로그인 콜백에서 자동 처리됨). 등록 여부와
+          // 무관하게 카탈로그(핫딜 포함)는 항상 보여야 하므로 화면을 막지 않는 배너로만 노출한다.
           <div
             style={{
-              ...cardStyle,
-              borderColor: "#fecaca",
-              padding: "36px 20px",
-              textAlign: "center",
-              marginTop: "20px",
+              backgroundColor: "#fefce8",
+              border: "1px solid #fde68a",
+              color: "#854d0e",
+              fontSize: "12px",
+              padding: "8px 12px",
+              borderRadius: "8px",
+              marginBottom: "12px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "8px",
+              flexWrap: "wrap",
             }}
           >
-            <div style={{ fontSize: "32px", marginBottom: "12px" }}>🔥</div>
-            <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#991b1b", marginBottom: "6px" }}>
-              고객(소매) 전용 핫딜
-            </h3>
-            <p style={{ fontSize: "13px", color: "#475569", lineHeight: 1.6, marginBottom: "20px" }}>
-              재고처분 등 한정 수량 특가는 <strong>단골로 등록된 거래처</strong>에게 개별적으로 열립니다.
-              먼저 단골로 등록해주세요.
-            </p>
-
-            {sessionError && (
-              <p style={{ fontSize: "13px", color: "#dc2626", marginBottom: "12px" }}>{sessionError}</p>
-            )}
-
+            <span>단골로 등록하면 이 공급사의 계약 단가가 적용돼요.</span>
             <button
+              type="button"
               onClick={handleClaimAccess}
               disabled={isPending}
               style={{
                 backgroundColor: "#fee500",
                 color: "#181600",
                 fontWeight: 700,
-                fontSize: "14px",
-                padding: "12px 24px",
-                borderRadius: "8px",
+                fontSize: "12px",
+                padding: "6px 12px",
+                borderRadius: "6px",
                 border: "none",
                 cursor: isPending ? "not-allowed" : "pointer",
+                whiteSpace: "nowrap",
               }}
             >
-              {isPending ? "단골 등록 확인 중..." : "이 공급사 단골로 등록하기"}
+              {isPending ? "확인 중..." : "단골 등록하기"}
             </button>
           </div>
-        ) : (
-          <>
+        )}
+
+        {sessionError && (
+          <p style={{ fontSize: "13px", color: "#dc2626", marginBottom: "12px" }}>{sessionError}</p>
+        )}
+
+        {activeTab === "hotdeal" && (
+          <div
+            style={{
+              backgroundColor: "#fff1f2",
+              border: "1px solid #fecdd3",
+              color: "#9f1244",
+              fontSize: "12px",
+              lineHeight: 1.5,
+              padding: "10px 12px",
+              borderRadius: "8px",
+              marginBottom: "12px",
+            }}
+          >
+            🔥 핫딜 특가 상품도 일반 상품과 동일하게, 발주 취소는 공급사 승인이 있어야 처리됩니다.
+          </div>
+        )}
+
+        <>
             {/* 카테고리 필터 — 현재 탭에 품목이 있는 카테고리만 노출한다. */}
             <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "12px", marginBottom: "12px" }}>
               {availableCategories.map((category) => (
@@ -301,19 +330,13 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
                     item={item}
                     quantity={isLoaded ? quantityOf(item.product.id) : 0}
                     onStep={(direction) =>
-                      stepQuantity(
-                        item.product.id,
-                        direction,
-                        item.product.unit,
-                        Number(item.product.stock_quantity)
-                      )
+                      stepQuantity(item.product.id, direction, item.product.unit, item.orderableQuantity)
                     }
                   />
                 ))}
               </div>
             )}
-          </>
-        )}
+        </>
       </div>
 
       {/* 하단 플로팅 장바구니 바 */}
@@ -371,9 +394,16 @@ interface ProductCardProps {
 }
 
 function ProductCard({ item, quantity, onStep }: ProductCardProps) {
-  const { product, effectivePrice, isCustomPrice, isHotDeal } = item;
+  const { product, effectivePrice, isCustomPrice, isHotDeal, orderableQuantity } = item;
   const stock = Number(product.stock_quantity);
   const isSoldOut = stock <= 0;
+  // 발주정지는 재고와 별개로 걸릴 수 있다(핫딜 상품 수동 정지) — 재고가 남아있어도 주문은 막는다.
+  const isOrderStopped = Boolean(product.order_stopped);
+  const isUnavailable = isSoldOut || isOrderStopped;
+  const unavailableLabel = isOrderStopped ? "일시 품절" : "품절";
+  // 핫딜 한도가 재고보다 먼저 닿을 수 있다 — 그럴 땐 "남은 수량"도 한도 기준으로 보여줘서
+  // 손님이 애초에 넘는 수량을 담지 못하게 한다(오버 주문은 화면에서부터 막는다).
+  const hotDealCapped = isHotDeal && orderableQuantity < stock;
   const step = quantityStepFor(product.unit);
 
   return (
@@ -448,12 +478,16 @@ function ProductCard({ item, quantity, onStep }: ProductCardProps) {
           <div
             style={{
               fontSize: "12px",
-              color: isSoldOut ? "#dc2626" : "#166534",
+              color: isUnavailable ? "#dc2626" : hotDealCapped ? "#c2410c" : "#166534",
               fontWeight: 600,
               marginTop: "2px",
             }}
           >
-            {isSoldOut ? "품절" : `남은 수량: ${stock} ${product.unit}`}
+            {isUnavailable
+              ? unavailableLabel
+              : hotDealCapped
+                ? `핫딜 남은 수량: ${orderableQuantity}${product.unit}`
+                : `남은 수량: ${stock}${product.unit}`}
           </div>
         </div>
       </div>
@@ -532,24 +566,28 @@ function ProductCard({ item, quantity, onStep }: ProductCardProps) {
             <span style={{ fontSize: "14px", fontWeight: 700, minWidth: "56px", textAlign: "center" }}>
               {quantity} {product.unit}
             </span>
-            <StepButton label="+" onClick={() => onStep(1)} disabled={quantity >= stock} />
+            <StepButton
+              label="+"
+              onClick={() => onStep(1)}
+              disabled={quantity >= orderableQuantity || isOrderStopped}
+            />
           </div>
         ) : (
           <button
-            disabled={isSoldOut}
+            disabled={isUnavailable}
             onClick={() => onStep(1)}
             style={{
-              backgroundColor: isSoldOut ? "#cbd5e1" : "#0f172a",
+              backgroundColor: isUnavailable ? "#cbd5e1" : "#0f172a",
               color: "#ffffff",
               fontSize: "13px",
               fontWeight: 600,
               padding: "8px 16px",
               borderRadius: "6px",
               border: "none",
-              cursor: isSoldOut ? "not-allowed" : "pointer",
+              cursor: isUnavailable ? "not-allowed" : "pointer",
             }}
           >
-            {isSoldOut ? "품절" : `+ ${step}${product.unit} 담기`}
+            {isUnavailable ? unavailableLabel : `+ ${step}${product.unit} 담기`}
           </button>
         )}
       </div>

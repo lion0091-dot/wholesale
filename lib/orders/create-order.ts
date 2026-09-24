@@ -32,6 +32,26 @@ export interface CreateOrderParams {
 
 export type CreateOrderResult = { orderId: string } | { error: string };
 
+/**
+ * 핫딜 한도 초과 시 reserve_hot_deal_quota RPC가 던지는 예외
+ * 'HOT_DEAL_QUOTA_EXCEEDED:<상품명>:<한도>:<이미판매>:<이번주문수량>'.
+ */
+// 상품명에 콜론이 섞여도(예: 등급 표기 복사-붙여넣기) 뒤의 숫자 3개가 우선 매치되도록
+// name을 lazy가 아닌 greedy로 잡는다 — INSUFFICIENT_STOCK_PATTERN도 같은 문제가 있음.
+const HOT_DEAL_QUOTA_EXCEEDED_PATTERN = /HOT_DEAL_QUOTA_EXCEEDED:(.+):([\d.]+):([\d.]+):([\d.]+)/;
+
+function translateHotDealQuotaError(message: string): string | null {
+  const matched = message.match(HOT_DEAL_QUOTA_EXCEEDED_PATTERN);
+
+  if (!matched) {
+    return null;
+  }
+
+  const [, productName] = matched;
+
+  return `${productName} 핫딜 매진 — 방금 다른 주문이 먼저 가져갔습니다. 일반 단가로 다시 담아 발주해주세요.`;
+}
+
 export function buildOrderNumber(): string {
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const suffix = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -79,6 +99,9 @@ export async function createOrderWithItems(
       quantity: line.quantity,
       subtotal_amount: lineSubtotal(line),
       requested_unit_price: line.requestedUnitPrice ?? null,
+      // 이 발주가 핫딜가로 팔린 줄인지 스냅샷 — hot_deal_active가 나중에 바뀌어도
+      // 이 주문이 핫딜 소비였는지는 변하지 않아야 한도 반환(취소 시)이 정확하다.
+      is_hot_deal: line.isHotDeal,
     }))
   );
 
@@ -86,6 +109,20 @@ export async function createOrderWithItems(
     // 품목 없는 빈 발주서가 남지 않도록 헤더를 롤백한다.
     await supabase.from("orders").delete().eq("id", orderId);
     return { error: "발주 품목 저장에 실패했습니다. 다시 시도해주세요." };
+  }
+
+  // 핫딜 한도는 "결제(발주 생성)" 순간에 소비된다(확정 시점이 아님) — 손님들이 실시간으로
+  // 경쟁 구매하는 상황이라 여기서 막아야 의미가 있다. 상품 행을 잠그고 순서대로
+  // 처리하므로 두 손님이 동시에 눌러도 한도를 넘기는 일 자체가 안 생긴다.
+  const { error: quotaError } = await supabase.rpc("reserve_hot_deal_quota", { p_order_id: orderId });
+
+  if (quotaError) {
+    await supabase.from("orders").delete().eq("id", orderId);
+    return {
+      error:
+        translateHotDealQuotaError(quotaError.message) ??
+        "핫딜 한도 확인 중 오류가 발생했습니다. 다시 시도해주세요.",
+    };
   }
 
   return { orderId };

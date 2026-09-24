@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Product } from "@/types/database";
 import { createProductAction, updateProductAction } from "./actions";
 import { MarketPriceWidget } from "@/components/market-price-widget";
+import { ProductStockBreakdownWidget } from "@/components/product-stock-breakdown";
 
 interface ProductFormViewProps {
   /** 수정 모드일 때 기존 상품 값 */
@@ -389,6 +390,18 @@ export function ProductFormView({
   const [basePrice, setBasePrice] = useState(product ? String(product.base_price) : "");
   const [purchasePrice, setPurchasePrice] = useState("");
   const [isActive, setIsActive] = useState(product ? product.is_active : true);
+  const [hotDealActive, setHotDealActive] = useState(product?.hot_deal_active ?? false);
+  const [hotDealPrice, setHotDealPrice] = useState(
+    product?.hot_deal_price != null ? String(product.hot_deal_price) : ""
+  );
+  const [hotDealQuantityLimit, setHotDealQuantityLimit] = useState(
+    product?.hot_deal_quantity_limit != null ? String(product.hot_deal_quantity_limit) : ""
+  );
+  const [hotDealQuotaAlertThreshold, setHotDealQuotaAlertThreshold] = useState(
+    product?.hot_deal_quota_alert_threshold != null ? String(product.hot_deal_quota_alert_threshold) : ""
+  );
+  const initialOrderStopped = product?.order_stopped ?? false;
+  const [orderStopped, setOrderStopped] = useState(initialOrderStopped);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -399,6 +412,17 @@ export function ProductFormView({
     Number.isFinite(base) && base > 0 && Number.isFinite(purchase) && purchase >= 0
       ? ((base - purchase) / base) * 100
       : null;
+
+  const hotDeal = Number.parseFloat(hotDealPrice);
+  const hotDealDiscountRate =
+    Number.isFinite(base) && base > 0 && Number.isFinite(hotDeal) && hotDeal >= 0
+      ? ((base - hotDeal) / base) * 100
+      : null;
+
+  // 폼이 로드된 뒤 실제로 토글을 건드렸을 때만 서버에 의도를 전달한다("none"이면
+  // 발주정지 컬럼 자체를 건드리지 않음 — 자동정지가 폼을 여는 사이 걸렸어도 보존).
+  const orderStoppedAction: "none" | "stop" | "resume" =
+    orderStopped === initialOrderStopped ? "none" : orderStopped ? "stop" : "resume";
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -686,10 +710,143 @@ export function ProductFormView({
           <input type="hidden" name="is_active" value={isActive ? "on" : "off"} />
           {/* 폼을 열어둔 사이 목록의 빠른 토글 등으로 다른 곳에서 먼저 저장되면 감지용 */}
           {product && <input type="hidden" name="updated_at" value={product.updated_at} />}
+          {/* 폼 로드 시점 재고 스냅샷 — 핫딜을 끌 때 발주정지 자동해제 여부를 서버가 판단하는 데 쓴다.
+              값이 바뀌었으면 위 updated_at 낙관적 잠금이 먼저 저장 충돌로 걸러준다. */}
+          {product && (
+            <input type="hidden" name="stock_quantity_snapshot" value={product.stock_quantity} />
+          )}
+          {/* 저장 전 hot_deal_active 값 — "핫딜을 지금 이 저장에서 껐는지"(전환 여부)를
+              판단하는 데 쓴다. 이게 없으면 원래부터 핫딜을 안 쓰던 일반 상품까지
+              매번 저장할 때마다 수동 발주정지가 조용히 풀려버린다. */}
+          {product && (
+            <input
+              type="hidden"
+              name="hot_deal_active_snapshot"
+              value={product.hot_deal_active ? "on" : "off"}
+            />
+          )}
         </div>
         <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "-4px" }}>
-          맞춤단가·핫딜(재고처분 특가) 지정은 등록 후 맞춤단가관리 화면에서 고객별로 설정합니다.
+          맞춤단가(거래처별 개별 우대가) 지정은 등록 후 맞춤단가관리 화면에서 고객별로 설정합니다.
         </p>
+
+        <div
+          style={{
+            backgroundColor: "#fff7ed",
+            border: "1px dashed #fdba74",
+            borderRadius: "8px",
+            padding: "14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
+          <ToggleField
+            label="핫딜(재고처분 특가)로 전체 공개"
+            checked={hotDealActive}
+            onChange={setHotDealActive}
+            accentColor="#c2410c"
+            help="켜면 로그인하지 않은 손님을 포함해 이 상품을 보는 모든 고객에게 아래 할인가가 기본 단가 대신 보여요. 끄면 할인가는 남아있지만 적용되지 않아요."
+          />
+          {/* 토글은 폼 필드가 아니라서, 실제 제출값은 hidden input으로 싣는다. */}
+          <input type="hidden" name="hot_deal_active" value={hotDealActive ? "on" : "off"} />
+          {/* 토글을 꺼도 마지막 입력값은 유지해 다시 켤 때 다시 입력하지 않게 한다. */}
+          <input type="hidden" name="hot_deal_price" value={hotDealPrice} />
+          <input type="hidden" name="hot_deal_quantity_limit" value={hotDealQuantityLimit} />
+          <input
+            type="hidden"
+            name="hot_deal_quota_alert_threshold"
+            value={hotDealQuotaAlertThreshold}
+          />
+
+          {hotDealActive && (
+            <div>
+              <label htmlFor="hot_deal_price_display" style={labelStyle}>
+                핫딜 할인가 (원) *
+              </label>
+              <input
+                id="hot_deal_price_display"
+                type="text"
+                inputMode="numeric"
+                value={formatThousands(hotDealPrice)}
+                onChange={(event) => setHotDealPrice(event.target.value.replace(/[^0-9]/g, ""))}
+                placeholder="20,000"
+                style={{ ...fieldStyle, maxWidth: "200px" }}
+              />
+              {hotDealDiscountRate !== null && (
+                <p style={{ fontSize: "12px", fontWeight: 700, marginTop: "6px", color: hotDealDiscountRate >= 0 ? "#c2410c" : "#b91c1c" }}>
+                  기본 단가 대비 {hotDealDiscountRate.toFixed(1)}% {hotDealDiscountRate >= 0 ? "할인" : "인상"}
+                </p>
+              )}
+
+              <label htmlFor="hot_deal_quantity_limit_display" style={{ ...labelStyle, marginTop: "10px" }}>
+                핫딜 판매 한도 (선택)
+              </label>
+              <input
+                id="hot_deal_quantity_limit_display"
+                type="number"
+                min="0"
+                step="0.1"
+                value={hotDealQuantityLimit}
+                onChange={(event) => setHotDealQuantityLimit(event.target.value)}
+                placeholder={`예: 20 (비워두면 재고 전부가 핫딜가, 단위: ${unit})`}
+                style={{ ...fieldStyle, maxWidth: "260px" }}
+              />
+              <p style={{ fontSize: "11px", color: "#c2410c", marginTop: "4px" }}>
+                이 수량만큼 팔리면 핫딜 매진 — 자동으로 기본 단가로 돌아가 일반 매장에서 계속 판매됩니다(핫딜
+                설정 자체는 꺼지지 않으며, 완전히 끄려면 위 토글을 직접 꺼주세요).
+                {product && Number(product.hot_deal_quantity_sold) > 0 && (
+                  <> 현재까지 핫딜가로 {Number(product.hot_deal_quantity_sold).toLocaleString("ko-KR")}
+                    {unit} 판매됨.</>
+                )}
+              </p>
+
+              {hotDealQuantityLimit && (
+                <>
+                  <label htmlFor="hot_deal_quota_alert_threshold_display" style={{ ...labelStyle, marginTop: "10px" }}>
+                    임박 알림 기준 — 남은 수량이 이 아래로 떨어지면 대시보드에 미리 알림 (선택)
+                  </label>
+                  <input
+                    id="hot_deal_quota_alert_threshold_display"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={hotDealQuotaAlertThreshold}
+                    onChange={(event) => setHotDealQuotaAlertThreshold(event.target.value)}
+                    placeholder={`비워두면 한도의 20% 남았을 때 자동 알림 (단위: ${unit})`}
+                    style={{ ...fieldStyle, maxWidth: "260px" }}
+                  />
+                </>
+              )}
+            </div>
+          )}
+
+
+          {isEdit && product && <ProductStockBreakdownWidget productId={product.id} />}
+        </div>
+
+        {isEdit && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+              backgroundColor: "#fef2f2",
+              border: "1px dashed #fca5a5",
+              borderRadius: "8px",
+              padding: "14px",
+            }}
+          >
+            <ToggleField
+              label="발주정지 (재고와 무관하게 주문만 막기)"
+              checked={orderStopped}
+              onChange={setOrderStopped}
+              accentColor="#b91c1c"
+              help="켜면 정상/핫딜 어느 쪽에서 보든 손님이 이 상품을 주문할 수 없어요. 재고가 0이 되면 자동으로도 켜지고, 재입고돼도 자동으로는 안 풀려요 — 다시 팔려면 여기서 직접 꺼야 합니다. 정지 사유·시각은 변경이력에서 확인하세요."
+            />
+            <input type="hidden" name="order_stopped_action" value={orderStoppedAction} />
+          </div>
+        )}
 
         <div>
           <label htmlFor="description" style={labelStyle}>

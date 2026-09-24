@@ -86,6 +86,8 @@ export interface Wholesaler {
    * 공급사가 켜고 끈다. 기본 꺼짐.
    */
   allow_price_negotiation: boolean;
+  /** 이 공급사 미니샵의 배송 1건당 최소 주문 금액(마이그레이션 20260930000095). 공급사가 영업·초대장 화면에서 설정. */
+  min_order_amount: number;
 }
 
 export interface Retailer {
@@ -129,6 +131,21 @@ export interface Product {
   hot_deal_price: number | null;
   /** 켜져 있으면 모든 고객(비로그인 포함)에게 hot_deal_price가 기준가 대신 보인다. */
   hot_deal_active: boolean;
+  /**
+   * 켜지면 hot_deal_active와 무관하게 발주가 막힌다(핫딜 탭에는 계속 보임).
+   * 재고가 0이 되면 자동으로 켜지고, 재입고돼도 자동으로 안 풀린다 — 관리자가 직접 재개해야 한다.
+   */
+  order_stopped: boolean;
+  /** 정지 사유 — 'out_of_stock'(자동) / 'manual'(관리자 수동). */
+  order_stopped_reason: string | null;
+  /** 정지된 시각. 재개 시 함께 null로 되돌아간다. */
+  order_stopped_at: string | null;
+  /** 핫딜가로 팔 수 있는 최대 수량. null이면 무제한(재고 전체가 핫딜가). */
+  hot_deal_quantity_limit: number | null;
+  /** 핫딜가로 누적 판매된 수량(확정 시 증가, 취소 시 감소). 한도 도달 시 카탈로그가 자동으로 기본가로 되돌아간다. */
+  hot_deal_quantity_sold: number;
+  /** 핫딜 한도 임박 알림을 남은 수량 기준으로 언제 띄울지(공급사 설정). null이면 한도의 20% 남았을 때 기본 적용. */
+  hot_deal_quota_alert_threshold: number | null;
 }
 
 export interface CustomPrice {
@@ -220,4 +237,6 @@ export interface OrderItem {
    * 다르면 공급사가 조정한 것이다. 네고를 안 쓴 주문은 항상 null.
    */
   requested_unit_price?: number | null;
+  /** 주문 시점에 핫딜가로 팔렸는지 스냅샷 (마이그레이션 20260930000091). */
+  is_hot_deal?: boolean;
 }

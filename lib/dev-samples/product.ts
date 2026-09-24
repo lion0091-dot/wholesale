@@ -89,6 +89,12 @@ export function buildSampleProduct(kind: ProductSampleKey): { product: SamplePro
     archived_at: null,
     hot_deal_price: null,
     hot_deal_active: false,
+    order_stopped: false,
+    order_stopped_reason: null,
+    order_stopped_at: null,
+    hot_deal_quantity_limit: null,
+    hot_deal_quantity_sold: 0,
+    hot_deal_quota_alert_threshold: null,
     isSample: true,
     sampleNote: sample.label,
   };

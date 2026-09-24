@@ -3,12 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useShopCart } from "@/lib/shop/cart-store";
-import {
-  MIN_ORDER_AMOUNT,
-  lineSubtotal,
-  quantityStepFor,
-  validateCart,
-} from "@/lib/shop/order-policy";
+import { lineSubtotal, quantityStepFor, validateCart } from "@/lib/shop/order-policy";
 import { toCartLines, type ShopCatalog } from "@/lib/shop/catalog-types";
 import {
   ShopFooter,
@@ -27,6 +22,7 @@ export function CartView({ catalog }: CartViewProps) {
     catalog.shopToken
   );
   const negotiationEnabled = catalog.wholesaler.allow_price_negotiation;
+  const minOrderAmount = Number(catalog.wholesaler.min_order_amount);
 
   // 단가/재고는 매번 서버 카탈로그 기준으로 재계산한다 (공급사 단가 변경 즉시 반영)
   const lines = useMemo(
@@ -34,7 +30,7 @@ export function CartView({ catalog }: CartViewProps) {
     [catalog, entries, isLoaded]
   );
 
-  const validation = useMemo(() => validateCart(lines), [lines]);
+  const validation = useMemo(() => validateCart(lines, minOrderAmount), [lines, minOrderAmount]);
   const { totals, shortfallAmount } = validation;
   const blockingMessages = validation.violations.filter((violation) => violation.code !== "empty");
 
@@ -281,7 +277,7 @@ export function CartView({ catalog }: CartViewProps) {
               </div>
 
               <p style={{ fontSize: "13px", color: "#475569", marginTop: "8px" }}>
-                최소 발주 금액 {MIN_ORDER_AMOUNT.toLocaleString()}원 (부가세 별도, 배송비는 공급사 정책에 따름)
+                최소 발주 금액 {minOrderAmount.toLocaleString()}원 (부가세 별도, 배송비는 공급사 정책에 따름)
               </p>
             </div>
 
@@ -317,7 +313,7 @@ export function CartView({ catalog }: CartViewProps) {
                   >
                     <div
                       style={{
-                        width: `${Math.min(100, (totals.totalAmount / MIN_ORDER_AMOUNT) * 100)}%`,
+                        width: `${Math.min(100, (totals.totalAmount / minOrderAmount) * 100)}%`,
                         height: "100%",
                         backgroundColor: "#dc2626",
                       }}

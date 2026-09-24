@@ -19,6 +19,8 @@ import { PgSettingsForm } from "./pg-settings-form";
 import { getPgSettingsAction } from "@/app/actions/pg-settings";
 import { NegotiationSettingsForm } from "./negotiation-settings-form";
 import { getNegotiationSettingsAction } from "@/app/actions/negotiation-settings";
+import { MinOrderAmountForm } from "./min-order-amount-form";
+import { getOrderPolicySettingsAction } from "@/app/actions/order-policy-settings";
 
 export const metadata = {
   title: "영업 · 초대장 | 도매업체 통합관리시스템",
@@ -125,6 +127,14 @@ export default async function DashboardInvitesPage() {
   const negotiationSettings =
     negotiationSettingsResult?.success && negotiationSettingsResult.data
       ? negotiationSettingsResult.data
+      : null;
+
+  const orderPolicySettingsResult = account.wholesalerId
+    ? await getOrderPolicySettingsAction()
+    : null;
+  const orderPolicySettings =
+    orderPolicySettingsResult?.success && orderPolicySettingsResult.data
+      ? orderPolicySettingsResult.data
       : null;
 
   return (
@@ -283,6 +293,15 @@ export default async function DashboardInvitesPage() {
             가격 네고 설정
           </div>
           <NegotiationSettingsForm initial={negotiationSettings} />
+        </section>
+      )}
+
+      {account.wholesalerId && orderPolicySettings && (
+        <section style={cardStyle}>
+          <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>
+            발주 정책 설정
+          </div>
+          <MinOrderAmountForm initial={orderPolicySettings} />
         </section>
       )}
 

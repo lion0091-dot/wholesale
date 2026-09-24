@@ -157,7 +157,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
 
     const catalog = await loadShopCatalog(input.shopToken);
     const lines = toCartLines(catalog, input.items ?? []);
-    const validation = validateCart(lines);
+    const validation = validateCart(lines, Number(catalog.wholesaler.min_order_amount));
 
     if (!validation.ok) {
       return { success: false, error: validation.violations[0].message };

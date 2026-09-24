@@ -77,6 +77,12 @@ interface ProductInput {
   stock_quantity: number;
   is_active: boolean;
   description: string | null;
+  hot_deal_active: boolean;
+  hot_deal_price: number | null;
+  hot_deal_quantity_limit: number | null;
+  hot_deal_quota_alert_threshold: number | null;
+  /** "none"이면 발주정지 상태를 건드리지 않는다 — 폼이 로드된 뒤 DB에서(예: 자동정지) 먼저 바뀐 값을 덮어쓰지 않기 위함. */
+  order_stopped_action: "none" | "stop" | "resume";
 }
 
 /** 폼 입력 검증. 원매가(purchase_price)는 DB 컬럼이 없어 저장하지 않는다(마진 계산 참고용). */
@@ -91,6 +97,19 @@ function parseProductForm(formData: FormData): ProductInput {
   const basePrice = Number.parseFloat(((formData.get("base_price") as string) || "").replace(/,/g, ""));
   const stockQuantity = Number.parseFloat((formData.get("stock_quantity") as string) || "0");
   const description = ((formData.get("description") as string) || "").trim() || null;
+  const hotDealActive = formData.get("hot_deal_active") === "on";
+  // 핫딜을 꺼도 할인가 자체는 지워지지 않는다(재입고 시 다시 켜기 편하도록) — 폼도 항상 값을 실어 보낸다.
+  const hotDealPriceRaw = ((formData.get("hot_deal_price") as string) || "").replace(/,/g, "");
+  const hotDealPrice = hotDealPriceRaw ? Number.parseFloat(hotDealPriceRaw) : null;
+  const hotDealQuantityLimitRaw = ((formData.get("hot_deal_quantity_limit") as string) || "").trim();
+  const hotDealQuantityLimit = hotDealQuantityLimitRaw ? Number.parseFloat(hotDealQuantityLimitRaw) : null;
+  const hotDealQuotaAlertThresholdRaw = ((formData.get("hot_deal_quota_alert_threshold") as string) || "").trim();
+  const hotDealQuotaAlertThreshold = hotDealQuotaAlertThresholdRaw
+    ? Number.parseFloat(hotDealQuotaAlertThresholdRaw)
+    : null;
+  const orderStoppedActionRaw = (formData.get("order_stopped_action") as string) || "none";
+  const orderStoppedAction: ProductInput["order_stopped_action"] =
+    orderStoppedActionRaw === "stop" || orderStoppedActionRaw === "resume" ? orderStoppedActionRaw : "none";
 
   if (name.length < 2) {
     throw new RbacError("상품명을 2자 이상 입력해주세요.");
@@ -112,6 +131,21 @@ function parseProductForm(formData: FormData): ProductInput {
     throw new RbacError("재고 수량은 0 이상의 숫자여야 합니다.");
   }
 
+  if (hotDealActive && (hotDealPrice === null || !Number.isFinite(hotDealPrice) || hotDealPrice < 0)) {
+    throw new RbacError("핫딜을 켜려면 할인가를 입력해주세요.");
+  }
+
+  if (hotDealQuantityLimit !== null && (!Number.isFinite(hotDealQuantityLimit) || hotDealQuantityLimit <= 0)) {
+    throw new RbacError("핫딜 판매 한도는 0보다 큰 숫자여야 합니다.");
+  }
+
+  if (
+    hotDealQuotaAlertThreshold !== null &&
+    (!Number.isFinite(hotDealQuotaAlertThreshold) || hotDealQuotaAlertThreshold < 0)
+  ) {
+    throw new RbacError("임박 알림 기준은 0 이상의 숫자여야 합니다.");
+  }
+
   return {
     name,
     category,
@@ -123,6 +157,11 @@ function parseProductForm(formData: FormData): ProductInput {
     stock_quantity: stockQuantity,
     is_active: formData.get("is_active") !== "off",
     description,
+    hot_deal_active: hotDealActive,
+    hot_deal_price: hotDealPrice,
+    hot_deal_quantity_limit: hotDealQuantityLimit,
+    hot_deal_quota_alert_threshold: hotDealQuotaAlertThreshold,
+    order_stopped_action: orderStoppedAction,
   };
 }
 
@@ -134,7 +173,7 @@ export async function createProductAction(
 ): Promise<ActionResult<{ id: string }>> {
   try {
     const { supabase, wholesalerId } = await resolveProductScope();
-    const input = parseProductForm(formData);
+    const { order_stopped_action: _orderStoppedAction, ...input } = parseProductForm(formData);
 
     const { data, error } = await supabase
       .from("products")
@@ -169,6 +208,14 @@ export async function updateProductAction(
 
     const input = parseProductForm(formData);
     const expectedUpdatedAt = ((formData.get("updated_at") as string) || "").trim();
+    // 핫딜을 끌 때 발주정지 자동해제 여부를 판단하는 데만 쓰는 폼 로드 시점 재고 스냅샷
+    // (아래 stock_quantity 입력과 달리 사용자가 못 건드리는 hidden 값).
+    const stockSnapshotRaw = (formData.get("stock_quantity_snapshot") as string) || "";
+    const stockSnapshot = stockSnapshotRaw ? Number.parseFloat(stockSnapshotRaw) : null;
+    // 저장 전 hot_deal_active 값 — 이번 저장에서 "핫딜을 껐다"는 전환이 실제로 일어났는지
+    // 판단한다. 이게 없으면 원래부터 핫딜을 안 쓰는 일반 상품도 매번 저장할 때마다
+    // 수동 발주정지가 조용히 풀린다(hot_deal_active가 항상 false이기 때문).
+    const wasHotDealActive = (formData.get("hot_deal_active_snapshot") as string) === "on";
 
     // 축종/상품명/원산지는 상품 마스터의 정체성 키다 — 이 셋이 같으면 같은 상품으로
     // 취급하므로 등록 후에는 셋 다 변경을 막는다(폼에서도 읽기전용). 셋 중 하나라도
@@ -176,21 +223,52 @@ export async function updateProductAction(
     // 나머지 마스터 값만 여기서 갱신한다.
     // 소유권 확인용 SELECT를 따로 두지 않고, 이 UPDATE 자체에 조직 필터(super_admin은 예외)와
     // updated_at 일치 조건을 함께 걸어 1회 왕복으로 권한 확인·동시편집 충돌 감지·반영을 처리한다.
-    let query = supabase
-      .from("products")
-      .update({
-        subcategory: input.subcategory,
-        grade: input.grade,
-        base_price: input.base_price,
-        unit: input.unit,
-        // stock_quantity는 여기서 갱신하지 않는다 — 재고는 stock_ledger 합계로
-        // 파생되므로 여기서 덮어쓰면 다음 입고/출고 때 recalc_product_stock()에
-        // 의해 조용히 되돌아간다. 수정은 목록의 "재고 조정"(사유 기록)으로만 한다.
-        is_active: input.is_active,
-        description: input.description,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", productId);
+    const updatePayload: Record<string, unknown> = {
+      subcategory: input.subcategory,
+      grade: input.grade,
+      base_price: input.base_price,
+      unit: input.unit,
+      // stock_quantity는 여기서 갱신하지 않는다 — 재고는 stock_ledger 합계로
+      // 파생되므로 여기서 덮어쓰면 다음 입고/출고 때 recalc_product_stock()에
+      // 의해 조용히 되돌아간다. 수정은 목록의 "재고 조정"(사유 기록)으로만 한다.
+      is_active: input.is_active,
+      description: input.description,
+      hot_deal_active: input.hot_deal_active,
+      hot_deal_price: input.hot_deal_price,
+      hot_deal_quantity_limit: input.hot_deal_quantity_limit,
+      hot_deal_quota_alert_threshold: input.hot_deal_quota_alert_threshold,
+      updated_at: new Date().toISOString(),
+    };
+
+    // 발주정지는 "건드렸을 때만" 반영한다 — 폼을 열어둔 사이 재고 0으로 자동정지가
+    // 걸렸는데 관리자가 이 토글을 만지지 않았다면, 여기서 그 자동정지를 조용히
+    // 되돌리면 안 된다(updated_at 낙관적 잠금과 별개의 추가 안전장치).
+    if (input.order_stopped_action === "stop") {
+      updatePayload.order_stopped = true;
+      updatePayload.order_stopped_reason = "manual";
+      updatePayload.order_stopped_at = new Date().toISOString();
+    } else if (input.order_stopped_action === "resume") {
+      updatePayload.order_stopped = false;
+      updatePayload.order_stopped_reason = null;
+      updatePayload.order_stopped_at = null;
+    } else if (
+      wasHotDealActive &&
+      !input.hot_deal_active &&
+      stockSnapshot !== null &&
+      stockSnapshot > 0
+    ) {
+      // "핫딜 오프 = 정상판매 온"이 기본 페어(2026-09-24 확정) — 발주정지 토글을
+      // 관리자가 이번 저장에서 직접 만지지 않았어도, 핫딜을 끄면 기본적으로 함께
+      // 풀어준다. 단 재고가 여전히 0이면(정상매장 기준으로도 매진) 풀지 않는다.
+      // wasHotDealActive로 "이번 저장에서 실제로 껐는지"(전환)만 잡는다 — 그냥
+      // hot_deal_active가 false라는 것만 보면, 원래부터 핫딜을 안 쓰는 일반 상품의
+      // 수동 발주정지까지 아무 저장에서나 매번 풀려버린다.
+      updatePayload.order_stopped = false;
+      updatePayload.order_stopped_reason = null;
+      updatePayload.order_stopped_at = null;
+    }
+
+    let query = supabase.from("products").update(updatePayload).eq("id", productId);
 
     if (!context.isSuperAdmin) {
       query = query.eq("wholesaler_id", wholesalerId);
@@ -525,6 +603,55 @@ export async function bulkUpdateProductPricesAction(
         notFound: Number(row.not_found ?? 0),
       },
     };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+// ====================================================================
+// 9. 상품별 재고 구성 조회 (핫딜 지정 판단용)
+//
+// 상품 등록/수정 화면에서 "이 상품에 오래된 재고가 얼마나 남았는지" 보여줘
+// 핫딜을 켤지 판단하게 돕는다. get_product_stock_breakdown RPC(입고 박스
+// 단위, 오래된 순)를 그대로 감싼다.
+// ====================================================================
+export interface ProductStockBreakdownRow {
+  boxId: string;
+  traceNo: string;
+  remainingWeight: number;
+  unit: string;
+  scannedAt: string;
+  bestBefore: string | null;
+}
+
+export async function getProductStockBreakdownAction(
+  productId: string
+): Promise<ActionResult<ProductStockBreakdownRow[]>> {
+  try {
+    const { supabase } = await resolveProductScope();
+
+    if (!UUID_PATTERN.test(productId)) {
+      throw new RbacError("올바른 상품 식별자가 아닙니다.");
+    }
+
+    const { data, error } = await supabase.rpc("get_product_stock_breakdown", {
+      p_product_id: productId,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const rows = ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+      boxId: row.box_id as string,
+      traceNo: row.trace_no as string,
+      remainingWeight: Number(row.remaining_weight),
+      unit: row.unit as string,
+      scannedAt: row.scanned_at as string,
+      bestBefore: (row.best_before as string | null) ?? null,
+    }));
+
+    return { success: true, data: rows };
   } catch (error) {
     return toResult(error);
   }

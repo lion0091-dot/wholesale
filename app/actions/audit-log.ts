@@ -48,6 +48,10 @@ const FIELD_LABELS: Record<AuditLogTable, Record<string, string>> = {
     is_active: "판매 상태",
     hot_deal_active: "핫딜 여부",
     hot_deal_price: "핫딜 가격",
+    hot_deal_quantity_limit: "핫딜 판매 한도",
+    order_stopped: "발주정지 여부",
+    order_stopped_reason: "발주정지 사유",
+    order_stopped_at: "발주정지 시각",
   },
   custom_prices: {
     custom_price: "단가",

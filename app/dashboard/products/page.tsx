@@ -86,6 +86,36 @@ export default async function DashboardProductsPage() {
 
   const lowStockCount = products.filter((product) => Number(product.stock_quantity) <= 3).length;
 
+  // 재고 0으로 자동 발주정지된 상품 — 핫딜/일반 공통(2026-09-24 확장). 재입고돼도
+  // 자동으로 안 풀리므로 여기서 인앱 배너로만 알린다. 외부 발송 채널(알림톡/SMS)은 아직 없다.
+  const autoStoppedProducts = products.filter(
+    (product) =>
+      !product.archived_at && product.order_stopped && product.order_stopped_reason === "out_of_stock"
+  );
+
+  // 핫딜 판매 한도(있는 상품만) — 한도 도달 시 카탈로그가 자동으로 기본가로 돌아가고
+  // (products 테이블은 안 건드림), 도달 임박(80% 이상) 시에도 미리 알린다. 둘 다
+  // 동시 확정 경쟁으로 인한 "모르는 새 한도 넘김"을 막기 위한 사전 알림(사장님 요청).
+  const quotaLimitedHotDeals = products.filter(
+    (product) =>
+      !product.archived_at && product.hot_deal_active && product.hot_deal_quantity_limit !== null
+  );
+  const quotaReachedHotDeals = quotaLimitedHotDeals.filter(
+    (product) => Number(product.hot_deal_quantity_sold) >= Number(product.hot_deal_quantity_limit)
+  );
+  const quotaNearingHotDeals = quotaLimitedHotDeals.filter((product) => {
+    const sold = Number(product.hot_deal_quantity_sold);
+    const limit = Number(product.hot_deal_quantity_limit);
+    const remaining = limit - sold;
+    // 공급사가 상품별로 "남은 수량이 이 아래면 알림" 기준을 직접 정할 수 있다.
+    // 비워뒀으면 한도의 20%가 남았을 때를 기본값으로 쓴다.
+    const alertThreshold =
+      product.hot_deal_quota_alert_threshold !== null
+        ? Number(product.hot_deal_quota_alert_threshold)
+        : limit * 0.2;
+    return sold < limit && remaining <= alertThreshold;
+  });
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <header
@@ -100,7 +130,7 @@ export default async function DashboardProductsPage() {
         <div>
           <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>상품 관리</h1>
           <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-            미니샵에 노출되는 육류 품목, 기본 단가, 재고를 관리합니다. 맞춤단가·핫딜은 맞춤단가관리에서 설정합니다.
+            미니샵에 노출되는 육류 품목, 기본 단가, 재고를 관리합니다. 핫딜은 상품 수정 화면에서, 맞춤단가는 맞춤단가관리에서 설정합니다.
           </p>
         </div>
 
@@ -119,6 +149,87 @@ export default async function DashboardProductsPage() {
           + 신규 상품 등록
         </Link>
       </header>
+
+      {quotaReachedHotDeals.length > 0 && (
+        <div
+          style={{
+            backgroundColor: "#fef2f2",
+            border: "1px solid #fecaca",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            fontSize: "13px",
+            color: "#991b1b",
+          }}
+        >
+          🔥 핫딜 매진 — 상품 {quotaReachedHotDeals.length}개가 한도만큼 다 팔려 기본 단가로 자동 전환됐습니다(일반
+          매장에서 계속 판매 중). 핫딜을 완전히 끝내려면 상품 수정 화면에서 핫딜 토글을 직접 꺼주세요.
+          <ul style={{ margin: "8px 0 0", paddingLeft: "18px" }}>
+            {quotaReachedHotDeals.map((product) => (
+              <li key={product.id}>
+                <Link href={`/dashboard/products/${product.id}/edit`} style={{ color: "#991b1b", fontWeight: 700 }}>
+                  {product.name}
+                </Link>{" "}
+                ({Number(product.hot_deal_quantity_sold).toLocaleString("ko-KR")}/
+                {Number(product.hot_deal_quantity_limit).toLocaleString("ko-KR")}
+                {product.unit})
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {quotaNearingHotDeals.length > 0 && (
+        <div
+          style={{
+            backgroundColor: "#fffbeb",
+            border: "1px solid #fde68a",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            fontSize: "13px",
+            color: "#92400e",
+          }}
+        >
+          ⏳ 핫딜 매진 임박 — 상품 {quotaNearingHotDeals.length}개가 설정하신 임박 기준에 닿았습니다. 곧 매진되어
+          기본 단가로 자동 전환됩니다 — 한도를 늘리고 싶으면 미리 조정해주세요.
+          <ul style={{ margin: "8px 0 0", paddingLeft: "18px" }}>
+            {quotaNearingHotDeals.map((product) => (
+              <li key={product.id}>
+                <Link href={`/dashboard/products/${product.id}/edit`} style={{ color: "#92400e", fontWeight: 700 }}>
+                  {product.name}
+                </Link>{" "}
+                ({Number(product.hot_deal_quantity_sold).toLocaleString("ko-KR")}/
+                {Number(product.hot_deal_quantity_limit).toLocaleString("ko-KR")}
+                {product.unit})
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {autoStoppedProducts.length > 0 && (
+        <div
+          style={{
+            backgroundColor: "#fef2f2",
+            border: "1px solid #fecaca",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            fontSize: "13px",
+            color: "#991b1b",
+          }}
+        >
+          ⛔ 상품 {autoStoppedProducts.length}개가 재고 0으로 발주가 자동정지됐습니다. 재입고해도 자동으로
+          다시 열리지 않으니, 상품 수정 화면에서 확인 후 직접 재개해주세요.
+          <ul style={{ margin: "8px 0 0", paddingLeft: "18px" }}>
+            {autoStoppedProducts.map((product) => (
+              <li key={product.id}>
+                <Link href={`/dashboard/products/${product.id}/edit`} style={{ color: "#991b1b", fontWeight: 700 }}>
+                  {product.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {scope?.wholesalerId && products.length === 0 && (
         <div

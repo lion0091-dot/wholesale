@@ -5,7 +5,7 @@ import Link from "next/link";
 import Script from "next/script";
 import { useSearchParams } from "next/navigation";
 import { useShopCart } from "@/lib/shop/cart-store";
-import { MIN_ORDER_AMOUNT, lineSubtotal, validateCart } from "@/lib/shop/order-policy";
+import { lineSubtotal, validateCart } from "@/lib/shop/order-policy";
 import { toCartLines, type ShopCatalog } from "@/lib/shop/catalog-types";
 import {
   ShopFooter,
@@ -66,7 +66,8 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
     [catalog, entries, isLoaded]
   );
 
-  const validation = useMemo(() => validateCart(lines), [lines]);
+  const minOrderAmount = Number(catalog.wholesaler.min_order_amount);
+  const validation = useMemo(() => validateCart(lines, minOrderAmount), [lines, minOrderAmount]);
   const { totals } = validation;
 
   const pgAvailable = Boolean(wholesaler.pg_client_key);
@@ -378,7 +379,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
           </div>
 
           <p style={{ fontSize: "13px", color: "#475569", marginTop: "6px" }}>
-            최소 발주 금액 {MIN_ORDER_AMOUNT.toLocaleString()}원 · 부가세 별도
+            최소 발주 금액 {minOrderAmount.toLocaleString()}원 · 부가세 별도
           </p>
         </div>
 

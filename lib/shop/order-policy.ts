@@ -5,8 +5,11 @@
  * (금액 계산의 최종 권한은 항상 서버 액션에 있으며, 클라이언트는 미리보기 용도로만 사용한다.)
  */
 
-/** 배송 1건 기준 최소 주문 금액 */
-export const MIN_ORDER_AMOUNT = 50000;
+/**
+ * 배송 1건 기준 최소 주문 금액의 기본값(공급사가 아직 설정 안 했을 때 폴백).
+ * 실제 판정은 항상 wholesalers.min_order_amount를 쓴다 — 공급사별로 다르다(2026-09-24).
+ */
+export const DEFAULT_MIN_ORDER_AMOUNT = 50000;
 
 /** 주문 1건에 필요한 최소 품목 수 */
 export const MIN_ORDER_ITEM_COUNT = 1;
@@ -102,8 +105,14 @@ export interface CartValidation {
   shortfallAmount: number;
 }
 
-/** 발주 가능 여부 검증 — 빈 장바구니 / 최소 주문 금액 / 최소 수량 / 재고 */
-export function validateCart(lines: CartLine[]): CartValidation {
+/**
+ * 발주 가능 여부 검증 — 빈 장바구니 / 최소 주문 금액 / 최소 수량 / 재고.
+ * minOrderAmount는 공급사별 설정(wholesalers.min_order_amount)을 항상 호출부에서 넘긴다.
+ */
+export function validateCart(
+  lines: CartLine[],
+  minOrderAmount: number = DEFAULT_MIN_ORDER_AMOUNT
+): CartValidation {
   const totals = cartTotals(lines);
   const violations: CartViolation[] = [];
 
@@ -141,12 +150,12 @@ export function validateCart(lines: CartLine[]): CartValidation {
   });
 
   const shortfallAmount =
-    lines.length > 0 ? Math.max(0, MIN_ORDER_AMOUNT - totals.totalAmount) : MIN_ORDER_AMOUNT;
+    lines.length > 0 ? Math.max(0, minOrderAmount - totals.totalAmount) : minOrderAmount;
 
   if (lines.length > 0 && shortfallAmount > 0) {
     violations.push({
       code: "min_order_amount",
-      message: `최소 주문 금액은 ${MIN_ORDER_AMOUNT.toLocaleString()}원입니다. ${shortfallAmount.toLocaleString()}원을 더 담아주세요.`,
+      message: `최소 주문 금액은 ${minOrderAmount.toLocaleString()}원입니다. ${shortfallAmount.toLocaleString()}원을 더 담아주세요.`,
     });
   }
 
