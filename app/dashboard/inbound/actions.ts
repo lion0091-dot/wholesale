@@ -150,6 +150,12 @@ export async function recordScanAction(input: {
    * 실물로 확인돼(30단계), 부위 대신 이 코드로 상품을 학습한다.
    */
   gtin?: string | null;
+  /**
+   * 엑셀 대량 입고에서 온 행이면 그 행 ID. DB가 (import_row_id) 유니크로 같은
+   * 행의 두 번째 입고를 거부한다 — 탭 두 개/재접속 자동재개가 겹쳐도 재고가
+   * 두 배로 잡히지 않는다(20260930000097).
+   */
+  importRowId?: string | null;
 }): Promise<ActionResult<ScanResult | { duplicate: DuplicateWarning }>> {
   try {
     const { supabase } = await resolveInboundScope();
@@ -273,7 +279,7 @@ export async function recordScanAction(input: {
       p_product_id: input.productId ?? autoProductId ?? null,
       p_fail_reason: failReason,
       p_fail_detail: failDetail,
-      p_import_row_id: null,
+      p_import_row_id: input.importRowId ?? null,
       p_memo: input.memo ?? null,
       p_confirm_duplicate: input.confirmDuplicate ?? false,
       p_best_before: input.bestBefore ?? null,
@@ -287,6 +293,12 @@ export async function recordScanAction(input: {
 
       if (duplicate) {
         return { success: true, data: { duplicate: { lastScannedAt: duplicate[1] } } };
+      }
+
+      // 같은 업로드 행을 다른 창(탭)이 먼저 입고시켰다. 실패가 아니라 "이미 됐다"다 —
+      // 호출부(processImportChunkAction)가 행 상태를 건드리지 않고 넘어가게 구분한다.
+      if (error.message.includes(IMPORT_ROW_UNIQUE_INDEX)) {
+        throw new RbacError(IMPORT_ROW_ALREADY_PROCESSED);
       }
 
       throw new Error(error.message);
@@ -568,6 +580,33 @@ const CHUNK_TIME_BUDGET_MS = 6_000;
 /** 시간 예산 안이라도 이만큼 처리하면 한 번 끊고 진행률을 갱신한다. */
 const CHUNK_MAX_ROWS = 25;
 
+/** inbound_scans(import_row_id) 유니크 인덱스 이름 — 위반 메시지에 그대로 실려 온다. */
+const IMPORT_ROW_UNIQUE_INDEX = "idx_inbound_scans_import_row_unique";
+
+/** 다른 창이 같은 행을 먼저 처리했을 때의 표식. 행 상태를 덮어쓰지 않는다. */
+const IMPORT_ROW_ALREADY_PROCESSED = "이미 다른 창에서 처리된 행입니다.";
+
+/** 상태별 행 수를 DB에서 다시 센다 — 창이 둘 이상이면 로컬 증가분은 믿을 수 없다. */
+async function countImportRows(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  jobId: string
+): Promise<{ done: number; failed: number }> {
+  const [{ count: done }, { count: failed }] = await Promise.all([
+    supabase
+      .from("inbound_import_rows")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", jobId)
+      .eq("status", "DONE"),
+    supabase
+      .from("inbound_import_rows")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", jobId)
+      .eq("status", "FAILED"),
+  ]);
+
+  return { done: done ?? 0, failed: failed ?? 0 };
+}
+
 export async function createImportJobAction(input: {
   fileName: string;
   rows: Array<{ rowNo: number; traceNo: string; weight: number }>;
@@ -656,26 +695,25 @@ export async function processImportChunkAction(
     const rows = (pendingRows ?? []) as Array<Record<string, unknown>>;
 
     if (rows.length === 0) {
+      const counts = await countImportRows(supabase, jobId);
+
       await supabase
         .from("inbound_import_jobs")
-        .update({ status: "DONE", updated_at: new Date().toISOString() })
+        .update({
+          done_rows: counts.done,
+          failed_rows: counts.failed,
+          status: "DONE",
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", jobId);
 
       return {
         success: true,
-        data: {
-          jobId,
-          total: Number(job.total_rows),
-          done: Number(job.done_rows),
-          failed: Number(job.failed_rows),
-          finished: true,
-        },
+        data: { jobId, total: Number(job.total_rows), ...counts, finished: true },
       };
     }
 
     const startedAt = Date.now();
-    let done = Number(job.done_rows);
-    let failed = Number(job.failed_rows);
 
     for (const row of rows) {
       // 시간 예산을 넘기면 남은 행은 다음 호출로 넘긴다.
@@ -683,30 +721,41 @@ export async function processImportChunkAction(
         break;
       }
 
+      const rowId = String(row.id);
       const traceNo = String(row.trace_no);
       const result = await recordScanAction({
         traceNo,
         weight: Number(row.weight),
         scanType: "EXCEL",
         confirmDuplicate: true,
+        importRowId: rowId,
       });
 
       const scanned = result.success && result.data && "scanId" in result.data ? result.data : null;
 
+      // 다른 창이 이 행을 먼저 입고시켰으면(유니크 위반) 그쪽이 상태를 쓰게 두고 지나간다.
+      if (!scanned && result.error === IMPORT_ROW_ALREADY_PROCESSED) {
+        continue;
+      }
+
+      // 아래 갱신은 전부 PENDING일 때만 — 같은 행을 두 창이 겹쳐 처리해도
+      // 먼저 쓴 DONE을 나중 FAILED가 덮어쓰지 않는다(명세서 사전조회와 같은 방식).
       if (scanned) {
-        done += 1;
         await supabase
           .from("inbound_import_rows")
           .update({ status: "DONE", scan_id: scanned.scanId, error_detail: null })
-          .eq("id", String(row.id));
+          .eq("id", rowId)
+          .eq("status", "PENDING");
       } else {
-        failed += 1;
         await supabase
           .from("inbound_import_rows")
           .update({ status: "FAILED", error_detail: result.error ?? "처리 실패" })
-          .eq("id", String(row.id));
+          .eq("id", rowId)
+          .eq("status", "PENDING");
       }
     }
+
+    const { done, failed } = await countImportRows(supabase, jobId);
 
     await supabase
       .from("inbound_import_jobs")

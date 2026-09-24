@@ -953,3 +953,50 @@ data.go.kr에서 실제 상품(`축산물품질평가원_쇠고기이력정보`,
 3. **원산지(국내산/수입)** — 등급과 같은 처지인데 아직 표준에 넣지 않았다. 이력번호가 없으면 확인할 방법이 없다.
 4. 문서 1건에 파일 1개 — 여러 장짜리 명세서 미고려.
 5. `.xlsx` 직접 파싱은 여전히 CSV 저장/붙여넣기 안내로 우회한다. npm 접근이 복구돼 SheetJS 재검토가 가능해졌다.
+
+## 보안 점검 — 권한 게이트 NULL 비교 버그 (2026-09-24)
+
+입고쪽 보안·로직 점검에서 나온 결과. 입고 흐름 자체(스캔 → 원장 → 재고, 역분개 취소, 명세서는 재고를 안 만듦, 스토리지 폴더 정책, 원장 테이블 SELECT-only RLS)는 설계대로 잠겨 있었다. 구멍은 **권한 검사 식이 NULL이 되는 경우**에 몰려 있었다.
+
+### 원인
+
+SECURITY DEFINER RPC 여러 개가 아래 두 패턴으로 검사했다.
+
+```
+(a) IF v_row.wholesaler_id <> v_wholesaler_id THEN RAISE ...
+(b) IF v_wholesaler_id <> get_current_wholesaler_id()
+       AND NOT is_org_staff_of_wholesaler(v_wholesaler_id, owner/manager) THEN RAISE 'FORBIDDEN'
+```
+
+비교 대상이 NULL이면 결과가 NULL이고, plpgsql의 `IF`는 NULL을 거짓으로 본다(3치 논리). 실제로 NULL이 되는 계정이 흔하다.
+
+| 계정 | NULL이 되는 값 | 뚫리던 것 |
+|---|---|---|
+| 고객(식당) | `resolve_current_wholesaler_id()` | (a) 통과 → 연결된 어느 공급사 상품이든 `adjust_product_stock`(재고 조정)·`set_product_archived`(보관). 상품 ID는 미니샵·주문내역에 노출된다. 고객–공급사가 N:N이라 범위는 "연결된 모든 공급사". |
+| 초대 직원(staff) | `get_current_wholesaler_id()` (원 가입자만 인식) | (b) 통과 → owner/manager 전용이어야 할 매입단가·판매가 일괄수정·재고조정·보관·네고 단가 확정. 화면은 `requireOrgRole`로 막지만 anon 키가 공개라 RPC 직접 호출은 못 막는다. |
+
+라이브 DB 조회(`pg_get_functiondef ~ 'v_wholesaler_id IS NULL'`)로 `adjust_product_stock`, `set_product_archived`, `delete_product_bundle`, `disassemble_bundle_assembly`가 가드 없이 배포돼 있음을 사장님이 확인했다(2026-09-24).
+
+### 수정 (`supabase/migrations/20260930000097_null_safe_tenant_gates.sql`)
+
+- 헬퍼 `can_manage_wholesaler(p)` 신설 — owner 본인 / 조직 owner·manager / super_admin. `COALESCE(... , false)`로 NULL이면 항상 false. 기존 `can_access_wholesaler`도 같은 방식으로 NULL-safe하게 바꿨다(RLS/SQL WHERE에서는 NULL이 곧 거부였지만 plpgsql `IF`에서는 아니었다).
+- 8개 함수의 게이트만 교체, 본문은 직전 정의 그대로: `adjust_product_stock`, `set_product_archived`, `update_inbound_purchase`, `set_product_purchase_price`, `bulk_update_product_prices`, `update_order_item_price`, `delete_product_bundle`, `disassemble_bundle_assembly`.
+- 덤으로 잡은 회귀: `update_inbound_purchase`의 "앞으로 이 단가를 기본으로"가 083부터 `wholesaler_id`를 빼고 INSERT해서 그 상품의 기본단가 행이 없으면 NOT NULL 위반으로 실패하고 있었다. 기존 `scripts/db-test-inbound-purchase.sql` W9가 잡아냈다.
+
+**앞으로의 규칙:** 새 RPC의 소유/권한 검사는 `<>` 비교 대신 `can_access_wholesaler` / `can_manage_wholesaler`를 쓰고, `resolve_current_wholesaler_id()` 결과는 항상 `IS NULL` 가드부터 건다.
+
+### 엑셀 대량입고 이중 처리 (같은 마이그레이션)
+
+`processImportChunkAction`이 대기 행을 선점 없이 읽어 처리해서, 탭을 두 개 열거나 새로고침 자동재개가 겹치면 같은 행이 두 번 입고됐다(EXCEL 경로는 중복 의심 검사도 건너뛴다). `inbound_scans(import_row_id)` 부분 유니크 인덱스로 두 번째 시도를 DB가 거부하고, 서버 액션은 그 위반을 "다른 창이 먼저 처리함"으로 해석해 행 상태를 건드리지 않는다. 행 상태 갱신은 `.eq("status","PENDING")` 조건부로, 진행 건수는 로컬 증가분 대신 DB에서 다시 센다. 정부 API 중복 호출 자체는 여전히 날 수 있다(정확성엔 영향 없음).
+
+### 검증
+
+- `scripts/db-test-tenant-gate-null.sql` — 고객/A직원/B직원/A매니저/A사장/슈퍼관리자 × 함수별 허용·거부 24건, 엑셀 같은 행 두 번째 입고 거부 포함. 로컬 Docker DB에서 전부 PASS(트랜잭션 롤백형이라 데이터가 안 남는다).
+- 기존 `db-test-stock-adjust`, `db-test-product-archive`, `db-test-bulk-price`, `db-test-inbound-purchase` 통과. `db-test-livestock-inbound`(중복 스캔 가드 이전 작성, T2에서 DUPLICATE_SUSPECTED)와 `db-test-product-bundles`(N13 BOX_NOT_AVAILABLE, N11은 한 트랜잭션 안에서 created_at 동률로 가끔 흔들림)는 이번 수정과 무관하게 stale하다.
+- `tsc --noEmit`, vitest 102건 통과. **라이브 DB 미적용, 실계정 미검증.**
+
+### 점검에서 나왔지만 안 고친 것
+
+1. **공용 이력 캐시 오염(중간).** `upsert_master_livestock`이 로그인 공급사 전원에게 열려 있어 한 업체가 아무 이력번호의 등급·도축일·원산지를 덮어쓸 수 있고, 다른 업체의 거래명세서·라벨에 그대로 쓰인다. `authenticated`에서 EXECUTE를 회수하고 서버 액션이 `lib/supabase/service-role-client.ts`로 호출하도록 바꿔야 하는데, Vercel에 `SUPABASE_SERVICE_ROLE_KEY`가 없으면 모든 스캔이 예외로 빠지므로 배포 환경 확인 후 진행.
+2. **staff가 스캔 시점에 매입단가 입력 가능.** `record_inbound_scan`의 `p_purchase_unit_price`는 역할을 안 본다. 현장 흐름상 맞는지 정책 판단 필요.
+3. 낮음: 명세서 완전삭제를 staff도 가능 / 명세서 줄에 남의 `product_id` 저장 가능(스캔 시 `PRODUCT_NOT_FOUND`로 막히긴 함 — `lookup_product_by_document_trace`에 `p.wholesaler_id` 조건 추가 권장) / `lookup_document_part_name`이 업체 ID를 인자로 받아 타업체 부위값 조회 가능 / 명세서 `trace_no` 대문자 정규화 누락(소문자 `l` 로트는 자동 상품 확정 안 걸림) / "주문에 바로 배정"이 방금 확정한 박스가 아니라 같은 번호의 가장 오래된 박스를 가져감 / `get_current_role`·`get_current_wholesaler_id`의 `search_path` 미고정.
