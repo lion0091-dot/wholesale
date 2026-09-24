@@ -182,7 +182,7 @@ insert into results (who,what,expected,result) values
  ('초대받은 신규','취소된 초대 수락 → 거부','DENIED: INVALID_OR_EXPIRED_INVITE', pg_temp.try($q$select public.claim_organization_staff_invite('24999999-0000-0000-0000-000000000003')$q$)),
  ('초대받은 신규','없는 토큰 → 거부','DENIED: INVALID_OR_EXPIRED_INVITE', pg_temp.try($q$select public.claim_organization_staff_invite(gen_random_uuid())$q$)),
  ('초대받은 신규','유효 초대 수락 → A사 staff','staff', pg_temp.val($q$select (public.claim_organization_staff_invite('24999999-0000-0000-0000-000000000001'))->>'role'$q$)),
- ('초대받은 신규','  └ 같은 링크 다시 수락 → 거부','DENIED: ALREADY_STAFF_ELSEWHERE', pg_temp.try($q$select public.claim_organization_staff_invite('24999999-0000-0000-0000-000000000001')$q$)),
+ ('초대받은 신규','  └ 같은 링크 다시 수락 → 거부(사용된 링크)','DENIED: INVALID_OR_EXPIRED_INVITE', pg_temp.try($q$select public.claim_organization_staff_invite('24999999-0000-0000-0000-000000000001')$q$)),
  ('초대받은 신규','  └ A사 상품만 보임(A 1 / B 0)','1|0', pg_temp.val($q$select (select count(*) from public.products where wholesaler_id='a4999999-0000-0000-0000-000000000001')||'|'||(select count(*) from public.products where wholesaler_id='a4999999-0000-0000-0000-000000000002')$q$)),
  ('초대받은 신규','  └ A사 주문 보임','1', pg_temp.val($q$select count(*)::text from public.orders where wholesaler_id='a4999999-0000-0000-0000-000000000001'$q$)),
  ('초대받은 신규','  └ 초대 목록은 직원에겐 안 보임','0', pg_temp.val($q$select count(*)::text from public.organization_staff_invites where organization_id='04999999-0000-0000-0000-000000000001'$q$));
@@ -193,7 +193,8 @@ insert into results (who,what,expected,result) values
 -- 같은 링크로 다른 사람도 들어올 수 있나(현재 설계: 만료·취소 전까지 재사용 가능)
 set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000012';
 insert into results (who,what,expected,result) values
- ('두 번째 초대자','같은 링크 수락 → 현재 설계상 허용(단일 사용 아님, 정보)','staff', pg_temp.val($q$select (public.claim_organization_staff_invite('24999999-0000-0000-0000-000000000001'))->>'role'$q$));
+ ('두 번째 초대자','같은 링크 수락 → 거부(105, 1회용)','DENIED: INVALID_OR_EXPIRED_INVITE', pg_temp.try($q$select public.claim_organization_staff_invite('24999999-0000-0000-0000-000000000001')$q$)),
+ ('두 번째 초대자','사용된 링크 미리보기 → 없음','<null>', pg_temp.val($q$select (public.get_staff_invite_info('24999999-0000-0000-0000-000000000001'))->>'organization_name'$q$));
 
 -- ========== 1-E. 바이어(식당) 가입 — 미니샵 링크 (claim_shop_access) + 동의 ==========
 set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000009';
@@ -217,15 +218,25 @@ insert into results (who,what,expected,result) values
 -- ========== 1-F. 탈퇴 — 거래 기록은 남고 개인정보만 지워진다 ==========
 set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000007';
 insert into results (who,what,expected,result) values
- ('고객(미수금 50000)','탈퇴 → 현재 설계: 미수금 있어도 허용(정보 — 공급사 탈퇴는 막힘)','ALLOWED', pg_temp.try($q$select public.withdraw_retailer_account()$q$)),
+ ('고객(미수금 50000)','탈퇴 → 거부(105, 미정산 외상)','DENIED: OUTSTANDING_BALANCE_EXISTS', pg_temp.try($q$select public.withdraw_retailer_account()$q$)),
+ ('고객','  └ 프로필 그대로','식당R', pg_temp.val($q$select name from public.profiles where id='94999999-0000-0000-0000-000000000007'$q$));
+-- 미수금을 정산하면(공급사가 수납 처리) 탈퇴된다
+reset role;
+update public.wholesaler_retailers set outstanding_balance = 0 where id='b4999999-0000-0000-0000-000000000001';
+set role authenticated; set request.jwt.claim.role = 'authenticated'; set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000007';
+insert into results (who,what,expected,result) values
+ ('고객(정산 완료)','탈퇴 → 허용','ALLOWED', pg_temp.try($q$select public.withdraw_retailer_account()$q$)),
  ('고객','  └ 프로필 익명화','탈퇴한 회원||true', pg_temp.val($q$select name||'|'||phone||'|'||(withdrawn_at is not null) from public.profiles where id='94999999-0000-0000-0000-000000000007'$q$)),
  ('고객','  └ 식당 정보 익명화(사업자번호·주소 제거)','탈퇴한 회원|<null>|', pg_temp.val($q$select restaurant_name||'|'||coalesce(business_number,'<null>')||'|'||delivery_address from public.retailers where id='d4999999-0000-0000-0000-000000000001'$q$)),
  ('고객','  └ 과거 주문·품목은 그대로(이력법 보관)','1|1', pg_temp.val($q$select (select count(*) from public.orders where id='e4999999-0000-0000-0000-000000000001')||'|'||(select count(*) from public.order_items where order_id='e4999999-0000-0000-0000-000000000001')$q$)),
- ('고객','  └ 미수금 기록도 그대로','50000', pg_temp.val($q$select outstanding_balance::int::text from public.wholesaler_retailers where id='b4999999-0000-0000-0000-000000000001'$q$));
+ ('고객','  └ 거래관계 행도 그대로','1', pg_temp.val($q$select count(*)::text from public.wholesaler_retailers where id='b4999999-0000-0000-0000-000000000001'$q$));
 set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000003';
 insert into results (who,what,expected,result) values
  ('A직원','회사 탈퇴 RPC → 거부(사장만)','DENIED: NOT_A_WHOLESALER_OWNER', pg_temp.try($q$select public.withdraw_wholesaler_account()$q$));
-set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000001';
+-- 공급사 쪽 검사를 위해 미수금을 다시 만들어 둔다(위에서 정산 처리했으므로)
+reset role;
+update public.wholesaler_retailers set outstanding_balance = 30000 where id='b4999999-0000-0000-0000-000000000001';
+set role authenticated; set request.jwt.claim.role = 'authenticated'; set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000001';
 insert into results (who,what,expected,result) values
  ('A사장','미수금 남은 상태로 회사 탈퇴 → 거부','DENIED: OUTSTANDING_BALANCE_EXISTS', pg_temp.try($q$select public.withdraw_wholesaler_account()$q$));
 set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000013';

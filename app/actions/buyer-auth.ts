@@ -306,6 +306,14 @@ export async function withdrawBuyerAccountAction(): Promise<ActionResult> {
         throw new BuyerAuthError("profile_missing", "회원 정보를 찾을 수 없습니다.");
       }
 
+      if (message.includes("OUTSTANDING_BALANCE_EXISTS")) {
+        // 미정산 외상이 남아 있으면 탈퇴 보류(20260930000105, 이용약관 근거 조항과 함께 운영).
+        throw new BuyerAuthError(
+          "outstanding_balance",
+          "정산되지 않은 외상 대금이 남아 있어 탈퇴할 수 없습니다. 거래 중인 공급사와 정산을 마친 뒤 다시 시도해주세요."
+        );
+      }
+
       throw new Error("탈퇴 처리에 실패했습니다. 잠시 후 다시 시도해주세요.");
     }
 

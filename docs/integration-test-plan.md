@@ -62,30 +62,33 @@
 - 🟩 이미 다른 공급사가 쓰는 사업자번호로 재가입 시도 → 거부 (온보딩·재제출 둘 다, `db-test-signup-and-accounts.sql`)
 - ⬜ 사업자등록증 파일이 이미지/PDF 아니거나 8MB 초과 → 거부 (서버 액션)
 - ⬜ 승인 대기 상태에서 대시보드 기능 접근 시도 → 차단 — 앱 게이트. DB 수준에선 승인 전 상품 등록이 됨(정보, `db-test-signup-and-accounts.sql`). 승인 전엔 미니샵 링크가 안 열려(`claim_shop_access`가 active만) 실질 피해 없음.
-- 🟩 직원 초대 링크 만료/취소/없는 토큰 → 거부. **"이미 사용됨"은 현재 설계에 없음** — 링크는 만료(7일)·취소 전까지 여러 사람이 쓸 수 있다(used_count만 셈). 1회용이 필요하면 별도 작업 (`db-test-signup-and-accounts.sql`)
+- 🟩 직원 초대 링크 만료/취소/없는 토큰/**이미 사용됨** → 거부 — 105에서 1회용으로 확정(사장님 결정). 사용된 링크는 미리보기도 안 뜬다. 여러 명은 링크를 여러 개 (`db-test-signup-and-accounts.sql`)
 - 🟩 계정 종류 안 섞임 — 고객·다른 회사 사장/직원의 직원 초대 수락 거부, 공급사·관리자의 미니샵 가입 거부, 고객·스태프 채널 계정의 온보딩 거부, 수락한 직원은 그 회사 데이터만 (`db-test-signup-and-accounts.sql`). "초대받은 이메일과 다른 사람" 시나리오는 이메일 기반 초대가 아니라 성립 안 함.
 - ⬜ 30일 쿨다운 안 지났는데 초대 재발송 시도 → 거부 (거래처 초청장 SMS 쪽, 서버 액션)
-- 🟩 탈퇴 시 기록 보존 — 고객 탈퇴는 프로필·식당 정보만 익명화하고 주문·품목·미수금 기록 유지, 공급사 탈퇴는 미수금 있으면 거부·상호/사업자번호 유지·closed, 닫힌 회사 링크로 가입 불가 (`db-test-signup-and-accounts.sql`). **고객은 미수금이 남아도 탈퇴됨(공급사는 막힘) — 설계 확인 필요.**
+- 🟩 탈퇴 시 기록 보존 — 고객 탈퇴는 프로필·식당 정보만 익명화하고 주문·품목·미수금 기록 유지, 공급사 탈퇴는 미수금 있으면 거부·상호/사업자번호 유지·closed, 닫힌 회사 링크로 가입 불가. **고객 탈퇴도 105부터 미정산 외상이 있으면 보류**(사장님 결정 1안, 이용약관 근거 조항은 사장님 정비) — 정산 후 탈퇴됨 (`db-test-signup-and-accounts.sql`)
 
 **이 절을 만들다 발견해 104로 수정 (`20260930000104_withdraw_and_invite_role_fixes.sql`):**
 
 1. 승인된 공급사의 사업 종료(탈퇴)가 안 됐음 — `withdraw_wholesaler_account`가 `profiles.is_verified`를 내리는데 `enforce_profile_role_immutable`이 막음(앱은 본인 세션으로 호출 → "사업 종료 처리에 실패했습니다"). 승인 플래그 함수와 같은 내부 플래그로 감쌈.
 2. 매니저가 owner 초대 링크를 만들 수 있었음(RLS가 역할을 안 보고 `canAssignRole`은 앱 레벨) → `enforce_staff_invite_role` 트리거(INSERT·UPDATE OF role).
 
+**105 (`20260930000105_withdraw_hold_invite_single_use_bundle_gate.sql`, 사장님 결정):** 고객 탈퇴 미수금 보류, 초대 링크 1회용(`used_count = 0`만 유효, 수락 시 행 잠금), 세트 지정·해제 RPC owner/manager 게이트(2절 발견).
+
 ## 2. 상품 관리
 
-- ⬜ 축종+상품명+원산지 조합 중복 생성 시도 → 거부
-- ⬜ 저장 후 잠긴 필드(축종/원산지) 변경 시도 → 거부
-- ⬜ 이미 거래(주문/입고) 기록 있는 상품 완전삭제 시도 → 차단(보관 처리로 유도)
+- ⬜ 축종+상품명+원산지 조합 중복 생성 시도 → 거부 — **앱(서버 액션)에서만 막고 DB 유니크 없음**(정보, `db-test-product-management.sql`). 본인 데이터만 어지럽히는 수준이라 DB 제약은 보류.
+- ⬜ 저장 후 잠긴 필드(축종/원산지) 변경 시도 → 거부 — 위와 같음(폼 읽기전용 + 서버 액션이 그 컬럼을 안 보냄, DB 잠금 없음).
+- 🟩 이미 거래(주문/입고) 기록 있는 상품 완전삭제 시도 → DB가 FK로 막음(order_items·stock_ledger RESTRICT). `product_has_stock_history`로 앱이 보관 유도. 보관하면 판매 꺼짐·고객에게 안 보임·주문 불가, 해제 시 판매는 꺼진 채 복귀 (`db-test-product-management.sql`)
 - 🟩 세트 조립: 원재료 재고 부족 → 실패 (`db-test-product-bundles.sql` — 점검 1의 자동배정 박스 스캔 수정으로 이 스크립트가 끝까지 통과하게 됨)
 - 🟩 세트 조립: 유통기한 지난 박스 제외 / 보관 처리된 구성품 → 차단 (`db-test-fifo-bundle-integrity.sql`)
-- ⬜ 세트 조립: 세트 안에 세트(중첩) → 차단
+- 🟩 세트 조립: 세트 안에 세트(중첩) → 차단 — 세트를 구성품으로(NESTED_BUNDLE), 구성품을 세트로(COMPONENT_CANNOT_BE_BUNDLE) 양방향. 구성품 없음·자기 자신·수량 0·남의 상품·거래 기록 있는 상품·중복 지정도 거부, 세트 단위 강제, 축종·원산지 상속, 다른 회사의 수정·해제 거부 (`db-test-product-management.sql`). **직원(staff)이 세트를 지정·해제할 수 있던 것은 105에서 owner/manager로 제한**(조립·해체는 창고 작업이라 직원 유지).
 - 🟩 세트 조립: 이력번호 없는 재고로 조립 시도 → 차단 — 박스만 세며, 수동 재고가 남은 상품은 세트 지정 자체를 거부(100) (`db-test-fifo-bundle-integrity.sql`)
-- ⬜ 커스텀 가격 0원/음수 설정 시도 → 거부
-- 🟩 다른 공급사 상품ID로 접근 시도 → 거부 (`db-test-tenant-gate-null.sql`)
-- ⬜ 핫딜 판매한도 도달 후 추가 주문 시 자동 차단되는지
-- ⬜ 판매가 일괄등록 CSV 형식 깨짐/필수 칸 없음 → 에러 처리
-- ⬜ (정상) 상품 생성/수정/삭제(보관) 기본 흐름
+- 🟩 거래처별 개별가격 — 등록·같은 식당 같은 상품 중복 거부(유니크)·매니저 켜고 끄기·직원은 조회만·다른 회사 격리, 꺼진 개별가격은 주문에 못 쓰고(103) 켜면 기준가 대신 개별가격만 통과, 기준가 일괄변경(정상/0원/남의 상품 분리 집계, 보관 상품 제외, 활성화 옵션) (`db-test-product-management.sql`). 0원/음수는 CHECK(>=0)와 RPC(>0)로 거부.
+- 🟩 다른 공급사 상품ID로 접근 시도 → 거부 (`db-test-tenant-gate-null.sql`, `db-test-access-isolation.sql`)
+- 🟩 핫딜 판매한도 도달 후 추가 주문 시 자동 차단 — 품목 트리거·reserve 둘 다 HOT_DEAL_QUOTA_EXCEEDED (`db-test-access-isolation.sql`). 카탈로그가 기준가로 되돌아가는 건 앱 레벨.
+- 🟩 발주정지 — 재고 0이면 자동 정지(out_of_stock), 재입고돼도 유지(잠긴 결정 3), 정지 중엔 재고 있어도 주문 불가(103), 수동 재개·수동 정지·잘못된 사유값 거부 (`db-test-product-management.sql`). "핫딜 끄면 발주정지 자동 해제(재고 0이면 유지)"는 서버 액션 로직이라 코드 확인만.
+- ⬜ 판매가 일괄등록 CSV 형식 깨짐/필수 칸 없음 → 에러 처리 (서버 액션)
+- ⬜ (정상) 상품 생성/수정/삭제(보관) 기본 흐름 (서버 액션 하네스)
 
 ## 3. 입고
 
@@ -174,7 +177,7 @@
 전부 로컬 Docker DB 대상이고 롤백형이다(`db-test-order-stock-concurrency.sh`만 고유 ID 시드를 넣고 끝에 지운다).
 
 ```
-for s in db-test-tenant-gate-null db-test-access-isolation db-test-signup-and-accounts db-test-order-stock-regression db-test-fifo-bundle-integrity db-test-pg-idempotency; do
+for s in db-test-tenant-gate-null db-test-access-isolation db-test-signup-and-accounts db-test-product-management db-test-order-stock-regression db-test-fifo-bundle-integrity db-test-pg-idempotency; do
   (echo "begin;"; cat scripts/$s.sql; echo "rollback;") | docker exec -i supabase_db_wholesale psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - | grep -E "FAIL|pass \|" ; done
 bash scripts/db-test-order-stock-concurrency.sh
 ```
