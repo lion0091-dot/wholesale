@@ -204,17 +204,53 @@ const PRELOOKUP_CHUNK_TIME_BUDGET_MS = 6_000;
 /** 시간 예산 안이라도 이만큼 처리하면 한 번 끊고 진행률을 갱신한다. */
 const PRELOOKUP_CHUNK_MAX_ROWS = 20;
 
+/** 로트 구성원 미등록 에러 메시지 접두사. 기록할 때와 되읽을 때 같은 문구를 써야 한다. */
+const LOT_MEMBER_MISSING_PREFIX = "로트 구성원 미등록: ";
+
+/**
+ * 서류 취소로 조회를 건너뛴 줄에 남기는 표식.
+ *
+ * prelookup_status는 PENDING/DONE/FAILED만 허용돼(CHECK 제약) 별도 CANCELLED
+ * 상태를 새로 만들 수 없다 — FAILED에 이 문구를 얹어 구분한다. 되살리면(복원)
+ * 이 표식이 붙은 줄만 골라 다시 PENDING으로 돌린다.
+ */
+const DISCARD_SKIPPED_PRELOOKUP_ERROR = "서류 취소로 조회를 건너뜀";
+
+/**
+ * 화면/공급처 요청 문구에 보여줄 실패 이력번호를 뽑는다.
+ *
+ * 로트 구성원 미등록 실패는 로트 자체(row.trace_no)는 정상 조회됐고 그 안의
+ * 특정 개체번호만 미등록인 경우다 — 그대로 로트번호를 보여주면 이미 등록된
+ * 번호를 확인해달라는 잘못된 안내가 된다. 에러 메시지에 적어둔 실제 미등록
+ * 개체번호를 대신 보여준다.
+ */
+function extractFailedTraceNos(row: { trace_no: string | null; prelookup_error: string | null }): string[] {
+  if (row.prelookup_error?.startsWith(LOT_MEMBER_MISSING_PREFIX)) {
+    return row.prelookup_error
+      .slice(LOT_MEMBER_MISSING_PREFIX.length)
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+
+  return row.trace_no ? [row.trace_no] : [];
+}
+
 async function loadPrelookupProgress(
   supabase: Awaited<ReturnType<typeof createClient>>,
   documentId: string
 ): Promise<Omit<DocumentPrelookupProgress, "documentId">> {
   const { data } = await supabase
     .from("inbound_document_lines")
-    .select("prelookup_status, trace_no")
+    .select("prelookup_status, trace_no, prelookup_error")
     .eq("document_id", documentId)
     .not("prelookup_status", "is", null);
 
-  const rows = (data ?? []) as Array<{ prelookup_status: string; trace_no: string | null }>;
+  const rows = (data ?? []) as Array<{
+    prelookup_status: string;
+    trace_no: string | null;
+    prelookup_error: string | null;
+  }>;
   const done = rows.filter((row) => row.prelookup_status === "DONE").length;
   const failedRows = rows.filter((row) => row.prelookup_status === "FAILED");
 
@@ -223,7 +259,7 @@ async function loadPrelookupProgress(
     done,
     failed: failedRows.length,
     finished: done + failedRows.length >= rows.length,
-    failedTraceNos: [...new Set(failedRows.map((row) => row.trace_no).filter((v): v is string => Boolean(v)))],
+    failedTraceNos: [...new Set(failedRows.flatMap(extractFailedTraceNos))],
   };
 }
 
@@ -270,6 +306,9 @@ export async function processDocumentPrelookupChunkAction(
 
       const traceNo = (row.trace_no ?? "").trim().toUpperCase();
 
+      // 아래 update들은 전부 .eq("prelookup_status", "PENDING")로 걸어서, 같은 줄을
+      // 두 요청(탭 두 개 등)이 동시에 처리해도 나중 응답이 먼저 응답을 덮어쓰지
+      // 않게 한다(정부 API 중복 호출 자체는 막지 못하지만 최종 기록은 안전하다).
       try {
         const check = await ensureTraceCached(supabase, traceNo);
 
@@ -278,25 +317,29 @@ export async function processDocumentPrelookupChunkAction(
           await supabase
             .from("inbound_document_lines")
             .update({ prelookup_status: "DONE", prelookup_error: null })
-            .eq("id", row.id);
+            .eq("id", row.id)
+            .eq("prelookup_status", "PENDING");
         } else if (check.found && check.unregisteredMembers.length === 0) {
           await supabase
             .from("inbound_document_lines")
             .update({ prelookup_status: "DONE", prelookup_error: null })
-            .eq("id", row.id);
+            .eq("id", row.id)
+            .eq("prelookup_status", "PENDING");
         } else if (check.found) {
           await supabase
             .from("inbound_document_lines")
             .update({
               prelookup_status: "FAILED",
-              prelookup_error: `로트 구성원 미등록: ${check.unregisteredMembers.join(", ")}`,
+              prelookup_error: `${LOT_MEMBER_MISSING_PREFIX}${check.unregisteredMembers.join(", ")}`,
             })
-            .eq("id", row.id);
+            .eq("id", row.id)
+            .eq("prelookup_status", "PENDING");
         } else {
           await supabase
             .from("inbound_document_lines")
             .update({ prelookup_status: "FAILED", prelookup_error: "정부 이력조회에서 확인되지 않음" })
-            .eq("id", row.id);
+            .eq("id", row.id)
+            .eq("prelookup_status", "PENDING");
         }
       } catch (error) {
         await supabase
@@ -305,7 +348,8 @@ export async function processDocumentPrelookupChunkAction(
             prelookup_status: "FAILED",
             prelookup_error: error instanceof Error ? error.message : "조회 실패",
           })
-          .eq("id", row.id);
+          .eq("id", row.id)
+          .eq("prelookup_status", "PENDING");
       }
     }
 
@@ -359,7 +403,9 @@ export async function retryDocumentPrelookupAction(
  * inbound_document_lines의 RLS가 이미 document_id를 통해 소유 문서로만 좁혀주므로
  * 여기서 별도로 wholesaler_id를 다시 확인할 필요가 없다.
  */
-export async function findUnfinishedDocumentPrelookupAction(): Promise<ActionResult<{ documentId: string } | null>> {
+export async function findUnfinishedDocumentPrelookupAction(): Promise<
+  ActionResult<DocumentPrelookupProgress | null>
+> {
   try {
     await resolveDocumentScope();
     const supabase = await createClient();
@@ -371,7 +417,14 @@ export async function findUnfinishedDocumentPrelookupAction(): Promise<ActionRes
       .limit(1)
       .maybeSingle();
 
-    return { success: true, data: data ? { documentId: String(data.document_id) } : null };
+    if (!data) {
+      return { success: true, data: null };
+    }
+
+    const documentId = String(data.document_id);
+    const progress = await loadPrelookupProgress(supabase, documentId);
+
+    return { success: true, data: { documentId, ...progress } };
   } catch (error) {
     return toResult(error);
   }
@@ -512,24 +565,40 @@ export async function saveInboundDocumentAction(
       }
     }
 
-    const lineRows = lines.map((line, index) => ({
-      document_id: documentId,
-      line_no: line.lineNo ?? index + 1,
-      raw_text: line.raw ?? null,
-      item_name: line.itemName?.trim() || null,
-      product_id: line.productId || null,
-      trace_no: line.traceNo?.trim() || null,
-      part_name: line.partName?.trim() || null,
-      grade: line.grade?.trim() || null,
-      origin: line.origin?.trim() || null,
-      quantity: line.quantity ?? null,
-      labeled_weight: line.labeledWeight ?? null,
-      unit_price: line.unitPrice ?? null,
-      amount: line.amount ?? null,
-      // 실물 도착 전 사전조회 대상이면 대기 상태로 걸어둔다 — 실제 조회는
-      // processDocumentPrelookupChunkAction이 화면 반복 호출로 나눠서 처리한다.
-      prelookup_status: isEligibleForPrelookup(line.traceNo) ? "PENDING" : null,
-    }));
+    // 같은 이력/로트번호가 여러 줄에 걸쳐 나오면(로트 하나를 여러 품목 줄로 나눠
+    // 적는 경우가 흔함) 대표 한 줄만 조회 대상으로 삼는다 — 나머지도 전부 PENDING
+    // 으로 걸면 조회 자체는 캐시로 금방 끝나도 청크당 처리 건수(20건)만 갉아먹어
+    // 정작 새로운 번호 처리가 뒤로 밀린다.
+    const seenPrelookupTraceNos = new Set<string>();
+
+    const lineRows = lines.map((line, index) => {
+      const eligible = isEligibleForPrelookup(line.traceNo);
+      const normalizedTraceNo = (line.traceNo ?? "").trim().toUpperCase();
+      const isFirstOccurrence = eligible && !seenPrelookupTraceNos.has(normalizedTraceNo);
+
+      if (eligible) {
+        seenPrelookupTraceNos.add(normalizedTraceNo);
+      }
+
+      return {
+        document_id: documentId,
+        line_no: line.lineNo ?? index + 1,
+        raw_text: line.raw ?? null,
+        item_name: line.itemName?.trim() || null,
+        product_id: line.productId || null,
+        trace_no: line.traceNo?.trim() || null,
+        part_name: line.partName?.trim() || null,
+        grade: line.grade?.trim() || null,
+        origin: line.origin?.trim() || null,
+        quantity: line.quantity ?? null,
+        labeled_weight: line.labeledWeight ?? null,
+        unit_price: line.unitPrice ?? null,
+        amount: line.amount ?? null,
+        // 실물 도착 전 사전조회 대상이면 대기 상태로 걸어둔다 — 실제 조회는
+        // processDocumentPrelookupChunkAction이 화면 반복 호출로 나눠서 처리한다.
+        prelookup_status: isFirstOccurrence ? "PENDING" : null,
+      };
+    });
 
     if (lineRows.length > 0) {
       const { error: linesError } = await supabase
@@ -676,6 +745,14 @@ export async function discardInboundDocumentAction(
 
     if (error) throw error;
 
+    // 아직 조회 대기 중이던 줄은 대상에서 뺀다 — 안 그러면 취소한 서류인데도
+    // findUnfinishedDocumentPrelookupAction/청크 처리가 계속 붙잡는다.
+    await supabase
+      .from("inbound_document_lines")
+      .update({ prelookup_status: "FAILED", prelookup_error: DISCARD_SKIPPED_PRELOOKUP_ERROR })
+      .eq("document_id", documentId)
+      .eq("prelookup_status", "PENDING");
+
     revalidatePath(REVALIDATE_PATH);
 
     return { success: true };
@@ -711,6 +788,14 @@ export async function restoreInboundDocumentAction(
       .eq("wholesaler_id", wholesalerId);
 
     if (error) throw error;
+
+    // 취소 때 건너뛴 조회 대상을 다시 대기 상태로 되돌린다.
+    await supabase
+      .from("inbound_document_lines")
+      .update({ prelookup_status: "PENDING", prelookup_error: null })
+      .eq("document_id", documentId)
+      .eq("prelookup_status", "FAILED")
+      .eq("prelookup_error", DISCARD_SKIPPED_PRELOOKUP_ERROR);
 
     revalidatePath(REVALIDATE_PATH);
 

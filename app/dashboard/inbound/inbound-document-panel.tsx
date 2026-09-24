@@ -168,6 +168,7 @@ export function InboundDocumentPanel({
     void findUnfinishedDocumentPrelookupAction().then((result) => {
       if (result.success && result.data) {
         setPrelookupDocumentId(result.data.documentId);
+        setPrelookupProgress(result.data);
         setOpen(true);
       }
     });
