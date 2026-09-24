@@ -16,12 +16,16 @@ import {
   deleteInboundDocumentAction,
   discardInboundDocumentAction,
   extractDocumentTableAction,
+  findUnfinishedDocumentPrelookupAction,
   getDocumentFileUrlAction,
   loadSupplierFormatAction,
+  processDocumentPrelookupChunkAction,
   restoreInboundDocumentAction,
+  retryDocumentPrelookupAction,
   saveInboundDocumentAction,
   type ActionResult,
   type DocumentLineInput,
+  type DocumentPrelookupProgress,
 } from "./document-actions";
 import type { ScanProductOption } from "./inbound-scan-view";
 
@@ -151,10 +155,60 @@ export function InboundDocumentPanel({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [learned, setLearned] = useState(false);
-  // 저장 직후 조회 안 된 이력/로트번호 — 공급처에 등록을 요청해야 한다
-  // (사장님 지침 2026-09-24: 실물 도착 전에 미리 걸러낸다).
-  const [unresolvedTraceNos, setUnresolvedTraceNos] = useState<string[]>([]);
+  // 이력/로트번호 사전조회 진행 상태 — 실물 도착 전에 미리 걸러 공급처에 등록을
+  // 요청한다(사장님 지침 2026-09-24). 청크로 나눠 처리하므로(엑셀 대량 입고와
+  // 같은 패턴, Hobby 실행시간 제한 회피) 완료까지 진행률을 보여준다.
+  const [prelookupDocumentId, setPrelookupDocumentId] = useState<string | null>(null);
+  const [prelookupProgress, setPrelookupProgress] = useState<DocumentPrelookupProgress | null>(null);
+  const [prelookupRunning, setPrelookupRunning] = useState(false);
   const [unresolvedSupplierName, setUnresolvedSupplierName] = useState("");
+
+  // 새로고침·재접속 시 끝나지 않은 사전조회가 있으면 이어받는다.
+  useEffect(() => {
+    void findUnfinishedDocumentPrelookupAction().then((result) => {
+      if (result.success && result.data) {
+        setPrelookupDocumentId(result.data.documentId);
+        setOpen(true);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** finished가 될 때까지 청크를 반복 호출한다(엑셀 대량 입고의 drain과 같은 패턴). */
+  const drainPrelookup = async (documentId: string) => {
+    setPrelookupRunning(true);
+
+    for (;;) {
+      const result = await processDocumentPrelookupChunkAction(documentId);
+
+      if (!result.success || !result.data) {
+        setError(result.error ?? "이력 사전조회 중 오류가 발생했습니다.");
+        break;
+      }
+
+      setPrelookupProgress(result.data);
+
+      if (result.data.finished) {
+        break;
+      }
+    }
+
+    setPrelookupRunning(false);
+    router.refresh();
+  };
+
+  const handleRetryPrelookup = async () => {
+    if (!prelookupDocumentId) return;
+
+    const result = await retryDocumentPrelookupAction(prelookupDocumentId);
+
+    if (!result.success) {
+      setError(result.error ?? "재시도 요청에 실패했습니다.");
+      return;
+    }
+
+    await drainPrelookup(prelookupDocumentId);
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -454,13 +508,23 @@ export function InboundDocumentPanel({
       setNotice(`명세서 ${result.data?.lineCount}줄을 저장했습니다.`);
     }
 
-    // 실물 도착 전에 미리 조회했는데 없었던 번호 — 공급처에 등록을 요청해야 한다
-    // (사장님 지침 2026-09-24). reset()이 supplierName을 지우니 먼저 붙잡아둔다.
+    // 실물 도착 전에 미리 이력/로트번호를 조회해 없는 번호는 공급처에 등록을
+    // 요청해야 한다(사장님 지침 2026-09-24). reset()이 supplierName을 지우니
+    // 먼저 붙잡아둔다.
     setUnresolvedSupplierName(supplierName);
-    setUnresolvedTraceNos(result.data?.unresolvedTraceNos ?? []);
+
+    const documentId = result.data?.documentId ?? null;
+    const pendingPrelookupCount = result.data?.pendingPrelookupCount ?? 0;
 
     reset();
-    router.refresh();
+
+    if (documentId && pendingPrelookupCount > 0) {
+      setPrelookupDocumentId(documentId);
+      setPrelookupProgress(null);
+      await drainPrelookup(documentId);
+    } else {
+      router.refresh();
+    }
   };
 
   const columnCount = grid?.cells.reduce((max, row) => Math.max(max, row.length), 0) ?? 0;
@@ -519,39 +583,91 @@ export function InboundDocumentPanel({
         </p>
       ) : null}
 
-      {unresolvedTraceNos.length > 0 ? (
+      {prelookupProgress ? (
         <div
           style={{
             margin: 0,
             padding: "10px 16px",
             fontSize: "13px",
-            color: "#991b1b",
-            backgroundColor: "#fef2f2",
-            borderTop: "1px solid #fecaca",
+            color: "#1e40af",
+            backgroundColor: "#eff6ff",
+            borderTop: "1px solid #bfdbfe",
           }}
         >
           <p style={{ margin: "0 0 6px", fontWeight: 700 }}>
-            다음 이력/로트번호가 정부 이력조회에서 확인되지 않았습니다 — 실물 도착 전에
-            공급처에 등록을 요청하세요.
+            {prelookupProgress.finished
+              ? "이력/로트번호 사전조회 완료"
+              : prelookupRunning
+                ? "이력/로트번호 사전조회 중… (창을 닫아도 이어서 처리됩니다)"
+                : "사전조회가 끝나지 않았습니다"}
           </p>
-          {unresolvedTraceNos.map((traceNo) => (
-            <p key={traceNo} style={{ margin: "0 0 3px", fontFamily: "monospace" }}>
-              · {traceNo}
-            </p>
-          ))}
-          <button
-            type="button"
-            onClick={() =>
-              void navigator.clipboard.writeText(
-                `[${unresolvedSupplierName || "공급처"}] 이력번호 등록 확인 요청\n` +
-                  `아래 이력/로트번호가 축산물이력제 조회에서 확인되지 않습니다. 등록 상태를 확인 부탁드립니다.\n` +
-                  unresolvedTraceNos.map((traceNo) => `- ${traceNo}`).join("\n"),
-              )
-            }
-            style={{ ...secondaryButton, marginTop: "6px" }}
+          <p style={{ margin: "0 0 6px" }}>
+            {prelookupProgress.done + prelookupProgress.failed} / {prelookupProgress.total}건
+            {prelookupProgress.failed > 0 && ` · 확인 필요 ${prelookupProgress.failed}건`}
+          </p>
+          <div
+            style={{
+              height: "6px",
+              borderRadius: "3px",
+              backgroundColor: "#dbeafe",
+              overflow: "hidden",
+            }}
           >
-            요청 문구 복사
-          </button>
+            <div
+              style={{
+                width: `${Math.min(
+                  100,
+                  ((prelookupProgress.done + prelookupProgress.failed) /
+                    Math.max(1, prelookupProgress.total)) *
+                    100
+                )}%`,
+                height: "100%",
+                backgroundColor: "#2563eb",
+              }}
+            />
+          </div>
+
+          {!prelookupProgress.finished && !prelookupRunning && prelookupDocumentId && (
+            <button
+              type="button"
+              onClick={() => void drainPrelookup(prelookupDocumentId)}
+              style={{ ...secondaryButton, marginTop: "10px" }}
+            >
+              이어서 처리
+            </button>
+          )}
+
+          {prelookupProgress.finished && prelookupProgress.failedTraceNos.length > 0 && (
+            <div style={{ marginTop: "10px", color: "#991b1b" }}>
+              <p style={{ margin: "0 0 6px", fontWeight: 700 }}>
+                다음 이력/로트번호가 정부 이력조회에서 확인되지 않았습니다 — 실물 도착 전에
+                공급처에 등록을 요청하세요.
+              </p>
+              {prelookupProgress.failedTraceNos.map((traceNo) => (
+                <p key={traceNo} style={{ margin: "0 0 3px", fontFamily: "monospace" }}>
+                  · {traceNo}
+                </p>
+              ))}
+              <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void navigator.clipboard.writeText(
+                      `[${unresolvedSupplierName || "공급처"}] 이력번호 등록 확인 요청\n` +
+                        `아래 이력/로트번호가 축산물이력제 조회에서 확인되지 않습니다. 등록 상태를 확인 부탁드립니다.\n` +
+                        prelookupProgress.failedTraceNos.map((traceNo) => `- ${traceNo}`).join("\n"),
+                    )
+                  }
+                  style={secondaryButton}
+                >
+                  요청 문구 복사
+                </button>
+                <button type="button" onClick={() => void handleRetryPrelookup()} style={secondaryButton}>
+                  다시 조회
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       ) : null}
 

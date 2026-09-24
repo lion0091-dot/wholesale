@@ -70,11 +70,28 @@ export interface SavedDocument {
   /** 원본 파일까지 보관됐는지 — 실패해도 저장 자체는 살린다. */
   fileStored: boolean;
   /**
-   * 명세서 줄의 이력/로트번호를 미리 조회해봤는데 정부 쪽에 없었던 번호들
-   * (사장님 지침 2026-09-24: 실물 도착 전에 미리 걸러 공급처에 등록을 요청한다).
-   * 인증키 자체가 없어 조회를 못 한 경우는 여기 안 들어간다(공급처 잘못이 아니다).
+   * 이력/로트번호 사전조회 대상 줄 수. 0보다 크면 화면이 processDocumentPrelookupChunkAction을
+   * finished될 때까지 반복 호출해야 한다(실물 도착 전에 미리 걸러 공급처에 등록을
+   * 요청하기 위함, 사장님 지침 2026-09-24).
+   *
+   * 저장 액션 안에서 직접 조회하지 않는 이유: 로트 번호는 그 안의 개체번호까지
+   * 하나하나 재확인하므로, 줄이 많으면(로트 20+이력 100 같은 경우) 정부 API 호출이
+   * 300건대로 불어나 하나의 서버 액션 실행시간 제한(Vercel Hobby)을 넘길 위험이
+   * 크다 — 엑셀 대량 입고에서 같은 문제를 이미 겪어 청크 처리로 바꾼 전례가 있다
+   * (20260930000096 마이그레이션 참고).
    */
-  unresolvedTraceNos: string[];
+  pendingPrelookupCount: number;
+}
+
+export interface DocumentPrelookupProgress {
+  documentId: string;
+  /** 조회 대상 줄 총합(NULL 제외) */
+  total: number;
+  done: number;
+  failed: number;
+  finished: boolean;
+  /** 정부 이력조회에서 확인 안 된 이력/로트번호 — 공급처 확인 요청 문구에 쓴다 */
+  failedTraceNos: string[];
 }
 
 /**
@@ -172,44 +189,192 @@ async function ensureTraceCached(
 }
 
 /**
- * 명세서 줄에 적힌 이력/로트번호들을 미리 조회해 캐시를 채운다. 서류 한 장에
- * 같은 번호가 중복될 수 있어 중복 제거 후 병렬로 돈다. 우리가 발행한 세트번호
- * (BND-/SET-)는 정부 조회 대상이 아니라 건너뛴다.
+ * 이 값이 사전조회 대상인지 — 정부가 실제로 조회해줄 수 있는 형태인지만 본다.
+ * 우리가 발행한 세트번호(SET-YYMMDD-NNN)는 정부 조회 대상이 아니라 제외한다.
  */
-async function precacheDocumentTraceNos(
+function isEligibleForPrelookup(value: string | null | undefined): boolean {
+  const trimmed = value?.trim().toUpperCase() ?? "";
+
+  return trimmed.length > 0 && isPlausibleTraceNo(trimmed) && parseBarcode(trimmed).format !== "bundle";
+}
+
+/** 한 번 청크 호출에서 쓸 시간 예산. 로트 줄은 개체 재확인까지 붙어 느리므로 건수보다 시간으로 끊는다. */
+const PRELOOKUP_CHUNK_TIME_BUDGET_MS = 6_000;
+
+/** 시간 예산 안이라도 이만큼 처리하면 한 번 끊고 진행률을 갱신한다. */
+const PRELOOKUP_CHUNK_MAX_ROWS = 20;
+
+async function loadPrelookupProgress(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  traceNos: Array<string | null | undefined>
-): Promise<string[]> {
-  const candidates = [
-    ...new Set(
-      traceNos
-        .map((value) => value?.trim().toUpperCase() ?? "")
-        .filter((value) => value.length > 0 && isPlausibleTraceNo(value))
-        .filter((value) => parseBarcode(value).format !== "bundle")
-    ),
-  ];
+  documentId: string
+): Promise<Omit<DocumentPrelookupProgress, "documentId">> {
+  const { data } = await supabase
+    .from("inbound_document_lines")
+    .select("prelookup_status, trace_no")
+    .eq("document_id", documentId)
+    .not("prelookup_status", "is", null);
 
-  if (candidates.length === 0) {
-    return [];
-  }
+  const rows = (data ?? []) as Array<{ prelookup_status: string; trace_no: string | null }>;
+  const done = rows.filter((row) => row.prelookup_status === "DONE").length;
+  const failedRows = rows.filter((row) => row.prelookup_status === "FAILED");
 
-  const results = await Promise.all(
-    candidates.map(async (traceNo) => ({ traceNo, ...(await ensureTraceCached(supabase, traceNo)) }))
-  );
+  return {
+    total: rows.length,
+    done,
+    failed: failedRows.length,
+    finished: done + failedRows.length >= rows.length,
+    failedTraceNos: [...new Set(failedRows.map((row) => row.trace_no).filter((v): v is string => Boolean(v)))],
+  };
+}
 
-  const unresolved: string[] = [];
+/**
+ * 대기 중인 명세서 줄을 시간 예산만큼 순차로(Promise.all 아님) 조회한다.
+ * 브라우저가 finished가 될 때까지 반복 호출한다 — 엑셀 대량 입고의
+ * processImportChunkAction과 같은 패턴(app/dashboard/inbound/actions.ts).
+ *
+ * 순차로 도는 이유: 로트 하나 조회는 그 안 개체번호까지 내부적으로 병렬 재확인을
+ * 이미 하므로(ensureTraceCached), 줄까지 병렬로 겹치면 정부 API에 순간적으로 너무
+ * 많은 동시 요청이 나간다. 시간이 걸리더라도 보수적으로 한 줄씩 처리한다.
+ */
+export async function processDocumentPrelookupChunkAction(
+  documentId: string
+): Promise<ActionResult<DocumentPrelookupProgress>> {
+  try {
+    const { supabase, wholesalerId } = await resolveDocumentScope();
 
-  for (const result of results) {
-    if (!result.found && !result.notConfigured) {
-      unresolved.push(result.traceNo);
+    const { data: doc } = await supabase
+      .from("inbound_documents")
+      .select("id, wholesaler_id")
+      .eq("id", documentId)
+      .maybeSingle();
+
+    if (!doc || (doc.wholesaler_id as string) !== wholesalerId) {
+      throw new RbacError("명세서를 찾을 수 없습니다.");
     }
 
-    // 로트 자체는 조회됐지만 그 안의 특정 개체번호가 등록 안 된 경우 —
-    // 이것도 공급처에 확인 요청해야 하는 번호다.
-    unresolved.push(...result.unregisteredMembers);
-  }
+    const { data: pendingLines } = await supabase
+      .from("inbound_document_lines")
+      .select("id, trace_no")
+      .eq("document_id", documentId)
+      .eq("prelookup_status", "PENDING")
+      .order("line_no", { ascending: true })
+      .limit(PRELOOKUP_CHUNK_MAX_ROWS);
 
-  return [...new Set(unresolved)];
+    const rows = (pendingLines ?? []) as Array<{ id: string; trace_no: string | null }>;
+    const startedAt = Date.now();
+
+    for (const row of rows) {
+      if (Date.now() - startedAt > PRELOOKUP_CHUNK_TIME_BUDGET_MS) {
+        break;
+      }
+
+      const traceNo = (row.trace_no ?? "").trim().toUpperCase();
+
+      try {
+        const check = await ensureTraceCached(supabase, traceNo);
+
+        if (check.notConfigured) {
+          // 인증키 미설정은 공급처 잘못이 아니다 — 재시도해도 의미 없으니 DONE으로 넘긴다.
+          await supabase
+            .from("inbound_document_lines")
+            .update({ prelookup_status: "DONE", prelookup_error: null })
+            .eq("id", row.id);
+        } else if (check.found && check.unregisteredMembers.length === 0) {
+          await supabase
+            .from("inbound_document_lines")
+            .update({ prelookup_status: "DONE", prelookup_error: null })
+            .eq("id", row.id);
+        } else if (check.found) {
+          await supabase
+            .from("inbound_document_lines")
+            .update({
+              prelookup_status: "FAILED",
+              prelookup_error: `로트 구성원 미등록: ${check.unregisteredMembers.join(", ")}`,
+            })
+            .eq("id", row.id);
+        } else {
+          await supabase
+            .from("inbound_document_lines")
+            .update({ prelookup_status: "FAILED", prelookup_error: "정부 이력조회에서 확인되지 않음" })
+            .eq("id", row.id);
+        }
+      } catch (error) {
+        await supabase
+          .from("inbound_document_lines")
+          .update({
+            prelookup_status: "FAILED",
+            prelookup_error: error instanceof Error ? error.message : "조회 실패",
+          })
+          .eq("id", row.id);
+      }
+    }
+
+    const progress = await loadPrelookupProgress(supabase, documentId);
+    revalidatePath(REVALIDATE_PATH);
+
+    return { success: true, data: { documentId, ...progress } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** 실패한 줄을 다시 대기 상태로 돌려 재시도 대상에 올린다. */
+export async function retryDocumentPrelookupAction(
+  documentId: string
+): Promise<ActionResult<{ retried: number }>> {
+  try {
+    const { supabase, wholesalerId } = await resolveDocumentScope();
+
+    const { data: doc } = await supabase
+      .from("inbound_documents")
+      .select("id, wholesaler_id")
+      .eq("id", documentId)
+      .maybeSingle();
+
+    if (!doc || (doc.wholesaler_id as string) !== wholesalerId) {
+      throw new RbacError("명세서를 찾을 수 없습니다.");
+    }
+
+    const { data, error } = await supabase
+      .from("inbound_document_lines")
+      .update({ prelookup_status: "PENDING", prelookup_error: null })
+      .eq("document_id", documentId)
+      .eq("prelookup_status", "FAILED")
+      .select("id");
+
+    if (error) {
+      throw error;
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+
+    return { success: true, data: { retried: (data ?? []).length } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
+ * 새로고침/이탈 후 다시 들어왔을 때 이어서 처리할 미완료 사전조회가 있는지 찾는다.
+ * inbound_document_lines의 RLS가 이미 document_id를 통해 소유 문서로만 좁혀주므로
+ * 여기서 별도로 wholesaler_id를 다시 확인할 필요가 없다.
+ */
+export async function findUnfinishedDocumentPrelookupAction(): Promise<ActionResult<{ documentId: string } | null>> {
+  try {
+    await resolveDocumentScope();
+    const supabase = await createClient();
+
+    const { data } = await supabase
+      .from("inbound_document_lines")
+      .select("document_id")
+      .eq("prelookup_status", "PENDING")
+      .limit(1)
+      .maybeSingle();
+
+    return { success: true, data: data ? { documentId: String(data.document_id) } : null };
+  } catch (error) {
+    return toResult(error);
+  }
 }
 
 async function resolveDocumentScope() {
@@ -361,6 +526,9 @@ export async function saveInboundDocumentAction(
       labeled_weight: line.labeledWeight ?? null,
       unit_price: line.unitPrice ?? null,
       amount: line.amount ?? null,
+      // 실물 도착 전 사전조회 대상이면 대기 상태로 걸어둔다 — 실제 조회는
+      // processDocumentPrelookupChunkAction이 화면 반복 호출로 나눠서 처리한다.
+      prelookup_status: isEligibleForPrelookup(line.traceNo) ? "PENDING" : null,
     }));
 
     if (lineRows.length > 0) {
@@ -390,18 +558,16 @@ export async function saveInboundDocumentAction(
     }
 
     // 실물이 오기 전에 이력/로트번호를 미리 조회해둔다(사장님 지침 2026-09-24).
-    // 실패해도 서류 저장 자체는 이미 끝났으니 막지 않는다 — 못 찾은 번호만
-    // 화면에서 "공급처에 등록 요청" 안내로 보여준다.
-    const unresolvedTraceNos = await precacheDocumentTraceNos(
-      supabase,
-      lineRows.map((line) => line.trace_no)
-    );
+    // 여기서 직접 조회하지 않는다 — 줄이 많으면(로트+이력번호 다수) 정부 API 호출이
+    // 크게 불어나 서버 액션 실행시간 제한을 넘길 위험이 있다. 화면이
+    // processDocumentPrelookupChunkAction을 finished될 때까지 반복 호출해서 나눠 처리한다.
+    const pendingPrelookupCount = lineRows.filter((line) => line.prelookup_status === "PENDING").length;
 
     revalidatePath(REVALIDATE_PATH);
 
     return {
       success: true,
-      data: { documentId, lineCount: lineRows.length, fileStored, unresolvedTraceNos },
+      data: { documentId, lineCount: lineRows.length, fileStored, pendingPrelookupCount },
     };
   } catch (error) {
     return toResult(error);
