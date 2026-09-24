@@ -92,26 +92,30 @@
 
 ## 3. 입고
 
-- ⬜ 바코드/이력번호가 정부 조회에서 확인 안 됨(가짜·오탈자) → FAILED 처리
-- ⬜ 이미 입고 처리된 박스 중복 스캔 → 거부
-- ⬜ 실중량-표기중량 오차 ±2% 초과 → 기록/경고
-- ⬜ 정부 API 인증키 미설정 → 안전 폴백(DONE 처리)
-- ⬜ 정부 API 타임아웃/5xx 응답 → FAILED 처리, 재시도 가능
-- ⬜ 로트는 등록됐는데 특정 개체만 미등록 → 정확한 개체번호로 안내(회귀 확인)
-- ⬜ 명세서 취소 후 재개 로직이 더는 안 건드림(회귀 확인)
-- ⬜ 명세서 취소 후 복원하면 대기 상태로 되살아남(회귀 확인)
-- ⬜ 같은 명세서를 동시에 두 번 처리 요청 → 결과 안전하게 기록(회귀 확인)
-- ⬜ 같은 이력/로트번호가 여러 줄에 걸침 → 대표 한 줄만 조회 대상(회귀 확인)
-- ⬜ 명세서에 품목·중량·단가 등 필수항목 누락 → gap 판정
-- ⬜ 명세서 합계와 줄 합계 불일치 → gap 판정
-- ⬜ 8MB 넘는 파일 업로드 → 거부
-- ⬜ 취소 안 한 서류 완전삭제 시도 → 차단(먼저 취소 필요)
-- ⬜ 존재하지 않는 문서ID로 조작 시도 → 거부
-- ⬜ 엑셀 대량 입고 중 행 데이터 오류(빈 값/잘못된 형식) → 에러 처리
-- 🟩 엑셀 대량 입고 같은 행을 두 창이 동시에 처리 → 두 번째 입고 거부 (097 유니크, `db-test-tenant-gate-null.sql`)
-- 🟩 명세서 줄에 남의 공급사 상품 ID 저장 시도 → RLS 거부 / 로그인 공급사 계정이 공용 이력 캐시에 직접 쓰기 → 거부 (098, `db-test-tenant-gate-null.sql`)
-- ⬜ (정상) 박스 스캔 → 이력 대조 → 재고 반영 기본 흐름
-- ⬜ (정상) 명세서 업로드는 재고를 만들지 않음(설계 원칙 확인)
+DB 레벨 108건은 `db-test-inbound.sql`(2026-09-24). 정부 API 자체는 흉내(공용 캐시 `master_livestock`에 시드) — 서버 액션이 조회 결과를 어떻게 넘기는지는 코드 확인, DB가 그 값을 어떻게 기록·판정하는지는 실제 검증.
+
+- 🟩 바코드/이력번호가 정부 조회에서 확인 안 됨(가짜·오탈자) → EXCEPTION(NOT_FOUND), 재고·잔량 0, 예외로그 PENDING. 나중에 상품을 지정하면 NORMAL 전환+재고 반영+예외 RESOLVED, 확정된 건은 재지정 거부. 이력은 있는데 상품을 못 정하면 PENDING_MAPPING → 자동생성(새 상품은 가격 0·판매중지) → 매핑 학습돼 다음 스캔은 바로 NORMAL. 로트(정부 응답에 부위 없음)는 명세서 줄 부위로 기존 상품 재사용. 축종조차 없으면 INSUFFICIENT_TRACE_INFO. 중량 0/음수·빈 번호·남의 상품 ID·정해지지 않은 스캔 종류 거부, 소문자 번호 대문자 정규화 (`db-test-inbound.sql`)
+- 🟩 이미 입고 처리된 박스 중복 스캔 → 같은 번호·같은 중량·10분 안이면 `DUPLICATE_SUSPECTED:HH:MI`(앱이 확인창), 확인 후 강행 허용, 다른 중량은 통과, EXCEL 경로는 검사 생략, 취소된 박스는 중복 대상 아님 (`db-test-inbound.sql`)
+- 🟩 실중량-표기중량 오차 ±2% 초과 → `variance_exceeded` — 정확히 ±2%는 허용(경계), 넘으면 경고, 표기중량 없으면 판정 안 함, 표기중량 0은 CHECK 거부. 재고·원장은 실중량 기준. 매입금액 = 실중량×단가(건별 단가 > 상품 기본단가), GENERATED라 직접 수정 불가. 직원은 단가 입력·수정 거부, 단가 없이 입고하면 기본단가가 따라 붙음 (`db-test-inbound.sql`)
+- 🟩 정부 API 인증키 미설정 → 스캔은 서버가 API_ERROR+사유를 넘기고 DB는 EXCEPTION으로 기록해 입고 자체를 막지 않음(사유 저장 확인). 명세서 사전조회 쪽 "DONE 처리"는 서버 액션 로직이라 코드 확인만 (`db-test-inbound.sql`)
+- ⬜ 정부 API 타임아웃/5xx 응답 → FAILED 처리, 재시도 가능 (외부)
+- ⬜ 로트는 등록됐는데 특정 개체만 미등록 → 정확한 개체번호로 안내 (서버 액션의 에러 문자열 파싱, 코드 확인만)
+- 🟩 명세서 취소 후 재개 로직이 더는 안 건드림 — 취소 시 대기 줄이 FAILED+표식으로 바뀌고 대기 줄 0건, 취소된 서류 번호로는 문서 기반 자동 확정도 안 됨 (`db-test-inbound.sql`, 서버 액션과 같은 SQL로 재현)
+- 🟩 명세서 취소 후 복원하면 대기 상태로 되살아남 — 표식 줄만 PENDING으로, 진짜 실패 줄은 FAILED 유지, 복원 뒤 자동 확정 다시 됨 (`db-test-inbound.sql`)
+- 🟩 같은 명세서를 동시에 두 번 처리 요청 → `prelookup_status='PENDING'` 가드로 두 번째 기록 0행, 먼저 쓴 DONE이 남음. 엑셀 행 상태도 같은 가드 (`db-test-inbound.sql`)
+- ⬜ 같은 이력/로트번호가 여러 줄에 걸침 → 대표 한 줄만 조회 대상 (서버 액션이 저장 시 결정, DB는 두 번째 줄 NULL 상태만 확인 🟩)
+- ⬜ 명세서에 품목·중량·단가 등 필수항목 누락 → gap 판정 (순수 로직, 단위테스트 `document-requirements.test.ts`가 다룸)
+- ⬜ 명세서 합계와 줄 합계 불일치 → gap 판정 (위와 같음)
+- ⬜ 8MB 넘는 파일 업로드 → 거부 (서버 액션)
+- 🟩 취소 안 한 서류 완전삭제 시도 → 차단(먼저 취소 필요) — 원래 앱에서만 막았고 DB DELETE 정책은 상태를 안 봤음 → **106에서 BEFORE DELETE 트리거 `DOCUMENT_NOT_DISCARDED`로 DB도 차단**(사장님 결정). 취소 처리 뒤에는 1행 삭제, super_admin·서버는 통과 (`db-test-inbound.sql`, `db-test-tenant-gate-null.sql`)
+- 🟩 존재하지 않는 문서ID로 조작 시도 → 0행. 서류 상태·사전조회 상태·엑셀 행 상태에 정해진 값 밖은 CHECK 거부, 줄 표기중량 0·단가 음수 거부. 직원은 취소·복원 가능·완전삭제 불가, 타사는 조회 0건·줄 끼워넣기·취소·삭제·문서 기반 확정 조회 전부 거부 (`db-test-inbound.sql`)
+- 🟩 엑셀 대량 입고 중 행 데이터 오류(중량 0/음수) → **106부터 행 저장 자체를 CHECK로 거부**(원래는 CHECK 없이 RPC의 INVALID_WEIGHT에만 기대던 상태), RPC 검사도 그대로 유지. 타사 작업 조회 0건·행 끼워넣기·상태 조작 거부, 고객 계정 작업 생성 거부 (`db-test-inbound.sql`)
+- 🟩 엑셀 대량 입고 같은 행을 두 창이 동시에 처리 → 두 번째 입고 거부, 그 행의 스캔 1건뿐 (097 유니크, `db-test-tenant-gate-null.sql`, `db-test-inbound.sql`)
+- 🟩 명세서 줄에 남의 공급사 상품 ID 저장 시도 → RLS 거부 / 로그인 공급사 계정이 공용 이력 캐시에 직접 쓰기 → 거부 (098, `db-test-tenant-gate-null.sql`, `db-test-inbound.sql`)
+- 🟩 (정상) 박스 스캔 → 이력 대조 → 재고 반영 기본 흐름 — 원장 INBOUND 1건·잔량=중량·표시 재고=원장 합계. 입고 취소는 INBOUND_VOID로 원복, 두 번 취소 거부, 예외 건 취소 시 예외로그 DISCARDED, 취소 건 재지정 거부, 직원도 취소 가능. 공급사 세션의 `inbound_scans`·`stock_ledger`·예외로그 직접 INSERT/UPDATE/DELETE는 전부 거부·0행(RPC로만 재고가 움직인다). 고객 계정은 NOT_A_SUPPLIER (`db-test-inbound.sql`)
+- 🟩 (정상) 명세서 업로드는 재고를 만들지 않음 — 줄 저장 후 재고 0·원장 0 (`db-test-inbound.sql`)
+
+**이 절에서 발견해 106으로 수정 (2026-09-24, `20260930000106_inbound_document_delete_gate_and_import_row_weight_check.sql`, 사장님 결정):** DB 함수·정책 결함은 없었고 정보 2건을 DB 규칙으로 올렸다 — ① 취소 안 한 명세서라도 DB에선 관리자가 바로 완전삭제 가능(앱 게이트만)이던 것 → BEFORE DELETE 트리거로 차단(서버·RPC 내부·super_admin 통과, 공급사 행 CASCADE 안 막힘), ② `inbound_import_rows.weight`에 CHECK 없음 → `CHECK (weight > 0)`.
 
 ## 4. 출고·주문
 
@@ -177,7 +181,7 @@
 전부 로컬 Docker DB 대상이고 롤백형이다(`db-test-order-stock-concurrency.sh`만 고유 ID 시드를 넣고 끝에 지운다).
 
 ```
-for s in db-test-tenant-gate-null db-test-access-isolation db-test-signup-and-accounts db-test-product-management db-test-order-stock-regression db-test-fifo-bundle-integrity db-test-pg-idempotency; do
+for s in db-test-tenant-gate-null db-test-access-isolation db-test-signup-and-accounts db-test-product-management db-test-inbound db-test-order-stock-regression db-test-fifo-bundle-integrity db-test-pg-idempotency; do
   (echo "begin;"; cat scripts/$s.sql; echo "rollback;") | docker exec -i supabase_db_wholesale psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - | grep -E "FAIL|pass \|" ; done
 bash scripts/db-test-order-stock-concurrency.sh
 ```

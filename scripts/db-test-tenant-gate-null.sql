@@ -203,8 +203,10 @@ insert into results (who,what,expected,result) values
    pg_temp.try($q$select public.record_inbound_scan('009999999901', 5.000, 'EXCEL', 'c9999999-0000-0000-0000-000000000001', p_import_row_id => 'e9999999-0000-0000-0000-000000000001', p_confirm_duplicate => true)$q$)),
  ('A사장','EXCEL 같은 행 두 번째 입고(다른 창)','DENIED: duplicate key value violates unique constraint "idx_inbound_scans_import_row_unique"',
    pg_temp.try($q$select public.record_inbound_scan('009999999901', 5.000, 'EXCEL', 'c9999999-0000-0000-0000-000000000001', p_import_row_id => 'e9999999-0000-0000-0000-000000000001', p_confirm_duplicate => true)$q$)),
- ('A사장','명세서 완전삭제(RLS DELETE, owner는 허용, #7) → 1행','1',
-   pg_temp.val($q$with d as (delete from public.inbound_documents where id='f9999999-0000-0000-0000-000000000001' returning 1) select count(*)::text from d$q$));
+ ('A사장','취소 안 한 명세서 완전삭제 → 거부(106)','DENIED: DOCUMENT_NOT_DISCARDED',
+   pg_temp.try($q$delete from public.inbound_documents where id='f9999999-0000-0000-0000-000000000001'$q$)),
+ ('A사장','취소 처리 후 명세서 완전삭제(RLS DELETE, owner는 허용, #7) → 1행','1',
+   pg_temp.val($q$update public.inbound_documents set status='DISCARDED' where id='f9999999-0000-0000-0000-000000000001'; with d as (delete from public.inbound_documents where id='f9999999-0000-0000-0000-000000000001' returning 1) select count(*)::text from d$q$));
 
 -- ========== 결과 ==========
 reset role;
