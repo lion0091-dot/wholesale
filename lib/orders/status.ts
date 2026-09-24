@@ -58,7 +58,13 @@ export const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
   "cancel_rejected",
 ];
 
-/** 상태 전이 규칙 — 각 상태에서 이동 가능한 다음 상태 목록 */
+/**
+ * 상태 전이 규칙 — 각 상태에서 이동 가능한 다음 상태 목록.
+ *
+ * DB에도 같은 표가 있다(enforce_order_status_transition, 20260930000107). 서버·RPC 내부·
+ * super_admin 외의 세션이 테이블을 직접 UPDATE해도 같은 규칙을 탄다. 이 표를 고치면
+ * 그 함수도 새 마이그레이션으로 같이 고칠 것.
+ */
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   pending: ["awaiting_stock", "confirmed", "cancel_requested", "cancelled"],
   // 물건이 들어와 재고가 생기면 확정으로 넘어간다. 확정 시점에 평소대로

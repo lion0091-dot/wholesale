@@ -120,13 +120,17 @@ DB 레벨 108건은 `db-test-inbound.sql`(2026-09-24). 정부 API 자체는 흉�
 ## 4. 출고·주문
 
 - 🟩 재고보다 많은 수량 주문 확정 → `INSUFFICIENT_STOCK` 거부 (`db-test-order-stock-regression.sql` T3). 발주 생성 단계의 거부(서버 액션 `validateCart`)는 ⬜.
-- ⬜ 발주정지 상품 주문 시도 → 거부
-- ⬜ 최소발주금액 미달을 서버가 걸러내는지(화면 조작 우회 가정) — 코드 확인은 끝남(점검 4: 두 주문 경로 모두 서버에서 `wholesalers.min_order_amount`로 재검증), 테스트만 남음
+DB 레벨 57건은 `db-test-orders-outbound.sql`(2026-09-24).
+
+- 🟩 발주정지 상품 주문 시도 → 품목 트리거 `PRODUCT_NOT_ORDERABLE`(103). 남의 공급사 상품 `PRODUCT_NOT_FOUND`, 거래중지(blocked) 관계의 주문 헤더는 RLS 거부, 배송중 주문에 품목 추가 `ORDER_NOT_PENDING`, 핫딜 품목은 판매량 소진·한도 초과 거부·취소 시 반환, 예약 테이블은 바이어가 못 읽음 (`db-test-orders-outbound.sql`)
+- 🟩 최소발주금액 미달을 서버가 걸러내는지 — 원래 DB 규칙이 없어 미달 주문(15,000 < 50,000)이 직접 INSERT로 들어갔다 → **107에서 `enforce_min_order_amount` 트리거로 DB도 차단**(`MIN_ORDER_AMOUNT`, 바이어 세션 헤더 INSERT만, 사장님 결정). 서버 경로는 `validateCart`를 이미 거치므로 영향 없음 (`db-test-orders-outbound.sql`)
 - 🟩 같은 상품을 동시에 두 주문이 확정하려는 경쟁 상태 → 하나만 성공, 표시 재고 = 원장 합계 (`db-test-order-stock-concurrency.sh`, psql 두 세션 실제 경쟁). **이 항목을 만들다가 재계산 함수의 스냅샷 레이스와 091~094 회귀를 발견해 099로 수정함.**
-- ⬜ 이미 취소/완료된 주문을 다시 취소·재확정 시도 → 거부(`ORDER_STATUS_TRANSITIONS`)
+- 🟩 이미 취소/완료된 주문을 다시 취소·재확정 시도 → 거부 — 원래 앱 전이표(`ORDER_STATUS_TRANSITIONS`)만 있고 DB는 취소요청 규칙과 상태값 CHECK뿐이었다. 배송완료→접수대기 되돌리기·출고 확정된 배송중→취소가 공급사 세션 직접 호출로 통과했고, 취소→재확정은 원장 멱등 인덱스에 우연히 걸릴 때만 실패했다 → **107에서 `enforce_order_status_transition` 트리거로 같은 표를 DB에 옮김**(`INVALID_STATUS_TRANSITION`, 서버·RPC 내부·super_admin 통과, 사장님 결정). **앱 표(`lib/orders/status.ts`)를 고치면 이 함수도 새 마이그레이션으로 같이 고친다.** 확정→배송중·확보대기 건너뛰기·배송완료 되돌리기 등 (`db-test-orders-outbound.sql`)
 - 🟩 다른 공급사의 주문ID로 접근 시도 → 조회 0건·수정 0행 (`db-test-access-isolation.sql`)
-- ⬜ 재고 0인 상품 주문 시도 → 거부
-- 🟩 유통기한 지난 박스는 확정 자동배정에서도 제외, 기한 지난 박스만 있으면 재고 부족으로 거부 (100, `db-test-fifo-bundle-integrity.sql`). 출고 스캔의 `BOX_EXPIRED`는 `db-test-best-before.sql`이 다루지만 뒤쪽이 stale(피킹 목록 컬럼 변경)이라 ⬜.
+- 🟩 재고 0인 상품 주문 시도 → 재고 0이어도 발주정지가 안 걸린 신규 상품은 주문 헤더·품목이 DB에 들어가고(정보), **확정 시점에 `INSUFFICIENT_STOCK`으로 걸린다**. 거부된 주문은 접수대기 그대로·원장 없음 (`db-test-orders-outbound.sql`)
+- 🟩 유통기한 지난 박스는 확정 자동배정에서도 제외, 기한 지난 박스만 있으면 재고 부족으로 거부 (100, `db-test-fifo-bundle-integrity.sql`). 출고 스캔의 `BOX_EXPIRED`·임박 박스 `days_left`·주문에 없는 상품 `PRODUCT_NOT_IN_ORDER`·다 채운 상품 `PRODUCT_ALREADY_FULFILLED`·없는 번호 `BOX_NOT_AVAILABLE`·접수대기 주문 `ORDER_NOT_SHIPPABLE`은 `db-test-orders-outbound.sql`로 옮김(`db-test-best-before.sql`은 stale 그대로).
+- 🟩 출고 확정 — 부족분 있으면 `SHIPMENT_SHORT`, 확인 후 확정하면 출고량·총액 재계산(1kg 중 0.5kg → 34,000)·배송중, 이후 스캔·재확정 `ALREADY_FINALIZED`, 접수대기 주문 확정 `ORDER_NOT_SHIPPABLE`, 직원도 스캔·확정 가능. 피킹 목록은 스캔 전 자동배정 2줄 → 스캔 후 찍은 박스 2줄로 (`db-test-orders-outbound.sql`)
+- 🟩 취소 원복 — 확정 주문 취소 시 박스 잔량·원장(ORDER_RESTORE)·표시 재고 복귀, 외상 미정산 주문 취소 시 미수금 차감·정산 완료 건은 그대로, 취소요청 반려 후 확정은 박스 없는 수동 재고에서 차감. 바이어 취소요청은 접수대기/확정만(확보대기·배송중은 RLS 0행), 금액·주소 위조값 무시, 바이어의 직접 취소·확정 거부, 바이어의 출고 RPC `NOT_A_SUPPLIER`·피킹 0건 (`db-test-orders-outbound.sql`)
 - 🟩 확보 대기 주문에 입고 즉시 배정 후 확정 → 한 번만 차감 / 8.205kg 박스 확정 성공 / 배정만 된 주문 취소 원복 (`db-test-order-stock-regression.sql`)
 - 🟩 (정상) 발주 → 확정 시 선입선출 박스 차감 → 피킹 목록대로 자동배정 박스를 찍어도 거부되지 않음 (`db-test-outbound-scan.sql`, `db-test-picking-list.sql`, `db-test-finalize-shipment.sql`)
 
@@ -181,7 +185,7 @@ DB 레벨 108건은 `db-test-inbound.sql`(2026-09-24). 정부 API 자체는 흉�
 전부 로컬 Docker DB 대상이고 롤백형이다(`db-test-order-stock-concurrency.sh`만 고유 ID 시드를 넣고 끝에 지운다).
 
 ```
-for s in db-test-tenant-gate-null db-test-access-isolation db-test-signup-and-accounts db-test-product-management db-test-inbound db-test-order-stock-regression db-test-fifo-bundle-integrity db-test-pg-idempotency; do
+for s in db-test-tenant-gate-null db-test-access-isolation db-test-signup-and-accounts db-test-product-management db-test-inbound db-test-orders-outbound db-test-order-stock-regression db-test-fifo-bundle-integrity db-test-pg-idempotency; do
   (echo "begin;"; cat scripts/$s.sql; echo "rollback;") | docker exec -i supabase_db_wholesale psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - | grep -E "FAIL|pass \|" ; done
 bash scripts/db-test-order-stock-concurrency.sh
 ```

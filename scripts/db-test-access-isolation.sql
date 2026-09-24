@@ -111,7 +111,7 @@ insert into results (who,what,expected,result) values
  ('A사장','B사 주문 상태 변경 → 0행','0', pg_temp.rows($q$update public.orders set status='cancelled' where id='e6999999-0000-0000-0000-000000000004'$q$)),
  ('A사장','B사 상품 삭제 → 0행','0', pg_temp.rows($q$delete from public.products where id='c6999999-0000-0000-0000-000000000002'$q$)),
  ('A사장','B사 거래처 여신한도 수정 → 0행','0', pg_temp.rows($q$update public.wholesaler_retailers set credit_limit=9999999 where wholesaler_id='a6999999-0000-0000-0000-000000000002'$q$)),
- ('A사장','자기 회사 최소발주금액 수정(허용) → 1행','1', pg_temp.rows($q$update public.wholesalers set min_order_amount=30000 where id='a6999999-0000-0000-0000-000000000001'$q$)),
+ ('A사장','자기 회사 최소발주금액 수정(허용) → 1행','1', pg_temp.rows($q$update public.wholesalers set min_order_amount=0 where id='a6999999-0000-0000-0000-000000000001'$q$)),
  ('A사장','자기 회사 대표자명·주소 수정(허용) → 1행','1', pg_temp.rows($q$update public.wholesalers set representative_name='A2', business_address='서울 어딘가' where id='a6999999-0000-0000-0000-000000000001'$q$)),
  ('A사장','자기 회사 구독상태를 직접 active로(플랫폼 전용) → 거부','ERROR: PLATFORM_ONLY_COLUMN', pg_temp.rows($q$update public.wholesalers set subscription_status='active' where id='a6999999-0000-0000-0000-000000000001'$q$)),
  ('A사장','자기 회사 무료체험 시작일 연장(플랫폼 전용) → 거부','ERROR: PLATFORM_ONLY_COLUMN', pg_temp.rows($q$update public.wholesalers set trial_started_at=now() + interval '30 days' where id='a6999999-0000-0000-0000-000000000001'$q$)),

@@ -83,6 +83,8 @@ insert into public.orders (id,wholesaler_id,retailer_id,order_number,total_amoun
 insert into public.order_items (order_id,product_id,product_name,unit_price,quantity,subtotal_amount) values
  ('e3999999-0000-0000-0000-000000000001','c3999999-0000-0000-0000-000000000001','P1 등심',68000,1,68000);
 
+-- 107(최소발주금액 DB 규칙): 이 스크립트는 소액 주문으로 품목 규칙을 검사하므로 시드 공급사의 최소금액을 0으로 둔다.
+update public.wholesalers set min_order_amount = 0 where id in ('a3999999-0000-0000-0000-000000000001','a3999999-0000-0000-0000-000000000002');
 set role authenticated; set request.jwt.claim.role = 'authenticated'; set request.jwt.claim.sub = '93999999-0000-0000-0000-000000000001';
 -- P2에 재고 기록만 만든다(관리자 재고 조정 → stock_ledger)
 select public.adjust_product_stock('c3999999-0000-0000-0000-000000000007', 3, 'STOCKTAKE', '시드') as seed_p2_ledger;
