@@ -3,10 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { BuyerAuthError, requireLinkedBuyer } from "@/lib/auth/buyer-auth";
 import { confirmPayment, TossPaymentsError } from "@/lib/payments/tosspayments-client";
 import { decryptCredential, CredentialCryptoError } from "@/lib/security/credential-crypto";
-import { createOrderWithItems, buildOrderNumber } from "@/lib/orders/create-order";
-import { sendOrderNotificationToWholesaler } from "@/lib/notifications/alimtalk";
+import { finalizePaidOrder, type PendingPgPaymentRow } from "@/lib/payments/pg-reconcile";
 import type { CartLine } from "@/lib/shop/order-policy";
-import { composeProductDisplayName } from "@/lib/products/display-name";
 
 // 토스 결제 승인 API는 Node crypto(lib/security/credential-crypto.ts)를 쓰므로 Edge에서 못 돈다.
 export const runtime = "nodejs";
@@ -49,21 +47,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const supabase = await createClient();
     const buyer = await requireLinkedBuyer(supabase, shopToken);
 
-    const { data: pending } = await supabase
+    const { data: pendingRow } = await supabase
       .from("pg_pending_payments")
       .select(
-        "id, wholesaler_id, retailer_id, total_amount, cart_snapshot, restaurant_name, contact_phone, delivery_address, delivery_notes, negotiation_note, expires_at"
+        "id, pg_order_id, wholesaler_id, retailer_id, total_amount, cart_snapshot, restaurant_name, contact_phone, delivery_address, delivery_notes, negotiation_note, expires_at"
       )
       .eq("pg_order_id", orderId)
       .eq("retailer_id", buyer.retailerId)
       .maybeSingle();
 
-    if (!pending) {
+    if (!pendingRow) {
       return failRedirect("결제 요청을 찾을 수 없습니다. 다시 시도해주세요.");
     }
 
-    if (new Date(pending.expires_at as string).getTime() < Date.now()) {
-      await supabase.from("pg_pending_payments").delete().eq("id", pending.id as string);
+    const pending = pendingRow as unknown as PendingPgPaymentRow & { cart_snapshot: CartLine[] };
+
+    if (new Date(pending.expires_at).getTime() < Date.now()) {
+      await supabase.from("pg_pending_payments").delete().eq("id", pending.id);
       return failRedirect("결제 유효시간이 만료되었습니다. 다시 시도해주세요.");
     }
 
@@ -74,8 +74,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { data: wholesaler } = await supabase
       .from("wholesalers")
-      .select("pg_secret_key_encrypted, business_name, profile_id")
-      .eq("id", pending.wholesaler_id as string)
+      .select("pg_secret_key_encrypted")
+      .eq("id", pending.wholesaler_id)
       .maybeSingle();
 
     const encryptedSecret = wholesaler?.pg_secret_key_encrypted as string | null;
@@ -93,61 +93,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       amount,
     });
 
-    const orderNumber = buildOrderNumber();
-    const lines = (pending.cart_snapshot as CartLine[]) ?? [];
-
-    const createResult = await createOrderWithItems(supabase, {
-      wholesalerId: pending.wholesaler_id as string,
-      retailerId: pending.retailer_id as string,
-      orderNumber,
+    const result = await finalizePaidOrder(supabase, pending, {
+      paymentKey: confirmed.paymentKey,
       totalAmount: amount,
-      deliveryAddress: pending.delivery_address as string,
-      deliveryNotes: (pending.delivery_notes as string | null) ?? null,
-      paymentMethod: "pg",
-      lines,
-      negotiationNote: (pending.negotiation_note as string | null) ?? null,
-      paymentStatus: "paid",
-      pgPaymentKey: confirmed.paymentKey,
-      pgOrderId: orderId,
     });
 
-    await supabase.from("pg_pending_payments").delete().eq("id", pending.id as string);
-
-    if ("error" in createResult) {
+    if ("error" in result) {
       // 결제는 이미 승인됐는데 주문 생성이 실패한 경우 — 돈은 받았으니 절대 조용히
-      // 묻으면 안 된다. 공급사 확인이 필요한 상태로 명확히 안내한다.
+      // 묻으면 안 된다. pg_pending_payments는 지우지 않고 남겨서(finalizePaidOrder가
+      // 실패 시 안 지움), 다음 페이지 방문/매일 크론의 복구 대상에 들어가게 한다.
       return failRedirect(
         `결제는 완료됐지만 발주 저장에 실패했습니다(결제키: ${confirmed.paymentKey}). 공급사에 문의해주세요.`
       );
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("phone")
-      .eq("id", wholesaler?.profile_id as string)
-      .maybeSingle();
-
-    const [firstLine] = lines;
-    const firstLineDisplayName = composeProductDisplayName(firstLine.category, firstLine.name);
-    const itemsSummary =
-      lines.length > 1
-        ? `${firstLineDisplayName} ${firstLine.quantity}${firstLine.unit} 외 ${lines.length - 1}건`
-        : `${firstLineDisplayName} ${firstLine.quantity}${firstLine.unit}`;
-
-    await sendOrderNotificationToWholesaler({
-      wholesalerId: pending.wholesaler_id as string,
-      wholesalerName: (wholesaler?.business_name as string) ?? "",
-      wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,
-      restaurantName: pending.restaurant_name as string,
-      orderNumber,
-      itemsSummary,
-      totalAmount: amount,
-      deliveryAddress: pending.delivery_address as string,
-      deliveryNotes: pending.delivery_notes as string | null,
-    });
-
     return NextResponse.redirect(
-      new URL(`/shop/${shopToken}/orders?paid=1&order=${encodeURIComponent(orderNumber)}`, request.url)
+      new URL(`/shop/${shopToken}/orders?paid=1&order=${encodeURIComponent(result.orderNumber)}`, request.url)
     );
   } catch (error) {
     if (error instanceof BuyerAuthError) {

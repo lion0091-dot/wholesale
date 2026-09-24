@@ -16,6 +16,7 @@ import { validateCancelReason, type ShopOrder } from "@/lib/shop/order-history-t
 import { validateCart } from "@/lib/shop/order-policy";
 import { isRetailerNamePlaceholder } from "@/lib/shop/retailer-placeholder";
 import { createOrderWithItems, buildOrderNumber } from "@/lib/orders/create-order";
+import { reconcileStalePgPaymentsForRetailer } from "@/lib/payments/pg-reconcile";
 import { fetchTrackingStatus, type TrackingResult } from "@/lib/verification/sweettracker";
 import { composeProductDisplayName } from "@/lib/products/display-name";
 import { signExternalOpenToken } from "@/lib/pdf/external-open-token";
@@ -587,6 +588,10 @@ export async function loadShopOrderHistoryPageAction(
 
     const supabase = await createClient();
     const buyer = await requireLinkedBuyer(supabase, shopToken);
+
+    // 결제 승인 콜백이 브라우저 이탈 등으로 끊겼을 때의 안전망 — 고객이 주문내역을
+    // 다시 열 때 3분 넘게 그대로인 결제건이 있으면 여기서 뒤늦게라도 정리한다.
+    await reconcileStalePgPaymentsForRetailer(supabase, buyer.wholesalerId, buyer.retailerId);
 
     const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
 

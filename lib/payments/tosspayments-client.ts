@@ -13,6 +13,8 @@
 const CONFIRM_ENDPOINT = "https://api.tosspayments.com/v1/payments/confirm";
 const CANCEL_ENDPOINT = (paymentKey: string) =>
   `https://api.tosspayments.com/v1/payments/${encodeURIComponent(paymentKey)}/cancel`;
+const PAYMENT_BY_ORDER_ID_ENDPOINT = (orderId: string) =>
+  `https://api.tosspayments.com/v1/payments/orders/${encodeURIComponent(orderId)}`;
 
 export class TossPaymentsError extends Error {
   code: string | null;
@@ -74,6 +76,61 @@ export async function confirmPayment(params: ConfirmPaymentParams): Promise<Toss
     });
   } catch {
     throw new TossPaymentsError("결제 승인 요청에 실패했습니다 (네트워크 오류).");
+  }
+
+  if (!response.ok) {
+    const { code, message } = await parseErrorBody(response);
+    throw new TossPaymentsError(message, code);
+  }
+
+  const body = (await response.json()) as {
+    paymentKey: string;
+    orderId: string;
+    status: string;
+    totalAmount: number;
+    approvedAt?: string;
+  };
+
+  return {
+    paymentKey: body.paymentKey,
+    orderId: body.orderId,
+    status: body.status,
+    totalAmount: body.totalAmount,
+    approvedAt: body.approvedAt ?? null,
+  };
+}
+
+export interface GetPaymentByOrderIdParams {
+  secretKey: string;
+  orderId: string;
+}
+
+/**
+ * paymentKey 없이 우리가 발급한 orderId만으로 결제 상태를 조회한다.
+ *
+ * 승인 성공 콜백(success/route.ts)이 브라우저 이탈·서버 오류로 완주하지
+ * 못했을 때, "실제로 결제가 잡혔는지"를 뒤늦게라도 확인하는 유일한 방법이다
+ * (lib/payments/pg-reconcile.ts에서 씀). 그 시점엔 paymentKey를 모르기 때문에
+ * orderId 기준 조회가 필요하다.
+ *
+ * 그 orderId로 결제 시도 자체가 없었으면(고객이 결제창을 끝까지 안 열었거나
+ * 중간에 나감) 토스가 404를 돌려준다 — 이건 에러가 아니라 "복구할 게 없다"는
+ * 정상적인 결과라 null을 돌려준다.
+ */
+export async function getPaymentByOrderId(params: GetPaymentByOrderIdParams): Promise<TossPaymentResult | null> {
+  let response: Response;
+
+  try {
+    response = await fetch(PAYMENT_BY_ORDER_ID_ENDPOINT(params.orderId), {
+      method: "GET",
+      headers: { Authorization: basicAuthHeader(params.secretKey) },
+    });
+  } catch {
+    throw new TossPaymentsError("결제 조회 요청에 실패했습니다 (네트워크 오류).");
+  }
+
+  if (response.status === 404) {
+    return null;
   }
 
   if (!response.ok) {
