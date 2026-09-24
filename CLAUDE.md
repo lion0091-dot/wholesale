@@ -72,6 +72,14 @@
 
 - [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) 24단계 — 표기중량(바코드)과 실중량(저울)을 따로 받아 차이를 기록하고, 매입금액을 실중량 기준으로 자동 산정한다. 허용 오차 ±2%(`inbound_weight_tolerance()` ↔ `lib/livestock/weight-variance.ts`), 매입금액은 GENERATED 컬럼, 원가라 바이어에게 열지 않는다. `/dashboard/purchases` 매입 정산 화면. DB 테스트 12종 통과. **저울 직접 연동은 미구현(사람이 입력)**, npm 차단으로 타입체크 미실행.
 
+## 통합테스트 시나리오 계획 (2026-09-24 시작, 별도 기능)
+
+- [docs/integration-test-plan.md](docs/integration-test-plan.md) — 단위테스트(순수 로직)에서 뺐던 서버 액션/RLS 의존 로직 대상. 영역별 정상+오류 시나리오 목록, 로컬 Docker Supabase 환경(사장님 실제 프로젝트와 분리), 서버 액션 인증 하네스는 아직 미착수. 계획 도중 PG 결제 콜백 유실 버그를 발견해 별도로 수정함(아래 항목).
+
+## PG 결제 승인 콜백 유실 시 복구 안전망 (통합테스트 계획 도중 발견, 별도 수정)
+
+- 결제는 승인됐는데 콜백(`checkout/pg/success/route.ts`)이 브라우저 이탈 등으로 끝까지 못 가면 주문이 영영 안 생기던 문제. `lib/payments/pg-reconcile.ts` 신규(토스 orderId 조회로 재대조+복구) + 고객 주문내역 재방문 시 즉시확인 + 매일 크론(`/api/cron/reconcile-pg-payments`) 이중 안전망. 토스 실계정 미발급이라 실호출 미검증(기존 PG 연동과 동일 상태).
+
 ## 작업 성격별 모델 사용 기준 (2026-09-23, 사장님 확정)
 
 Claude Max 요금제는 잔량 조회 API가 없어 실시간 동적 라우팅은 불가능 — 대신 작업 성격 기준의 고정 규칙.
