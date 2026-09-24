@@ -40,7 +40,7 @@ export type CreateOrderResult = { orderId: string } | { error: string };
 // name을 lazy가 아닌 greedy로 잡는다 — INSUFFICIENT_STOCK_PATTERN도 같은 문제가 있음.
 const HOT_DEAL_QUOTA_EXCEEDED_PATTERN = /HOT_DEAL_QUOTA_EXCEEDED:(.+):([\d.]+):([\d.]+):([\d.]+)/;
 
-function translateHotDealQuotaError(message: string): string | null {
+export function translateHotDealQuotaError(message: string): string | null {
   const matched = message.match(HOT_DEAL_QUOTA_EXCEEDED_PATTERN);
 
   if (!matched) {
