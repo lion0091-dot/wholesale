@@ -27,6 +27,7 @@
   - 외부 업체 호출은 테스트 파일에서 `vi.mock`(예: 토스 `cancelPayment`). 스위트트래커 키는 setup이 지워 "검증 건너뜀" 경로를 탄다.
   - 첫 영역: `orders.itest.ts` 23건(4번 출고·주문 — `updateOrderStatusAction`·`updateOrderTrackingAction`·`getHistoricalOrdersAction`).
   - 둘째 영역: `inbound.itest.ts` 26건(3번 입고 — `recordScanAction`·`voidScanAction`·`resolveMappingAction`). 정부 API(`fetchTraceRecord`·`isMtraceConfigured`)만 `vi.mock`, 공용 캐시 적재는 실제(service_role). 하네스에 `newTraceNo`·`seedTrace`·`createDocumentLine` 추가, 정리는 `trace_no` 컬럼 테이블도 훑는다.
+  - 셋째 영역: `outbound.itest.ts` 16건(4번 출고 — `recordOutboundScanAction`·`getOutboundProgressAction`·`getPickingListAction`·`previewShipmentAction`·`finalizeShipmentAction`). 입고 액션으로 박스를 만들고 주문 확정으로 자동 배정을 태운 뒤 출고. 권한·타사 격리, 정정 스캔→마감 금액 확정, 부족 마감(`SHIPMENT_SHORT` 확인 흐름), DB 오류 코드의 현장 문구 번역(날것 코드 미노출), 부위 불일치·임박 박스 응답.
   - **입고 자동 생성 규칙(테스트로 확인)**: 축종(`species_group`)만 알면 부위가 없어도 `(부위 미지정)` 상품으로 자동 생성된다. 상품 확인 대기(PENDING_MAPPING)로 남는 건 **축종을 모를 때뿐** — 옛 DB 테스트 주석("부위 없으면 자동 생성 안 함")과 다르니 새 테스트는 이 기준으로 쓴다.
 
 ## 진행 상태 표시
@@ -230,5 +231,5 @@ bash scripts/db-test-order-stock-concurrency.sh
 
 1. ~~서버 액션 테스트용 인증 하네스 구축~~ — 완료(위 "서버 액션 하네스 구현됨")
 2. ~~영역 하나를 먼저 끝까지~~ — 4.출고·주문 완료(`orders.itest.ts`, 발주 상태 변경·운송장·이력 조회)
-3. 나머지 영역 순서대로 확장(2.상품 → 6.서류 …). 3번에서 아직 안 덮은 것: 엑셀 대량 입고(`processImportChunkAction`)·명세서 업로드/사전조회(`document-actions.ts`, 파일 파싱·PDF 얽힘). 4번에서 아직 안 덮은 것: 출고 스캔·출고 확정 액션(`app/dashboard/outbound/actions.ts`), 바이어 주문 생성(`app/shop/[shop_token]/actions.ts`)
+3. 나머지 영역 순서대로 확장(2.상품 → 6.서류 …). 3번에서 아직 안 덮은 것: 엑셀 대량 입고(`processImportChunkAction`)·명세서 업로드/사전조회(`document-actions.ts`, 파일 파싱·PDF 얽힘). 4번에서 아직 안 덮은 것: 바이어 주문 생성(`app/shop/[shop_token]/actions.ts`)
 4. 5번의 PG 콜백 유실 건은 테스트로 재현까지만 하고, 실제 수정 여부는 별도로 결정
