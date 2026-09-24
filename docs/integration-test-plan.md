@@ -26,6 +26,8 @@
     `enforce_profile_role_immutable`이 막으므로, 프로필은 지우고 다시 INSERT 한다.
   - 외부 업체 호출은 테스트 파일에서 `vi.mock`(예: 토스 `cancelPayment`). 스위트트래커 키는 setup이 지워 "검증 건너뜀" 경로를 탄다.
   - 첫 영역: `orders.itest.ts` 23건(4번 출고·주문 — `updateOrderStatusAction`·`updateOrderTrackingAction`·`getHistoricalOrdersAction`).
+  - 둘째 영역: `inbound.itest.ts` 26건(3번 입고 — `recordScanAction`·`voidScanAction`·`resolveMappingAction`). 정부 API(`fetchTraceRecord`·`isMtraceConfigured`)만 `vi.mock`, 공용 캐시 적재는 실제(service_role). 하네스에 `newTraceNo`·`seedTrace`·`createDocumentLine` 추가, 정리는 `trace_no` 컬럼 테이블도 훑는다.
+  - **입고 자동 생성 규칙(테스트로 확인)**: 축종(`species_group`)만 알면 부위가 없어도 `(부위 미지정)` 상품으로 자동 생성된다. 상품 확인 대기(PENDING_MAPPING)로 남는 건 **축종을 모를 때뿐** — 옛 DB 테스트 주석("부위 없으면 자동 생성 안 함")과 다르니 새 테스트는 이 기준으로 쓴다.
 
 ## 진행 상태 표시
 
@@ -108,7 +110,7 @@ DB 레벨 108건은 `db-test-inbound.sql`(2026-09-24). 정부 API 자체는 흉�
 - 🟩 이미 입고 처리된 박스 중복 스캔 → 같은 번호·같은 중량·10분 안이면 `DUPLICATE_SUSPECTED:HH:MI`(앱이 확인창), 확인 후 강행 허용, 다른 중량은 통과, EXCEL 경로는 검사 생략, 취소된 박스는 중복 대상 아님 (`db-test-inbound.sql`)
 - 🟩 실중량-표기중량 오차 ±2% 초과 → `variance_exceeded` — 정확히 ±2%는 허용(경계), 넘으면 경고, 표기중량 없으면 판정 안 함, 표기중량 0은 CHECK 거부. 재고·원장은 실중량 기준. 매입금액 = 실중량×단가(건별 단가 > 상품 기본단가), GENERATED라 직접 수정 불가. 직원은 단가 입력·수정 거부, 단가 없이 입고하면 기본단가가 따라 붙음 (`db-test-inbound.sql`)
 - 🟩 정부 API 인증키 미설정 → 스캔은 서버가 API_ERROR+사유를 넘기고 DB는 EXCEPTION으로 기록해 입고 자체를 막지 않음(사유 저장 확인). 명세서 사전조회 쪽 "DONE 처리"는 서버 액션 로직이라 코드 확인만 (`db-test-inbound.sql`)
-- ⬜ 정부 API 타임아웃/5xx 응답 → FAILED 처리, 재시도 가능 (외부)
+- ✅ 정부 API 타임아웃/5xx 응답 → 입고는 막지 않고 EXCEPTION(API_ERROR)+사유(`failDetail`) 기록, 재고 불변. 이 번호에 필요한 기관 키만 없으면 `failIsNotConfigured`로 '재시도해도 안 됨' 구분 (`inbound.itest.ts`, 정부 API mock)
 - ⬜ 로트는 등록됐는데 특정 개체만 미등록 → 정확한 개체번호로 안내 (서버 액션의 에러 문자열 파싱, 코드 확인만)
 - 🟩 명세서 취소 후 재개 로직이 더는 안 건드림 — 취소 시 대기 줄이 FAILED+표식으로 바뀌고 대기 줄 0건, 취소된 서류 번호로는 문서 기반 자동 확정도 안 됨 (`db-test-inbound.sql`, 서버 액션과 같은 SQL로 재현)
 - 🟩 명세서 취소 후 복원하면 대기 상태로 되살아남 — 표식 줄만 PENDING으로, 진짜 실패 줄은 FAILED 유지, 복원 뒤 자동 확정 다시 됨 (`db-test-inbound.sql`)
@@ -228,5 +230,5 @@ bash scripts/db-test-order-stock-concurrency.sh
 
 1. ~~서버 액션 테스트용 인증 하네스 구축~~ — 완료(위 "서버 액션 하네스 구현됨")
 2. ~~영역 하나를 먼저 끝까지~~ — 4.출고·주문 완료(`orders.itest.ts`, 발주 상태 변경·운송장·이력 조회)
-3. 나머지 영역 순서대로 확장(3.입고 → 2.상품 → 6.서류 …). 4번에서 아직 안 덮은 것: 출고 스캔·출고 확정 액션(`app/dashboard/outbound/actions.ts`), 바이어 주문 생성(`app/shop/[shop_token]/actions.ts`)
+3. 나머지 영역 순서대로 확장(2.상품 → 6.서류 …). 3번에서 아직 안 덮은 것: 엑셀 대량 입고(`processImportChunkAction`)·명세서 업로드/사전조회(`document-actions.ts`, 파일 파싱·PDF 얽힘). 4번에서 아직 안 덮은 것: 출고 스캔·출고 확정 액션(`app/dashboard/outbound/actions.ts`), 바이어 주문 생성(`app/shop/[shop_token]/actions.ts`)
 4. 5번의 PG 콜백 유실 건은 테스트로 재현까지만 하고, 실제 수정 여부는 별도로 결정

@@ -106,6 +106,12 @@ export interface World {
     paymentMethod?: string;
     orderFields?: Record<string, unknown>;
   }): Promise<string>;
+  /** 이번 실행 전용 12자리 개체 이력번호(정리 대상으로 기록됨). */
+  newTraceNo(): string;
+  /** 공용 이력 캐시(master_livestock)에 시드 — 정부 API 조회 결과가 캐시에 들어 있는 상황. */
+  seedTrace(traceNo: string, fields?: { part?: string | null; grade?: string | null; speciesGroup?: string | null }): Promise<void>;
+  /** 공급사 A의 명세서 한 장에 줄 하나(이력번호→상품)를 만든다. */
+  createDocumentLine(options: { traceNo: string; product: WorldProduct; status?: string }): Promise<void>;
   cleanup(): Promise<void>;
 }
 
@@ -293,6 +299,58 @@ async function buildWorld(tracker: Tracker): Promise<World> {
       return id;
     },
 
+    newTraceNo() {
+      const traceNo = `9${String(Math.floor(Math.random() * 1e11)).padStart(11, "0")}`;
+
+      tracker.traces.push(traceNo);
+
+      return traceNo;
+    },
+
+    async seedTrace(traceNo, fields = {}) {
+      tracker.traces.push(traceNo);
+      // upsert_master_livestock 은 service_role 전용 — 서버(lib/livestock/master-cache.ts)와 같은 경로다.
+      const { error } = await admin.rpc("upsert_master_livestock", {
+        p_trace_no: traceNo,
+        p_trace_kind: "individual",
+        p_source: "mtrace_livestock",
+        p_raw_payload: {},
+        p_species: "한우",
+        p_species_group: fields.speciesGroup === undefined ? "소" : fields.speciesGroup,
+        p_part_name: fields.part === undefined ? "등심" : fields.part,
+        p_grade: fields.grade === undefined ? "1++" : fields.grade,
+        p_slaughter_date: new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10),
+        p_butchery_place: "○○도축장",
+        p_farm_name: null,
+        p_origin_country: null,
+        p_importer_name: null,
+        p_packing_date: null,
+      });
+
+      if (error) {
+        throw new Error(`시드 실패 — master_livestock: ${error.message}`);
+      }
+    },
+
+    async createDocumentLine({ traceNo, product, status = "PENDING" }) {
+      const documentId = randomUUID();
+
+      must(
+        await admin.from("inbound_documents").insert({ id: documentId, wholesaler_id: wholesalerA, supplier_name: "테스트공급처", status }),
+        "inbound_documents"
+      );
+      must(
+        await admin.from("inbound_document_lines").insert({
+          document_id: documentId,
+          line_no: 1,
+          item_name: product.name,
+          product_id: product.id,
+          trace_no: traceNo,
+        }),
+        "inbound_document_lines"
+      );
+    },
+
     async cleanup() {
       await purge(tracker);
     },
@@ -317,10 +375,11 @@ interface Tracker {
   wholesalers: string[];
   organizations: string[];
   retailers: string[];
+  traces: string[];
 }
 
 function newTracker(): Tracker {
-  return { users: [], wholesalers: [], organizations: [], retailers: [] };
+  return { users: [], wholesalers: [], organizations: [], retailers: [], traces: [] };
 }
 
 const uuidList = (ids: string[]) => (ids.length ? ids.map((id) => `'${id}'`).join(",") : "null");
@@ -344,6 +403,7 @@ create temp table _o on commit drop as select id from public.organizations where
 create temp table _r on commit drop as select id from public.retailers where id in (${uuidList(tracker.retailers)});
 create temp table _ord on commit drop as select id from public.orders where wholesaler_id in (select id from _w);
 create temp table _p on commit drop as select id from public.products where wholesaler_id in (select id from _w);
+create temp table _t on commit drop as select unnest(array[${tracker.traces.length ? tracker.traces.map((trace) => `'${trace}'`).join(",") : "null"}]::text[]) as id;
 do $$
 declare r record; src text;
 begin
@@ -353,12 +413,12 @@ begin
     join information_schema.tables t
       on t.table_schema = c.table_schema and t.table_name = c.table_name and t.table_type = 'BASE TABLE'
     where c.table_schema = 'public'
-      and c.column_name in ('wholesaler_id','organization_id','retailer_id','order_id','product_id')
+      and c.column_name in ('wholesaler_id','organization_id','retailer_id','order_id','product_id','trace_no')
       and c.table_name not in ('wholesalers','organizations','retailers','orders','products','profiles')
   loop
     src := case r.column_name
       when 'wholesaler_id' then '_w' when 'organization_id' then '_o' when 'retailer_id' then '_r'
-      when 'order_id' then '_ord' else '_p' end;
+      when 'order_id' then '_ord' when 'trace_no' then '_t' else '_p' end;
     execute format('delete from public.%I where %I::text in (select id::text from %s)', r.table_name, r.column_name, src);
   end loop;
 end $$;
