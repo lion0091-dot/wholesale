@@ -18,14 +18,19 @@ const PENDING_ROW_SELECT =
   "id, pg_order_id, wholesaler_id, retailer_id, total_amount, cart_snapshot, restaurant_name, contact_phone, delivery_address, delivery_notes, negotiation_note, expires_at";
 
 export async function GET(request: NextRequest) {
+  // CRON_SECRET이 없으면 누구나 호출할 수 있는 상태라 실행 자체를 거부한다(2026-09-24 점검 3).
+  // Vercel은 이 환경변수가 있으면 크론 호출에 Authorization: Bearer <CRON_SECRET>을 자동으로 붙인다.
   const cronSecret = process.env.CRON_SECRET;
 
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
+  if (!cronSecret) {
+    return NextResponse.json(
+      { error: "CRON_SECRET 환경변수가 설정되지 않아 크론 실행을 거부합니다. Vercel 환경변수에 등록해주세요." },
+      { status: 500 }
+    );
+  }
 
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+  if (request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const supabase = createServiceRoleClient();
@@ -41,7 +46,7 @@ export async function GET(request: NextRequest) {
   }
 
   const rows = (data ?? []) as unknown as PendingPgPaymentRow[];
-  const counts = { recovered: 0, abandoned: 0, still_processing: 0, skipped: 0 };
+  const counts = { recovered: 0, abandoned: 0, still_processing: 0, skipped: 0, refunded: 0 };
 
   for (const row of rows) {
     try {

@@ -1,5 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { buildOrderNumber, translateHotDealQuotaError } from "@/lib/orders/create-order";
+import {
+  buildOrderNumber,
+  classifyCreateOrderError,
+  PG_ORDER_UNIQUE_INDEX,
+  translateHotDealQuotaError,
+} from "@/lib/orders/create-order";
+
+describe("classifyCreateOrderError", () => {
+  it("orders(pg_order_id) 유니크 위반은 DUPLICATE_PG_ORDER — 같은 결제로 이미 주문이 있다는 뜻", () => {
+    expect(
+      classifyCreateOrderError(`duplicate key value violates unique constraint "${PG_ORDER_UNIQUE_INDEX}"`)
+    ).toBe("DUPLICATE_PG_ORDER");
+  });
+
+  it("핫딜 한도 초과는 HOT_DEAL_QUOTA_EXCEEDED — PG 경로는 자동 환불로 이어진다", () => {
+    expect(classifyCreateOrderError("HOT_DEAL_QUOTA_EXCEEDED:한우 등심:20:15:10")).toBe("HOT_DEAL_QUOTA_EXCEEDED");
+  });
+
+  it("그 밖의 오류는 UNKNOWN", () => {
+    expect(classifyCreateOrderError("connection reset")).toBe("UNKNOWN");
+    expect(classifyCreateOrderError("")).toBe("UNKNOWN");
+  });
+});
 
 describe("translateHotDealQuotaError", () => {
   it("정상 케이스를 한글 안내문으로 바꾼다", () => {

@@ -96,9 +96,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const result = await finalizePaidOrder(supabase, pending, {
       paymentKey: confirmed.paymentKey,
       totalAmount: amount,
+      secretKey,
     });
 
     if ("error" in result) {
+      // 핫딜 매진이면 finalizePaidOrder가 이미 자동 환불까지 끝냈다 — 그 안내를 그대로 보여준다.
+      if (result.refunded) {
+        return failRedirect(result.error);
+      }
+
       // 결제는 이미 승인됐는데 주문 생성이 실패한 경우 — 돈은 받았으니 절대 조용히
       // 묻으면 안 된다. pg_pending_payments는 지우지 않고 남겨서(finalizePaidOrder가
       // 실패 시 안 지움), 다음 페이지 방문/매일 크론의 복구 대상에 들어가게 한다.

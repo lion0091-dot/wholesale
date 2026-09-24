@@ -30,7 +30,29 @@ export interface CreateOrderParams {
   pgOrderId?: string;
 }
 
-export type CreateOrderResult = { orderId: string } | { error: string };
+/**
+ * 실패 사유 분류 — PG 경로는 사유에 따라 후속 처리가 다르다(핫딜 매진이면 자동 환불,
+ * 같은 결제로 이미 주문이 있으면 멱등 처리). 직접정산/외상 경로는 문구만 쓴다.
+ */
+export type CreateOrderErrorCode = "HOT_DEAL_QUOTA_EXCEEDED" | "DUPLICATE_PG_ORDER" | "UNKNOWN";
+
+export type CreateOrderResult = { orderId: string } | { error: string; code: CreateOrderErrorCode };
+
+/** orders(pg_order_id) 부분 유니크 인덱스 이름(20260930000101). 위반 메시지에 그대로 실려 온다. */
+export const PG_ORDER_UNIQUE_INDEX = "idx_orders_pg_order_id_unique";
+
+/** DB 오류 문자열에서 후속 처리에 필요한 사유만 골라낸다. */
+export function classifyCreateOrderError(message: string): CreateOrderErrorCode {
+  if (message.includes(PG_ORDER_UNIQUE_INDEX)) {
+    return "DUPLICATE_PG_ORDER";
+  }
+
+  if (HOT_DEAL_QUOTA_EXCEEDED_PATTERN.test(message)) {
+    return "HOT_DEAL_QUOTA_EXCEEDED";
+  }
+
+  return "UNKNOWN";
+}
 
 /**
  * 핫딜 한도 초과 시 reserve_hot_deal_quota RPC가 던지는 예외
@@ -50,6 +72,20 @@ export function translateHotDealQuotaError(message: string): string | null {
   const [, productName] = matched;
 
   return `${productName} 핫딜 매진 — 방금 다른 주문이 먼저 가져갔습니다. 일반 단가로 다시 담아 발주해주세요.`;
+}
+
+/**
+ * 저장 도중 실패한 접수대기 주문을 지운다. orders에는 DELETE 정책이 없어 바이어 세션의
+ * `.delete()`는 0행으로 조용히 끝나므로(실패한 주문이 접수대기로 남던 버그), 소유자·접수대기
+ * 조건을 서버에서 확인하고 소진된 핫딜 한도까지 돌려주는 RPC(20260930000103)로 지운다.
+ * 정리 자체의 실패는 호출자에게 알릴 방법이 없으니 로그만 남긴다.
+ */
+export async function discardUnfulfilledOrder(supabase: SupabaseServerClient, orderId: string): Promise<void> {
+  const { error } = await supabase.rpc("discard_unfulfilled_order", { p_order_id: orderId });
+
+  if (error) {
+    console.error("[createOrder] 실패한 주문 정리 실패:", orderId, error.message);
+  }
 }
 
 export function buildOrderNumber(): string {
@@ -83,13 +119,23 @@ export async function createOrderWithItems(
     .single();
 
   if (orderError || !insertedOrder) {
-    return { error: orderError?.message ?? "발주서 저장에 실패했습니다. 잠시 후 다시 시도해주세요." };
+    const message = orderError?.message ?? "";
+
+    return {
+      error: message || "발주서 저장에 실패했습니다. 잠시 후 다시 시도해주세요.",
+      code: classifyCreateOrderError(message),
+    };
   }
 
   const orderId = insertedOrder.id as string;
 
+  // 품목 INSERT 트리거(20260930000103)가 핫딜 줄마다 상품 행을 잠근다 — 두 손님이 같은
+  // 상품들을 서로 다른 순서로 담으면 데드락이 날 수 있으니 상품 ID 순으로 고정해 넣는다
+  // (reserve_hot_deal_quota의 ORDER BY product_id와 같은 이유).
+  const orderedLines = [...params.lines].sort((a, b) => a.productId.localeCompare(b.productId));
+
   const { error: itemsError } = await supabase.from("order_items").insert(
-    params.lines.map((line) => ({
+    orderedLines.map((line) => ({
       order_id: orderId,
       product_id: line.productId,
       product_name: line.name,
@@ -106,22 +152,31 @@ export async function createOrderWithItems(
   );
 
   if (itemsError) {
-    // 품목 없는 빈 발주서가 남지 않도록 헤더를 롤백한다.
-    await supabase.from("orders").delete().eq("id", orderId);
-    return { error: "발주 품목 저장에 실패했습니다. 다시 시도해주세요." };
+    // 품목 없는 빈 발주서가 남지 않도록 헤더를 지운다.
+    await discardUnfulfilledOrder(supabase, orderId);
+    // 바이어 경로에서는 품목 트리거가 핫딜 한도를 이 자리에서 소진하므로 매진 오류가
+    // 여기서 먼저 나온다 — 아래 reserve 단계와 같은 분류·문구로 돌려준다.
+    return {
+      error:
+        translateHotDealQuotaError(itemsError.message) ?? "발주 품목 저장에 실패했습니다. 다시 시도해주세요.",
+      code: classifyCreateOrderError(itemsError.message),
+    };
   }
 
   // 핫딜 한도는 "결제(발주 생성)" 순간에 소비된다(확정 시점이 아님) — 손님들이 실시간으로
   // 경쟁 구매하는 상황이라 여기서 막아야 의미가 있다. 상품 행을 잠그고 순서대로
   // 처리하므로 두 손님이 동시에 눌러도 한도를 넘기는 일 자체가 안 생긴다.
+  // 바이어 세션은 위 품목 트리거가 이미 소진·예약해 두므로 이 호출은 no-op이고,
+  // 재대조 크론(service_role) 경로에서만 실제로 소진한다.
   const { error: quotaError } = await supabase.rpc("reserve_hot_deal_quota", { p_order_id: orderId });
 
   if (quotaError) {
-    await supabase.from("orders").delete().eq("id", orderId);
+    await discardUnfulfilledOrder(supabase, orderId);
     return {
       error:
         translateHotDealQuotaError(quotaError.message) ??
         "핫딜 한도 확인 중 오류가 발생했습니다. 다시 시도해주세요.",
+      code: classifyCreateOrderError(quotaError.message),
     };
   }
 

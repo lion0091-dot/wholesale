@@ -15,7 +15,7 @@
  */
 
 import type { createClient } from "@/lib/supabase/server";
-import { getPaymentByOrderId, TossPaymentsError } from "./tosspayments-client";
+import { cancelPayment, getPaymentByOrderId, TossPaymentsError } from "./tosspayments-client";
 import { decryptCredential, CredentialCryptoError } from "@/lib/security/credential-crypto";
 import { createOrderWithItems, buildOrderNumber } from "@/lib/orders/create-order";
 import { sendOrderNotificationToWholesaler } from "@/lib/notifications/alimtalk";
@@ -44,12 +44,47 @@ export interface PendingPgPaymentRow {
 const PENDING_ROW_SELECT =
   "id, pg_order_id, wholesaler_id, retailer_id, total_amount, cart_snapshot, restaurant_name, contact_phone, delivery_address, delivery_notes, negotiation_note, expires_at";
 
-/** 결제 완료가 확인된 뒤 주문 생성 + 알림톡 발송까지 — success 콜백과 복구 경로가 공유한다. */
+export type FinalizePaidOrderResult =
+  | { orderNumber: string }
+  /** 주문을 못 만들었다. refunded=true면 결제는 자동 환불까지 끝난 상태(핫딜 매진). */
+  | { error: string; refunded: boolean };
+
+/** 같은 결제(pg_order_id)로 이미 만든 주문이 있으면 그 번호. 멱등 처리의 근거다. */
+async function findOrderNumberByPgOrderId(supabase: AnySupabase, pgOrderId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("orders")
+    .select("order_number")
+    .eq("pg_order_id", pgOrderId)
+    .maybeSingle();
+
+  return (data?.order_number as string | undefined) ?? null;
+}
+
+/**
+ * 결제 완료가 확인된 뒤 주문 생성 + 알림톡 발송까지 — success 콜백과 복구 경로가 공유한다.
+ *
+ * 멱등이다(2026-09-24 점검 3): 같은 결제로 이미 주문이 있으면 다시 만들지 않고 대기 행만
+ * 치운다. 콜백이 주문을 만든 직후 대기 행 삭제만 실패하거나, 크론과 주문내역 재방문이
+ * 같은 대기 행을 동시에 집는 경우가 실제로 있다. 그 검사 사이를 뚫는 동시 실행은
+ * orders(pg_order_id) 유니크 인덱스(20260930000101)가 막고, 그 위반도 같은 방식으로 흡수한다.
+ *
+ * 핫딜 매진(reserve_hot_deal_quota 초과)이면 직접정산과 달리 이미 돈을 받은 뒤라 그냥
+ * 실패로 둘 수 없다 — 즉시 자동 환불하고 대기 행을 지운다(사장님 확정, A안). 환불까지
+ * 실패하면 대기 행을 남겨 재대조가 다음에 다시 시도하게 한다.
+ */
 export async function finalizePaidOrder(
   supabase: AnySupabase,
   pending: PendingPgPaymentRow,
-  payment: { paymentKey: string; totalAmount: number }
-): Promise<{ orderNumber: string } | { error: string }> {
+  payment: { paymentKey: string; totalAmount: number; secretKey: string }
+): Promise<FinalizePaidOrderResult> {
+  // 0) 멱등: 이 결제로 만든 주문이 이미 있으면 대기 행만 정리하고 끝낸다(알림톡도 다시 안 보낸다).
+  const existingOrderNumber = await findOrderNumberByPgOrderId(supabase, pending.pg_order_id);
+
+  if (existingOrderNumber) {
+    await supabase.from("pg_pending_payments").delete().eq("id", pending.id);
+    return { orderNumber: existingOrderNumber };
+  }
+
   const { data: wholesaler } = await supabase
     .from("wholesalers")
     .select("business_name, profile_id")
@@ -75,7 +110,48 @@ export async function finalizePaidOrder(
   });
 
   if ("error" in createResult) {
-    return createResult;
+    if (createResult.code === "DUPLICATE_PG_ORDER") {
+      // 0)의 검사와 지금 사이에 다른 경로가 먼저 만들었다 — 유니크 인덱스가 막아줬다.
+      const raced = await findOrderNumberByPgOrderId(supabase, pending.pg_order_id);
+
+      if (raced) {
+        await supabase.from("pg_pending_payments").delete().eq("id", pending.id);
+        return { orderNumber: raced };
+      }
+    }
+
+    if (createResult.code === "HOT_DEAL_QUOTA_EXCEEDED") {
+      try {
+        await cancelPayment({
+          secretKey: payment.secretKey,
+          paymentKey: payment.paymentKey,
+          cancelReason: "핫딜 매진으로 자동 환불",
+        });
+      } catch (refundError) {
+        console.error(
+          "[pg] 핫딜 매진 자동 환불 실패 — 수동 환불 필요",
+          pending.pg_order_id,
+          payment.paymentKey,
+          refundError instanceof Error ? refundError.message : refundError
+        );
+
+        // 대기 행을 남겨 재대조가 다음 기회에 환불을 다시 시도하게 한다.
+        return {
+          error:
+            "핫딜이 방금 매진돼 발주를 접수하지 못했고, 자동 환불도 실패했습니다. 결제는 공급사가 확인 후 환불해드립니다. 공급사에 문의해주세요.",
+          refunded: false,
+        };
+      }
+
+      await supabase.from("pg_pending_payments").delete().eq("id", pending.id);
+
+      return {
+        error: "핫딜이 방금 매진돼 발주를 접수하지 못했습니다. 결제하신 금액은 자동으로 환불 처리됐습니다(카드사 사정에 따라 며칠 걸릴 수 있습니다).",
+        refunded: true,
+      };
+    }
+
+    return { error: createResult.error, refunded: false };
   }
 
   await supabase.from("pg_pending_payments").delete().eq("id", pending.id);
@@ -112,7 +188,9 @@ export type ReconcileOutcome =
   | { outcome: "recovered"; orderNumber: string }
   | { outcome: "abandoned" }
   | { outcome: "still_processing" }
-  | { outcome: "skipped" };
+  | { outcome: "skipped" }
+  /** 결제는 됐지만 핫딜 매진으로 주문을 못 만들어 자동 환불로 끝냈다. */
+  | { outcome: "refunded" };
 
 /**
  * 대기 중인 결제 한 건을 실제 토스 상태와 대조한다.
@@ -171,12 +249,28 @@ export async function reconcilePendingPgPayment(
     return { outcome: "still_processing" };
   }
 
+  // 승인 콜백과 같은 원칙 — 토스가 말하는 금액이 아니라 우리가 저장해둔 기대 금액이 기준이다.
+  // 다르다는 건 정상 흐름에서 생길 수 없는 신호라, 주문을 만들지 않고 기록만 남긴다.
+  if (payment.totalAmount !== Number(pending.total_amount)) {
+    console.error(
+      "[pg-reconcile] 결제 금액 불일치 — 주문 생성 보류",
+      pending.pg_order_id,
+      { expected: Number(pending.total_amount), toss: payment.totalAmount }
+    );
+    return { outcome: "skipped" };
+  }
+
   const result = await finalizePaidOrder(supabase, pending, {
     paymentKey: payment.paymentKey,
     totalAmount: payment.totalAmount,
+    secretKey,
   });
 
   if ("error" in result) {
+    if (result.refunded) {
+      return { outcome: "refunded" };
+    }
+
     // 돈은 이미 잡혔는데 주문 생성이 또 실패 — 대기 행은 남겨서 다음 기회에 재시도한다.
     console.error("[pg-reconcile] 복구 중 주문 생성 실패", pending.pg_order_id, result.error);
     return { outcome: "skipped" };

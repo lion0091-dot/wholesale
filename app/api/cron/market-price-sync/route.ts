@@ -107,14 +107,18 @@ async function syncSpecies(
 }
 
 export async function GET(request: NextRequest) {
+  // CRON_SECRET이 없으면 누구나 호출할 수 있는 상태라 실행 자체를 거부한다(2026-09-24 점검 3).
   const cronSecret = process.env.CRON_SECRET;
 
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
+  if (!cronSecret) {
+    return NextResponse.json(
+      { error: "CRON_SECRET 환경변수가 설정되지 않아 크론 실행을 거부합니다. Vercel 환경변수에 등록해주세요." },
+      { status: 500 }
+    );
+  }
 
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+  if (request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   if (!isKapeMarketPriceConfigured()) {
