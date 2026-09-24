@@ -66,7 +66,11 @@
 
 ## 보안 점검 — 권한 게이트 NULL 비교 버그 수정 (2026-09-24, 별도 발견)
 
-- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) 맨 아래 "보안 점검" 절 — plpgsql `IF a <> NULL`이 거짓으로 취급돼 고객 계정이 남의 재고를 조정하고 staff가 owner/manager 전용 RPC를 우회하던 구멍. 마이그레이션 097에서 `can_manage_wholesaler` 헬퍼 + 8개 함수 게이트 교체, 엑셀 대량입고 이중 처리 방지 포함. **새 RPC의 소유/권한 검사는 `<>` 비교 대신 `can_access_wholesaler` / `can_manage_wholesaler`를 쓴다.** 공용 이력캐시 오염(`upsert_master_livestock`) 등 미수정 항목은 문서 참고.
+- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) 맨 아래 "보안 점검" 절 — plpgsql `IF a <> NULL`이 거짓으로 취급돼 고객 계정이 남의 재고를 조정하고 staff가 owner/manager 전용 RPC를 우회하던 구멍. 마이그레이션 097에서 `can_manage_wholesaler` 헬퍼 + 8개 함수 게이트 교체, 엑셀 대량입고 이중 처리 방지 포함. 098에서 후속 8건 전부 처리(공용 이력캐시 `upsert_master_livestock`은 service_role 전용 → 서버는 `lib/livestock/master-cache.ts`로만 호출, 원가(매입단가)는 관리자만 입력, 명세서 완전삭제 관리자만, 출고 스캔 `p_scan_id` 박스 지정 등). **새 RPC의 소유/권한 검사는 `<>` 비교 대신 `can_access_wholesaler` / `can_manage_wholesaler`를 쓴다.** 로컬 DB 테스트 스크립트는 첫머리에서 `upsert_master_livestock`을 테스트 세션에만 다시 GRANT한다.
+- 같은 문서 "점검 1" 절 — 099: 핫딜 마이그레이션(091~094)이 `apply_order_shipment`를 옛 본문으로 되돌린 회귀 복원(079 순량 판정·그램 정밀도), 동시 확정 레이스(잠금 순서는 "박스 → 상품" 유지, `recalc_product_stock`이 상품 행을 잠근 뒤 합계를 읽음), 자동 배정된 박스 출고 스캔 거부 버그. **재고를 줄이는 새 함수는 반드시 `recalc_product_stock`을 마지막에 부르고, 상품 행을 박스보다 먼저 잠그지 않는다. 함수 본문을 다시 정의할 때는 마이그레이션 파일이 아니라 로컬 DB의 `pg_get_functiondef` 결과를 기준으로 패치한다(079 방식).**
+- 같은 문서 "점검 2" 절 — 100: 확정 자동배정에서 기한 지난 박스 제외(가용량 = 쓸 수 있는 박스 + 박스 없는 재고), 세트 지정 시 수동 재고 0 요구(유령 세트 방지), 보관 구성품 제작 거부, 선입선출 보조 정렬 `trace_no`.
+- [docs/pg-payment-integration.md](docs/pg-payment-integration.md) "점검 3" 절 — 101: `orders(pg_order_id)` 유니크 + `finalizePaidOrder` 멱등, 핫딜 매진 시 PG 자동 환불(A안), 크론 3개는 `CRON_SECRET` 필수(Vercel env 없으면 크론이 거부됨).
+- [docs/integration-test-plan.md](docs/integration-test-plan.md) 0절 "발견해 102로 수정한 구멍" — 102: 바이어 취소요청 RLS 회귀 복원(024가 0912를 되돌렸었음), `wholesalers` 플랫폼 전용 컬럼 보호 트리거(`enforce_wholesaler_platform_columns`, super_admin 세션·서버·RPC 내부만 통과), 재고 내부함수 4개 anon·authenticated EXECUTE 회수, `reserve_hot_deal_quota` 소유·접수대기·주문당 1회, `apply_credit_order` 음수 거부. **트리거 내부용 SECURITY DEFINER 함수를 새로 만들면 anon·authenticated EXECUTE를 반드시 회수한다.** 103: 바이어 세션의 order_items INSERT를 서버 규칙(상품 소속·주문 가능·수량·소계·핫딜가/맞춤단가/기준가·총액)으로 대조하는 `enforce_order_item_integrity` 트리거(핫딜 줄은 여기서 한도 소진), `reserve_hot_deal_quota` 멱등화, 실패 주문 정리 RPC `discard_unfulfilled_order`(바이어 세션의 `orders.delete()`는 DELETE 정책이 없어 0행이었음). 테이블 RLS 격리·품목 무결성 테스트는 `scripts/db-test-access-isolation.sql`(123건).
 
 ## 자체 세트 상품(BOM) + 이력 역추적 (축산물 이력 입고 시스템 위, 23단계)
 
