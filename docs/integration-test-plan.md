@@ -142,18 +142,38 @@ DB 레벨 57건은 `db-test-orders-outbound.sql`(2026-09-24).
 - ⬜ 핫딜 매진 상태에서 PG 결제 승인 → 주문 대신 자동 환불 + 안내 (101, 점검 3 A안) — 실계정 필요
 - ⬜ 환불 API 실패 시 취소 상태로 안 바뀜(잠긴 결정). 환불 성공 후 상태 변경이 0건이어도 `payment_status='refunded'`가 남는지 함께 확인(101)
 - ⬜ 이미 환불된 건 재환불 시도 → 거부
-- ⬜ 체험만료/연체 상태에서 실제로 대시보드 접근이 막히는지(`/billing-locked` 리다이렉트)
-- ⬜ 허용 안 된 거래처로 결제수단 사용 시도 → 거부
-- ⬜ (정상) 외상 거래처 정산(수납) 처리
+- ⬜ 체험만료/연체 상태에서 실제로 대시보드 접근이 막히는지(`/billing-locked` 리다이렉트) — 미들웨어 통합이라 DB 밖. 판정 함수 `isBillingBlocked`(`lib/supplier/billing.ts`)에는 단위테스트가 없음(2026-09-24 확인). 대신 공급사가 자기 구독 상태·체험일을 직접 못 바꾸는 것은 🟩(102 트리거, `db-test-payments-settlement.sql`).
+- 🟩 (정상) 외상 거래처 정산(수납) 처리 — 2건 합산 차감, 같은 건 재정산·이미 정산된 건·선불 주문은 0행, 미수금은 0 미만으로 안 내려감. owner·manager만 가능, 직원·고객·비로그인은 `NOT_A_WHOLESALER`, 타사 주문은 0행. 한도는 딱 같으면 허용·1원 넘으면 `CREDIT_LIMIT_EXCEEDED`, 음수·0원 `INVALID_AMOUNT`, 남의 거래관계 거부, 바이어의 미수금·한도 직접 수정 0행 (`db-test-payments-settlement.sql` 49건, 2026-09-24)
+- 🟩 PG 대기행 — 바이어는 자기 거래중 공급사에만 INSERT(타인 명의·거래 없는 공급사·거래중지 관계 거부), 같은 결제 ID·0원 이하 거부, UPDATE 불가, 자기 것만 DELETE, 공급사는 자기 회사 것만 조회(수정·삭제 불가). 플랫폼 구독료 청구서는 공급사·고객 조회 0건·수정 0행, super_admin만 완납 처리, 상태 CHECK·(공급사, 월) 유니크, 생성은 서버 전용 (`db-test-payments-settlement.sql`)
+- ⬜ 허용 안 된 거래처로 결제수단 사용 시도 → 거부 — **DB에는 규칙이 없다**(아래 [발견]). 앱(`buyer-auth`)만 검사.
+
+**이 절에서 발견한 것 (2026-09-24):** `db-test-payments-settlement.sql`에 `[발견]` 표시로 현재 동작을 고정해 두었다. 고치면 기대값을 바꾼다.
+
+**108로 수정 (`20260930000108_settle_skip_cancelled_and_cancel_request_column_reset.sql`):**
+
+- 취소된 외상 주문을 정산 처리하면 미수금이 두 번 빠지던 것(취소가 이미 되돌렸는데 `settle_credit_orders`가 취소 상태를 안 봄, 화면은 취소 주문을 빼므로 API 직접 호출에서만) → 정산에서 취소 주문 제외.
+- 바이어의 취소요청 UPDATE에 `payment_status`·`pg_payment_key`·`settled_at`·`payment_method` 등을 끼워 보내면 그대로 저장되던 것 → 취소요청 트리거가 결제·배송 컬럼도 원본으로 되돌림(앱의 취소요청은 status·cancel_reason·cancel_requested_at·updated_at만 씀).
+
+**남은 것 — 앱 구조 변경이 필요해 토스 실계정 연동 때 함께 다룬다(사장님 판단):**
+
+1. **결제수단 허용목록·외상 한도가 앱에서만 걸린다.** 바이어가 API로 주문 헤더를 직접 넣으면 허용 안 된 외상·PG 주문이 들어가고, `apply_credit_order`를 안 부르면 한도(100,000)를 넘는 외상(500,000)도 미수금 증가 없이 접수된다(주문 저장과 미수금 반영이 별개 호출이라서 — 한 RPC로 묶는 구조 변경이 필요). 서버가 선불 주문에서 허용목록을 안 보므로 DB 강제 시 동작이 바뀌는 점도 결정 필요.
+2. **바이어가 결제 완료를 직접 INSERT로 위조할 수 있다.** `payment_status='paid'`+결제키를 넣은 PG 주문 헤더가 그대로 들어간다. 성공 콜백이 바이어 세션으로 주문을 만들기 때문에 DB는 진짜 결제와 위조를 구분할 수 없다 — PG 주문 생성을 서버 권한으로 옮겨야 막힌다.
+3. **PG 대기행의 금액과 장바구니를 바이어가 자유롭게 적는다.** 성공 콜백은 주문 품목 무결성 트리거(103)가 막지만, 복구 크론은 서버 권한이라 이 트리거를 건너뛴다(1,000원 결제 + 500,000원어치 장바구니가 `paid` 주문이 될 수 있음, 코드 경로 분석 기준). 위 2번과 같은 구조 변경으로 함께 해결.
+4. **[정보]** 거래중지 관계에서도 `apply_credit_order`가 통과해 잔액이 늘 수 있다(주문은 RLS로 막힘).
 
 ## 6. 서류발행
 
-- ⬜ 사업장 주소 미등록 상태에서 명세서 발행 시도 → 차단(잠긴 결정)
-- ⬜ 이미 발행된 계산서 중복발행 시도 → 거부
-- ⬜ 정정신고 사유 없이 정정 시도 → 거부
-- ⬜ 팝빌 API 실패/미설정 상태에서 발행 시도 → 에러 처리
-- ⬜ 금액 0원/음수 발행 시도 → 거부
-- ⬜ (정상) 거래명세서/계산서/배송의뢰서 발행 기본 흐름
+DB 레벨 38건은 `db-test-documents.sql`(2026-09-24, 계산서 발행이력 `tax_invoice_issuances` 대상). 팝빌 호출·PDF 생성은 범위 밖.
+
+- ⬜ 사업장 주소 미등록 상태에서 명세서 발행 시도 → 차단(잠긴 결정) — 순수 함수(`findMissingStatementFields`), `statement.test.ts`가 다룸
+- 🟩 이미 발행된 계산서 중복발행 시도 → 거부 — 원래 막는 곳이 없었다(DB 주문당 유니크 없음, `issueTaxInvoice`에 "이미 발행됨" 검사 없음 → 버튼 두 번이면 국세청에 두 건 접수 가능). **109에서 부분 유니크 인덱스 `idx_tax_invoice_issuances_one_live_original`**: 주문당 살아 있는(pending·issued) 최초 발행이력은 하나(사장님 결정). 정정 행·failed·cancelled는 세지 않아 실패한 발행은 재시도할 수 있고 정정은 여러 번 가능. 발행 함수는 이 위반을 "이미 진행 중이거나 발행 완료 — 정정 발행을 이용해주세요" 문구로 안내. **pending이 서버 중단으로 남으면(국세청 접수 여부 불명) 팝빌에서 확인해 정리하기 전까지 재발행이 막힌다 — 이중 접수보다 안전하다는 판단이지만 정리 화면은 없음.** (`db-test-documents.sql`)
+- ⬜ 정정신고 사유 없이 정정 시도 → 거부 — DB CHECK는 사유 값 1~6 범위만 본다. 정정 행에 사유가 없거나(원본 연결만), 사유는 있는데 원본이 없는 행도 DB가 받는다(정보). 앱은 타입(`ModifyCode`)으로 강제.
+- ⬜ 팝빌 API 실패/미설정 상태에서 발행 시도 → 에러 처리 (외부)
+- ⬜ 금액 0원/음수 발행 시도 → 거부 — 음수는 주문 총액 CHECK로 애초에 못 만든다(🟩). 0원 주문은 허용되고 발행 코드에 0원 거부 검사가 없다(코드 확인, 정보).
+- 🟩 계산서 발행이력 권한·제약 — 과세 유형·정정 사유 0/7·정해지지 않은 상태·같은 문서관리번호 거부, 작성자 자동 기록, 원본 삭제 시 정정 행의 연결만 끊김, 직원·타사·고객·비로그인은 조회 0건·생성 거부, 관리자는 조회만 (`db-test-documents.sql`)
+- 🟩 매니저 발행 — 원래 앱은 owner·manager 발행을 허용하는데 발행이력 정책은 사장 본인만 통과시켜 매니저는 이력 생성이 RLS로 거부되고 조회도 0건이었다 → **109에서 정책을 owner·manager(`is_org_staff_of_wholesaler`)로 넓힘**(직원 제외, 관리자는 조회 전용 유지). 매니저 세션은 회사 정보를 못 바꿔 첫 발행 때 팝빌 연동 상태 저장(`ensurePopbillMember`의 wholesalers UPDATE)이 조용히 0행이 되지만(에러 아님) 발행 자체는 진행된다 — 사장이 나중에 발행하면 저장됨. (`db-test-documents.sql`)
+- ⬜ [정보] 사장이 자기 발행이력 행을 직접 수정·삭제할 수 있다(서버 흐름이 같은 권한으로 갱신하기 때문, 국세청 접수 기록을 지울 수도 있음). 타사 주문 ID에 자기 명의 이력을 연결하는 것도 DB가 주문 소속을 안 본다(주문 ID를 알아야 하고 상대 화면엔 안 보임).
+- ⬜ (정상) 거래명세서/계산서/배송의뢰서 발행 기본 흐름 (PDF·팝빌 — 서버 액션 하네스와 실계정 필요)
 
 ## 7. 알림톡
 
@@ -185,7 +205,7 @@ DB 레벨 57건은 `db-test-orders-outbound.sql`(2026-09-24).
 전부 로컬 Docker DB 대상이고 롤백형이다(`db-test-order-stock-concurrency.sh`만 고유 ID 시드를 넣고 끝에 지운다).
 
 ```
-for s in db-test-tenant-gate-null db-test-access-isolation db-test-signup-and-accounts db-test-product-management db-test-inbound db-test-orders-outbound db-test-order-stock-regression db-test-fifo-bundle-integrity db-test-pg-idempotency; do
+for s in db-test-tenant-gate-null db-test-access-isolation db-test-signup-and-accounts db-test-product-management db-test-inbound db-test-orders-outbound db-test-payments-settlement db-test-documents db-test-order-stock-regression db-test-fifo-bundle-integrity db-test-pg-idempotency; do
   (echo "begin;"; cat scripts/$s.sql; echo "rollback;") | docker exec -i supabase_db_wholesale psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - | grep -E "FAIL|pass \|" ; done
 bash scripts/db-test-order-stock-concurrency.sh
 ```
