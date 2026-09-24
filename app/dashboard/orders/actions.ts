@@ -21,6 +21,7 @@ import {
 } from "@/lib/verification/sweettracker";
 import { cancelPayment, TossPaymentsError } from "@/lib/payments/tosspayments-client";
 import { decryptCredential, CredentialCryptoError } from "@/lib/security/credential-crypto";
+import { loadPgSecretEncrypted } from "@/lib/security/wholesaler-credentials";
 import type { OrderStatus } from "@/types/database";
 
 export interface ActionResult<T = undefined> {
@@ -172,13 +173,7 @@ export async function updateOrderStatusAction(
       order.payment_status === "paid" &&
       order.pg_payment_key
     ) {
-      const { data: orderWholesaler } = await supabase
-        .from("wholesalers")
-        .select("pg_secret_key_encrypted")
-        .eq("id", order.wholesaler_id as string)
-        .maybeSingle();
-
-      const encryptedSecret = orderWholesaler?.pg_secret_key_encrypted as string | null;
+      const encryptedSecret = await loadPgSecretEncrypted(order.wholesaler_id as string);
 
       if (!encryptedSecret) {
         throw new RbacError("PG 연동 설정을 찾을 수 없어 환불을 진행할 수 없습니다. 공급사 설정을 확인해주세요.");

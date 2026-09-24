@@ -13,6 +13,10 @@ import {
 import { SupplierApprovalList } from "./supplier-approval-list";
 import type { Wholesaler } from "@/types/database";
 
+// 자격정보 컬럼(alimtalk_*, pg_secret_key_encrypted)은 세션이 못 읽으므로(110) select("*")를 쓸 수 없다.
+const WHOLESALER_LIST_COLUMNS =
+  "id, profile_id, business_name, business_number, representative_name, shop_token, status, subscription_status, created_at, updated_at, business_address, business_start_date, nts_verification_status, nts_verified_at, business_license_path, business_license_uploaded_at, shop_thumbnail_url, popbill_member_id, popbill_joined_at, pg_provider, pg_client_key, trial_started_at, billing_starts_at, allow_price_negotiation, min_order_amount";
+
 export interface AdminSupplierItem extends Wholesaler {
   contactPhone?: string | null;
 }
@@ -46,7 +50,7 @@ export default async function AdminSuppliersPage() {
     const [{ data }, billedCounts, eventsSnapshot, { data: unpaidInvoiceRows }] = await Promise.all([
       supabase
         .from("wholesalers")
-        .select("*, profiles:profile_id ( phone )")
+        .select(`${WHOLESALER_LIST_COLUMNS}, profiles:profile_id ( phone )`)
         .order("created_at", { ascending: false }),
       countBilledRetailersForAllSuppliers(supabase),
       listActiveEventsForMonth(supabase, currentBillingMonthRangeUtc()),

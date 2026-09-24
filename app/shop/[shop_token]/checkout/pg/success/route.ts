@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { BuyerAuthError, requireLinkedBuyer } from "@/lib/auth/buyer-auth";
 import { confirmPayment, TossPaymentsError } from "@/lib/payments/tosspayments-client";
 import { decryptCredential, CredentialCryptoError } from "@/lib/security/credential-crypto";
+import { loadPgSecretEncrypted } from "@/lib/security/wholesaler-credentials";
 import { finalizePaidOrder, type PendingPgPaymentRow } from "@/lib/payments/pg-reconcile";
 import type { CartLine } from "@/lib/shop/order-policy";
 
@@ -72,13 +73,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return failRedirect("결제 금액이 일치하지 않습니다. 공급사에 문의해주세요.");
     }
 
-    const { data: wholesaler } = await supabase
-      .from("wholesalers")
-      .select("pg_secret_key_encrypted")
-      .eq("id", pending.wholesaler_id)
-      .maybeSingle();
-
-    const encryptedSecret = wholesaler?.pg_secret_key_encrypted as string | null;
+    // 바이어 세션은 공급사의 시크릿키 컬럼을 읽을 수 없다(110) — 위에서 본인 대기 결제 행임을 확인했으니 서버 권한으로 읽는다.
+    const encryptedSecret = await loadPgSecretEncrypted(pending.wholesaler_id);
 
     if (!encryptedSecret) {
       return failRedirect("공급사의 PG 연동 설정을 확인할 수 없습니다.");

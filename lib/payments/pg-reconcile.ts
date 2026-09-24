@@ -17,6 +17,7 @@
 import type { createClient } from "@/lib/supabase/server";
 import { cancelPayment, getPaymentByOrderId, TossPaymentsError } from "./tosspayments-client";
 import { decryptCredential, CredentialCryptoError } from "@/lib/security/credential-crypto";
+import { loadPgSecretEncrypted } from "@/lib/security/wholesaler-credentials";
 import { createOrderWithItems, buildOrderNumber } from "@/lib/orders/create-order";
 import { sendOrderNotificationToWholesaler } from "@/lib/notifications/alimtalk";
 import { composeProductDisplayName } from "@/lib/products/display-name";
@@ -205,13 +206,7 @@ export async function reconcilePendingPgPayment(
   supabase: AnySupabase,
   pending: PendingPgPaymentRow
 ): Promise<ReconcileOutcome> {
-  const { data: wholesaler } = await supabase
-    .from("wholesalers")
-    .select("pg_secret_key_encrypted")
-    .eq("id", pending.wholesaler_id)
-    .maybeSingle();
-
-  const encryptedSecret = wholesaler?.pg_secret_key_encrypted as string | null;
+  const encryptedSecret = await loadPgSecretEncrypted(pending.wholesaler_id);
 
   if (!encryptedSecret) {
     return { outcome: "skipped" };

@@ -52,3 +52,10 @@ IT에 어두운 공급사 사장님 기준으로 헷갈리기 가장 쉬운 지�
 - 발송 결과 리포트 조회(비즈뿌리오 `/v2/report` 등) — 지금은 "API 호출 성공"까지만 확인, 실제 수신 성공/실패는 추적 안 함.
 - 토큰 캐싱 최적화 (발송량이 늘어날 경우).
 - 공급사 온보딩 가이드 문서(비즈뿌리오 가입 → 카카오 채널/발신프로필 → 템플릿 승인 → 우리 설정 화면 입력, 전체 흐름 안내) — 아직 안 만듦.
+
+### 보안 점검 — 자격정보 컬럼 노출 수정 (2026-09-24, 마이그레이션 110)
+`wholesalers` SELECT 정책이 연결 거래처·소속 직원(staff 포함)에게 행 전체를 보여주고 컬럼 권한도 열려 있어, API 직접 호출로 `alimtalk_*`(계정·암호화 비밀번호·발신프로필키·템플릿 코드)와 `pg_secret_key_encrypted`를 읽을 수 있었다. 또 매니저가 설정을 저장하면 UPDATE 정책(사장 본인만)에 막혀 0행인데 화면에는 "저장됨"이 떴다.
+- 110: anon·authenticated의 `wholesalers` 테이블 SELECT를 회수하고 위 7개 컬럼을 뺀 나머지 컬럼에만 컬럼 단위 SELECT를 재부여. 사장 본인도 세션으로는 못 읽는다.
+- 서버는 `lib/security/wholesaler-credentials.ts`(service_role)로 읽고 쓴다: 알림톡·PG 설정 조회/저장 액션, 토스 시크릿키를 읽는 3곳(결제 승인 콜백, 주문 취소 환불, 재대조). 저장 액션은 기존대로 `requireOrgRole(["owner","manager"])` 뒤에 실행되므로 매니저 저장도 실제로 반영된다.
+- **`wholesalers`에 컬럼을 추가하면 세션이 읽어야 하는 컬럼은 그 마이그레이션에서 `GRANT SELECT (컬럼) ON public.wholesalers TO anon, authenticated`를 같이 줘야 한다(기본은 안 보임). 세션 클라이언트에서 `wholesalers`를 `select('*')`로 읽으면 권한 오류 — 컬럼을 명시할 것.** `scripts/db-test-alimtalk-credentials.sql`(25건)이 누락을 잡는다.
+- 남은 것: 직원(staff)도 설정 화면에서 계정·발신프로필키(비밀번호 제외)는 보인다(미수금 화면 리마인드 버튼 노출 판단에 쓰임, 기존 동작 유지).

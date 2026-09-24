@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { readWholesalerCredentials, updateWholesalerCredentials } from "@/lib/security/wholesaler-credentials";
 import { getSupplierScope } from "@/lib/supplier/scope";
 import { requireOrgRole, RbacError } from "@/lib/auth/rbac";
 import { encryptCredential, CredentialCryptoError } from "@/lib/security/credential-crypto";
@@ -88,15 +88,13 @@ export async function getAlimtalkSettingsAction(): Promise<ActionResult<Alimtalk
       return { success: false, error: "로그인이 필요합니다." };
     }
 
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("wholesalers")
-      .select("alimtalk_account, alimtalk_password_encrypted, alimtalk_sender_key, alimtalk_sender_phone, alimtalk_template_codes")
-      .eq("id", scope.wholesalerId)
-      .maybeSingle();
+    const { data, error } = await readWholesalerCredentials(
+      scope.wholesalerId,
+      "alimtalk_account, alimtalk_password_encrypted, alimtalk_sender_key, alimtalk_sender_phone, alimtalk_template_codes"
+    );
 
     if (error) {
-      return { success: false, error: error.message };
+      return { success: false, error };
     }
 
     if (!data) {
@@ -158,14 +156,12 @@ export async function saveAlimtalkSettingsAction(
       }
     }
 
-    const supabase = await createClient();
-    const { error } = await supabase
-      .from("wholesalers")
-      .update(updates)
-      .eq("id", scope.wholesalerId);
+    // 위에서 owner/manager와 소속 공급사를 확인했다. wholesalers UPDATE 정책은 사장 본인만 통과시켜
+    // 매니저 저장이 조용히 0행이 되므로 service_role로 쓴다.
+    const { error } = await updateWholesalerCredentials(scope.wholesalerId, updates);
 
     if (error) {
-      return { success: false, error: error.message };
+      return { success: false, error };
     }
 
     revalidatePath("/dashboard/invites");
