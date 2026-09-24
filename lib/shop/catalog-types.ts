@@ -45,6 +45,10 @@ export interface ShopCatalog {
   wholesaler: Wholesaler;
   items: ShopCatalogItem[];
   customer: ShopCustomer;
+  /** 비활성(승인 대기·정지 등) 공급사 미니샵을 미리보기로 연 경우의 업체 상태. 일반 조회에서는 없다. */
+  previewStatus?: string | null;
+  /** 미리보기를 연 사람 — 슈퍼관리자 또는 그 공급사 본인(대표·직원) */
+  previewViewer?: "admin" | "supplier" | null;
 }
 
 export interface CartEntryInput {

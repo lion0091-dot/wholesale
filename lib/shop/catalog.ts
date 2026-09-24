@@ -18,6 +18,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { resolveBuyerIdentity } from "@/lib/auth/buyer-auth";
+import { isSuperAdminSession } from "@/lib/auth/rbac";
 import {
   findCatalogItem,
   resolveCatalogItem,
@@ -47,6 +48,31 @@ const GUEST_CUSTOMER: ShopCustomer = {
 };
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+// 공급사 본인이 승인 전에 자기 미니샵을 미리 볼 수 있는 상태. 해지(closed)는 제외한다.
+const SUPPLIER_PREVIEW_STATUSES = ["pending", "suspended", "rejected"];
+
+/**
+ * 비활성 공급사 미니샵을 미리보기로 볼 수 있는 사람인지 판정한다.
+ * 슈퍼관리자는 모든 상태, 공급사 본인(대표·소속 직원 — can_access_wholesaler)은 위 상태만.
+ */
+async function resolvePreviewViewer(
+  supabase: SupabaseServerClient,
+  wholesalerId: string,
+  status: string
+): Promise<"admin" | "supplier" | null> {
+  if (await isSuperAdminSession()) {
+    return "admin";
+  }
+
+  if (!SUPPLIER_PREVIEW_STATUSES.includes(status)) {
+    return null;
+  }
+
+  const { data } = await supabase.rpc("can_access_wholesaler", { p_wholesaler_id: wholesalerId });
+
+  return data === true ? "supplier" : null;
+}
 
 /**
  * 접속 고객 식별.
@@ -126,10 +152,13 @@ export function isShopNotFoundError(error: unknown): boolean {
 
 /**
  * 미니샵 카탈로그 조회.
- * 등록되지 않았거나 정지된 공급사 링크는 404로 처리한다. 상품이 아직 없는 경우는
+ * 등록되지 않았거나 정지된 공급사 링크는 404로 처리한다(미리보기 옵션을 켠 호출에서 슈퍼관리자·공급사 본인은 예외). 상품이 아직 없는 경우는
  * 빈 카탈로그를 반환하며, 화면(ShopView)이 "아직 등록된 품목이 없습니다"를 보여준다.
  */
-export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
+export async function loadShopCatalog(
+  shopToken: string,
+  options: { allowPreview?: boolean } = {}
+): Promise<ShopCatalog> {
   const supabase = await createClient();
 
   const { data: wholesalerData } = await supabase
@@ -140,7 +169,17 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
     .eq("shop_token", shopToken)
     .maybeSingle();
 
-  if (!wholesalerData || wholesalerData.status !== "active") {
+  // 승인 전 미리보기는 호출부가 명시적으로 켠 경우(미니샵 메인 페이지)에만 허용한다.
+  // 장바구니·결제·발주 생성 경로는 옵션을 안 넘기므로 계속 활성 공급사만 통과한다.
+  let previewStatus: string | null = null;
+  let previewViewer: "admin" | "supplier" | null = null;
+
+  if (wholesalerData && wholesalerData.status !== "active" && options.allowPreview) {
+    previewViewer = await resolvePreviewViewer(supabase, wholesalerData.id as string, wholesalerData.status as string);
+    previewStatus = previewViewer ? (wholesalerData.status as string) : null;
+  }
+
+  if (!wholesalerData || (wholesalerData.status !== "active" && !previewViewer)) {
     notFound();
   }
 
@@ -183,6 +222,8 @@ export async function loadShopCatalog(shopToken: string): Promise<ShopCatalog> {
     wholesaler,
     items,
     customer,
+    previewStatus,
+    previewViewer,
   };
 }
 

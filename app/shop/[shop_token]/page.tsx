@@ -53,7 +53,7 @@ export default async function MiniShopPage({ params, searchParams }: PageProps) 
     return <BuyerConsentGate shopToken={shop_token} displayName={displayName} />;
   }
 
-  const catalog = await loadShopCatalog(shop_token);
+  const catalog = await loadShopCatalog(shop_token, { allowPreview: true });
 
   return <ShopView catalog={catalog} authMessage={auth_message ?? null} />;
 }

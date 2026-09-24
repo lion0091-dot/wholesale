@@ -17,6 +17,12 @@ interface ShopViewProps {
 
 const CATEGORIES = ["전체", "소", "돼지", "닭/오리", "가공육/기타"] as const;
 const MAIN_CATEGORIES = ["소", "돼지", "닭/오리"];
+const PREVIEW_STATUS_LABELS: Record<string, string> = {
+  pending: "승인 대기 중",
+  suspended: "정지",
+  rejected: "승인 거절",
+  closed: "해지",
+};
 
 export function ShopView({ catalog, authMessage }: ShopViewProps) {
   const router = useRouter();
@@ -26,6 +32,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
   const [sessionError, setSessionError] = useState<string | null>(authMessage ?? null);
 
   const { entries, isLoaded, quantityOf, stepQuantity } = useShopCart(catalog.shopToken);
+  const previewOnly = Boolean(catalog.previewStatus);
 
   const totals = useMemo(
     () => cartTotals(toCartLines(catalog, entries)),
@@ -114,7 +121,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
   };
 
   return (
-    <div style={{ ...shopPageStyle, paddingBottom: totals.itemCount > 0 ? "100px" : "20px" }}>
+    <div style={{ ...shopPageStyle, paddingBottom: totals.itemCount > 0 && !previewOnly ? "100px" : "20px" }}>
       <ShopHeader wholesaler={catalog.wholesaler} customer={catalog.customer}>
         {/* 일반 상품 / 핫딜 탭 */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "16px" }}>
@@ -157,6 +164,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
         </div>
 
         {/* 발주 내역 조회 / 주문 취소 요청 진입점 */}
+        {!previewOnly && (
         <Link
           href={`/shop/${catalog.shopToken}/orders`}
           style={{
@@ -177,11 +185,37 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
           <span>📋 내 발주 내역 · 발주 취소 요청</span>
           <span style={{ color: "#475569" }}>→</span>
         </Link>
+        )}
       </ShopHeader>
 
       <div style={{ padding: "16px" }}>
 
-        {catalog.customer.isLinked ? (
+        {previewOnly ? (
+          <div
+            style={{
+              backgroundColor: "#f5f3ff",
+              border: "1px solid #c4b5fd",
+              color: "#5b21b6",
+              fontSize: "13px",
+              lineHeight: 1.5,
+              padding: "10px 12px",
+              borderRadius: "8px",
+              marginBottom: "12px",
+            }}
+          >
+            {catalog.previewViewer === "supplier" ? (
+              <>
+                👁 <strong>내 미니샵 미리보기</strong> — {PREVIEW_STATUS_LABELS[catalog.previewStatus ?? ""] ?? "비활성"} 상태라
+                고객에게는 아직 보이지 않습니다. 승인되면 이 화면이 고객에게 공개됩니다. 주문은 할 수 없습니다.
+              </>
+            ) : (
+              <>
+                👁 <strong>관리자 미리보기</strong> — {PREVIEW_STATUS_LABELS[catalog.previewStatus ?? ""] ?? "비활성"} 공급사라
+                고객에게는 아직 보이지 않습니다. 승인 후 고객이 보게 될 화면이며, 주문은 할 수 없습니다.
+              </>
+            )}
+          </div>
+        ) : catalog.customer.isLinked ? (
           <div
             style={{
               backgroundColor: "#eff6ff",
@@ -328,6 +362,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
                   <ProductCard
                     key={item.product.id}
                     item={item}
+                    previewOnly={previewOnly}
                     quantity={isLoaded ? quantityOf(item.product.id) : 0}
                     onStep={(direction) =>
                       stepQuantity(item.product.id, direction, item.product.unit, item.orderableQuantity)
@@ -340,7 +375,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
       </div>
 
       {/* 하단 플로팅 장바구니 바 */}
-      {totals.itemCount > 0 && (
+      {!previewOnly && totals.itemCount > 0 && (
         <div
           style={{
             position: "fixed",
@@ -391,9 +426,11 @@ interface ProductCardProps {
   item: ShopCatalogItem;
   quantity: number;
   onStep: (direction: 1 | -1) => void;
+  /** 관리자 미리보기 — 담기 컨트롤을 숨긴다 */
+  previewOnly?: boolean;
 }
 
-function ProductCard({ item, quantity, onStep }: ProductCardProps) {
+function ProductCard({ item, quantity, onStep, previewOnly = false }: ProductCardProps) {
   const { product, effectivePrice, isCustomPrice, isHotDeal, orderableQuantity } = item;
   const stock = Number(product.stock_quantity);
   const isSoldOut = stock <= 0;
@@ -551,7 +588,9 @@ function ProductCard({ item, quantity, onStep }: ProductCardProps) {
           alignItems: "center",
         }}
       >
-        {quantity > 0 ? (
+        {previewOnly ? (
+          <span style={{ fontSize: "12px", color: "#6d28d9", fontWeight: 600 }}>미리보기 전용 · 주문 불가</span>
+        ) : quantity > 0 ? (
           <div
             style={{
               display: "flex",

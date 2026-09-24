@@ -542,7 +542,7 @@ export function SupplierApprovalList({
                     rel="noopener noreferrer"
                     style={{ fontSize: "12px", color: "#2563eb", fontWeight: 600, textDecoration: "underline" }}
                   >
-                    미니샵 확인 ↗
+                    {supplier.status === "active" ? "미니샵 확인 ↗" : "미니샵 미리보기 ↗"}
                   </a>
                 </div>
 

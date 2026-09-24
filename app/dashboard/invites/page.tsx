@@ -163,6 +163,19 @@ export default async function DashboardInvitesPage() {
           restrictionMessage={restriction}
           shopToken={canIssue ? account.shopToken : null}
         />
+        {!canIssue && account.shopToken && ["pending", "suspended", "rejected"].includes(account.supplierStatus ?? "") && (
+          <p style={{ fontSize: "13px", color: "#475569", marginTop: "12px", lineHeight: 1.7 }}>
+            승인 전에도 등록한 상품이 고객에게 어떻게 보일지 미리 확인할 수 있습니다.{" "}
+            <a
+              href={`/shop/${account.shopToken}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontWeight: 700, color: "#2563eb", textDecoration: "underline" }}
+            >
+              내 미니샵 미리보기 ↗
+            </a>
+          </p>
+        )}
         {canIssue && (
           <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "10px", lineHeight: 1.7 }}>
             복사한 문구를 카카오톡으로 그대로 전달하세요. 고객(소매)이 링크를 열고 카카오 로그인 한
