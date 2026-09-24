@@ -54,17 +54,23 @@
 
 ## 1. 가입·로그인
 
-- ⬜ 카카오 로그인 3종(공급사/고객/직원) 처음부터 끝까지 정상 흐름
-- ⬜ 개인정보 동의 전에는 정보가 저장 안 됨(잠긴 결정)
-- ⬜ 사업자번호 체크섬 자체가 틀림 → 제출 거부
-- ⬜ 체크섬은 맞는데 국세청에 실존하지 않음 → 승인 안 됨
-- ⬜ 국세청 API 타임아웃/에러 응답 시 승인 대기 상태 유지
-- ⬜ 이미 다른 공급사가 쓰는 사업자번호로 재가입 시도 → 거부
-- ⬜ 사업자등록증 파일이 이미지/PDF 아니거나 8MB 초과 → 거부
-- ⬜ 승인 대기 상태에서 대시보드 기능 접근 시도 → 차단
-- ⬜ 직원 초대 링크 만료/이미 사용됨 → 거부
-- ⬜ 초대받은 이메일과 다른 사람이 링크로 가입 시도 → 거부
-- ⬜ 30일 쿨다운 안 지났는데 초대 재발송 시도 → 거부
+- ⬜ 카카오 로그인 3종(공급사/고객/직원) 처음부터 끝까지 정상 흐름 — 외부 OAuth라 실계정 필요. DB 쪽(로그인 직후 프로필 생성 → 온보딩/미니샵 가입/초대 수락)은 🟩 (`db-test-signup-and-accounts.sql`)
+- 🟩 개인정보 동의 전에는 정보가 저장 안 됨(잠긴 결정) — 로그인 직후 프로필 이름·전화 비어 있고, 온보딩 동의 순간에 이름·전화·동의시각이 한 번에 기록. 바이어는 "카카오 회원" 자리표시자로 시작, 동의 RPC는 고객 계정만 (`db-test-signup-and-accounts.sql`)
+- ⬜ 사업자번호 체크섬 자체가 틀림 → 제출 거부 (`isValidBusinessNumber`는 서버 액션·관리자 승인 액션 레벨. DB는 10자리만 봄 🟩)
+- 🟩 체크섬은 맞는데 국세청에 실존하지 않음 → 승인 안 됨 — 국세청 결과 기록·승인 플래그 RPC는 super_admin만, 공급사 본인 호출·잘못된 결과값 거부, 승인 뒤 사업자번호 재제출 거부, 재제출 시 국세청 상태 unchecked로 리셋 (`db-test-signup-and-accounts.sql`). 승인 액션의 `nts_verification_status === "match"` 서버 검사는 코드 확인만.
+- ⬜ 국세청 API 타임아웃/에러 응답 시 승인 대기 상태 유지 (외부)
+- 🟩 이미 다른 공급사가 쓰는 사업자번호로 재가입 시도 → 거부 (온보딩·재제출 둘 다, `db-test-signup-and-accounts.sql`)
+- ⬜ 사업자등록증 파일이 이미지/PDF 아니거나 8MB 초과 → 거부 (서버 액션)
+- ⬜ 승인 대기 상태에서 대시보드 기능 접근 시도 → 차단 — 앱 게이트. DB 수준에선 승인 전 상품 등록이 됨(정보, `db-test-signup-and-accounts.sql`). 승인 전엔 미니샵 링크가 안 열려(`claim_shop_access`가 active만) 실질 피해 없음.
+- 🟩 직원 초대 링크 만료/취소/없는 토큰 → 거부. **"이미 사용됨"은 현재 설계에 없음** — 링크는 만료(7일)·취소 전까지 여러 사람이 쓸 수 있다(used_count만 셈). 1회용이 필요하면 별도 작업 (`db-test-signup-and-accounts.sql`)
+- 🟩 계정 종류 안 섞임 — 고객·다른 회사 사장/직원의 직원 초대 수락 거부, 공급사·관리자의 미니샵 가입 거부, 고객·스태프 채널 계정의 온보딩 거부, 수락한 직원은 그 회사 데이터만 (`db-test-signup-and-accounts.sql`). "초대받은 이메일과 다른 사람" 시나리오는 이메일 기반 초대가 아니라 성립 안 함.
+- ⬜ 30일 쿨다운 안 지났는데 초대 재발송 시도 → 거부 (거래처 초청장 SMS 쪽, 서버 액션)
+- 🟩 탈퇴 시 기록 보존 — 고객 탈퇴는 프로필·식당 정보만 익명화하고 주문·품목·미수금 기록 유지, 공급사 탈퇴는 미수금 있으면 거부·상호/사업자번호 유지·closed, 닫힌 회사 링크로 가입 불가 (`db-test-signup-and-accounts.sql`). **고객은 미수금이 남아도 탈퇴됨(공급사는 막힘) — 설계 확인 필요.**
+
+**이 절을 만들다 발견해 104로 수정 (`20260930000104_withdraw_and_invite_role_fixes.sql`):**
+
+1. 승인된 공급사의 사업 종료(탈퇴)가 안 됐음 — `withdraw_wholesaler_account`가 `profiles.is_verified`를 내리는데 `enforce_profile_role_immutable`이 막음(앱은 본인 세션으로 호출 → "사업 종료 처리에 실패했습니다"). 승인 플래그 함수와 같은 내부 플래그로 감쌈.
+2. 매니저가 owner 초대 링크를 만들 수 있었음(RLS가 역할을 안 보고 `canAssignRole`은 앱 레벨) → `enforce_staff_invite_role` 트리거(INSERT·UPDATE OF role).
 
 ## 2. 상품 관리
 
@@ -168,7 +174,7 @@
 전부 로컬 Docker DB 대상이고 롤백형이다(`db-test-order-stock-concurrency.sh`만 고유 ID 시드를 넣고 끝에 지운다).
 
 ```
-for s in db-test-tenant-gate-null db-test-access-isolation db-test-order-stock-regression db-test-fifo-bundle-integrity db-test-pg-idempotency; do
+for s in db-test-tenant-gate-null db-test-access-isolation db-test-signup-and-accounts db-test-order-stock-regression db-test-fifo-bundle-integrity db-test-pg-idempotency; do
   (echo "begin;"; cat scripts/$s.sql; echo "rollback;") | docker exec -i supabase_db_wholesale psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - | grep -E "FAIL|pass \|" ; done
 bash scripts/db-test-order-stock-concurrency.sh
 ```
