@@ -62,6 +62,21 @@ function describeBundleError(message: string): string {
     return "입출고 기록이 있는 상품은 세트 상품으로 지정할 수 없습니다. 세트용 상품을 새로 만들어주세요.";
   }
 
+  const manualStock = message.match(/PRODUCT_HAS_MANUAL_STOCK:([\d.]+)/);
+
+  if (manualStock) {
+    return (
+      `이 상품에 수동으로 입력된 재고(${String(Number(manualStock[1]))})가 남아 있습니다. ` +
+      "세트는 제작한 박스로만 재고가 잡혀야 하므로, 상품관리에서 재고를 0으로 맞춘 뒤 다시 지정해주세요."
+    );
+  }
+
+  const archivedComponent = message.match(/COMPONENT_ARCHIVED:(.+)/);
+
+  if (archivedComponent) {
+    return `구성품 '${archivedComponent[1]}'이(가) 보관 처리돼 있어 세트를 만들 수 없습니다. 보관을 풀거나 구성에서 빼주세요.`;
+  }
+
   if (message.includes("ALREADY_A_BUNDLE")) {
     return "이미 세트로 등록된 상품입니다.";
   }

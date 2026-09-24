@@ -160,6 +160,8 @@ export async function updateOrderStatusAction(
     }
 
     const updates: Record<string, unknown> = { status: nextStatus, updated_at: new Date().toISOString() };
+    // 아래 환불이 실제로 나갔는지 — 나갔다면 상태 변경이 어떻게 되든 결제 상태는 반드시 남겨야 한다.
+    let refunded = false;
 
     // PG로 결제 완료된 주문을 취소하는 경우, 상태만 바꾸는 게 아니라 실제로
     // 환불까지 성공해야 한다 — 환불이 실패하면 상태 전이 자체를 막는다(돈은
@@ -192,6 +194,7 @@ export async function updateOrderStatusAction(
         });
 
         updates.payment_status = "refunded";
+        refunded = true;
       } catch (refundError) {
         if (refundError instanceof TossPaymentsError) {
           throw new RbacError(`환불 처리에 실패해 취소를 진행할 수 없습니다: ${refundError.message}`);
@@ -203,7 +206,15 @@ export async function updateOrderStatusAction(
       }
     }
 
-    const { error } = await supabase.from("orders").update(updates).eq("id", orderId);
+    // 읽은 상태 그대로일 때만 바꾼다(낙관적 조건). 그 사이 다른 직원이 상태를 옮겼으면
+    // 0건으로 끝나고, 위에서 검증한 전이 규칙이 새 상태에는 맞지 않을 수 있으므로
+    // 덮어쓰지 않고 새로고침을 안내한다 — 취소 요청 액션(app/shop)과 같은 방식.
+    const { data: updatedRows, error } = await supabase
+      .from("orders")
+      .update(updates)
+      .eq("id", orderId)
+      .eq("status", currentStatus)
+      .select("id");
 
     if (error) {
       // 재고 부족은 사용자가 고칠 수 있는 상황이므로 RbacError(=그대로 노출되는 문구)로 올린다.
@@ -214,6 +225,23 @@ export async function updateOrderStatusAction(
       }
 
       throw new Error(error.message);
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      if (refunded) {
+        // 환불은 이미 나갔는데 그 사이 상태가 바뀌어 취소 처리를 못 했다. 돈이 돌아간 사실은
+        // 상태와 무관하게 기록해야 한다 — 안 그러면 '결제됨'으로 남아 이중 환불·정산 오류가 난다.
+        await supabase
+          .from("orders")
+          .update({ payment_status: "refunded", updated_at: new Date().toISOString() })
+          .eq("id", orderId);
+
+        throw new RbacError(
+          "환불은 완료됐지만 그 사이 발주 상태가 다른 사람에 의해 바뀌어 취소 처리는 되지 않았습니다. 결제 상태는 '환불됨'으로 기록했습니다. 새로고침 후 발주 상태를 확인해주세요."
+        );
+      }
+
+      throw new RbacError("발주 상태가 방금 다른 사람에 의해 변경되었습니다. 새로고침 후 다시 확인해주세요.");
     }
 
     revalidatePath(REVALIDATE_PATH);

@@ -995,8 +995,49 @@ SECURITY DEFINER RPC 여러 개가 아래 두 패턴으로 검사했다.
 - 기존 `db-test-stock-adjust`, `db-test-product-archive`, `db-test-bulk-price`, `db-test-inbound-purchase` 통과. `db-test-livestock-inbound`(중복 스캔 가드 이전 작성, T2에서 DUPLICATE_SUSPECTED)와 `db-test-product-bundles`(N13 BOX_NOT_AVAILABLE, N11은 한 트랜잭션 안에서 created_at 동률로 가끔 흔들림)는 이번 수정과 무관하게 stale하다.
 - `tsc --noEmit`, vitest 102건 통과. **라이브 DB 미적용, 실계정 미검증.**
 
-### 점검에서 나왔지만 안 고친 것
+### 후속 처리 (`supabase/migrations/20260930000098_inbound_audit_followups.sql`, 사장님 지시로 전부 처리)
 
-1. **공용 이력 캐시 오염(중간).** `upsert_master_livestock`이 로그인 공급사 전원에게 열려 있어 한 업체가 아무 이력번호의 등급·도축일·원산지를 덮어쓸 수 있고, 다른 업체의 거래명세서·라벨에 그대로 쓰인다. `authenticated`에서 EXECUTE를 회수하고 서버 액션이 `lib/supabase/service-role-client.ts`로 호출하도록 바꿔야 하는데, Vercel에 `SUPABASE_SERVICE_ROLE_KEY`가 없으면 모든 스캔이 예외로 빠지므로 배포 환경 확인 후 진행.
-2. **staff가 스캔 시점에 매입단가 입력 가능.** `record_inbound_scan`의 `p_purchase_unit_price`는 역할을 안 본다. 현장 흐름상 맞는지 정책 판단 필요.
-3. 낮음: 명세서 완전삭제를 staff도 가능 / 명세서 줄에 남의 `product_id` 저장 가능(스캔 시 `PRODUCT_NOT_FOUND`로 막히긴 함 — `lookup_product_by_document_trace`에 `p.wholesaler_id` 조건 추가 권장) / `lookup_document_part_name`이 업체 ID를 인자로 받아 타업체 부위값 조회 가능 / 명세서 `trace_no` 대문자 정규화 누락(소문자 `l` 로트는 자동 상품 확정 안 걸림) / "주문에 바로 배정"이 방금 확정한 박스가 아니라 같은 번호의 가장 오래된 박스를 가져감 / `get_current_role`·`get_current_wholesaler_id`의 `search_path` 미고정.
+| # | 문제 | 처리 |
+|---|---|---|
+| 4 | 공용 이력 캐시 오염 — `upsert_master_livestock`이 로그인 공급사 전원(053은 REVOKE FROM PUBLIC도 안 해 anon까지)에게 열려 있어 한 업체가 아무 이력번호의 등급·도축일을 덮어쓸 수 있었다 | `service_role`만 EXECUTE. 서버는 `lib/livestock/master-cache.ts`가 service-role 클라이언트로 호출한다(`grant_platform_admin`과 같은 경계). 키가 없으면 `MtraceNotConfiguredError`로 떨어져 "설정 문제"로 안내된다. 로컬 DB 테스트 15개는 첫머리에서 테스트 세션에만 다시 GRANT한다 |
+| 6 | staff가 스캔 시 매입단가를 정할 수 있었다 | **정책 확정(사장님, 2026-09-24): 원가는 관리자만.** `record_inbound_scan`이 `p_purchase_unit_price`가 있으면 `can_manage_wholesaler()`를 요구(`FORBIDDEN_PURCHASE_PRICE`), 서버 액션은 정부 API 호출 전에 먼저 끊고, 직원 화면에는 단가 칸 자체가 없다. 매입처(공급처 이름)는 원가가 아니라 그대로 |
+| 7 | 명세서 완전삭제를 staff도 할 수 있었다 | RLS DELETE 정책을 `can_manage_wholesaler`로, 액션도 같은 게이트, 직원 화면은 "완전 삭제는 관리자만". 저장 실패 시 껍데기 정리는 삭제 대신 DISCARDED로 |
+| 8 | 명세서 줄에 남의 `product_id`가 저장됐다 | INSERT/UPDATE 정책 WITH CHECK에 "그 문서 업체의 상품" 조건, 액션도 저장 전에 거른다, `lookup_product_by_document_trace`에 `p.wholesaler_id` 조건 |
+| 9 | `lookup_document_part_name`이 타업체 부위값을 돌려줬다 | `can_access_wholesaler(p_wholesaler_id)` 아니면 NULL |
+| 10 | 명세서 `trace_no` 대소문자 — 소문자 `l` 로트는 자동 상품 확정에서 빠졌다 | 저장 시 대문자 정규화 + 조회 함수 두 개는 `upper()` 비교 |
+| 11 | "주문에 바로 배정"이 같은 번호의 가장 오래된 박스를 가져갔다(그 박스가 기한 지났으면 전체 롤백) | `record_outbound_scan`에 `p_scan_id`(선택) 추가 — 넘기면 그 박스만. 인자가 늘어 3인자 함수는 DROP. `resolve_inbound_mapping_to_order`가 방금 확정한 박스 ID를 넘긴다 |
+| 12 | `get_current_role` 등 헬퍼 3개 `search_path` 미고정 | `ALTER FUNCTION ... SET search_path = public` |
+
+검증: `scripts/db-test-tenant-gate-null.sql`을 38건으로 확장(고객·직원의 캐시 쓰기 거부, 직원 단가 거부/매니저 허용, 명세서 삭제·타업체 상품 줄·부위 조회·대소문자·지정 박스 배정). 전부 PASS. 출고 관련 기존 테스트 7종은 098 전후 결과 동일(`db-test-best-before`만 이전부터 BOX_NOT_AVAILABLE로 깨져 있음). **라이브 미적용, 실계정 미검증.**
+
+### 점검 1 — 주문 확정 재고 차감의 동시성·회귀 (`supabase/migrations/20260930000099_order_stock_race_and_regression.sql`)
+
+사장님이 준 추가 점검 4건 중 첫 번째("마지막 재고를 두 바이어가 동시에 주문하면 한 명만 성공하는가"). 발주 생성은 재고를 잡지 않고 **확정(confirmed) 시점**에 차감하므로, 질문은 "동시 확정이 안전한가"로 바뀐다. 핫딜 한도(결제 시 상품 행 `FOR UPDATE`)와 여신 한도(조건부 원자 UPDATE)는 설계대로 안전했고, 아래 셋이 문제였다.
+
+| # | 문제 | 처리 |
+|---|---|---|
+| 1 | **회귀** — 핫딜 마이그레이션 091·092·094가 054 본문을 기반으로 `apply_order_shipment`/`reverse_order_shipment`를 다시 정의하면서, 079의 "상품별 순 출고량 판정"(확보 대기 주문 이중 차감 방지)과 068의 그램 정밀도(`NUMERIC(10,3)`)가 사라졌다. 확보 대기 주문에 박스를 배정한 뒤 확정하면 주문량이 한 번 더 빠졌고, 8.205kg 박스는 8.21로 반올림돼 잔량 제약 위반으로 확정 자체가 실패했다. 로컬 DB 실제 함수 본문으로 확인 | 079 본문 복원 |
+| 2 | **동시 확정 레이스** — 가용량 `SUM(qty_delta)`을 잠금 없이 읽어 두 확정이 다 통과. 박스는 `FOR UPDATE`라 초과 차감이 안 되지만 모자란 분량이 "이력 미추적 재고분"으로 들어가고, 기초재고 상품은 둘 다 통째로 빠졌다. 최후 방어선인 `stock_quantity >= 0` CHECK도 못 잡았다 — `recalc_product_stock`이 합계를 변수에 먼저 읽고 UPDATE해서 두 번째 트랜잭션은 첫 번째 커밋 전 스냅샷의 합계(양수)를 썼다. 결과는 "표시 재고 양수, 원장 합계 음수" | **잠금 순서는 전 함수 공통 "박스 → 상품" 유지**(상품을 먼저 잠그면 출고 스캔·취소 원복과 엇갈려 교착). 대신 (a) `recalc_product_stock`이 상품 행을 `FOR UPDATE`로 잠근 **뒤** 합계를 읽고(READ COMMITTED는 문장마다 새 스냅샷이라 잠금 대기 후의 SUM은 상대 커밋분을 본다), (b) `apply_order_shipment`는 박스 차감 후 박스 없는 분량을 넣기 전에 상품 행을 잠그고 가용량을 재확인해 사람이 읽는 `INSUFFICIENT_STOCK`으로 막고, (c) `adjust_product_stock`은 박스를 안 잠그니 처음부터 상품 행을 잠근다. 격리수준은 안 올린다 |
+| 3 | `updateOrderStatusAction`이 읽은 상태로 전이 규칙을 검증한 뒤 `WHERE id`만으로 UPDATE — 그 사이 다른 직원이 상태를 옮겼으면 검증이 새 상태엔 안 맞는데 덮어썼다 | `.eq("status", currentStatus)` + 0건이면 "방금 변경됨" 안내 (취소 요청 액션과 같은 방식) |
+| 4 | **회귀가 가리고 있던 진짜 버그** — 확정 시 선입선출로 통째로 자동 배정된 박스(잔량 0)를 피킹 목록대로 찍으면 `record_outbound_scan`이 "잔량 > 0" 조건으로만 박스를 찾아 `BOX_NOT_AVAILABLE`. 자동 배정을 되돌리는 단계가 박스 조회 **뒤**라 순서가 뒤집혀 있었다. 소수 2자리 반올림 덕에 0.004kg가 남아 우연히 통과했을 뿐이고, 1세트 단위인 세트 박스는 실제로 막혀 있었다(`db-test-product-bundles.sql` N13이 이전부터 깨져 있던 이유) | 박스 조회 조건을 "잔량 > 0 **또는** 이 주문의 ORDER_OUT이 붙은 박스"로 넓히고, 자동 배정을 되돌린 뒤 박스를 다시 읽어 잔량이 없으면 그때 거부 |
+
+검증:
+- `scripts/db-test-order-stock-regression.sql` 11건 PASS — 확보 대기 배정 후 확정은 한 번만 차감 / 8.205kg 확정 성공 / 기초재고 3에 2+2 순차 확정은 두 번째 거부 / 배정만 된 주문 취소 원복.
+- `scripts/db-test-order-stock-concurrency.sh` — psql 세션 두 개가 기초재고 10인 상품에 6+6을 거의 동시에 확정. 한 건만 확정, 다른 건은 `INSUFFICIENT_STOCK:…:4.000:6.000`(잠금 대기 후 새 합계를 본 증거), 표시 재고 = 원장 합계 = 4. 롤백형이 아니라 고유 ID 시드를 넣고 끝에 지운다.
+- 기존 출고·세트 테스트 전부 통과. 오래 깨져 있던 `db-test-product-bundles.sql`이 4번 수정으로 끝까지 통과하게 됐다. `db-test-best-before.sql`은 4번 덕에 F-단계를 넘어가지만 뒤쪽에서 존재하지 않는 컬럼(`best_before`)을 참조해 여전히 stale.
+- 테스트 작성 시 배운 것: 한 INSERT 안에서 `try()`로 실행한 변경과 그 확인 서브쿼리를 같이 두면 문장 시작 스냅샷 때문에 바뀐 값을 못 본다 — 문장을 나눠야 한다. 한 트랜잭션에서 만든 박스들은 `created_at`이 같아 선입선출 순서가 흔들린다(운영에선 생기지 않음).
+
+### 점검 2 — 선입선출 차감 + 세트(BOM) 역추적 무결성 (`supabase/migrations/20260930000100_fifo_expired_boxes_and_bundle_guards.sql`)
+
+세트 역추적의 뼈대(원본 이력번호 스냅샷, RESTRICT 외래키, 중첩 금지, 해체는 역분개, 부분 출고된 세트 해체 차단, 원본 박스 소실 시 안전 정지, 세트번호 advisory lock, 동시 제작은 부족 시 통째로 롤백)는 설계대로였다. 무게·수량 컬럼은 전부 `NUMERIC(10,3)`으로 통일돼 있음을 실제 DB에서 확인했다(법 규제가 아니라 GS1-128 AI 3103이 g 단위라는 068의 결정).
+
+| # | 문제 | 처리 |
+|---|---|---|
+| 1 | 확정 자동배정(`apply_order_shipment`)에 유통기한 조건이 없었다. 출고 스캔(거부)·세트 제작(제외)과 달리 기한 지난 박스를 가장 오래됐다는 이유로 1순위로 잡았고, 스캔 없이 운송장으로 바로 배송되면 그 박스가 명세서에 찍혔다 | 자동배정 대상을 "기한 안 지난 NORMAL 박스"로. **가용량 = 쓸 수 있는 박스 잔량 + 박스 없는 재고(원장 합계 − 전체 박스 잔량)** — 원장 합계로만 보면 기한 지난 박스 무게가 '이력 미추적 분량'으로 몰래 빠진다. 잠금 아래 2차 확인도 박스 없는 재고 기준. 기한 지난 박스는 재고 숫자에는 남는다(폐기는 재고조정으로 사람이) |
+| 2 | 기존 상품을 세트로 지정할 때 "입출고 기록 없음"만 보고 수동 재고(`stock_quantity`)는 안 봤다. 상품 폼 기본값이 10이라 첫 제작 때 기초재고로 편입돼 **박스 없는 세트 10개**(이력번호 없음)가 생겼다 | `save_product_bundle`이 수동 재고 ≠ 0이면 `PRODUCT_HAS_MANUAL_STOCK` — 화면 문구: 재고를 0으로 맞춘 뒤 지정 |
+| 3 | 세트 제작이 보관(archived) 처리된 구성품의 박스를 그대로 썼다 | `assemble_product_bundle` 첫머리에서 `COMPONENT_ARCHIVED` |
+| 4 | 같은 트랜잭션에서 만든 세트들은 `created_at`이 같아 선입선출 순서가 임의였다 | `ORDER BY created_at, trace_no` — 세트는 `SET-YYMMDD-NNN` 순 = 제작 순 |
+
+안 고친 것(낮음, 화면 작업): 명세서에서 박스 없이 빠진 분량(기초재고 등)은 이력번호 목록에 아무 표시가 없다 — "이력 미추적 Xkg" 한 줄을 넣어주면 공급사가 빠진 걸 알 수 있다.
+
+검증: `scripts/db-test-fifo-bundle-integrity.sql` 15건 PASS(기한 혼합/기한만료만/기초재고+만료박스 세 상품, 유령 세트 지정 거부, 보관 구성품 제작 거부, 세트 001부터 출고). 점검 1의 회귀·동시성 테스트와 출고·세트 기존 테스트 전부 통과. **라이브 미적용.**
