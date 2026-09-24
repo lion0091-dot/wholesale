@@ -13,9 +13,19 @@
 - 기존 마이그레이션 115개 전부 로컬에 반영 확인(39개 테이블 생성 확인, 2026-09-24).
 - 카카오 로그인, 국세청, 팝빌, 비즈뿌리오 알림톡, 토스페이먼츠, 스위트트래커 등
   **외부 업체 API는 전부 흉내(mock)** — 로컬 DB로도 실제 호출은 불가능.
-- 아직 구현 안 함: 서버 액션을 테스트에서 호출할 때 인증 세션을 흉내 내는 하네스
-  (`lib/supabase/server.ts`의 쿠키 기반 세션 대신, 테스트용 사용자로 로그인한 JWT를
-  주입하는 방식). 이 문서의 시나리오를 실제 테스트 코드로 옮기기 전에 먼저 만들어야 함.
+- **서버 액션 하네스 구현됨(2026-09-24)**: `npm run test:integration`(로컬 Docker가 떠 있을 때만, 수동 실행 —
+  Vercel 빌드·`npm test`에는 안 들어감). 파일은 `tests/integration/*.itest.ts`(단위테스트 `*.test.ts`와 분리).
+  - `setup.ts`: `@/lib/supabase/server`의 `createClient`만 mock(현재 `actAs` 대상의 진짜 로그인 세션을 돌려줌),
+    `next/cache`·`next/navigation`도 대체. **접속 주소는 로컬(127.0.0.1)로 고정, 아니면 즉시 중단** — `.env.local`(라이브)은 읽지 않는다.
+    키는 로컬 Supabase 공개 데모 키(환경변수 `INTEGRATION_SUPABASE_URL/ANON_KEY/SERVICE_KEY`로 덮어쓸 수 있음).
+  - `harness.ts`: `seedWorld()`(공급사 A 사장·매니저·직원, 공급사 B 사장, 고객 R 새로 생성 → `createProduct`/`createOrder`로 필요한 만큼 추가),
+    `actAs(user | null)`, `cleanup()`. 실행마다 새 UUID·`@itest.local` 이메일로 격리.
+  - **정리는 psql(docker exec, 컨테이너명 `INTEGRATION_DB_CONTAINER` 기본 `supabase_db_wholesale`)로 트리거를 끄고 지운다** —
+    "마지막 owner는 삭제할 수 없다" 트리거가 REST 삭제를 막기 때문. 시드 도중 실패해도 정리한다.
+  - 시드 함정: `auth.users` INSERT 트리거가 미승인 wholesaler 프로필을 미리 만들고 `is_verified`/`role` UPDATE는
+    `enforce_profile_role_immutable`이 막으므로, 프로필은 지우고 다시 INSERT 한다.
+  - 외부 업체 호출은 테스트 파일에서 `vi.mock`(예: 토스 `cancelPayment`). 스위트트래커 키는 setup이 지워 "검증 건너뜀" 경로를 탄다.
+  - 첫 영역: `orders.itest.ts` 23건(4번 출고·주문 — `updateOrderStatusAction`·`updateOrderTrackingAction`·`getHistoricalOrdersAction`).
 
 ## 진행 상태 표시
 
@@ -216,8 +226,7 @@ bash scripts/db-test-order-stock-concurrency.sh
 
 ## 다음 단계
 
-1. 서버 액션 테스트용 인증 하네스 구축(테스트 사용자 로그인 → JWT를 `lib/supabase/server.ts`
-   자리에 주입하는 방식, 프로덕션 코드는 안 건드림) — 🟩 항목들은 그 하네스로 "서버 액션 한 겹"만 덧씌우면 ✅가 된다
-2. 영역 하나(추천: 3.입고 또는 4.출고·주문 — 돈·재고 직결)를 먼저 끝까지 만들어 검증
-3. 통과하면 나머지 영역 순서대로 확장
+1. ~~서버 액션 테스트용 인증 하네스 구축~~ — 완료(위 "서버 액션 하네스 구현됨")
+2. ~~영역 하나를 먼저 끝까지~~ — 4.출고·주문 완료(`orders.itest.ts`, 발주 상태 변경·운송장·이력 조회)
+3. 나머지 영역 순서대로 확장(3.입고 → 2.상품 → 6.서류 …). 4번에서 아직 안 덮은 것: 출고 스캔·출고 확정 액션(`app/dashboard/outbound/actions.ts`), 바이어 주문 생성(`app/shop/[shop_token]/actions.ts`)
 4. 5번의 PG 콜백 유실 건은 테스트로 재현까지만 하고, 실제 수정 여부는 별도로 결정
