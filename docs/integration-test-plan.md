@@ -175,17 +175,19 @@ DB 레벨 38건은 `db-test-documents.sql`(2026-09-24, 계산서 발행이력 `t
 - ⬜ [정보] 사장이 자기 발행이력 행을 직접 수정·삭제할 수 있다(서버 흐름이 같은 권한으로 갱신하기 때문, 국세청 접수 기록을 지울 수도 있음). 타사 주문 ID에 자기 명의 이력을 연결하는 것도 DB가 주문 소속을 안 본다(주문 ID를 알아야 하고 상대 화면엔 안 보임).
 - ⬜ (정상) 거래명세서/계산서/배송의뢰서 발행 기본 흐름 (PDF·팝빌 — 서버 액션 하네스와 실계정 필요)
 
-## 7. 알림톡
+## 7. 알림톡 (2026-09-24 완료)
 
-- ⬜ 자격정보 미설정 상태에서 발송 시도 → 안내만 뜨고 실패 안전 처리
-- ⬜ 비즈뿌리오 API 오류 응답 처리
-- ⬜ 잘못된 전화번호 형식 → 거부
+- ✅ 자격정보 미설정 상태에서 발송 시도 → 안내만 뜨고 실패 안전 처리 (`lib/notifications/alimtalk.test.ts` 31건)
+- ✅ 비즈뿌리오 API 오류 응답 처리 (토큰 401·발송 500·네트워크·JSON 깨짐·code 7315/7204/미등록 코드)
+- ✅ 잘못된 전화번호 형식 — 수신번호는 가입·프로필 저장 시 숫자만 남김(9~11자리 검증), 발신번호는 저장 시 숫자만 남기도록 수정
+- 발견·수정(마이그레이션 110): 연결 거래처·직원·매니저가 API로 공급사 알림톡·토스 자격정보(암호문 포함)를 읽을 수 있었음 → 컬럼 권한 회수 + 서버는 service_role. 매니저의 설정 저장이 조용히 0행이던 것도 함께 해결. `scripts/db-test-alimtalk-credentials.sql`(25건). 상세는 `docs/alimtalk-integration.md` 맨 아래.
 
-## 8. 관리자
+## 8. 관리자 (2026-09-24 완료)
 
-- ⬜ 일반 계정이 관리자 전용 액션 직접 호출 → 거부
-- ⬜ 이미 승인된 공급사 재승인 시도 → 멱등 처리 확인
-- ⬜ 정지된 공급사가 계속 API 호출 시도 → 거부
+- ✅ 일반 계정이 관리자 전용 액션 직접 호출 → 거부. 서버 액션은 전부 슈퍼관리자 가드 통과 필요(코드 대조), DB RPC·테이블은 `scripts/db-test-admin.sql`(121건)로 사장·매니저·직원·고객·비로그인·프로필 없는 계정 검증.
+- ✅ 이미 승인된 공급사 재승인 → 멱등 처리 확인(승인 취소 후 재승인 포함).
+- ✅ 정지된 공급사가 계속 API 호출 시도 → 거부(마이그레이션 112, 사장님 결정). 정지(suspended)·해지(closed)·거절(rejected) 공급사의 상품 등록·수정·삭제(세션 직접 쓰기)와 거래처의 신규 주문 INSERT를 DB에서 차단(`SUPPLIER_NOT_ACTIVE`). 승인 대기(pending)는 기존 결정대로 상품 등록 허용, 구독 미납·체험 만료(overdue/cancelled)는 화면 잠금만 유지. 서버 키·SECURITY DEFINER RPC·크론(PG 결제 복구 포함)·슈퍼관리자 세션은 통과하고, 이미 받은 주문의 상태 변경은 범위 밖. 상품은 SECURITY INVOKER 트리거(`current_user` 판별), 주문은 SECURITY DEFINER 트리거(`auth.role()` 판별, 107과 동일). 앱은 이미 status≠active 공급사 주문을 막고 있어 주문 쪽은 백스톱.
+- 발견·수정(마이그레이션 111): ① `cancel_platform_event`가 NULL 비교 버그로 비로그인도 이벤트를 취소할 수 있었음(같은 형태 RPC 2개도 NULL-안전화, anon 실행 권한 회수) ② 익명 리드가 status·admin_note를 직접 채울 수 있었음(INSERT 정책 고정) ③ 재승인 시 최초 승인자·승인시각 덮어씀(유지) ④ 구독 청구서 입금액 0·음수 허용(CHECK, NOT VALID). 이미 완납된 청구서 재완납은 입금액 정정용으로 허용 유지. 리드·청구서 생성은 서버 전용 경로라 관리자 세션도 청구서 INSERT 불가(설계).
 
 ---
 
@@ -205,7 +207,7 @@ DB 레벨 38건은 `db-test-documents.sql`(2026-09-24, 계산서 발행이력 `t
 전부 로컬 Docker DB 대상이고 롤백형이다(`db-test-order-stock-concurrency.sh`만 고유 ID 시드를 넣고 끝에 지운다).
 
 ```
-for s in db-test-tenant-gate-null db-test-access-isolation db-test-signup-and-accounts db-test-product-management db-test-inbound db-test-orders-outbound db-test-payments-settlement db-test-documents db-test-order-stock-regression db-test-fifo-bundle-integrity db-test-pg-idempotency; do
+for s in db-test-tenant-gate-null db-test-access-isolation db-test-signup-and-accounts db-test-product-management db-test-inbound db-test-orders-outbound db-test-payments-settlement db-test-documents db-test-alimtalk-credentials db-test-admin db-test-order-stock-regression db-test-fifo-bundle-integrity db-test-pg-idempotency; do
   (echo "begin;"; cat scripts/$s.sql; echo "rollback;") | docker exec -i supabase_db_wholesale psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - | grep -E "FAIL|pass \|" ; done
 bash scripts/db-test-order-stock-concurrency.sh
 ```

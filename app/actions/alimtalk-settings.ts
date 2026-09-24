@@ -141,7 +141,7 @@ export async function saveAlimtalkSettingsAction(
       alimtalk_provider: "bizppurio",
       alimtalk_account: account,
       alimtalk_sender_key: input.senderKey.trim() || null,
-      alimtalk_sender_phone: input.senderPhone.trim() || null,
+      alimtalk_sender_phone: input.senderPhone.replace(/\D/g, "") || null,
       alimtalk_template_codes: input.templateCodes,
     };
 
