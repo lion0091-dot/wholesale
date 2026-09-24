@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
 import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
 import { STOCK_ADJUST_REASON_CODES } from "@/lib/products/stock-adjust-reasons";
+import { composeIdentityName, IDENTITY_FIELD_LABELS, identityFieldsFor } from "@/lib/products/identity-key";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -86,12 +87,15 @@ interface ProductInput {
 }
 
 /** 폼 입력 검증. 원매가(purchase_price)는 DB 컬럼이 없어 저장하지 않는다(마진 계산 참고용). */
-function parseProductForm(formData: FormData): ProductInput {
-  const name = ((formData.get("name") as string) || "").trim();
+function parseProductForm(formData: FormData, options: { requireIdentityFields: boolean }): ProductInput {
+  const rawName = ((formData.get("name") as string) || "").trim();
   const category = ((formData.get("category") as string) || "").trim();
   const subcategory = ((formData.get("subcategory") as string) || "").trim() || null;
   const origin = ((formData.get("origin") as string) || "").trim();
   const grade = ((formData.get("grade") as string) || "").trim() || null;
+  // 키 규칙이 있는 축종(소)은 상품명을 사용자가 적지 않는다 — 부위+등급으로 서버가 만든다(identity-key.ts).
+  const identityName = composeIdentityName(category, subcategory, grade);
+  const name = identityName ?? rawName;
   const unit = ((formData.get("unit") as string) || "kg").trim();
   // 화면에서 천 단위 콤마를 붙여 표시하므로("25,000") 서버에서 항상 콤마를 제거하고 파싱한다.
   const basePrice = Number.parseFloat(((formData.get("base_price") as string) || "").replace(/,/g, ""));
@@ -111,12 +115,24 @@ function parseProductForm(formData: FormData): ProductInput {
   const orderStoppedAction: ProductInput["order_stopped_action"] =
     orderStoppedActionRaw === "stop" || orderStoppedActionRaw === "resume" ? orderStoppedActionRaw : "none";
 
-  if (name.length < 2) {
+  if (identityName === null && name.length < 2) {
     throw new RbacError("상품명을 2자 이상 입력해주세요.");
   }
 
   if (!category) {
     throw new RbacError("카테고리(부위 구분)를 선택해주세요.");
+  }
+
+  // 키 축종은 부위·등급이 키의 일부라 신규 등록에서는 비워둘 수 없다(원산지는 아래에서 공통으로 검사).
+  // 수정에서는 요구하지 않는다 — 이력으로 자동 생성된 "(부위 미지정)" 상품의 가격만 고치는 경우가 있어서다.
+  const identityValues = { subcategory, grade } as const;
+
+  for (const field of options.requireIdentityFields ? (identityFieldsFor(category) ?? []) : []) {
+    if (field !== "origin" && !identityValues[field]) {
+      throw new RbacError(
+        `${category}는 ${IDENTITY_FIELD_LABELS[field]}을(를) 입력해주세요. 축종·부위·등급·원산지가 이 상품의 정체성입니다.`
+      );
+    }
   }
 
   if (!origin) {
@@ -165,6 +181,56 @@ function parseProductForm(formData: FormData): ProductInput {
   };
 }
 
+/**
+ * 같은 정체성 키의 상품이 이미 있으면 거부한다(키 규칙이 있는 축종만 — identity-key.ts).
+ * 보관된 상품도 대상이다: 같은 상품을 새로 만들지 말고 복원해서 쓰게 안내한다.
+ * DB 유니크 제약은 아직 없다 — 이미 있는 중복을 정리한 뒤에 걸어야 해서다(동시 등록 두 건은 이 검사를 함께 통과할 수 있음).
+ */
+async function assertNoDuplicateIdentity(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  wholesalerId: string,
+  key: { category: string; subcategory: string | null; grade: string | null; origin: string },
+  excludeProductId?: string
+): Promise<void> {
+  const fields = identityFieldsFor(key.category);
+
+  if (!fields) {
+    return;
+  }
+
+  let query = supabase
+    .from("products")
+    .select("id, name, archived_at")
+    .eq("wholesaler_id", wholesalerId)
+    .eq("category", key.category);
+
+  for (const field of fields) {
+    const value = key[field];
+
+    query = value === null ? query.is(field, null) : query.eq(field, value);
+  }
+
+  if (excludeProductId) {
+    query = query.neq("id", excludeProductId);
+  }
+
+  const { data, error } = await query.limit(1);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const duplicate = data?.[0];
+
+  if (duplicate) {
+    throw new RbacError(
+      duplicate.archived_at
+        ? `보관된 같은 상품이 있습니다(${duplicate.name}). 새로 만들지 말고 보관 목록에서 복원해서 쓰세요.`
+        : `이미 같은 상품이 등록되어 있습니다(${duplicate.name}). ${key.category}은(는) 축종·부위·등급·원산지가 같으면 같은 상품입니다.`
+    );
+  }
+}
+
 // ====================================================================
 // 1. 상품 등록
 // ====================================================================
@@ -173,7 +239,11 @@ export async function createProductAction(
 ): Promise<ActionResult<{ id: string }>> {
   try {
     const { supabase, wholesalerId } = await resolveProductScope();
-    const { order_stopped_action: _orderStoppedAction, ...input } = parseProductForm(formData);
+    const { order_stopped_action: _orderStoppedAction, ...input } = parseProductForm(formData, {
+      requireIdentityFields: true,
+    });
+
+    await assertNoDuplicateIdentity(supabase, wholesalerId, input);
 
     const { data, error } = await supabase
       .from("products")
@@ -206,7 +276,7 @@ export async function updateProductAction(
       throw new RbacError("올바른 상품 식별자가 아닙니다.");
     }
 
-    const input = parseProductForm(formData);
+    const input = parseProductForm(formData, { requireIdentityFields: false });
     const expectedUpdatedAt = ((formData.get("updated_at") as string) || "").trim();
     // 핫딜을 끌 때 발주정지 자동해제 여부를 판단하는 데만 쓰는 폼 로드 시점 재고 스냅샷
     // (아래 stock_quantity 입력과 달리 사용자가 못 건드리는 hidden 값).
@@ -223,9 +293,53 @@ export async function updateProductAction(
     // 나머지 마스터 값만 여기서 갱신한다.
     // 소유권 확인용 SELECT를 따로 두지 않고, 이 UPDATE 자체에 조직 필터(super_admin은 예외)와
     // updated_at 일치 조건을 함께 걸어 1회 왕복으로 권한 확인·동시편집 충돌 감지·반영을 처리한다.
+    // 키 규칙이 있는 축종(소)은 부위·등급도 정체성이라 이미 값이 있으면 못 바꾼다(비어 있던 칸만 한 번 채울 수 있다 —
+    // 이력으로 자동 생성된 "(부위 미지정)" 상품에 부위를 채우는 경로). 채우면 상품명도 다시 만든다.
+    let subcategoryToSave = input.subcategory;
+    let gradeToSave = input.grade;
+    let identityName: string | null = null;
+
+    {
+      let currentQuery = supabase
+        .from("products")
+        .select("category, subcategory, grade, origin")
+        .eq("id", productId);
+
+      if (!context.isSuperAdmin) {
+        currentQuery = currentQuery.eq("wholesaler_id", wholesalerId);
+      }
+
+      const { data: current } = await currentQuery.maybeSingle();
+
+      if (current && identityFieldsFor(current.category as string)) {
+        const currentPart = (current.subcategory as string | null)?.trim() || null;
+        const currentGrade = (current.grade as string | null)?.trim() || null;
+
+        subcategoryToSave = currentPart ?? input.subcategory;
+        gradeToSave = currentGrade ?? input.grade;
+
+        if (subcategoryToSave !== currentPart || gradeToSave !== currentGrade) {
+          identityName = composeIdentityName(current.category as string, subcategoryToSave, gradeToSave);
+
+          await assertNoDuplicateIdentity(
+            supabase,
+            wholesalerId,
+            {
+              category: current.category as string,
+              subcategory: subcategoryToSave,
+              grade: gradeToSave,
+              origin: current.origin as string,
+            },
+            productId
+          );
+        }
+      }
+    }
+
     const updatePayload: Record<string, unknown> = {
-      subcategory: input.subcategory,
-      grade: input.grade,
+      ...(identityName ? { name: identityName } : {}),
+      subcategory: subcategoryToSave,
+      grade: gradeToSave,
       base_price: input.base_price,
       unit: input.unit,
       // stock_quantity는 여기서 갱신하지 않는다 — 재고는 stock_ledger 합계로

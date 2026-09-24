@@ -7,6 +7,7 @@ import type { Product } from "@/types/database";
 import { createProductAction, updateProductAction } from "./actions";
 import { MarketPriceWidget } from "@/components/market-price-widget";
 import { ProductStockBreakdownWidget } from "@/components/product-stock-breakdown";
+import { composeIdentityName, identityFieldsFor } from "@/lib/products/identity-key";
 
 interface ProductFormViewProps {
   /** 수정 모드일 때 기존 상품 값 */
@@ -378,6 +379,16 @@ export function ProductFormView({
     return initialOptions.includes(product?.subcategory ?? "") ? product?.subcategory ?? "" : "";
   });
   const [unit, setUnit] = useState(product?.unit ?? UNITS[0]);
+  const [gradeValue, setGradeValue] = useState(product?.grade ?? "");
+
+  // 소처럼 정체성 키가 정해진 축종은 상품명을 적지 않는다 — 부위+등급으로 자동 조합된다(lib/products/identity-key.ts).
+  // 등록 후에는 값이 이미 있는 부위·등급·원산지가 잠긴다(비어 있던 칸만 한 번 채울 수 있다).
+  const hasIdentityKey = identityFieldsFor(selectedCategory) !== null;
+  const partLocked = isEdit && hasIdentityKey && Boolean(product?.subcategory?.trim());
+  const gradeLocked = isEdit && hasIdentityKey && Boolean(product?.grade?.trim());
+  const composedName = composeIdentityName(selectedCategory, selectedSubcategory, gradeValue);
+  const willRename = !isEdit || (!partLocked && Boolean(selectedSubcategory)) || (!gradeLocked && Boolean(gradeValue.trim()));
+  const nameToShow = hasIdentityKey && willRename ? (composedName ?? "") : product?.name;
 
   const handleCategoryChange = (next: string) => {
     setSelectedCategory(next);
@@ -476,22 +487,37 @@ export function ProductFormView({
             <label htmlFor="name" style={labelStyle}>
               상품명 *
             </label>
-            <input
-              id="name"
-              name="name"
-              type="text"
-              required
-              minLength={2}
-              readOnly={isEdit}
-              defaultValue={product?.name}
-              placeholder="예: 등심"
-              autoComplete="off"
-              style={isEdit ? readOnlyFieldStyle : fieldStyle}
-            />
+            {hasIdentityKey ? (
+              <input
+                id="name"
+                name="name"
+                type="text"
+                readOnly
+                value={nameToShow ?? ""}
+                placeholder="부위·등급을 고르면 자동으로 채워져요"
+                autoComplete="off"
+                style={readOnlyFieldStyle}
+              />
+            ) : (
+              <input
+                id="name"
+                name="name"
+                type="text"
+                required
+                minLength={2}
+                readOnly={isEdit}
+                defaultValue={product?.name}
+                placeholder="예: 등심"
+                autoComplete="off"
+                style={isEdit ? readOnlyFieldStyle : fieldStyle}
+              />
+            )}
             <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
-              {isEdit
-                ? "등록 후에는 상품명을 바꿀 수 없어요. 축종·상품명·원산지가 이 상품의 정체성이라 셋 중 하나라도 다르면 새 상품으로 등록해주세요."
-                : "축종은 아래에서 따로 고르면 화면에 자동으로 앞에 붙어요. 여기엔 부위/상세 설명만 적으면 됩니다."}
+              {hasIdentityKey
+                ? `${selectedCategory}는 축종·부위·등급·원산지가 이 상품의 정체성이에요. 상품명은 부위와 등급으로 자동으로 만들어지고, 축종은 화면에서 앞에 자동으로 붙어요.`
+                : isEdit
+                  ? "등록 후에는 상품명을 바꿀 수 없어요. 축종·상품명·원산지가 이 상품의 정체성이라 셋 중 하나라도 다르면 새 상품으로 등록해주세요."
+                  : "축종은 아래에서 따로 고르면 화면에 자동으로 앞에 붙어요. 여기엔 부위/상세 설명만 적으면 됩니다."}
             </p>
           </div>
 
@@ -519,7 +545,7 @@ export function ProductFormView({
         <div className="dash-form-grid-3">
           <div>
             <label htmlFor="subcategory" style={labelStyle}>
-              부위 (선택)
+              {hasIdentityKey ? "부위 *" : "부위 (선택)"}
             </label>
             <BottomSheetField
               id="subcategory"
@@ -527,12 +553,17 @@ export function ProductFormView({
               label="부위"
               value={selectedSubcategory}
               onChange={setSelectedSubcategory}
-              disabled={subcategoryOptions.length === 0}
+              disabled={subcategoryOptions.length === 0 || partLocked}
               options={[
-                { value: "", label: "선택 안 함" },
+                ...(hasIdentityKey && !isEdit ? [] : [{ value: "", label: "선택 안 함" }]),
                 ...subcategoryOptions.map((item) => ({ value: item, label: item })),
               ]}
             />
+            {partLocked && (
+              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+                등록 후에는 부위를 바꿀 수 없어요. 부위가 다르면 새 상품으로 등록해주세요.
+              </p>
+            )}
           </div>
 
           <div>
@@ -559,17 +590,25 @@ export function ProductFormView({
 
           <div>
             <label htmlFor="grade" style={labelStyle}>
-              등급
+              {hasIdentityKey ? "등급 *" : "등급"}
             </label>
             <input
               id="grade"
               name="grade"
               type="text"
-              defaultValue={product?.grade ?? ""}
+              required={hasIdentityKey && !isEdit}
+              readOnly={gradeLocked}
+              value={gradeValue}
+              onChange={(event) => setGradeValue(event.target.value)}
               placeholder="예: 1++, 1등급, 프라임"
               autoComplete="off"
-              style={fieldStyle}
+              style={gradeLocked ? readOnlyFieldStyle : fieldStyle}
             />
+            {gradeLocked && (
+              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+                등록 후에는 등급을 바꿀 수 없어요. 등급이 다르면 새 상품으로 등록해주세요.
+              </p>
+            )}
           </div>
         </div>
 

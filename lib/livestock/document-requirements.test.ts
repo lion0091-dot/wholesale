@@ -194,3 +194,37 @@ describe("buildSupplierRequestSummary", () => {
     expect(summary.filter((label) => label === "중량이 적혀 있지 않습니다")).toHaveLength(1);
   });
 });
+
+describe("이력번호 축종코드 진단 (첫 자리: 소0·돼지1·닭2·계란3·오리5)", () => {
+  const codes = (line: DocumentLine) => buildGapReport(makeHeader(), [line]).lineGaps.flatMap((entry) => entry.gaps.map((gap) => gap.code));
+
+  it("번호의 축종과 품목명의 축종이 같으면 아무것도 짚지 않는다", () => {
+    expect(codes(makeLine({ itemName: "한우 등심", traceNo: "002123456789" }))).not.toContain("TRACE_SPECIES_MISMATCH");
+    expect(codes(makeLine({ itemName: "돼지 삼겹살", traceNo: "140077000150", origin: "국내산" }))).not.toContain("TRACE_SPECIES_MISMATCH");
+  });
+
+  it("번호는 돼지(1)인데 품목은 한우면 짚는다 — 막지는 않고 권고 수준", () => {
+    const report = buildGapReport(makeHeader(), [makeLine({ itemName: "한우 등심", traceNo: "140077000150" })]);
+    const gap = report.lineGaps[0].gaps.find((item) => item.code === "TRACE_SPECIES_MISMATCH");
+
+    expect(gap?.level).toBe("RECOMMENDED");
+    expect(gap?.label).toContain("돼지");
+    expect(gap?.label).toContain("소");
+  });
+
+  it("품목명에 축종 단어가 없으면(부위만) 판단하지 않는다", () => {
+    expect(codes(makeLine({ itemName: "갈비", partName: "갈비", traceNo: "140077000150" }))).not.toContain("TRACE_SPECIES_MISMATCH");
+  });
+
+  it("12자리인데 첫 자리가 축종코드가 아니면 번호를 다시 확인하라고 짚는다", () => {
+    const report = buildGapReport(makeHeader(), [makeLine({ traceNo: "912345678901" })]);
+    const gap = report.lineGaps[0].gaps.find((item) => item.code === "TRACE_CODE_UNKNOWN");
+
+    expect(gap?.label).toContain("첫 자리(9)");
+  });
+
+  it("15자리 묶음번호·L 접두어 묶음번호는 구조 검사 대상이 아니다", () => {
+    expect(codes(makeLine({ traceNo: "L01234567890123" }))).not.toContain("TRACE_CODE_UNKNOWN");
+    expect(codes(makeLine({ traceNo: "123456789012345" }))).not.toContain("TRACE_CODE_UNKNOWN");
+  });
+});

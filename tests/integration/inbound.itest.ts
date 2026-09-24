@@ -513,3 +513,174 @@ describe("resolveMappingAction", () => {
     expect(await stockOf(product.id)).toBe(0);
   });
 });
+
+describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산지)와 명세서 기반 등급 채움", () => {
+  async function productOf(productId: string) {
+    const { data } = await adminClient().from("products").select("name, category, subcategory, grade, origin").eq("id", productId).single();
+
+    return data as { name: string; category: string; subcategory: string | null; grade: string | null; origin: string };
+  }
+
+  it("상품명은 '부위 등급'으로 만들어진다(축종은 화면 태그가 붙인다)", async () => {
+    const traceNo = world.newTraceNo();
+
+    await world.seedTrace(traceNo, { part: "채끝", grade: "1+" });
+    const data = scanData(await recordScanAction({ traceNo, weight: 3, scanType: "BARCODE_SCAN" }));
+
+    expect(data.autoCreated?.productName).toBe("채끝 1+");
+    expect(await productOf(data.productId!)).toMatchObject({ name: "채끝 1+", category: "소", subcategory: "채끝", grade: "1+", origin: "국내산" });
+  });
+
+  it("부위·등급이 같아도 원산지가 다르면(국내산 ↔ 수입산) 다른 상품으로 만든다", async () => {
+    const domestic = world.newTraceNo();
+    const imported = world.newTraceNo();
+
+    await world.seedTrace(domestic, { part: "갈비", grade: "1++" });
+    await world.seedTrace(imported, { part: "갈비", grade: "1++", traceKind: "imported", originCountry: "미국산" });
+
+    const first = scanData(await recordScanAction({ traceNo: domestic, weight: 3, scanType: "BARCODE_SCAN" }));
+    const second = scanData(await recordScanAction({ traceNo: imported, weight: 3, scanType: "BARCODE_SCAN" }));
+
+    expect(first.productId).not.toBe(second.productId);
+    expect((await productOf(first.productId!)).origin).toBe("국내산");
+    expect((await productOf(second.productId!)).origin).toBe("미국산");
+  });
+
+  it("이력에 등급이 없으면 명세서 줄의 등급·부위로 채운다(기반은 명세서)", async () => {
+    const traceNo = world.newTraceNo();
+
+    await world.seedTrace(traceNo, { part: null, grade: null });
+    await world.createDocumentLine({ traceNo, partName: "양지", grade: "1" });
+    const data = scanData(await recordScanAction({ traceNo, weight: 3, scanType: "BARCODE_SCAN" }));
+
+    expect(data.status).toBe("NORMAL");
+    expect(await productOf(data.productId!)).toMatchObject({ name: "양지 1", subcategory: "양지", grade: "1" });
+  });
+
+  it("이력이 등급을 주면 명세서 등급과 달라도 이력이 우선이다(조회는 사실, 명세서는 빈칸만 메운다)", async () => {
+    const traceNo = world.newTraceNo();
+
+    await world.seedTrace(traceNo, { part: null, grade: "1++" });
+    await world.createDocumentLine({ traceNo, partName: "목심", grade: "2" });
+    const data = scanData(await recordScanAction({ traceNo, weight: 3, scanType: "BARCODE_SCAN" }));
+
+    expect(await productOf(data.productId!)).toMatchObject({ name: "목심 1++", grade: "1++" });
+  });
+
+  it("명세서 줄이 여러 등급을 말하면(하나로 좁혀지지 않으면) 등급을 비워두고 '(부위 미지정)' 규칙은 그대로다", async () => {
+    const traceNo = world.newTraceNo();
+
+    await world.seedTrace(traceNo, { part: null, grade: null });
+    await world.createDocumentLine({ traceNo, partName: "설도", grade: "1" });
+    await world.createDocumentLine({ traceNo, partName: "설도", grade: "2" });
+    const data = scanData(await recordScanAction({ traceNo, weight: 3, scanType: "BARCODE_SCAN" }));
+
+    expect(await productOf(data.productId!)).toMatchObject({ name: "설도", subcategory: "설도", grade: null });
+  });
+});
+
+describe("소 외 축종 자동 생성 — 정체성 키 = 이력번호 출처(파싱) + 명세서 부위", () => {
+  async function productOf(productId: string) {
+    const { data } = await adminClient().from("products").select("name, category, subcategory, trace_key").eq("id", productId).single();
+
+    return data as { name: string; category: string; subcategory: string | null; trace_key: string | null };
+  }
+
+  const pork = (prefix: string) => world.newTraceNo(prefix);
+
+  async function scanPork(traceNo: string, part: string | null) {
+    await world.seedTrace(traceNo, { speciesGroup: "돼지", part: null, grade: null });
+
+    if (part) {
+      await world.createDocumentLine({ traceNo, partName: part });
+    }
+
+    return scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN" }));
+  }
+
+  it("돼지: 같은 농장(앞 7자리) + 같은 명세서 부위면 같은 상품 — 일련번호가 달라도 새로 만들지 않는다", async () => {
+    const first = await scanPork(pork("1400771"), "삼겹살");
+    const second = await scanPork(pork("1400771"), "삼겹살");
+
+    expect(second.productId).toBe(first.productId);
+    expect(first.autoCreated).not.toBeNull();
+    expect(second.autoCreated).toBeNull();
+
+    const product = await productOf(first.productId!);
+
+    expect(product).toMatchObject({ category: "돼지", subcategory: "삼겹살", trace_key: "돼지:400771", name: "삼겹살 (농장 400771)" });
+  });
+
+  it("돼지: 같은 농장이어도 부위가 다르면 다른 상품, 부위가 같아도 농장이 다르면 다른 상품", async () => {
+    const base = await scanPork(pork("1400772"), "삼겹살");
+    const otherPart = await scanPork(pork("1400772"), "목살");
+    const otherFarm = await scanPork(pork("1400773"), "삼겹살");
+
+    expect(new Set([base.productId, otherPart.productId, otherFarm.productId]).size).toBe(3);
+    expect((await productOf(otherPart.productId!)).name).toBe("목살 (농장 400772)");
+    expect((await productOf(otherFarm.productId!)).trace_key).toBe("돼지:400773");
+  });
+
+  it("명세서에 부위가 없으면 '(부위 미지정)' 상품이 출처별로 하나씩 만들어지고 재사용된다", async () => {
+    const first = await scanPork(pork("1400774"), null);
+    const second = await scanPork(pork("1400774"), null);
+
+    expect(second.productId).toBe(first.productId);
+    expect((await productOf(first.productId!)).name).toBe("(농장 400774) (부위 미지정)");
+  });
+
+  it("닭·오리: 도축장이 같아도 축종코드가 다르면(2 닭 / 5 오리) 다른 상품이고 이름에 축종이 드러난다", async () => {
+    const scanPoultry = async (traceNo: string) => {
+      await world.seedTrace(traceNo, { speciesGroup: "닭/오리", part: null, grade: null });
+      await world.createDocumentLine({ traceNo, partName: "훈제" });
+
+      return scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN" }));
+    };
+
+    const chicken = await scanPoultry(world.newTraceNo("2777"));
+    const duck = await scanPoultry(world.newTraceNo("5777"));
+    const duckAgain = await scanPoultry(world.newTraceNo("5777"));
+
+    expect(chicken.productId).not.toBe(duck.productId);
+    expect(duckAgain.productId).toBe(duck.productId);
+    expect(await productOf(chicken.productId!)).toMatchObject({ trace_key: "닭:777", name: "닭 훈제 (도축장 777)" });
+    expect(await productOf(duck.productId!)).toMatchObject({ trace_key: "오리:777", name: "오리 훈제 (도축장 777)" });
+  });
+
+  it("키를 뽑을 수 없는 번호(형식 밖 첫 자리)는 예전 방식(축종+부위+등급)으로 찾고 trace_key는 비어 있다", async () => {
+    const traceNo = world.newTraceNo("9");
+
+    await world.seedTrace(traceNo, { speciesGroup: "돼지", part: null, grade: null });
+    await world.createDocumentLine({ traceNo, partName: "앞다리" });
+
+    const data = scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN" }));
+
+    expect((await productOf(data.productId!)).trace_key).toBeNull();
+  });
+
+  it("같은 출처+부위 상품을 동시에 만들려 해도 상품은 하나만 생기고 두 스캔 모두 그 상품에 붙는다", async () => {
+    const a = pork("1400775");
+    const b = pork("1400775");
+
+    for (const traceNo of [a, b]) {
+      await world.seedTrace(traceNo, { speciesGroup: "돼지", part: null, grade: null });
+      await world.createDocumentLine({ traceNo, partName: "갈비" });
+    }
+
+    const [first, second] = await Promise.all([
+      recordScanAction({ traceNo: a, weight: 4, scanType: "BARCODE_SCAN" }),
+      recordScanAction({ traceNo: b, weight: 4, scanType: "BARCODE_SCAN" }),
+    ]);
+    const productIds = new Set([scanData(first).productId, scanData(second).productId]);
+
+    expect(productIds.size).toBe(1);
+
+    const { count } = await adminClient()
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("wholesaler_id", world.wholesalerA)
+      .eq("trace_key", "돼지:400775");
+
+    expect(count).toBe(1);
+  });
+});

@@ -172,14 +172,14 @@ describe("createProductAction", () => {
     expect(await row(result.data!.id)).toMatchObject({ hot_deal_active: true, hot_deal_price: 10000, hot_deal_quantity_limit: 20, hot_deal_quota_alert_threshold: 3 });
   });
 
-  it("[발견] 축종+상품명+원산지가 같은 상품을 다시 등록해도 막히지 않는다(서버 액션·화면 어디에도 중복 검사 없음)", async () => {
+  it("[결정 대기] 키 규칙이 정해지지 않은 축종(돼지)은 같은 상품을 다시 등록해도 막히지 않는다", async () => {
     const first = await createProductAction(form({ name: "중복확인 상품" }));
     const second = await createProductAction(form({ name: "중복확인 상품" }));
 
     expect(first.success).toBe(true);
 
-    // 계획 문서는 "서버 액션(앱)이 중복 생성을 막는다"고 적었지만 액션에도 화면 폼에도 중복 검사가 없다(DB 유니크도 없음).
-    // 현재 동작을 고정 — 막기로 결정하면 기대값을 뒤집을 것.
+    // 키 규칙은 소만 정해졌다(lib/products/identity-key.ts). 돼지(축종+부위+원산지)·닭/오리(축종만)는 사장님 결정 대기 —
+    // 정해지면 그 표에 한 줄 추가하고 이 기대값을 뒤집을 것. DB 유니크도 아직 없다.
     const { count } = await adminClient()
       .from("products")
       .select("id", { count: "exact", head: true })
@@ -447,5 +447,117 @@ describe("getProductStockBreakdownAction", () => {
     await actAs(world.users.ownerB);
     expect(await getProductStockBreakdownAction(product.id)).toEqual({ success: true, data: [] });
     expect(await getProductStockBreakdownAction("bad")).toEqual({ success: false, error: "올바른 상품 식별자가 아닙니다." });
+  });
+});
+
+describe("소 상품 정체성 키 = 축종 + 부위 + 등급 + 원산지 (상품명은 '부위 등급' 자동 조합)", () => {
+  const cattle = (fields: Record<string, string> = {}) =>
+    form({ category: "소", subcategory: "등심", grade: "1++", origin: "국내산", name: "", ...fields });
+
+  // 이 파일의 다른 테스트가 만든 소 상품과 겹치지 않도록 이 describe는 부위를 실행마다 고유하게 쓴다.
+  const part = (label: string) => `${label}-${world.runId}`;
+
+  it("이름을 적지 않아도(또는 엉뚱하게 적어도) 서버가 '부위 등급'으로 이름을 만든다", async () => {
+    const p = part("등심A");
+    const result = await createProductAction(cattle({ subcategory: p, name: "내 맘대로 이름" }));
+
+    expect(result.success).toBe(true);
+    expect(await row(result.data!.id)).toMatchObject({ name: `${p} 1++`, category: "소", subcategory: p, grade: "1++", origin: "국내산" });
+  });
+
+  it("부위나 등급이 비면 등록할 수 없다", async () => {
+    const noPart = await createProductAction(cattle({ subcategory: "" }));
+    const noGrade = await createProductAction(cattle({ subcategory: part("등심B"), grade: "" }));
+
+    expect(noPart.success).toBe(false);
+    expect(noPart.error).toContain("소는 부위");
+    expect(noGrade.success).toBe(false);
+    expect(noGrade.error).toContain("소는 등급");
+  });
+
+  it("축종·부위·등급·원산지가 모두 같으면 중복으로 막고, 하나라도 다르면 다른 상품이라 등록된다", async () => {
+    const p = part("등심C");
+
+    expect((await createProductAction(cattle({ subcategory: p }))).success).toBe(true);
+
+    const duplicate = await createProductAction(cattle({ subcategory: p, base_price: "99999" }));
+
+    expect(duplicate.success).toBe(false);
+    expect(duplicate.error).toContain("이미 같은 상품이 등록되어 있습니다");
+    expect(duplicate.error).toContain(`${p} 1++`);
+
+    expect((await createProductAction(cattle({ subcategory: p, grade: "1+" }))).success).toBe(true);
+    expect((await createProductAction(cattle({ subcategory: p, origin: "미국산" }))).success).toBe(true);
+    expect((await createProductAction(cattle({ subcategory: part("안심C") }))).success).toBe(true);
+  });
+
+  it("보관된 같은 상품이 있으면 새로 만들지 말고 복원하라고 안내한다", async () => {
+    const p = part("등심D");
+    const created = await createProductAction(cattle({ subcategory: p }));
+
+    expect((await setProductArchivedAction(created.data!.id, true)).success).toBe(true);
+
+    const again = await createProductAction(cattle({ subcategory: p }));
+
+    expect(again.success).toBe(false);
+    expect(again.error).toContain("보관된 같은 상품이 있습니다");
+  });
+
+  it("중복 검사는 공급사 안에서만 — 다른 공급사는 같은 키로 등록할 수 있다", async () => {
+    const p = part("등심E");
+
+    expect((await createProductAction(cattle({ subcategory: p }))).success).toBe(true);
+
+    await actAs(world.users.ownerB);
+    expect((await createProductAction(cattle({ subcategory: p }))).success).toBe(true);
+  });
+
+  it("등록 후 부위·등급·원산지·상품명을 바꿔 보내도 안 바뀌고 단가만 바뀐다", async () => {
+    const p = part("등심F");
+    const created = await createProductAction(cattle({ subcategory: p }));
+    const result = await updateProductAction(
+      created.data!.id,
+      cattle({ subcategory: part("안심F"), grade: "1", origin: "미국산", name: "다른 이름", base_price: "33,000" })
+    );
+
+    expect(result.success).toBe(true);
+
+    const after = await row(created.data!.id);
+
+    expect(after).toMatchObject({ name: `${p} 1++`, subcategory: p, grade: "1++", origin: "국내산" });
+    expect(Number(after.base_price)).toBe(33000);
+  });
+
+  it("이력으로 자동 생성돼 부위·등급이 비어 있는 소 상품은 가격만 고칠 수 있고, 비어 있던 칸은 한 번 채울 수 있으며 이름이 다시 만들어진다", async () => {
+    const p = part("등심G");
+    const legacy = await world.createProduct({ category: "소", subcategory: null, grade: null, name: "(부위 미지정)", origin: "국내산" });
+
+    // 부위·등급 없이 가격만 — 신규 등록과 달리 수정에서는 요구하지 않는다.
+    const priceOnly = await updateProductAction(legacy.id, cattle({ subcategory: "", grade: "", base_price: "21,000" }));
+
+    expect(priceOnly.success).toBe(true);
+    expect(await row(legacy.id)).toMatchObject({ name: "(부위 미지정)", subcategory: null });
+
+    const filled = await updateProductAction(legacy.id, cattle({ subcategory: p, grade: "1+" }));
+
+    expect(filled.success).toBe(true);
+    expect(await row(legacy.id)).toMatchObject({ name: `${p} 1+`, subcategory: p, grade: "1+" });
+
+    // 채운 뒤에는 잠긴다
+    expect((await updateProductAction(legacy.id, cattle({ subcategory: part("다른"), grade: "1" }))).success).toBe(true);
+    expect(await row(legacy.id)).toMatchObject({ subcategory: p, grade: "1+" });
+  });
+
+  it("비어 있던 칸을 채웠더니 이미 있는 상품과 키가 같아지면 거부하고 아무것도 바꾸지 않는다", async () => {
+    const p = part("등심H");
+
+    expect((await createProductAction(cattle({ subcategory: p, grade: "1++" }))).success).toBe(true);
+
+    const legacy = await world.createProduct({ category: "소", subcategory: null, grade: null, name: "(부위 미지정)", origin: "국내산" });
+    const clash = await updateProductAction(legacy.id, cattle({ subcategory: p, grade: "1++" }));
+
+    expect(clash.success).toBe(false);
+    expect(clash.error).toContain("이미 같은 상품이 등록되어 있습니다");
+    expect(await row(legacy.id)).toMatchObject({ name: "(부위 미지정)", subcategory: null, grade: null });
   });
 });

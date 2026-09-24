@@ -35,6 +35,7 @@
  */
 
 import { XMLParser } from "fast-xml-parser";
+import { speciesGroupFromTraceNumber } from "@/lib/livestock/trace-number";
 
 /**
  * 이력 조회 소스 — 품목별 운영 기관이 다르다.
@@ -237,6 +238,10 @@ function normalizeSpeciesGroup(species: string | null): string | null {
 
   if (/돼지|돈/.test(species)) {
     return "돼지";
+  }
+
+  if (/닭|오리|육계|삼계/.test(species)) {
+    return "닭/오리";
   }
 
   return null;
@@ -522,7 +527,8 @@ function toRecord(
         normalizeSpeciesGroup(species)
       : source === "poultry"
         ? "닭/오리"
-        : (normalizeSpeciesGroup(species) ?? speciesGroupFromIdField(tree));
+        : // 응답에 축종 이름도 개체번호 필드도 없으면 번호 첫 자리(축종코드)로 보충한다 — 원문 species는 API 값 그대로 둔다.
+          (normalizeSpeciesGroup(species) ?? speciesGroupFromIdField(tree) ?? speciesGroupFromTraceNumber(traceNo));
 
   return {
     traceNo,

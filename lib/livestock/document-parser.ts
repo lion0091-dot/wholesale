@@ -11,6 +11,7 @@
  */
 
 import { parseBarcode } from "./barcode-parser";
+import { parseTraceNumber } from "./trace-number";
 import { detectDelimiter, splitLine } from "./import-parser";
 
 export type DocumentField =
@@ -222,11 +223,15 @@ function mapByContent(bodyRows: string[][], existing: ColumnMap): ColumnMap {
     taken.add(column);
   };
 
-  // 이력번호: 대부분의 값이 이력번호로 읽히는 칸.
-  claim(
-    "traceNo",
-    stats.find((s) => s.values.length > 0 && s.traceHits / s.values.length >= 0.6)?.column,
-  );
+  // 이력번호: 대부분의 값이 이력번호로 읽히는 칸. 그런 칸이 여러 개면 12자리 축종코드(첫 자리
+  // 소0·돼지1·닭2·계란3·오리5)까지 맞는 값이 더 많은 칸을 고른다 — 12자리 숫자는 그 밖에도 흔해서
+  // (금액·코드 열) 칸 순서만으로 고르면 엉뚱한 칸을 이력번호로 잡을 수 있다. 동률이면 앞쪽 칸.
+  const traceCandidates = stats
+    .filter((s) => s.values.length > 0 && s.traceHits / s.values.length >= 0.6)
+    .map((s) => ({ column: s.column, structured: s.values.filter((v) => parseTraceNumber(parseBarcode(v).traceNo) !== null).length }))
+    .sort((a, b) => b.structured - a.structured || a.column - b.column);
+
+  claim("traceNo", traceCandidates[0]?.column);
 
   // 등급: 대부분의 값이 등급 표기인 칸. 품목명보다 먼저 잡아야 한다 —
   // "1++"는 글자가 아니지만 품목명 칸이 먼저 가져가면 등급을 놓친다.

@@ -118,12 +118,15 @@ export interface World {
     paymentMethod?: string;
     orderFields?: Record<string, unknown>;
   }): Promise<string>;
-  /** 이번 실행 전용 12자리 개체 이력번호(정리 대상으로 기록됨). */
-  newTraceNo(): string;
+  /** 이번 실행 전용 12자리 이력번호(정리 대상으로 기록됨). prefix를 주면 그 앞자리 + 무작위 숫자(예: "1400770" → 같은 농장의 돼지 번호). */
+  newTraceNo(prefix?: string): string;
   /** 공용 이력 캐시(master_livestock)에 시드 — 정부 API 조회 결과가 캐시에 들어 있는 상황. */
-  seedTrace(traceNo: string, fields?: { part?: string | null; grade?: string | null; speciesGroup?: string | null }): Promise<void>;
+  seedTrace(
+    traceNo: string,
+    fields?: { part?: string | null; grade?: string | null; speciesGroup?: string | null; traceKind?: string; originCountry?: string | null }
+  ): Promise<void>;
   /** 공급사 A의 명세서 한 장에 줄 하나(이력번호→상품)를 만든다. */
-  createDocumentLine(options: { traceNo: string; product: WorldProduct; status?: string }): Promise<void>;
+  createDocumentLine(options: { traceNo: string; product?: WorldProduct; partName?: string; grade?: string; status?: string }): Promise<void>;
   cleanup(): Promise<void>;
 }
 
@@ -363,8 +366,9 @@ async function buildWorld(tracker: Tracker): Promise<World> {
       return id;
     },
 
-    newTraceNo() {
-      const traceNo = `9${String(Math.floor(Math.random() * 1e11)).padStart(11, "0")}`;
+    newTraceNo(prefix = "9") {
+      const random = String(Math.floor(Math.random() * 1e11)).padStart(11, "0");
+      const traceNo = `${prefix}${random}`.slice(0, 12);
 
       tracker.traces.push(traceNo);
 
@@ -376,7 +380,7 @@ async function buildWorld(tracker: Tracker): Promise<World> {
       // upsert_master_livestock 은 service_role 전용 — 서버(lib/livestock/master-cache.ts)와 같은 경로다.
       const { error } = await admin.rpc("upsert_master_livestock", {
         p_trace_no: traceNo,
-        p_trace_kind: "individual",
+        p_trace_kind: fields.traceKind ?? "individual",
         p_source: "mtrace_livestock",
         p_raw_payload: {},
         p_species: "한우",
@@ -386,7 +390,7 @@ async function buildWorld(tracker: Tracker): Promise<World> {
         p_slaughter_date: new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10),
         p_butchery_place: "○○도축장",
         p_farm_name: null,
-        p_origin_country: null,
+        p_origin_country: fields.originCountry ?? null,
         p_importer_name: null,
         p_packing_date: null,
       });
@@ -396,7 +400,7 @@ async function buildWorld(tracker: Tracker): Promise<World> {
       }
     },
 
-    async createDocumentLine({ traceNo, product, status = "PENDING" }) {
+    async createDocumentLine({ traceNo, product, partName, grade, status = "PENDING" }) {
       const documentId = randomUUID();
 
       must(
@@ -407,8 +411,10 @@ async function buildWorld(tracker: Tracker): Promise<World> {
         await admin.from("inbound_document_lines").insert({
           document_id: documentId,
           line_no: 1,
-          item_name: product.name,
-          product_id: product.id,
+          item_name: product?.name ?? partName ?? "명세서 품목",
+          product_id: product?.id ?? null,
+          part_name: partName ?? null,
+          grade: grade ?? null,
           trace_no: traceNo,
         }),
         "inbound_document_lines"

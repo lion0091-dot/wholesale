@@ -18,6 +18,7 @@
  */
 
 import type { DocumentLine } from "./document-parser";
+import { parseTraceNumber, speciesMentionedIn } from "./trace-number";
 
 /** 빠진 항목을 누가 채우는가 — 공급사에게 다음 행동을 알려주기 위한 구분. */
 export type GapSource =
@@ -131,6 +132,34 @@ function lineGapsFor(
       // 요구할 때 근거가 된다.
       why: "축산물이력법상 거래내역에는 이력번호가 남아야 합니다. 창고에서 박스를 찍으면 채워지지만, 서류에 번호가 있으면 실물과 정확히 짝지을 수 있습니다.",
     });
+  }
+
+  // 12자리 이력번호는 첫 자리가 축종코드다(소 0·돼지 1·닭 2·계란 3·오리 5 — trace-number.ts).
+  // 코드가 낯설거나, 번호가 말하는 축종과 품목명의 축종이 다르면 번호를 잘못 읽었거나 품목이 어긋난 것이다.
+  // 막지는 않고 짚기만 한다 — 조회는 사실, 명세서는 주장이라 불일치는 진단 신호로만 쓴다.
+  const traceNo = line.traceNo?.trim() ?? "";
+  const parsedTrace = parseTraceNumber(traceNo);
+
+  if (/^\d{12}$/.test(traceNo) && !parsedTrace) {
+    gaps.push({
+      code: "TRACE_CODE_UNKNOWN",
+      level: "RECOMMENDED",
+      source: "FROM_STAFF",
+      label: `이력번호 첫 자리(${traceNo[0]})가 축종코드가 아닙니다 — 번호를 다시 확인해주세요`,
+      why: "12자리 이력번호의 첫 자리는 축종을 뜻합니다(소 0·돼지 1·닭 2·계란 3·오리 5). 번호를 잘못 읽었거나 이력번호가 아닌 값일 수 있습니다.",
+    });
+  } else if (parsedTrace) {
+    const mentioned = speciesMentionedIn([line.itemName, line.partName].filter(Boolean).join(" "));
+
+    if (mentioned && mentioned !== parsedTrace.species) {
+      gaps.push({
+        code: "TRACE_SPECIES_MISMATCH",
+        level: "RECOMMENDED",
+        source: "FROM_STAFF",
+        label: `이력번호는 ${parsedTrace.species}(첫 자리 ${parsedTrace.speciesCode})인데 품목은 ${mentioned}로 읽힙니다`,
+        why: "번호를 잘못 읽었거나 품목이 잘못 적혔을 수 있습니다. 이대로 두면 다른 축종의 이력이 이 품목에 붙습니다.",
+      });
+    }
   }
 
   // 등급은 그 자체로 필수가 아니다 — 이력번호가 있으면 공공조회가 채워준다.
