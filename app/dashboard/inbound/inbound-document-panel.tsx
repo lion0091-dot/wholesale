@@ -131,6 +131,8 @@ function toNumber(value: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+const OPEN_STORAGE_KEY = "inbound-document-panel-open";
+
 interface UploadStep {
   title: string;
   detail: string;
@@ -243,7 +245,7 @@ export function InboundDocumentPanel({
   const router = useRouter();
   const [busyDocumentId, setBusyDocumentId] = useState<string | null>(null);
 
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
   const [mode, setMode] = useState<Mode>("idle");
   const [entryMethod, setEntryMethod] = useState<"AUTO" | "MANUAL">("AUTO");
 
@@ -274,6 +276,29 @@ export function InboundDocumentPanel({
   const [prelookupProgress, setPrelookupProgress] = useState<DocumentPrelookupProgress | null>(null);
   const [prelookupRunning, setPrelookupRunning] = useState(false);
   const [unresolvedSupplierName, setUnresolvedSupplierName] = useState("");
+
+  // 취소 처리 뒤 화면이 새로 불러와져도 열어 둔 칸이 닫히지 않게 기억한다(같은 탭 안에서만).
+  const setOpen = (value: boolean | ((previous: boolean) => boolean)) => {
+    setOpenState((previous) => {
+      const next = typeof value === "function" ? value(previous) : value;
+
+      try {
+        window.sessionStorage.setItem(OPEN_STORAGE_KEY, next ? "1" : "0");
+      } catch {
+        // 저장이 막힌 환경이면 기억만 못 할 뿐 동작은 그대로다.
+      }
+
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    try {
+      if (window.sessionStorage.getItem(OPEN_STORAGE_KEY) === "1") setOpenState(true);
+    } catch {
+      // 위와 같음
+    }
+  }, []);
 
   useEffect(() => {
     if (mode !== "idle") setJustSaved(false);
