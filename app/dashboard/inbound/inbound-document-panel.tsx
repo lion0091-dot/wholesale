@@ -193,6 +193,43 @@ function UploadStepCard({ step }: { step: UploadStep }) {
   );
 }
 
+function SupplierQuickPick({
+  names,
+  current,
+  onPick,
+}: {
+  names: string[];
+  current: string;
+  onPick: (name: string) => void;
+}) {
+  if (names.length === 0) return null;
+
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px", marginTop: "6px" }}>
+      <span style={{ fontSize: "12px", color: "#64748b" }}>지난번에 쓴 공급처:</span>
+      {names.map((name) => (
+        <button
+          key={name}
+          type="button"
+          onClick={() => onPick(name)}
+          style={{
+            fontSize: "12px",
+            fontWeight: 700,
+            padding: "4px 10px",
+            borderRadius: "999px",
+            border: "1px solid #93c5fd",
+            backgroundColor: name === current.trim() ? "#2563eb" : "#eff6ff",
+            color: name === current.trim() ? "#ffffff" : "#1d4ed8",
+            cursor: "pointer",
+          }}
+        >
+          {name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function InboundDocumentPanel({
   products,
   documents,
@@ -483,11 +520,37 @@ export function InboundDocumentPanel({
     startFromText(await picked.text(), picked);
   };
 
-  /** 공급처 이름을 벗어날 때, 전에 이 공급처 서류를 읽어본 적 있으면 그 칸 위치를 되살린다. */
-  const recallFormat = async () => {
-    if (!supplierName.trim() || !grid) return;
+  // 이미 올린 명세서의 공급처 이름(최근 순, 취소된 것 제외) — 이름을 매번 치지 않고 고르게 한다.
+  const knownSuppliers = useMemo(() => {
+    const names: string[] = [];
 
-    const result = await loadSupplierFormatAction(supplierName);
+    documents.forEach((document) => {
+      const name = document.supplierName?.trim();
+
+      if (name && document.status !== "DISCARDED" && !names.includes(name)) names.push(name);
+    });
+
+    return names.slice(0, 5);
+  }, [documents]);
+
+  const pickSupplier = (name: string) => {
+    setSupplierName(name);
+    void recallFormat(name);
+  };
+
+  // 공급처가 지금까지 하나뿐이면 미리 채운다 — 틀리면 사람이 고치거나 다른 이름을 고르면 된다.
+  useEffect(() => {
+    if (mode === "review" && !supplierName.trim() && knownSuppliers.length === 1) {
+      pickSupplier(knownSuppliers[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, knownSuppliers]);
+
+  /** 공급처 이름을 벗어날 때, 전에 이 공급처 서류를 읽어본 적 있으면 그 칸 위치를 되살린다. */
+  const recallFormat = async (name: string = supplierName) => {
+    if (!name.trim() || !grid) return;
+
+    const result = await loadSupplierFormatAction(name);
 
     if (result.success && result.data?.columnMap) {
       const recalled = result.data.columnMap as ColumnMap;
@@ -1130,6 +1193,7 @@ export function InboundDocumentPanel({
                     placeholder="예: 대성축산"
                     style={inputStyle}
                   />
+                  <SupplierQuickPick names={knownSuppliers} current={supplierName} onPick={pickSupplier} />
                 </div>
                 <div style={{ flex: "0 1 150px" }}>
                   <label style={labelStyle}>서류 날짜</label>
@@ -1173,6 +1237,7 @@ export function InboundDocumentPanel({
                     placeholder="예: 대성축산"
                     style={inputStyle}
                   />
+                  <SupplierQuickPick names={knownSuppliers} current={supplierName} onPick={pickSupplier} />
                 </div>
                 <div style={{ flex: "0 1 150px" }}>
                   <label style={labelStyle}>서류 날짜</label>
