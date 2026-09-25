@@ -123,7 +123,15 @@ export interface World {
   /** 공용 이력 캐시(master_livestock)에 시드 — 정부 API 조회 결과가 캐시에 들어 있는 상황. */
   seedTrace(
     traceNo: string,
-    fields?: { part?: string | null; grade?: string | null; speciesGroup?: string | null; traceKind?: string; originCountry?: string | null }
+    fields?: {
+      part?: string | null;
+      grade?: string | null;
+      speciesGroup?: string | null;
+      traceKind?: string;
+      originCountry?: string | null;
+      /** 정부 응답 원문 — 로트(group)면 구성 개체번호(pigNo/cattleNo)가 여기 있다(마이그레이션 116 다리가 읽음). */
+      rawPayload?: unknown;
+    }
   ): Promise<void>;
   /** 공급사 A의 명세서 한 장에 줄 하나(이력번호→상품)를 만든다. */
   createDocumentLine(options: {
@@ -390,7 +398,7 @@ async function buildWorld(tracker: Tracker): Promise<World> {
         p_trace_no: traceNo,
         p_trace_kind: fields.traceKind ?? "individual",
         p_source: "mtrace_livestock",
-        p_raw_payload: {},
+        p_raw_payload: fields.rawPayload ?? {},
         p_species: "한우",
         p_species_group: fields.speciesGroup === undefined ? "소" : fields.speciesGroup,
         p_part_name: fields.part === undefined ? "등심" : fields.part,

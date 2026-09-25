@@ -4,7 +4,7 @@
  * 엑셀 대량 입고·명세서 업로드/사전조회(document-actions)는 이 파일 범위 밖.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { actAs, adminClient, seedWorld, type World, type WorldProduct } from "./harness";
+import { actAs, adminClient, getActorClient, seedWorld, type World, type WorldProduct } from "./harness";
 
 vi.mock("@/lib/livestock/mtrace-client", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/livestock/mtrace-client")>();
@@ -320,6 +320,96 @@ describe("recordScanAction — 상품 자동 결정", () => {
     expect(data).toMatchObject({ status: "NORMAL", productId: product.id });
   });
 
+  it("명세서는 묶음번호, 박스는 그 안의 개체번호 — 로트 구성원 목록으로 이어 그 줄의 상품으로 확정된다", async () => {
+    const product = await newProduct();
+    const member = world.newTraceNo();
+    const other = world.newTraceNo();
+    const lotNo = `L${String(Date.now() + 2).padStart(14, "0").slice(-14)}`;
+
+    // 정부 로트 응답 구조 그대로 — 개체마다 <item>이 반복되고 pigNo/cattleNo가 붙는다.
+    await world.seedTrace(lotNo, {
+      traceKind: "group",
+      rawPayload: { response: { body: { items: { item: [{ cattleNo: member }, { cattleNo: other }] } } } },
+    });
+    await world.seedTrace(member);
+    await world.createDocumentLine({ traceNo: lotNo, product });
+
+    const data = scanData(await recordScanAction({ traceNo: member, weight: 7, scanType: "BARCODE_SCAN" }));
+
+    expect(data).toMatchObject({ status: "NORMAL", productId: product.id });
+  });
+
+  it("구성원이 아닌 개체번호는 그 로트 줄에 붙지 않는다", async () => {
+    const product = await newProduct();
+    const stranger = world.newTraceNo();
+    const lotNo = `L${String(Date.now() + 3).padStart(14, "0").slice(-14)}`;
+
+    await world.seedTrace(lotNo, {
+      traceKind: "group",
+      rawPayload: { response: { body: { items: { item: [{ cattleNo: world.newTraceNo() }] } } } },
+    });
+    await world.seedTrace(stranger, { part: null, speciesGroup: null });
+    await world.createDocumentLine({ traceNo: lotNo, product });
+
+    const data = scanData(await recordScanAction({ traceNo: stranger, weight: 7, scanType: "BARCODE_SCAN" }));
+
+    expect(data.status).toBe("PENDING_MAPPING");
+    expect(data.productId).toBeNull();
+  });
+
+  it("반대 방향 — 명세서는 개체번호, 박스는 그 개체가 든 묶음번호로 찍혀도 이어진다", async () => {
+    const product = await newProduct();
+    const member = world.newTraceNo();
+    const lotNo = `L${String(Date.now() + 4).padStart(14, "0").slice(-14)}`;
+
+    await world.seedTrace(lotNo, {
+      traceKind: "group",
+      rawPayload: { response: { body: { items: { item: [{ pigNo: member }] } } } },
+    });
+    await world.createDocumentLine({ traceNo: member, product });
+
+    const data = scanData(await recordScanAction({ traceNo: lotNo, weight: 7, scanType: "BARCODE_SCAN" }));
+
+    expect(data).toMatchObject({ status: "NORMAL", productId: product.id });
+  });
+
+  it("대기 목록 — 로트 줄은 구성원 개체번호가 한 번이라도 찍히면 '만난 것'으로 빠진다", async () => {
+    const admin = adminClient();
+    const product = await newProduct();
+    const member = world.newTraceNo();
+    const lotNo = `L${String(Date.now() + 5).padStart(14, "0").slice(-14)}`;
+    const untouchedLot = `L${String(Date.now() + 6).padStart(14, "0").slice(-14)}`;
+
+    await world.seedTrace(lotNo, {
+      traceKind: "group",
+      rawPayload: { response: { body: { items: { item: [{ pigNo: member }] } } } },
+    });
+    await world.seedTrace(untouchedLot, { traceKind: "group", rawPayload: {} });
+    await world.seedTrace(member);
+    await world.createDocumentLine({ traceNo: lotNo, product });
+    await world.createDocumentLine({ traceNo: untouchedLot, product });
+
+    // 화면(page.tsx)과 같은 경로 — 로그인한 공급사 세션으로 부른다(업체 접근 권한 검사가 있다).
+    const actor = getActorClient();
+    const before = await actor.rpc("list_awaiting_document_line_ids", { p_wholesaler_id: world.wholesalerA });
+    const awaitingBefore = ((before.data ?? []) as string[]).length;
+
+    await recordScanAction({ traceNo: member, weight: 7, scanType: "BARCODE_SCAN" });
+
+    const { data: lines } = await admin
+      .from("inbound_document_lines")
+      .select("id, trace_no")
+      .in("trace_no", [lotNo, untouchedLot]);
+    const after = await actor.rpc("list_awaiting_document_line_ids", { p_wholesaler_id: world.wholesalerA });
+    const awaitingAfter = new Set(((after.data ?? []) as string[]).map(String));
+    const lotLine = (lines ?? []).find((row) => row.trace_no === lotNo);
+    const untouchedLine = (lines ?? []).find((row) => row.trace_no === untouchedLot);
+
+    expect(awaitingBefore).toBeGreaterThanOrEqual(2);
+    expect(awaitingAfter.has(String(lotLine?.id))).toBe(false);
+    expect(awaitingAfter.has(String(untouchedLine?.id))).toBe(true);
+  });
+
   it("같은 묶음번호에 서로 다른 상품이 걸린 줄이 둘이면 자동으로 고르지 않는다(되묻는다)", async () => {
     const first = await newProduct();
     const second = await newProduct();
@@ -426,6 +516,104 @@ describe("recordScanAction — 상품 자동 결정", () => {
 
     expect(next).toMatchObject({ status: "NORMAL", productId: product.id });
     expect(await stockOf(product.id)).toBe(9);
+  });
+
+  it("바코드 상품코드 학습과 명세서가 다른 상품을 가리키면 바코드를 따르되 충돌을 알린다", async () => {
+    const learned = await newProduct();
+    const documented = await newProduct();
+    const gtin = "08801234500024";
+    const first = world.newTraceNo();
+    const second = world.newTraceNo();
+
+    await world.seedTrace(first, { part: null, speciesGroup: null });
+    await world.seedTrace(second, { part: null, speciesGroup: null });
+
+    const pending = scanData(await recordScanAction({ traceNo: first, weight: 4, scanType: "BARCODE_SCAN", gtin }));
+    await resolveMappingAction(pending.scanId, learned.id);
+
+    await world.createDocumentLine({ traceNo: second, product: documented });
+    const data = scanData(await recordScanAction({ traceNo: second, weight: 5, scanType: "BARCODE_SCAN", gtin }));
+
+    expect(data).toMatchObject({
+      status: "NORMAL",
+      productId: learned.id,
+      productConflict: { gtinProductId: learned.id, documentProductId: documented.id },
+    });
+    expect(await stockOf(documented.id)).toBe(0);
+  });
+
+  it("둘이 같은 상품을 가리키면 충돌이 아니다", async () => {
+    const product = await newProduct();
+    const gtin = "08801234500031";
+    const first = world.newTraceNo();
+    const second = world.newTraceNo();
+
+    await world.seedTrace(first, { part: null, speciesGroup: null });
+    await world.seedTrace(second, { part: null, speciesGroup: null });
+
+    const pending = scanData(await recordScanAction({ traceNo: first, weight: 4, scanType: "BARCODE_SCAN", gtin }));
+    await resolveMappingAction(pending.scanId, product.id);
+    await world.createDocumentLine({ traceNo: second, product });
+
+    const data = scanData(await recordScanAction({ traceNo: second, weight: 5, scanType: "BARCODE_SCAN", gtin }));
+
+    expect(data.productConflict).toBeNull();
+    expect(data.productId).toBe(product.id);
+  });
+});
+
+describe("relink_pending_scans_to_documents — 스캔 먼저, 명세서 나중", () => {
+  it("상품 미확정으로 남아 있던 박스가 명세서 줄의 상품으로 거슬러 확정되고 재고에 들어간다", async () => {
+    const product = await newProduct();
+    const traceNo = world.newTraceNo();
+
+    await world.seedTrace(traceNo, { part: null, speciesGroup: null });
+    const pending = scanData(await recordScanAction({ traceNo, weight: 6, scanType: "BARCODE_SCAN" }));
+
+    expect(pending.status).toBe("PENDING_MAPPING");
+    expect(await stockOf(product.id)).toBe(0);
+
+    // 명세서가 뒤에 올라온다 — 저장 액션이 끝에서 부르는 것과 같은 함수를 직접 부른다.
+    await world.createDocumentLine({ traceNo, product });
+    const { data: linked, error } = await getActorClient().rpc("relink_pending_scans_to_documents");
+
+    expect(error).toBeNull();
+    expect((linked as Array<{ scan_id: string }>).map((row) => row.scan_id)).toContain(pending.scanId);
+    expect((await scanRow(traceNo))[0]).toMatchObject({ status: "NORMAL", product_id: product.id });
+    expect(await stockOf(product.id)).toBe(6);
+  });
+
+  it("이력 조회 실패(EXCEPTION)로 남은 박스도 명세서가 상품을 지목하면 확정된다", async () => {
+    const product = await newProduct();
+    const traceNo = world.newTraceNo();
+
+    fetchTraceMock.mockResolvedValueOnce(null);
+    const failed = scanData(await recordScanAction({ traceNo, weight: 3, scanType: "BARCODE_SCAN" }));
+
+    expect(failed.status).toBe("EXCEPTION");
+
+    await world.createDocumentLine({ traceNo, product });
+    const { data: linked } = await getActorClient().rpc("relink_pending_scans_to_documents");
+
+    expect((linked as Array<{ scan_id: string }>).map((row) => row.scan_id)).toContain(failed.scanId);
+    expect((await scanRow(traceNo))[0].status).toBe("NORMAL");
+    expect(await stockOf(product.id)).toBe(3);
+  });
+
+  it("같은 번호에 서로 다른 상품 줄이 둘이면 거슬러 확정하지 않는다(되묻는다)", async () => {
+    const first = await newProduct();
+    const second = await newProduct();
+    const traceNo = world.newTraceNo();
+
+    await world.seedTrace(traceNo, { part: null, speciesGroup: null });
+    const pending = scanData(await recordScanAction({ traceNo, weight: 6, scanType: "BARCODE_SCAN" }));
+
+    await world.createDocumentLine({ traceNo, product: first });
+    await world.createDocumentLine({ traceNo, product: second });
+    const { data: linked } = await getActorClient().rpc("relink_pending_scans_to_documents");
+
+    expect((linked as Array<{ scan_id: string }>).map((row) => row.scan_id)).not.toContain(pending.scanId);
+    expect((await scanRow(traceNo))[0].status).toBe("PENDING_MAPPING");
   });
 });
 

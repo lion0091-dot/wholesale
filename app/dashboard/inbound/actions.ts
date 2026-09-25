@@ -63,6 +63,12 @@ export interface ScanResult {
   failDetail: string | null;
   /** true면 인증키 미설정이 원인 — 재시도해도 절대 통과하지 않는다. */
   failIsNotConfigured: boolean;
+  /**
+   * 바코드 상품코드(GTIN) 학습과 명세서 줄이 서로 다른 상품을 가리켰다. 입고는 GTIN 쪽으로
+   * 했다(품목 자체에 붙은 코드라 더 구체적) — 하지만 조용히 넘기지 않고 화면이 알린다.
+   * 명세서를 잘못 골랐거나 GTIN 학습이 옛 상품에 묶여 있는 것 중 하나다.
+   */
+  productConflict: { gtinProductId: string; documentProductId: string } | null;
 }
 
 export interface DuplicateWarning {
@@ -253,21 +259,28 @@ export async function recordScanAction(input: {
     //    쪼개져 여러 줄에 걸쳐 있으면 어느 줄인지 알 수 없다(그 경우 DB 함수가
     //    NULL을 돌려줘 되묻는다).
     let autoProductId: string | null = null;
+    let productConflict: ScanResult["productConflict"] = null;
 
     if (!input.productId) {
+      let fromGtin: string | null = null;
+
       if (gtin) {
         const { data: mapped } = await supabase.rpc("lookup_product_by_gtin", { p_gtin: gtin });
 
-        autoProductId = (mapped as string | null) ?? null;
+        fromGtin = (mapped as string | null) ?? null;
       }
 
       // 명세서를 먼저 올려둔 물건은 여기서 확정된다 — 찍기만 하면 끝난다.
-      if (!autoProductId) {
-        const { data: fromDocument } = await supabase.rpc("lookup_product_by_document_trace", {
-          p_trace_no: traceNo,
-        });
+      // GTIN이 있어도 명세서를 같이 본다 — 둘이 다른 상품이면 GTIN을 따르되 그 사실을 알린다.
+      const { data: fromDocument } = await supabase.rpc("lookup_product_by_document_trace", {
+        p_trace_no: traceNo,
+      });
+      const documentProductId = (fromDocument as string | null) ?? null;
 
-        autoProductId = (fromDocument as string | null) ?? null;
+      autoProductId = fromGtin ?? documentProductId;
+
+      if (fromGtin && documentProductId && fromGtin !== documentProductId) {
+        productConflict = { gtinProductId: fromGtin, documentProductId };
       }
     }
 
@@ -379,6 +392,7 @@ export async function recordScanAction(input: {
         failReason: row.status === "EXCEPTION" ? failReason : null,
         failDetail: row.status === "EXCEPTION" ? failDetail : null,
         failIsNotConfigured: row.status === "EXCEPTION" && failIsNotConfigured,
+        productConflict,
       },
     };
   } catch (error) {

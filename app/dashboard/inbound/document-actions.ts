@@ -84,6 +84,11 @@ export interface SavedDocument {
    * (20260930000096 마이그레이션 참고).
    */
   pendingPrelookupCount: number;
+  /**
+   * 이 명세서로 거슬러 상품이 확정된, 이미 찍혀 있던 박스 수. 박스가 먼저 오고 명세서가 뒤에
+   * 올라온 경우다 — 순서를 가정하지 않는다는 원칙(마이그레이션 117).
+   */
+  relinkedScanCount: number;
 }
 
 export interface DocumentPrelookupProgress {
@@ -743,11 +748,25 @@ export async function saveInboundDocumentAction(
     // processDocumentPrelookupChunkAction을 finished될 때까지 반복 호출해서 나눠 처리한다.
     const pendingPrelookupCount = lineRows.filter((line) => line.prelookup_status === "PENDING").length;
 
+    // 박스가 먼저 찍혀 "상품 확인 필요"로 남아 있던 것 중 이 명세서로 상품이 하나로 정해지는 건 지금 확정한다.
+    // 판정·확정 로직은 스캔 시점/수동 지정과 같은 DB 함수라 결과가 순서에 안 갈린다. 실패해도 저장은 살린다.
+    let relinkedScanCount = 0;
+
+    if (lineRows.some((line) => line.product_id)) {
+      const { data: relinked, error: relinkError } = await supabase.rpc("relink_pending_scans_to_documents");
+
+      if (relinkError) {
+        console.error("[inbound-document] 기존 박스 거슬러 확정 실패:", relinkError.message);
+      } else {
+        relinkedScanCount = Array.isArray(relinked) ? relinked.length : 0;
+      }
+    }
+
     revalidatePath(REVALIDATE_PATH);
 
     return {
       success: true,
-      data: { documentId, lineCount: lineRows.length, fileStored, pendingPrelookupCount },
+      data: { documentId, lineCount: lineRows.length, fileStored, pendingPrelookupCount, relinkedScanCount },
     };
   } catch (error) {
     return toResult(error);

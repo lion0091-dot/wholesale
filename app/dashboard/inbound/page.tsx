@@ -93,7 +93,6 @@ export default async function InboundPage() {
           .or("trace_no.not.is.null,lot_no.not.is.null"),
       ]);
 
-    // 두 칸 서식(묶음번호+개체번호)은 박스 바코드가 어느 쪽이든 찍힐 수 있어 둘 다 대조 대상이다.
     pendingDocumentTraceNos = [
       ...new Set(
         ((pendingDocLineRows ?? []) as Array<{ trace_no: string | null; lot_no: string | null }>)
@@ -104,27 +103,15 @@ export default async function InboundPage() {
     ];
 
     if (pendingDocumentTraceNos.length > 0) {
-      const { data: matchedScanRows } = await supabase
-        .from("inbound_scans")
-        .select("trace_no")
-        .eq("wholesaler_id", scope.wholesalerId)
-        .in("trace_no", pendingDocumentTraceNos);
-
-      const matchedTraceNos = new Set(
-        ((matchedScanRows ?? []) as Array<{ trace_no: string }>).map((row) =>
-          row.trace_no.trim().toUpperCase()
-        )
-      );
+      // "아직 안 만난 줄" 판정은 DB가 한다 — 같은 번호뿐 아니라 명세서는 로트·박스는 개체번호(또는 반대)인
+      // 경우도 로트 구성원 목록(master_livestock.raw_payload)으로 이어 본다(마이그레이션 116).
+      const { data: awaitingIdRows } = await supabase.rpc("list_awaiting_document_line_ids", {
+        p_wholesaler_id: scope.wholesalerId,
+      });
+      const awaitingIds = new Set(((awaitingIdRows ?? []) as string[]).map(String));
 
       awaitingDocumentLines = ((pendingDocLineRows ?? []) as Array<Record<string, unknown>>)
-        .filter((row) => {
-          const traceNo = (row.trace_no as string | null)?.trim().toUpperCase() ?? "";
-          const lotNo = (row.lot_no as string | null)?.trim().toUpperCase() ?? "";
-          const hasNumber = traceNo.length > 0 || lotNo.length > 0;
-
-          // 개체번호로든 로트번호로든 이미 찍혔으면 대기가 아니다.
-          return hasNumber && !matchedTraceNos.has(traceNo) && !(lotNo.length > 0 && matchedTraceNos.has(lotNo));
-        })
+        .filter((row) => awaitingIds.has(String(row.id)))
         .map((row) => {
           const document = Array.isArray(row.inbound_documents)
             ? row.inbound_documents[0]
@@ -214,15 +201,12 @@ export default async function InboundPage() {
           .from("master_livestock")
           .select("trace_no, grade, origin_country, source, species_group")
           .in("trace_no", traceNos),
-        // 취소 처리된 명세서는 참조 대상이 아니다. 줄의 소속 업체 제한은 RLS가 한다.
-        supabase
-          .from("inbound_document_lines")
-          .select(
-            "trace_no, lot_no, item_name, grade, origin, unit_price, labeled_weight, inbound_documents!inner(supplier_name, status)"
-          )
-          // 스캔된 번호가 개체번호 칸에 있든 묶음번호 칸에 있든 그 줄이 명세서 근거다.
-          .or(`trace_no.in.(${traceNos.join(",")}),lot_no.in.(${traceNos.join(",")})`)
-          .neq("inbound_documents.status", "DISCARDED"),
+        // 찍힌 번호마다 해당하는 명세서 줄 — 같은 번호, 두 칸 서식의 어느 칸, 로트↔개체 구성원 관계까지
+        // DB 함수가 한 번에 본다(마이그레이션 116). 취소 서류는 함수가 제외한다.
+        supabase.rpc("match_document_lines_for_traces", {
+          p_wholesaler_id: scope.wholesalerId,
+          p_trace_nos: traceNos,
+        }),
       ]);
 
       masterByTrace = new Map(
@@ -241,25 +225,20 @@ export default async function InboundPage() {
 
       // 같은 번호가 여러 명세서에 있으면 먼저 읽은 것을 쓴다 — 어느 쪽이 맞는지는
       // 사람이 판단할 문제라 여기서 고르지 않는다.
+      // 함수가 (찍힌 번호, 줄) 짝을 문서 생성순·줄순으로 준다 — 번호당 첫 줄만 쓴다.
       ((docLineRows ?? []) as Array<Record<string, unknown>>).forEach((row) => {
-        const document = Array.isArray(row.inbound_documents)
-          ? row.inbound_documents[0]
-          : row.inbound_documents;
-        const facts = {
-          supplier: ((document as Record<string, unknown> | null)?.supplier_name as string | null) ?? null,
+        const key = String(row.scanned_trace_no);
+
+        if (documentByTrace.has(key)) return;
+
+        documentByTrace.set(key, {
+          supplier: (row.supplier_name as string | null) ?? null,
           itemName: (row.item_name as string | null) ?? null,
           grade: (row.grade as string | null) ?? null,
           origin: (row.origin as string | null) ?? null,
           unitPrice: row.unit_price === null ? null : Number(row.unit_price),
           labeledWeight: row.labeled_weight === null ? null : Number(row.labeled_weight),
-        };
-
-        // 개체번호·묶음번호 어느 쪽으로 찍혔든 찾히도록 둘 다 열쇠로 건다(스캔된 번호만 해당).
-        [row.trace_no, row.lot_no]
-          .filter((value): value is string => typeof value === "string" && traceNos.includes(value))
-          .forEach((key) => {
-            if (!documentByTrace.has(key)) documentByTrace.set(key, facts);
-          });
+        });
       });
     }
 

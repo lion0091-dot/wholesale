@@ -66,7 +66,7 @@
 
 ## 명세서 번호 표기 경우의 수 대응 (2026-09-25, 29단계 보강)
 
-- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) 맨 아래 "29단계 보강" 절 — 하이픈·0 탈락·과학표기·`로트/LOT` 헤더·한 칸에 번호 여럿(줄 나눔, 합계는 첫 줄)·부속 줄 합치기·**묶음번호 열+개체번호 열 두 칸**(`inbound_document_lines.lot_no`, 마이그레이션 115, 사전조회가 로트 구성원 대조). 묶음번호만 있는 명세서는 여전히 `trace_no`(재고 단위 = 로트). **명세서 줄을 번호로 찾는 새 쿼리는 `trace_no OR lot_no`를 본다.** 115 라이브 미적용, 실제 파일 미검증.
+- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) 맨 아래 "29단계 보강" 절 — 하이픈·0 탈락·과학표기·`로트/LOT` 헤더·한 칸에 번호 여럿(줄 나눔, 합계는 첫 줄)·부속 줄 합치기·**묶음번호 열+개체번호 열 두 칸**(`inbound_document_lines.lot_no`, 마이그레이션 115, 사전조회가 로트 구성원 대조). 묶음번호만 있는 명세서는 여전히 `trace_no`(재고 단위 = 로트). 116: 명세서는 로트·박스는 개체번호(또는 반대)일 때 `master_livestock.raw_payload`의 구성원 목록으로 잇는 다리(`document_lines_matching_trace`, 대기 목록·근거 대조 RPC 2개). **명세서 줄을 번호로 찾는 새 쿼리는 직접 `trace_no =`를 쓰지 말고 `document_lines_matching_trace()`를 쓴다.** 117: 명세서 저장 시 먼저 찍힌 미확정·예외 박스를 거슬러 확정(`relink_pending_scans_to_documents`), 스캔 시 GTIN 학습과 명세서가 다른 상품이면 `productConflict`로 알림. 115~117 라이브 미적용(113·114도), 실제 파일 미검증.
 
 ## 보안 점검 — 권한 게이트 NULL 비교 버그 수정 (2026-09-24, 별도 발견)
 

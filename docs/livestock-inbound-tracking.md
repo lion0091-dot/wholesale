@@ -1063,3 +1063,27 @@ SECURITY DEFINER RPC 여러 개가 아래 두 패턴으로 검사했다.
 검증: 단위 `document-parser.test.ts`(28)·`document-requirements.test.ts`(29) 포함 전체 191건 통과, 서버 액션 통합 `inbound.itest.ts` 39건 통과(두 칸 서식 로트 스캔 → 상품 확정 / 같은 로트에 상품 둘이면 되묻기 2건 추가), tsc·build 클린. **마이그레이션 115 라이브 미적용, 실제 PDF·엑셀 파일로는 미검증**(붙여넣기 텍스트 검증 한계는 위 29단계 참고).
 
 **한 줄에 번호 하나·수량 3(같은 개체 3박스)의 남은 구멍:** 대기 품목 목록은 번호 기준이라 첫 박스를 찍으면 줄이 사라진다 — 나머지 2박스가 "대기"로 안 보인다. 수량 기준 대조는 B단계(`matched_scan_id`·줄 상태) 몫으로 미착수.
+
+### 로트↔개체 연결 다리 (`supabase/migrations/20260930000116_document_lot_member_bridge.sql`, 2026-09-25)
+
+사장님 질문 "명세서가 이렇게 들어왔을 때 실물 박스 바코드는?"에서 나온 유일한 구조적 구멍 — 명세서는 묶음번호(L…), 박스는 그 안의 개체번호 12자리(또는 반대)라 번호 문자열이 달라 서로 남이었다. 사전조회가 이미 `master_livestock.raw_payload`에 로트 구성원(pigNo/cattleNo)을 갖고 있으므로 그걸로 잇는다.
+
+- `lot_member_trace_nos(lot)` — raw_payload에서 `$.**.pigNo`/`$.**.cattleNo`를 전부 뽑음(내부용).
+- `document_lines_matching_trace(wholesaler, trace)` — 같은 번호(trace_no·lot_no) + 줄이 로트면 그 구성원 + 찍힌 게 로트면 줄의 개체가 그 구성원. 줄 번호가 로트 형식일 때만 캐시를 뒤진다. 상품·부위·등급 조회 함수 셋이 이 헬퍼 위에 다시 정의됨(판정 원칙 "여럿이면 NULL" 그대로).
+- `list_awaiting_document_line_ids(wholesaler)` — 스캔 화면 "명세서 대기 품목"의 "아직 안 만난 줄" 판정을 DB로 옮김(같은 번호 + 다리). `match_document_lines_for_traces(wholesaler, traces[])` — 스캔 근거 대조도 같은 기준. 둘 다 `can_access_wholesaler` 게이트, authenticated에 GRANT. `page.tsx`가 이 둘을 RPC로 부른다.
+- **재고 단위는 여전히 로트**(잠긴 결정). 이건 "이 박스가 명세서의 어느 줄인가"를 찾는 조회용 연결만이다.
+
+검증: `inbound.itest.ts` 43건 통과(구성원 개체 스캔 → 로트 줄 상품 확정 / 비구성원은 안 붙음 / 반대 방향 / 대기 목록에서 로트 줄이 빠짐 4건 추가). 라이브 미적용(113→114→115→116 순).
+
+**같은 질문에서 나온 나머지(미착수):** 같은 개체 3박스는 2·3번째에 중복 의심 창이 뜬다(명세서 수량 3을 안 봄), 로트 첫 박스에 그 로트 줄이 전부 대기에서 사라진다 — 둘 다 수량 기준 대조(B단계). GS1 AI(10) 로트는 파싱만 되고 안 씀. GTIN 학습과 명세서가 다른 상품을 가리켜도 GTIN이 조용히 이김(경고 없음).
+
+### 스캔 먼저·명세서 나중 + GTIN↔명세서 충돌 알림 (`20260930000117_relink_pending_scans_to_documents.sql`, 2026-09-25)
+
+"상품쪽 경우의 수" 남은 것 중 코드로 풀 수 있는 두 건.
+
+- **거슬러 확정.** 명세서 줄의 상품은 박스를 찍는 순간에만 쓰였다. 박스가 먼저 오고 명세서가 뒤에 올라오면 "상품 확인 필요"(PENDING_MAPPING)·이력 조회 실패(EXCEPTION) 박스가 그대로 남아 사람이 하나씩 지정해야 했다. `relink_pending_scans_to_documents()`가 그 박스들을 돌며 `lookup_product_by_document_trace()`(116 다리 포함, 여럿이면 NULL)로 상품이 하나로 정해지면 `resolve_inbound_mapping()`(수동 지정과 같은 경로 — 원장·예외 로그·학습 동일)으로 확정한다. `saveInboundDocumentAction`이 상품 지정 줄이 있을 때 끝에서 부르고 화면이 "먼저 찍혀 있던 박스 N개를 확정" 안내. 순서를 가정하지 않는다는 원칙이 이제 양방향으로 성립한다.
+- **충돌 알림.** 스캔 시 상품 결정 순서(GTIN 학습 → 명세서)는 그대로지만, GTIN이 있어도 명세서를 같이 조회해 둘이 다른 상품이면 `ScanResult.productConflict`로 돌려주고 화면이 두 상품명을 대놓고 알린다(다른 경고에 덧붙임, 덮어쓰지 않음). 입고 자체는 GTIN 쪽.
+
+검증: `inbound.itest.ts` 48건(거슬러 확정 3건 — PENDING·EXCEPTION·여럿이면 안 함, 충돌 2건 추가). 라이브 미적용(113→117 순).
+
+**여전히 남은 것:** 같은 개체 N박스·로트 첫 박스에 줄 전부 사라짐(수량 기준 대조, B단계), GS1 AI(10) 자체 로트(실사례 나올 때), EAN-13만·바코드 없는 박스(원리상 불가).

@@ -463,11 +463,23 @@ export function InboundScanView({
         } else {
           setNotice("매입단가가 없어 금액은 비워뒀습니다. 매입 정산 화면에서 채울 수 있습니다.");
         }
+
+        // 바코드 상품코드 학습과 명세서가 다른 상품을 가리키면 조용히 넘기지 않는다 — 어느 쪽이 틀렸는지는
+        // 사람이 안다. 다른 경고(중량 차이 등)가 있어도 덮어쓰지 않고 덧붙인다.
+        if (data.productConflict) {
+          const nameOf = (id: string) => products.find((product) => product.id === id)?.name ?? "알 수 없는 상품";
+          const conflictMessage =
+            `⚠️ 바코드 상품코드는 '${nameOf(data.productConflict.gtinProductId)}', 명세서는 '${nameOf(
+              data.productConflict.documentProductId
+            )}'입니다. 바코드 기준으로 입고했습니다 — 명세서를 잘못 골랐거나 바코드 학습이 옛 상품에 묶여 있는 것이니 아래 목록에서 확인해주세요.`;
+
+          setError((current) => (current ? `${current}\n${conflictMessage}` : conflictMessage));
+        }
       }
 
       router.refresh();
     },
-    [router, labeledWeight, unitPrice, supplier, canEditPurchasePrice]
+    [router, labeledWeight, unitPrice, supplier, canEditPurchasePrice, products]
   );
 
   /**

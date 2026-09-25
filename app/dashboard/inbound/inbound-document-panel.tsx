@@ -515,7 +515,12 @@ export function InboundDocumentPanel({
     } else if ((result.data?.lineCount ?? 0) === 0) {
       setNotice("원본을 보관했습니다. 품목 내용은 읽지 못해 비어 있습니다.");
     } else {
-      setNotice(`명세서 ${result.data?.lineCount}줄을 저장했습니다.`);
+      const relinked = result.data?.relinkedScanCount ?? 0;
+
+      setNotice(
+        `명세서 ${result.data?.lineCount}줄을 저장했습니다.` +
+          (relinked > 0 ? ` 먼저 찍혀 있던 박스 ${relinked}개를 이 명세서의 상품으로 확정했습니다.` : "")
+      );
     }
 
     // 실물 도착 전에 미리 이력/로트번호를 조회해 없는 번호는 공급처에 등록을
