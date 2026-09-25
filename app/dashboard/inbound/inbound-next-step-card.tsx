@@ -38,14 +38,15 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
       >
         {step.buttonLabel}
       </Link>
-      {step.secondary ? (
+      {step.secondaries.map((link) => (
         <Link
-          href={step.secondary.href}
+          key={link.label}
+          href={link.href}
           style={{ fontSize: "13px", color: "#1d4ed8", textAlign: "center", textDecoration: "underline" }}
         >
-          {step.secondary.label}
+          {link.label}
         </Link>
-      ) : null}
+      ))}
     </section>
   );
 }

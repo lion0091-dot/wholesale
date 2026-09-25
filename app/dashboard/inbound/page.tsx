@@ -410,8 +410,6 @@ export default async function InboundPage() {
     ).length,
     firstNeedsCheckScanId:
       scans.find((scan) => scan.status === "EXCEPTION" || scan.status === "PENDING_MAPPING")?.id ?? null,
-    hasAnyDocument: documents.some((doc) => doc.status !== "DISCARDED"),
-    hasAnyScan: scans.some((scan) => scan.status !== "VOIDED"),
   });
 
   // 원가(매입단가) 입력·명세서 완전 삭제 같은 관리 행위 권한 — DB의 can_manage_wholesaler()와
