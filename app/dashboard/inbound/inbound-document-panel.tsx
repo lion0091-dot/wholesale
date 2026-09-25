@@ -131,6 +131,68 @@ function toNumber(value: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+interface UploadStep {
+  title: string;
+  detail: string;
+  link?: { label: string; href: string };
+  action?: { label: string; onClick: () => void };
+}
+
+function UploadStepCard({ step }: { step: UploadStep }) {
+  return (
+    <div
+      style={{
+        border: "2px solid #2563eb",
+        backgroundColor: "#eff6ff",
+        borderRadius: "12px",
+        padding: "12px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+      }}
+    >
+      <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>{step.title}</div>
+      <div style={{ fontSize: "13px", color: "#475569" }}>{step.detail}</div>
+      {step.action ? (
+        <button
+          type="button"
+          onClick={step.action.onClick}
+          style={{
+            backgroundColor: "#2563eb",
+            color: "#ffffff",
+            fontSize: "15px",
+            fontWeight: 800,
+            padding: "12px 14px",
+            borderRadius: "10px",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          {step.action.label}
+        </button>
+      ) : null}
+      {step.link ? (
+        <Link
+          href={step.link.href}
+          style={{
+            display: "block",
+            textAlign: "center",
+            backgroundColor: "#2563eb",
+            color: "#ffffff",
+            fontSize: "15px",
+            fontWeight: 800,
+            padding: "12px 14px",
+            borderRadius: "10px",
+            textDecoration: "none",
+          }}
+        >
+          {step.link.label}
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
 export function InboundDocumentPanel({
   products,
   documents,
@@ -162,6 +224,7 @@ export function InboundDocumentPanel({
   const [totalAmount, setTotalAmount] = useState("");
 
   const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [storeOnlyReason, setStoreOnlyReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +237,10 @@ export function InboundDocumentPanel({
   const [prelookupProgress, setPrelookupProgress] = useState<DocumentPrelookupProgress | null>(null);
   const [prelookupRunning, setPrelookupRunning] = useState(false);
   const [unresolvedSupplierName, setUnresolvedSupplierName] = useState("");
+
+  useEffect(() => {
+    if (mode !== "idle") setJustSaved(false);
+  }, [mode]);
 
   // 입고 화면 맨 위 카드의 "명세서 올리기" 버튼이 이 칸으로 이동하면서 접혀 있으면 함께 연다.
   useEffect(() => {
@@ -527,6 +594,8 @@ export function InboundDocumentPanel({
       return;
     }
 
+    setJustSaved(true);
+
     if (result.data?.fileStored === false && file) {
       setNotice("내용은 저장했지만 원본 파일은 보관하지 못했습니다 — 원본만 다시 올려주세요.");
     } else if ((result.data?.lineCount ?? 0) === 0) {
@@ -720,6 +789,34 @@ export function InboundDocumentPanel({
               {error}
             </p>
           ) : null}
+
+          <UploadStepCard
+            step={
+              saving || extracting
+                ? { title: "처리 중입니다", detail: "잠시만 기다려 주세요." }
+                : mode === "idle"
+                  ? justSaved
+                    ? {
+                        title: "저장했습니다. 이제 박스를 찍으세요",
+                        detail: "현장에서 박스가 오면 바코드를 찍고 무게를 넣으면 명세서와 저절로 이어집니다.",
+                        link: { label: "스캔 시작", href: INBOUND_ANCHORS.scanForm },
+                      }
+                    : {
+                        title: "1단계: 명세서 파일을 고르세요",
+                        detail: "사진 찍기, 파일 고르기, 표 붙여넣기 중 하나로 시작합니다.",
+                      }
+                  : !supplierName.trim()
+                    ? {
+                        title: "2단계: 공급처 이름을 적으세요",
+                        detail: "아래 \"공급처 이름\" 칸이 비어 있으면 저장되지 않습니다. (예: 대성축산)",
+                      }
+                    : {
+                        title: "3단계: \"명세서 저장\"을 누르세요",
+                        detail: "누르기 전에는 아무것도 저장되지 않습니다. 저장해야 다음 단계(박스 찍기)로 넘어갑니다.",
+                        action: { label: "명세서 저장", onClick: () => void handleSave() },
+                      }
+            }
+          />
 
           {mode === "idle" ? (
             <>
