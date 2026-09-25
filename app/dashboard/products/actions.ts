@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
-import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
+import { MANUAL_DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
 import { STOCK_ADJUST_REASON_CODES } from "@/lib/products/stock-adjust-reasons";
 import { composeIdentityName, IDENTITY_FIELD_LABELS, identityFieldsFor } from "@/lib/products/identity-key";
+import { isTraceableCategory, TRACEABLE_MANUAL_BLOCK_MESSAGE } from "@/lib/products/traceable-categories";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -243,6 +244,11 @@ export async function createProductAction(
     const { order_stopped_action: _orderStoppedAction, ...input } = parseProductForm(formData, {
       requireIdentityFields: true,
     });
+
+    // 이력 대상 축종은 입고 스캔으로만 만든다 — 손 등록은 이력번호 없는 중복 상품을 만든다.
+    if (isTraceableCategory(input.category)) {
+      throw new RbacError(TRACEABLE_MANUAL_BLOCK_MESSAGE);
+    }
 
     await assertNoDuplicateIdentity(supabase, wholesalerId, input);
 
@@ -636,11 +642,16 @@ export async function seedDefaultProductsAction(): Promise<ActionResult<{ create
       );
     }
 
+    // 이력 대상 축종은 입고 스캔으로만 만든다 — 이력번호 없는 시드 상품은 스캔 자동 생성 상품과 중복이 된다.
+    const items = MANUAL_DEFAULT_DELIVERY_ITEMS;
+
+    if (items.length === 0) {
+      throw new RbacError(TRACEABLE_MANUAL_BLOCK_MESSAGE);
+    }
+
     const { data, error } = await supabase
       .from("products")
-      .insert(
-        DEFAULT_DELIVERY_ITEMS.map((item) => ({ wholesaler_id: wholesalerId, ...item }))
-      )
+      .insert(items.map((item) => ({ wholesaler_id: wholesalerId, ...item })))
       .select("id");
 
     if (error) {

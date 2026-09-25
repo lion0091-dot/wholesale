@@ -1,3 +1,5 @@
+import { isTraceableCategory } from "./traceable-categories";
+
 /**
  * 공급사 온보딩용 '기본 납품 품목' 시드 세트.
  *
@@ -119,3 +121,11 @@ export const DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = [
     description: "1박스 5kg, 냉동 슬라이스",
   },
 ];
+
+/**
+ * 실제로 불러올 수 있는 시드 — 이력 대상 축종(소·돼지·닭/오리)은 입고 스캔으로만 만든다(traceable-categories.ts).
+ * 이력번호가 없는 가공육 등만 남는다.
+ */
+export const MANUAL_DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = DEFAULT_DELIVERY_ITEMS.filter(
+  (item) => !isTraceableCategory(item.category)
+);

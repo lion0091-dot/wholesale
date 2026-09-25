@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
-import { DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
+import { MANUAL_DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
 import { ProductTable, type StockSummary } from "./product-table";
 import { getLatestMarketPricesAction } from "@/app/actions/market-price";
 import { buildMarketPriceIndex, findMarketPrice, type MarketPriceIndex } from "@/lib/market-price/product-match";
@@ -133,6 +133,7 @@ export default async function DashboardProductsPage() {
           <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>상품 관리</h1>
           <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
             미니샵에 노출되는 육류 품목, 기본 단가, 재고를 관리합니다. 핫딜은 상품 수정 화면에서, 맞춤단가는 맞춤단가관리에서 설정합니다.
+            소·돼지·닭/오리 상품은 입고 스캔으로 자동 등록되고, 여기서는 이력번호가 없는 품목(양·가공육 등)만 직접 등록합니다.
           </p>
         </div>
 
@@ -244,9 +245,9 @@ export default async function DashboardProductsPage() {
             color: "#334155",
           }}
         >
-          아직 등록된 상품이 없습니다. 아래 버튼으로 기본 납품 품목을 한 번에 불러올 수 있습니다.
+          아직 등록된 상품이 없습니다. 소·돼지·닭/오리는 입고 스캔을 하면 상품이 자동으로 등록됩니다. 이력번호가 없는 품목은 아래 버튼으로 기본 품목을 불러오거나 직접 등록하세요.
           <div style={{ marginTop: "10px" }}>
-            <SeedDefaultProductsButton itemCount={DEFAULT_DELIVERY_ITEMS.length} />
+            <SeedDefaultProductsButton itemCount={MANUAL_DEFAULT_DELIVERY_ITEMS.length} />
           </div>
         </div>
       )}

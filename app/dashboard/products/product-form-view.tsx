@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Product } from "@/types/database";
 import { createProductAction, updateProductAction } from "./actions";
+import { isTraceableCategory, TRACEABLE_MANUAL_BLOCK_MESSAGE } from "@/lib/products/traceable-categories";
 import { MarketPriceWidget } from "@/components/market-price-widget";
 import { ProductStockBreakdownWidget } from "@/components/product-stock-breakdown";
 import { composeIdentityName, identityFieldsFor } from "@/lib/products/identity-key";
@@ -368,9 +369,12 @@ export function ProductFormView({
   categories,
   subcategoriesByCategory,
 }: ProductFormViewProps) {
-  const categoryOptions = categories.length > 0 ? categories : FALLBACK_CATEGORIES;
   const router = useRouter();
   const isEdit = Boolean(product);
+  // 신규 등록에서는 이력 대상 축종(소·돼지·닭/오리)을 고를 수 없다 — 그 상품은 입고 스캔으로 만들어진다.
+  // 수정 화면은 이미 있는 상품이라 그대로 둔다.
+  const allCategoryOptions = categories.length > 0 ? categories : FALLBACK_CATEGORIES;
+  const categoryOptions = isEdit ? allCategoryOptions : allCategoryOptions.filter((item) => !isTraceableCategory(item));
 
   const [selectedCategory, setSelectedCategory] = useState(product?.category ?? categoryOptions[0]);
   const subcategoryOptions = subcategoriesByCategory[selectedCategory] ?? [];
@@ -466,7 +470,9 @@ export function ProductFormView({
           {isEdit ? "상품 정보 수정" : "신규 상품 등록"}
         </h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          고객(소매) 미니샵에 노출될 품목 정보와 기본 단가를 입력하세요.
+          {isEdit
+            ? "고객(소매) 미니샵에 노출될 품목 정보와 기본 단가를 입력하세요."
+            : TRACEABLE_MANUAL_BLOCK_MESSAGE}
         </p>
       </header>
 
