@@ -52,6 +52,8 @@ export default async function InboundPage() {
   // 건이 그 창밖으로 밀려나 잘못 "아직 안 들어옴"으로 보일 수 있어, 이 줄들의
   // 이력번호만 따로 모아 inbound_scans 전체에서 존재 여부를 확인한다.
   let awaitingDocumentLines: AwaitingDocumentLine[] = [];
+  // 위 줄들이 기다리는 박스 수(수량 반영) — "지금 할 일" 카드용.
+  let awaitingBoxCount = 0;
   // 창고 구조가 업체마다 달라(플랫폼) 고정 위치 목록 대신, 이 업체가 그동안
   // 직접 입력한 위치 이름을 제안 목록으로 쓴다.
   let storageLocationSuggestions: string[] = [];
@@ -90,7 +92,7 @@ export default async function InboundPage() {
         supabase
           .from("inbound_document_lines")
           .select(
-            "id, trace_no, lot_no, item_name, labeled_weight, unit_price, inbound_documents!inner(status, supplier_name)"
+            "id, trace_no, lot_no, item_name, labeled_weight, unit_price, quantity, inbound_documents!inner(status, supplier_name)"
           )
           .eq("inbound_documents.status", "PENDING")
           .or("trace_no.not.is.null,lot_no.not.is.null"),
@@ -112,6 +114,10 @@ export default async function InboundPage() {
         p_wholesaler_id: scope.wholesalerId,
       });
       const awaitingIds = new Set(((awaitingIdRows ?? []) as string[]).map(String));
+
+      awaitingBoxCount = ((pendingDocLineRows ?? []) as Array<{ id: string; quantity: number | null }>)
+        .filter((row) => awaitingIds.has(String(row.id)))
+        .reduce((sum, row) => sum + documentLineExpectedQty(row.quantity === null ? null : Number(row.quantity)), 0);
 
       awaitingDocumentLines = ((pendingDocLineRows ?? []) as Array<Record<string, unknown>>)
         .filter((row) => awaitingIds.has(String(row.id)))
@@ -150,7 +156,10 @@ export default async function InboundPage() {
       .filter((row) => row.status === "PENDING" || row.status === "CLOSED")
       .map((row) => String(row.id));
 
-    const matchSummaryByDocId = new Map<string, { completeLines: number; totalLines: number }>();
+    const matchSummaryByDocId = new Map<
+      string,
+      { completeLines: number; totalLines: number; partialBoxesRemaining: number }
+    >();
 
     if (matchTargetDocIds.length > 0) {
       const { data: matchLineRows } = await supabase
@@ -187,10 +196,16 @@ export default async function InboundPage() {
         const linked = linkedCountByLineId.get(String(line.id)) ?? 0;
         const status = documentLineMatchStatus(expected, linked);
         const docId = String(line.document_id);
-        const current = matchSummaryByDocId.get(docId) ?? { completeLines: 0, totalLines: 0 };
+        const current = matchSummaryByDocId.get(docId) ?? {
+          completeLines: 0,
+          totalLines: 0,
+          partialBoxesRemaining: 0,
+        };
 
         current.totalLines += 1;
         if (status === "COMPLETE") current.completeLines += 1;
+        // 일부만 온 줄은 모자란 박스가 더 와야 한다 — 이건 맞춰 볼 일이 아니라 찍을 일이다.
+        if (status === "PARTIAL") current.partialBoxesRemaining += expected - linked;
         matchSummaryByDocId.set(docId, current);
       });
     }
@@ -394,6 +409,12 @@ export default async function InboundPage() {
 
   const configured = configuredTraceSources();
 
+  const nextStepRemainingBoxCount =
+    awaitingBoxCount +
+    documents
+      .filter((doc) => doc.status === "PENDING")
+      .reduce((sum, doc) => sum + (doc.matchSummary?.partialBoxesRemaining ?? 0), 0);
+
   // 문서 목록은 최신순이라, 대조를 안내할 때는 가장 오래 기다린 명세서부터 보도록 뒤집는다.
   const nextStep = pickInboundNextStep({
     pendingDocuments: documents
@@ -404,7 +425,7 @@ export default async function InboundPage() {
         completeLines: doc.matchSummary?.completeLines ?? 0,
         totalLines: doc.matchSummary?.totalLines ?? 0,
       })),
-    awaitingLineCount: awaitingDocumentLines.length,
+    remainingBoxCount: nextStepRemainingBoxCount,
     needsCheckScanCount: scans.filter(
       (scan) => scan.status === "EXCEPTION" || scan.status === "PENDING_MAPPING"
     ).length,
@@ -469,6 +490,7 @@ export default async function InboundPage() {
 
       <InboundScanView
         initialScans={scans}
+        remainingBoxCount={nextStepRemainingBoxCount}
         products={products}
         shippableOrders={shippableOrders}
         scanRequirements={scanRequirements}

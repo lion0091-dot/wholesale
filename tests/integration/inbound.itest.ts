@@ -19,6 +19,8 @@ import {
   voidScanAction,
   type ScanResult,
 } from "@/app/dashboard/inbound/actions";
+import { closeInboundDocumentAction } from "@/app/dashboard/inbound/document-actions";
+import { pickInboundNextStep } from "@/lib/livestock/inbound-next-step";
 
 const fetchTraceMock = vi.mocked(fetchTraceRecord);
 const configuredMock = vi.mocked(isMtraceConfigured);
@@ -676,6 +678,78 @@ describe("명세서 줄 ↔ 박스 연결 (118, 대조용 — 재고와 무관)"
 
     expect(await linkOf(data.scanId)).toMatchObject({ line_id: lineId, linked_how: "AUTO" });
     expect(await statusOf(lineId)).toMatchObject({ expected: 1, linked: 1, status: "COMPLETE" });
+  });
+
+  it("샘플 시나리오 7~9단계 — 등심1·채끝1·안심2 명세서: 카드가 남은 박스를 세며 스캔 → 전부 도착 → 마감으로 넘어간다", async () => {
+    const actor = getActorClient();
+    const loin = await newProduct();
+    const tender = await newProduct();
+    const sirloin = await newProduct();
+    const [t1, t2, t3] = [world.newTraceNo(), world.newTraceNo(), world.newTraceNo()];
+
+    for (const trace of [t1, t2, t3]) await world.seedTrace(trace);
+
+    const first = await world.createDocumentLine({ traceNo: t1, product: loin });
+    const second = await world.createDocumentLine({ traceNo: t2, product: tender, documentId: first.documentId });
+    const third = await world.createDocumentLine({ traceNo: t3, product: sirloin, quantity: 2, documentId: first.documentId });
+    const lineIds = [first.lineId, second.lineId, third.lineId];
+
+    // 화면(page.tsx)과 같은 계산 — 안 온 줄은 예정 수량만큼, 일부만 온 줄은 모자란 만큼.
+    async function cardNow() {
+      const { data: awaitingIds } = await actor.rpc("list_awaiting_document_line_ids", { p_wholesaler_id: world.wholesalerA });
+      const awaiting = new Set(((awaitingIds ?? []) as string[]).map(String));
+      const quantities: Record<string, number> = { [first.lineId]: 1, [second.lineId]: 1, [third.lineId]: 2 };
+      let remaining = 0;
+      let complete = 0;
+
+      for (const lineId of lineIds) {
+        const { data } = await actor.rpc("document_line_match_status", { p_line_id: lineId });
+        const row = (data as Array<{ expected: number; linked: number; status: string }>)[0];
+
+        if (awaiting.has(lineId)) remaining += quantities[lineId];
+        else if (row.status === "PARTIAL") remaining += row.expected - row.linked;
+        if (row.status === "COMPLETE") complete += 1;
+      }
+
+      return pickInboundNextStep({
+        pendingDocuments: [{ id: first.documentId, completeLines: complete, totalLines: 3 }],
+        remainingBoxCount: remaining,
+        needsCheckScanCount: 0,
+      });
+    }
+
+    const before = await cardNow();
+
+    expect(before.key).toBe("scan");
+    expect(before.detail).toContain("4");
+
+    scanData(await recordScanAction({ traceNo: t1, weight: 12.5, scanType: "BARCODE_SCAN" }));
+    expect((await cardNow()).detail).toContain("3");
+
+    scanData(await recordScanAction({ traceNo: t2, weight: 9.8, scanType: "BARCODE_SCAN" }));
+    expect((await cardNow()).detail).toContain("2");
+
+    // 수량 2인 안심의 첫 박스 — 줄은 아직 덜 찼으므로 "맞춰 보기"가 아니라 계속 스캔이어야 한다.
+    scanData(await recordScanAction({ traceNo: t3, weight: 7.1, scanType: "BARCODE_SCAN" }));
+
+    const afterFirstSirloin = await cardNow();
+
+    expect(afterFirstSirloin.key).toBe("scan");
+    expect(afterFirstSirloin.detail).toContain("1");
+
+    // 같은 번호·같은 무게 두 번째 박스도 중복 확인 없이 들어간다.
+    const secondSirloin = await recordScanAction({ traceNo: t3, weight: 7.1, scanType: "BARCODE_SCAN" });
+
+    expect(secondSirloin.success).toBe(true);
+    expect(secondSirloin.data && "duplicate" in secondSirloin.data).toBe(false);
+
+    const done = await cardNow();
+
+    expect(done.key).toBe("close");
+
+    const closed = await closeInboundDocumentAction(first.documentId, null);
+
+    expect(closed).toEqual({ success: true, data: { incompleteLines: 0 } });
   });
 
   it("같은 개체 3박스 — 수량 3이면 세 번째까지 중복 확인 없이 들어가고, 네 번째는 묻는다", async () => {

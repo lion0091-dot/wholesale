@@ -15,6 +15,12 @@ import {
 import { buildGapReport, buildSupplierRequestSummary } from "@/lib/livestock/document-requirements";
 import { INBOUND_ANCHORS, OPEN_DOCUMENT_PANEL_EVENT } from "@/lib/livestock/inbound-next-step";
 import {
+  HIGHLIGHT_BUTTON,
+  HIGHLIGHT_FIELD,
+  StepCard as UploadStepCard,
+  type StepCardStep as UploadStep,
+} from "./step-card";
+import {
   deleteInboundDocumentAction,
   discardInboundDocumentAction,
   extractDocumentTableAction,
@@ -94,7 +100,7 @@ export interface InboundDocumentRow {
   createdAt: string;
   lineCount: number;
   /** 대조 화면(PENDING·CLOSED만) 진입용 — 줄 상태 요약. 그 외 상태(DRAFT·DISCARDED)는 null. */
-  matchSummary: { completeLines: number; totalLines: number } | null;
+  matchSummary: { completeLines: number; totalLines: number; partialBoxesRemaining: number } | null;
 }
 
 interface EditableLine extends DocumentLine {
@@ -132,68 +138,6 @@ function toNumber(value: string): number | null {
 }
 
 const OPEN_STORAGE_KEY = "inbound-document-panel-open";
-
-interface UploadStep {
-  title: string;
-  detail: string;
-  link?: { label: string; href: string };
-  action?: { label: string; onClick: () => void };
-}
-
-function UploadStepCard({ step }: { step: UploadStep }) {
-  return (
-    <div
-      style={{
-        border: "2px solid #2563eb",
-        backgroundColor: "#eff6ff",
-        borderRadius: "12px",
-        padding: "12px 14px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-      }}
-    >
-      <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>{step.title}</div>
-      <div style={{ fontSize: "13px", color: "#475569" }}>{step.detail}</div>
-      {step.action ? (
-        <button
-          type="button"
-          onClick={step.action.onClick}
-          style={{
-            backgroundColor: "#2563eb",
-            color: "#ffffff",
-            fontSize: "15px",
-            fontWeight: 800,
-            padding: "12px 14px",
-            borderRadius: "10px",
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
-          {step.action.label}
-        </button>
-      ) : null}
-      {step.link ? (
-        <Link
-          href={step.link.href}
-          style={{
-            display: "block",
-            textAlign: "center",
-            backgroundColor: "#2563eb",
-            color: "#ffffff",
-            fontSize: "15px",
-            fontWeight: 800,
-            padding: "12px 14px",
-            borderRadius: "10px",
-            textDecoration: "none",
-          }}
-        >
-          {step.link.label}
-        </Link>
-      ) : null}
-    </div>
-  );
-}
 
 function SupplierQuickPick({
   names,
@@ -746,6 +690,18 @@ export function InboundDocumentPanel({
             link: scanLink,
           };
 
+  // 카드가 안내하는 단계의 칸·버튼을 같은 색으로 강조한다.
+  const activeUploadField: "pick" | "supplier" | "save" | null =
+    saving || extracting
+      ? null
+      : mode === "idle"
+        ? justSaved || prelookupProgress
+          ? null
+          : "pick"
+        : !supplierName.trim()
+          ? "supplier"
+          : "save";
+
   const columnCount = grid?.cells.reduce((max, row) => Math.max(max, row.length), 0) ?? 0;
 
   return (
@@ -938,14 +894,14 @@ export function InboundDocumentPanel({
                 <button
                   type="button"
                   onClick={() => photoInputRef.current?.click()}
-                  style={primaryButton}
+                  style={{ ...primaryButton, ...(activeUploadField === "pick" ? HIGHLIGHT_BUTTON : {}) }}
                 >
                   사진 찍어 올리기
                 </button>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  style={secondaryButton}
+                  style={{ ...secondaryButton, ...(activeUploadField === "pick" ? HIGHLIGHT_BUTTON : {}) }}
                 >
                   파일 고르기 (CSV · PDF · 사진)
                 </button>
@@ -1216,7 +1172,7 @@ export function InboundDocumentPanel({
                     value={supplierName}
                     onChange={(event) => setSupplierName(event.target.value)}
                     placeholder="예: 대성축산"
-                    style={inputStyle}
+                    style={{ ...inputStyle, ...(activeUploadField === "supplier" ? HIGHLIGHT_FIELD : {}) }}
                   />
                   <SupplierQuickPick names={knownSuppliers} current={supplierName} onPick={pickSupplier} />
                 </div>
@@ -1240,7 +1196,9 @@ export function InboundDocumentPanel({
               </div>
 
               <div style={{ display: "flex", gap: "8px" }}>
-                <button type="button" onClick={handleSave} disabled={saving} style={primaryButton}>
+                <button type="button" onClick={handleSave}
+                  disabled={saving}
+                  style={{ ...primaryButton, ...(activeUploadField === "save" ? HIGHLIGHT_BUTTON : {}) }}>
                   {saving ? "보관 중…" : "원본 보관"}
                 </button>
                 <button type="button" onClick={reset} disabled={saving} style={secondaryButton}>
@@ -1260,7 +1218,7 @@ export function InboundDocumentPanel({
                     onChange={(event) => setSupplierName(event.target.value)}
                     onBlur={() => void recallFormat()}
                     placeholder="예: 대성축산"
-                    style={inputStyle}
+                    style={{ ...inputStyle, ...(activeUploadField === "supplier" ? HIGHLIGHT_FIELD : {}) }}
                   />
                   <SupplierQuickPick names={knownSuppliers} current={supplierName} onPick={pickSupplier} />
                 </div>
@@ -1598,7 +1556,9 @@ export function InboundDocumentPanel({
               ) : null}
 
               <div style={{ display: "flex", gap: "8px" }}>
-                <button type="button" onClick={handleSave} disabled={saving} style={primaryButton}>
+                <button type="button" onClick={handleSave}
+                  disabled={saving}
+                  style={{ ...primaryButton, ...(activeUploadField === "save" ? HIGHLIGHT_BUTTON : {}) }}>
                   {saving ? "저장 중…" : "명세서 저장"}
                 </button>
                 <button type="button" onClick={reset} disabled={saving} style={secondaryButton}>

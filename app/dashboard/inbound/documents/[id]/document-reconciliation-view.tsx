@@ -361,6 +361,17 @@ export function DocumentReconciliationView({
               : `명세서 ${lines.length}줄 중 ${summary.counts.COMPLETE}줄이 도착했습니다. 나머지는 현장에서 박스를 찍으면 자동으로 채워집니다.`}
         </p>
 
+        {isPending && lines.length > 0 && incompleteLines.length === 0 && (
+          <div style={{ marginTop: "10px" }}>
+            <button type="button" onClick={() => setCloseModalOpen(true)} style={{ ...primaryButton, width: "100%", padding: "14px 16px", fontSize: "16px" }}>
+              마감하기
+            </button>
+            <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#64748b" }}>
+              마감하면 이 명세서 확인이 끝났다고 기록되고, 박스를 이어 주거나 풀 수 없게 잠깁니다. 고칠 것이 생기면 "다시 열기"로 되돌릴 수 있습니다.
+            </p>
+          </div>
+        )}
+
         {isPending && matchableUnlinkedCount > 0 && (
           <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#92400e" }}>
             명세서와 맞아 보이는 박스가 {matchableUnlinkedCount}개 있습니다. 아래에서 확인해 주세요.

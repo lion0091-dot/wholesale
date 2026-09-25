@@ -9,8 +9,11 @@
 export interface InboundNextStepInput {
   /** 대기(PENDING) 명세서 — 오래된 것부터. completeLines/totalLines는 줄 상태 요약. */
   pendingDocuments: Array<{ id: string; completeLines: number; totalLines: number }>;
-  /** 명세서엔 있는데 아직 박스가 안 들어온 줄 수. */
-  awaitingLineCount: number;
+  /**
+   * 명세서 기준으로 아직 안 들어온 박스 수 — 박스가 하나도 안 온 줄은 예정 수량만큼, 일부만 온 줄은
+   * 모자란 만큼 센다(수량 2인 줄에 1박스만 왔으면 1개가 남는다).
+   */
+  remainingBoxCount: number;
   /** 이력 확인 필요·상품 확인 필요 상태로 남은 박스 수. */
   needsCheckScanCount: number;
   /** 그 중 가장 최근 박스 — 카드 버튼이 내역 맨 위가 아니라 이 박스로 바로 이동한다. */
@@ -45,14 +48,14 @@ export function documentReconcileHref(documentId: string): string {
 }
 
 export function pickInboundNextStep(input: InboundNextStepInput): InboundNextStep {
-  const { pendingDocuments, awaitingLineCount, needsCheckScanCount, firstNeedsCheckScanId } = input;
+  const { pendingDocuments, remainingBoxCount, needsCheckScanCount, firstNeedsCheckScanId } = input;
 
   if (pendingDocuments.length > 0) {
-    if (awaitingLineCount > 0) {
+    if (remainingBoxCount > 0) {
       return {
         key: "scan",
         title: "박스를 찍어 주세요",
-        detail: `아직 안 들어온 품목 ${awaitingLineCount}개`,
+        detail: `아직 안 들어온 박스 ${remainingBoxCount}개`,
         buttonLabel: "스캔 시작",
         href: INBOUND_ANCHORS.scanForm,
         secondaries: [],

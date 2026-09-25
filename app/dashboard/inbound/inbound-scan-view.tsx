@@ -1,5 +1,14 @@
 "use client";
 
+import { INBOUND_ANCHORS } from "@/lib/livestock/inbound-next-step";
+import { HIGHLIGHT_BUTTON, HIGHLIGHT_FIELD, ResultCardView, StepCard, type StepCardStep } from "./step-card";
+import {
+  buildFailureCard,
+  buildMissingInputCard,
+  buildScanResultCard,
+  withDocumentContext,
+  type ResultCard,
+} from "@/lib/livestock/inbound-scan-result";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { composeProductDisplayName } from "@/lib/products/display-name";
@@ -108,6 +117,8 @@ function hasBarcodeDetector(): boolean {
 
 interface Props {
   initialScans: InboundScanRow[];
+  /** 명세서 기준으로 아직 안 들어온 박스 수(수량 반영). 단계 안내 카드에 쓴다. */
+  remainingBoxCount: number;
   /**
    * 스캔 id → 필수항목 체크리스트. 서버에서 공공조회·명세서를 붙여 만든다.
    * 방금 찍어서 아직 서버 데이터가 없는 줄은 여기 없고, 새로고침되면 채워진다.
@@ -236,6 +247,7 @@ function ScanRequirementList({ report }: { report: ScanRequirementReport }) {
 
 export function InboundScanView({
   initialScans,
+  remainingBoxCount,
   products,
   shippableOrders,
   scanRequirements,
@@ -290,6 +302,9 @@ export function InboundScanView({
   const [pending, setPending] = useState<PendingRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // 방금 등록한 박스의 결과 카드 — 다음 박스를 등록하기 전까지 남는다.
+  const [resultCard, setResultCard] = useState<{ card: ResultCard; scanId: string | null } | null>(null);
+  const [fieldError, setFieldError] = useState<"trace" | "weight" | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraSupported, setCameraSupported] = useState(false);
 
@@ -306,6 +321,19 @@ export function InboundScanView({
   useEffect(() => {
     setRows(initialScans);
   }, [initialScans]);
+
+  // 명세서의 마지막 박스를 찍어 남은 박스가 0이 되면 화면 맨 위 "지금 할 일" 카드(마감 안내)로 시선을 옮긴다.
+  const previousRemainingRef = useRef(remainingBoxCount);
+
+  useEffect(() => {
+    if (previousRemainingRef.current > 0 && remainingBoxCount === 0) {
+      document
+        .getElementById(INBOUND_ANCHORS.nextStep.slice(1))
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    previousRemainingRef.current = remainingBoxCount;
+  }, [remainingBoxCount]);
 
   const submitScan = useCallback(
     async (
@@ -324,7 +352,9 @@ export function InboundScanView({
       const value = parsed.traceNo ?? rawTraceNo.trim();
 
       if (!value) {
-        setError("이력번호를 입력해주세요.");
+        setResultCard({ card: buildMissingInputCard("trace"), scanId: null });
+        setFieldError("trace");
+        traceInputRef.current?.focus();
         return;
       }
 
@@ -342,7 +372,8 @@ export function InboundScanView({
         Number.isFinite(typedWeight) && typedWeight > 0 ? typedWeight : labeled ?? NaN;
 
       if (!Number.isFinite(parsedWeight) || parsedWeight <= 0) {
-        setError("저울에 찍힌 실중량을 입력해주세요.");
+        setResultCard({ card: buildMissingInputCard("weight"), scanId: null });
+        setFieldError("weight");
         weightInputRef.current?.focus();
         return;
       }
@@ -353,6 +384,8 @@ export function InboundScanView({
 
       setError(null);
       setNotice(null);
+      setResultCard(null);
+      setFieldError(null);
 
       // 낙관적 UI — 응답을 기다리지 않고 먼저 목록에 얹는다.
       const key = `${value}-${Date.now()}`;
@@ -384,7 +417,7 @@ export function InboundScanView({
       setPending((prev) => prev.filter((item) => item.key !== key));
 
       if (!result.success) {
-        setError(result.error ?? "입고 처리에 실패했습니다.");
+        setResultCard({ card: buildFailureCard(result.error ?? "입고 처리에 실패했습니다."), scanId: null });
         return;
       }
 
@@ -403,77 +436,23 @@ export function InboundScanView({
       }
 
       if (data && "status" in data) {
-        // 표기중량과 실중량이 크게 다르면 돈이 새는 자리다. 막지는 않고 크게 알린다.
-        if (data.varianceExceeded && data.weightVariance !== null && data.varianceRatio !== null) {
-          setError(
-            `⚠️ 표기 ${data.labeledWeight}kg / 실측 ${parsedWeight}kg — ` +
-              `${formatVarianceWeight(data.weightVariance)} (${formatVarianceRatio(data.varianceRatio)}) 차이가 납니다. ` +
-              "입고는 실중량으로 기록했습니다. 매입처에 확인하세요."
-          );
-        }
+        // 결과는 색 있는 카드 하나로 알린다 — 표기·실중량 차이, 유통기한, 상품 자동 생성, 이력 실패 등
+        // 겹치는 사정은 카드 안에 함께 담는다(판단은 lib/livestock/inbound-scan-result.ts).
+        setResultCard({
+          scanId: data.scanId,
+          card: buildScanResultCard(data, {
+            canSeePrice: canEditPurchasePrice,
+            actualWeight: parsedWeight,
+            productName: (id) => products.find((product) => product.id === id)?.name ?? "알 수 없는 상품",
+            formatWon,
+            formatVariance: (variance, ratio) => `${formatVarianceWeight(variance)} (${formatVarianceRatio(ratio)})`,
+          }),
+        });
 
-        // 기한이 지난 물건도 입고는 받는다 — 안 받으면 반품·폐기 근거가 안 남는다.
-        // 대신 그 자리에서 알린다.
-        if (data.daysLeft !== null && data.daysLeft < 0) {
-          setError(
-            `유통기한이 ${-data.daysLeft}일 지난 박스입니다 (${data.bestBefore}). 입고는 기록했지만 출고되지 않습니다.`
-          );
-        } else if (data.daysLeft !== null && data.daysLeft <= 3) {
-          setNotice(`유통기한이 ${data.daysLeft}일 남았습니다 (${data.bestBefore}). 먼저 내보내세요.`);
-        } else if (data.autoCreated) {
-          setNotice(
-            `'${data.autoCreated.productName}' 상품을 새로 만들어 입고했습니다.` +
-              " 상품 관리에서 판매가를 넣고 '판매중'으로 바꿔야 고객에게 보입니다."
-          );
-        } else if (data.status === "EXCEPTION") {
-          // 이력조회가 실패하는 흔한 이유 하나가 "공급처 박스 바코드를 찍었다"이다.
-          // 소·돼지가 섞여 온 박스는 박스 코드밖에 없어 조회될 리가 없다. 그 자리에서
-          // 쪼개기를 제안한다 — 나중에 목록에서 찾아 들어가는 것보다 낫다(사장님 확정).
+        // 공급처 박스 바코드일 수 있다 — 소·돼지가 섞인 박스는 박스 코드밖에 없어 조회될 리가 없으니
+        // 그 자리에서 쪼개기를 제안한다(사장님 확정).
+        if (data.status === "EXCEPTION") {
           setSplitCandidate(value);
-
-          // "조회를 아예 못 함"(설정 문제) / "일시 오류일 수 있음" / "조회는 됐는데 없음"은
-          // 원인이 완전히 달라 같은 문구로 뭉뚱그리면 안 된다(2026-09-23 발견).
-          if (data.failIsNotConfigured) {
-            setNotice(
-              "이력 조회 기능이 아직 설정되지 않아 확인하지 못했습니다(인증키 미등록). " +
-                "입고 자체는 정상 저장됐습니다 — 다시 찍어도 지금은 통과하지 않으니, " +
-                "아래 목록에서 상품을 직접 지정해주세요."
-            );
-          } else if (data.failReason === "API_ERROR") {
-            // 조회 자체는 됐지만 저장 단계 등에서 오류가 난 경우 — 일시적일 수 있어
-            // "재시도해도 안 된다"고 단정하지 않는다. 실제 오류 사유를 그대로 보여준다.
-            setNotice(
-              `이력 조회 중 오류가 있었습니다${data.failDetail ? `(${data.failDetail})` : ""}. ` +
-                "입고는 저장됐습니다 — 다시 찍어보시거나, 계속 안 되면 아래 목록에서 상품을 직접 지정해주세요."
-            );
-          } else {
-            setNotice(
-              "이 번호는 이력에서 확인되지 않았습니다. 입고는 저장됐으니 바코드를 다시 확인해보시고, " +
-                "맞다면 아래 목록에서 상품을 직접 지정해주세요."
-            );
-          }
-        } else if (data.status === "PENDING_MAPPING") {
-          setNotice("부위를 알 수 없어 자동 등록이 안 됩니다. 아래 목록에서 상품을 한 번만 지정해주세요.");
-        } else if (data.purchaseAmount !== null) {
-          setNotice(
-            `매입 ${formatWon(data.purchaseAmount)} (실중량 ${parsedWeight}kg × ${formatWon(
-              data.purchaseUnitPrice ?? 0
-            )}) 로 기록했습니다.`
-          );
-        } else {
-          setNotice("매입단가가 없어 금액은 비워뒀습니다. 매입 정산 화면에서 채울 수 있습니다.");
-        }
-
-        // 바코드 상품코드 학습과 명세서가 다른 상품을 가리키면 조용히 넘기지 않는다 — 어느 쪽이 틀렸는지는
-        // 사람이 안다. 다른 경고(중량 차이 등)가 있어도 덮어쓰지 않고 덧붙인다.
-        if (data.productConflict) {
-          const nameOf = (id: string) => products.find((product) => product.id === id)?.name ?? "알 수 없는 상품";
-          const conflictMessage =
-            `⚠️ 바코드 상품코드는 '${nameOf(data.productConflict.gtinProductId)}', 명세서는 '${nameOf(
-              data.productConflict.documentProductId
-            )}'입니다. 바코드 기준으로 입고했습니다 — 명세서를 잘못 골랐거나 바코드 학습이 옛 상품에 묶여 있는 것이니 아래 목록에서 확인해주세요.`;
-
-          setError((current) => (current ? `${current}\n${conflictMessage}` : conflictMessage));
         }
       }
 
@@ -925,6 +904,59 @@ export function InboundScanView({
     router.refresh();
   };
 
+  // 결과 카드에 명세서 대조를 덧붙인다 — 새로고침으로 대조 결과가 들어온 뒤에 "명세서에 없는 번호"가 뜬다.
+  const shownResultCard = resultCard
+    ? resultCard.scanId
+      ? withDocumentContext(resultCard.card, {
+          hasPendingDocument: pendingDocumentTraceNos.length > 0,
+          documentMatched: scanRequirements[resultCard.scanId]?.documentMatched ?? null,
+        })
+      : resultCard.card
+    : null;
+
+  // 카드가 안내하는 단계의 칸·버튼을 같은 색으로 강조한다. 명세서 박스를 다 찍은 뒤엔 강조할 칸이 없다.
+  const scanAllArrived = remainingBoxCount === 0 && pendingDocumentTraceNos.length > 0;
+  const activeScanField: "trace" | "weight" | "submit" | null =
+    fieldError
+      ? fieldError
+      : pending.length > 0
+      ? null
+      : !traceNo.trim()
+        ? scanAllArrived
+          ? null
+          : "trace"
+        : !weight.trim()
+          ? "weight"
+          : "submit";
+
+  // 지금 할 단계 안내 — 바코드 → 실중량 → 등록 순서를 카드가 말해 준다.
+  const scanStep: StepCardStep =
+    pending.length > 0
+      ? { title: "등록 중입니다", detail: "이력번호를 조회하고 있습니다. 잠시만 기다려 주세요." }
+      : !traceNo.trim()
+        ? remainingBoxCount === 0 && pendingDocumentTraceNos.length > 0
+          ? {
+              title: "명세서의 박스를 모두 찍었습니다",
+              detail: "이제 확인하고 마감하는 단계입니다.",
+              link: { label: "다음 할 일 보기", href: INBOUND_ANCHORS.nextStep },
+            }
+          : {
+              title: "1단계: 박스의 바코드를 찍으세요",
+              detail:
+                "스캐너로 찍거나 이력번호를 입력합니다." +
+                (remainingBoxCount > 0 ? ` 명세서 기준으로 아직 안 들어온 박스는 ${remainingBoxCount}개입니다.` : ""),
+            }
+        : !weight.trim()
+          ? {
+              title: "2단계: 저울에 잰 실중량(kg)을 입력하세요",
+              detail: "표기중량과 달라도 저울에 찍힌 값이 기준입니다. 재고와 매입금액은 실중량으로 계산됩니다.",
+            }
+          : {
+              title: "3단계: \"입고 등록\"을 누르세요",
+              detail: "누르기 전에는 재고가 늘어나지 않습니다.",
+              action: { label: "입고 등록", onClick: () => void submitScan(traceNo, weight, "MANUAL") },
+            };
+
   // 저장 전에 화면에서 미리 보여준다 — DB와 같은 규칙(lib/livestock/weight-variance.ts).
   const liveVariance = evaluateWeightVariance(
     Number.parseFloat(labeledWeight),
@@ -934,6 +966,10 @@ export function InboundScanView({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      <StepCard step={scanStep} />
+
+      {shownResultCard ? <ResultCardView card={shownResultCard} onDismiss={() => setResultCard(null)} /> : null}
+
       <section id="inbound-scan-form" style={{ ...panelStyle, scrollMarginTop: "12px" }}>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end" }}>
           <div style={{ flex: "1 1 220px", minWidth: 0 }}>
@@ -944,12 +980,15 @@ export function InboundScanView({
               ref={traceInputRef}
               id="trace_no"
               value={traceNo}
-              onChange={(event) => setTraceNo(event.target.value)}
+              onChange={(event) => {
+                setTraceNo(event.target.value);
+                setFieldError(null);
+              }}
               onKeyDown={handleTraceKeyDown}
               inputMode="numeric"
               autoComplete="off"
               placeholder="스캐너로 찍거나 직접 입력"
-              style={inputStyle}
+              style={{ ...inputStyle, ...(activeScanField === "trace" ? HIGHLIGHT_FIELD : {}) }}
             />
           </div>
 
@@ -980,10 +1019,17 @@ export function InboundScanView({
               min="0"
               step="0.001"
               value={weight}
-              onChange={(event) => setWeight(event.target.value)}
+              onChange={(event) => {
+                setWeight(event.target.value);
+                setFieldError(null);
+              }}
               onKeyDown={handleWeightKeyDown}
               placeholder="19.800"
-              style={{ ...inputStyle, borderColor: "#0f172a" }}
+              style={{
+                ...inputStyle,
+                borderColor: "#0f172a",
+                ...(activeScanField === "weight" ? HIGHLIGHT_FIELD : {}),
+              }}
             />
           </div>
 
@@ -1022,7 +1068,12 @@ export function InboundScanView({
           <button
             type="button"
             onClick={() => void submitScan(traceNo, weight, "MANUAL")}
-            style={{ ...buttonStyle, backgroundColor: "#0f172a", color: "#fff" }}
+            style={{
+              ...buttonStyle,
+              backgroundColor: "#0f172a",
+              color: "#fff",
+              ...(activeScanField === "submit" ? HIGHLIGHT_BUTTON : {}),
+            }}
           >
             입고 등록
           </button>
