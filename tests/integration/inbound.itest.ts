@@ -410,6 +410,39 @@ describe("recordScanAction — 상품 자동 결정", () => {
     expect(awaitingAfter.has(String(untouchedLine?.id))).toBe(true);
   });
 
+  it("대기 목록 — 취소(VOIDED)된 박스는 안 온 것과 같아서 그 줄은 계속 대기로 남는다", async () => {
+    const admin = adminClient();
+    const product = await newProduct();
+    const traceNo = world.newTraceNo();
+    const { lineId } = await world.createDocumentLine({ traceNo, product });
+    const actor = getActorClient();
+    const awaiting = async () => {
+      const { data } = await actor.rpc("list_awaiting_document_line_ids", { p_wholesaler_id: world.wholesalerA });
+
+      return new Set(((data ?? []) as string[]).map(String));
+    };
+    const { data: scan, error } = await admin
+      .from("inbound_scans")
+      .insert({
+        wholesaler_id: world.wholesalerA,
+        trace_no: traceNo,
+        product_id: null,
+        weight: 5,
+        scan_type: "MANUAL",
+        status: "NORMAL",
+        remaining_weight: 0,
+      })
+      .select("id")
+      .single();
+
+    expect(error).toBeNull();
+    expect((await awaiting()).has(lineId)).toBe(false);
+
+    await admin.from("inbound_scans").update({ status: "VOIDED" }).eq("id", String(scan?.id));
+
+    expect((await awaiting()).has(lineId)).toBe(true);
+  });
+
   it("같은 묶음번호에 서로 다른 상품이 걸린 줄이 둘이면 자동으로 고르지 않는다(되묻는다)", async () => {
     const first = await newProduct();
     const second = await newProduct();
