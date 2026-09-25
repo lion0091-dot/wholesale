@@ -76,6 +76,17 @@ describe("pickInboundNextStep", () => {
     expect(step.detail).toContain("2");
   });
 
+  it("확인 필요한 박스가 있으면 버튼이 그 박스로 바로 이동한다", () => {
+    const step = pickInboundNextStep({
+      ...base,
+      hasAnyScan: true,
+      needsCheckScanCount: 2,
+      firstNeedsCheckScanId: "abc",
+    });
+
+    expect(step.href).toBe("#scan-abc");
+  });
+
   it("명세서 없이 스캔만 한 경우(문제 없음)에도 막히지 않고 스캔을 안내한다", () => {
     const step = pickInboundNextStep({ ...base, hasAnyScan: true });
 

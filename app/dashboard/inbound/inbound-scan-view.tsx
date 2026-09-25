@@ -1341,7 +1341,7 @@ export function InboundScanView({
                 !scan.isSample && (scan.status === "PENDING_MAPPING" || scan.status === "EXCEPTION");
 
               return (
-                <div key={scan.id} style={rowStyle}>
+                <div key={scan.id} id={`scan-${scan.id}`} style={{ ...rowStyle, scrollMarginTop: "12px" }}>
                   <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
                     <span style={{ fontSize: "11px", color: "#94a3b8" }}>{formatTime(scan.createdAt)}</span>
                     {scan.scannedByName && (

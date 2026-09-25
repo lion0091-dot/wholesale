@@ -13,6 +13,8 @@ export interface InboundNextStepInput {
   awaitingLineCount: number;
   /** 이력 확인 필요·상품 확인 필요 상태로 남은 박스 수. */
   needsCheckScanCount: number;
+  /** 그 중 가장 최근 박스 — 카드 버튼이 내역 맨 위가 아니라 이 박스로 바로 이동한다. */
+  firstNeedsCheckScanId?: string | null;
   /** 취소 처리되지 않은 명세서가 하나라도 있는가. */
   hasAnyDocument: boolean;
   /** 취소되지 않은 스캔이 하나라도 있는가. */
@@ -49,7 +51,8 @@ export function documentReconcileHref(documentId: string): string {
 }
 
 export function pickInboundNextStep(input: InboundNextStepInput): InboundNextStep {
-  const { pendingDocuments, awaitingLineCount, needsCheckScanCount, hasAnyDocument, hasAnyScan } = input;
+  const { pendingDocuments, awaitingLineCount, needsCheckScanCount, firstNeedsCheckScanId, hasAnyDocument, hasAnyScan } =
+    input;
 
   if (pendingDocuments.length > 0) {
     if (awaitingLineCount > 0) {
@@ -94,7 +97,7 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
       title: "확인이 필요한 박스가 있습니다",
       detail: `박스 ${needsCheckScanCount}개`,
       buttonLabel: "확인하러 가기",
-      href: INBOUND_ANCHORS.history,
+      href: firstNeedsCheckScanId ? `#scan-${firstNeedsCheckScanId}` : INBOUND_ANCHORS.history,
       secondary: null,
     };
   }

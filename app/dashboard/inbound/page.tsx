@@ -408,6 +408,8 @@ export default async function InboundPage() {
     needsCheckScanCount: scans.filter(
       (scan) => scan.status === "EXCEPTION" || scan.status === "PENDING_MAPPING"
     ).length,
+    firstNeedsCheckScanId:
+      scans.find((scan) => scan.status === "EXCEPTION" || scan.status === "PENDING_MAPPING")?.id ?? null,
     hasAnyDocument: documents.some((doc) => doc.status !== "DISCARDED"),
     hasAnyScan: scans.some((scan) => scan.status !== "VOIDED"),
   });
