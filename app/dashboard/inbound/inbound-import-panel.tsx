@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { parseImportTable, type ImportRow } from "@/lib/livestock/import-parser";
+import { decodeDocumentFileText } from "@/lib/livestock/document-file-text";
 import {
   createImportJobAction,
   processImportChunkAction,
@@ -62,7 +63,7 @@ export function InboundImportPanel() {
       return;
     }
 
-    applyText(await file.text(), file.name);
+    applyText(decodeDocumentFileText(await file.arrayBuffer()), file.name);
   };
 
   /** finished가 될 때까지 청크를 반복 호출한다. */

@@ -36,6 +36,7 @@ import {
   type DocumentPrelookupProgress,
 } from "./document-actions";
 import type { ScanProductOption } from "./inbound-scan-view";
+import { decodeDocumentFileText } from "@/lib/livestock/document-file-text";
 
 /**
  * 공급처 명세서 올리기 (29단계 A).
@@ -494,7 +495,7 @@ export function InboundDocumentPanel({
       return;
     }
 
-    startFromText(await picked.text(), picked);
+    startFromText(decodeDocumentFileText(await picked.arrayBuffer()), picked);
   };
 
   // 이미 올린 명세서의 공급처 이름(최근 순, 취소된 것 제외) — 이름을 매번 치지 않고 고르게 한다.

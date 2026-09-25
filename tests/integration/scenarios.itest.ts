@@ -8,9 +8,13 @@ import { actAs, adminClient, getActorClient, seedWorld, type World, type WorldPr
 import { recordScanAction, voidScanAction, type ScanResult } from "@/app/dashboard/inbound/actions";
 import {
   closeInboundDocumentAction,
+  extractDocumentTableAction,
   reopenInboundDocumentAction,
+  saveInboundDocumentAction,
   setDocumentsScanFinishedAction,
 } from "@/app/dashboard/inbound/document-actions";
+import { decodeDocumentFileText } from "@/lib/livestock/document-file-text";
+import { applyColumnMap, parseDocumentText } from "@/lib/livestock/document-parser";
 import { createProductAction, updateProductAction } from "@/app/dashboard/products/actions";
 import { updateOrderStatusAction } from "@/app/dashboard/orders/actions";
 import { documentLineExpectedQty, documentLineMatchStatus } from "@/lib/livestock/document-reconciliation";
@@ -313,5 +317,158 @@ describe("SC-4 주문 → 출고 → 고객이 받는 거래명세서 이력번�
 
     expect(stranger.data ?? []).toHaveLength(0);
     expect(strangerLabels.data ?? []).toHaveLength(0);
+  });
+});
+
+describe("SC-5 이메일로 받은 명세서를 폰 파일함에서 골라 올린다 — 파일 종류별 (CSV·CP949·PDF·사진·이상한 파일)", () => {
+  /** 한글 완성형(KS X 1001) 영역만 만든 테스트용 CP949 인코더 — 한국 엑셀 "CSV(쉼표로 분리)"가 이 인코딩이다. */
+  function eucKrEncode(text: string): Uint8Array {
+    const decoder = new TextDecoder("euc-kr");
+    const table = new Map<string, [number, number]>();
+
+    for (let hi = 0xb0; hi <= 0xc8; hi += 1) {
+      for (let lo = 0xa1; lo <= 0xfe; lo += 1) {
+        const ch = decoder.decode(new Uint8Array([hi, lo]));
+
+        if (ch.length === 1 && ch !== "�") table.set(ch, [hi, lo]);
+      }
+    }
+
+    const bytes: number[] = [];
+
+    for (const ch of text) {
+      const pair = table.get(ch);
+
+      if (pair) bytes.push(pair[0], pair[1]);
+      else bytes.push(ch.charCodeAt(0));
+    }
+
+    return new Uint8Array(bytes);
+  }
+
+  async function pdfWithText(): Promise<Uint8Array> {
+    const { createRequire } = await import("node:module");
+    const path = await import("node:path");
+    const PDFDocument = createRequire(import.meta.url)("pdfkit");
+    const doc = new PDFDocument({ size: "A4", margin: 40 });
+    const chunks: Buffer[] = [];
+    const cols = [40, 170, 300, 370, 450];
+    const row = (y: number, cells: string[]) =>
+      cells.forEach((cell, i) => cell && doc.fontSize(10).text(cell, cols[i], y, { lineBreak: false }));
+
+    doc.registerFont("kr", path.join(process.cwd(), "assets/fonts/NotoSansKR-Regular.ttf"));
+    doc.font("kr");
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+
+    return new Promise((resolve) => {
+      doc.on("end", () => resolve(new Uint8Array(Buffer.concat(chunks))));
+      row(90, ["품목", "이력번호", "중량", "단가", "금액"]);
+      row(110, ["안심", "002123456781", "7.10", "90,000", "639,000"]);
+      doc.end();
+    });
+  }
+
+  function fileForm(bytes: Uint8Array | string, name: string, type: string): FormData {
+    const form = new FormData();
+
+    form.append("file", new File([bytes as BlobPart], name, { type }));
+
+    return form;
+  }
+
+  it("CP949 CSV(한국 엑셀 기본 저장) → 글자 안 깨지고 저장 → 박스를 찍으면 부위 이름 그대로 상품이 만들어진다", async () => {
+    const part1 = `안심`;
+    const traceA = world.newTraceNo();
+    const traceB = world.newTraceNo();
+    const csv = ["품목,부위,이력번호,중량,단가,금액", `한우 ${part1},${part1},${traceA},7.1,90000,639000`, `한우 채끝,채끝,${traceB},9.8,70000,686000`].join("\r\n");
+
+    // 폰 파일함에서 고른 파일의 바이트 → (브라우저) 글자로 → 표로 → 줄로
+    const text = decodeDocumentFileText(eucKrEncode(csv));
+    const grid = parseDocumentText(text);
+    const lines = applyColumnMap(grid, grid.columnMap);
+
+    expect(lines).toHaveLength(2);
+    expect(lines.map((line) => line.itemName)).toEqual(["한우 안심", "한우 채끝"]);
+    expect(lines.map((line) => line.partName)).toEqual(["안심", "채끝"]);
+    expect(text).not.toContain("�");
+
+    const form = new FormData();
+
+    form.append("payload", JSON.stringify({ supplierName: `파일함축산-${world.runId}`, lines: lines.map((line) => ({ ...line, productId: null })) }));
+    form.append("file", new File([eucKrEncode(csv) as BlobPart], "명세서.CSV", { type: "" }));
+
+    const saved = await saveInboundDocumentAction(form);
+
+    expect(saved.success).toBe(true);
+
+    // 한글 파일명("명세서.CSV")이어도 원본이 보관된다 — Storage 키는 ASCII만 받아 예전엔 InvalidKey로 실패했다
+    const { data: savedDoc } = await adminClient().from("inbound_documents").select("file_name, storage_path").eq("id", (saved.data as { documentId: string }).documentId).single();
+
+    expect(savedDoc?.file_name).toBe("명세서.CSV");
+    expect(savedDoc?.storage_path).toBeTruthy();
+    expect(savedDoc?.storage_path).toMatch(/^[A-Za-z0-9\/._-]+$/);
+
+    // 현장: 박스를 찍는다 — 상품은 명세서 부위로 자동 생성된다
+    await world.seedTrace(traceA, { part: null, grade: null });
+    await world.seedTrace(traceB, { part: null, grade: null });
+
+    const a = (await recordScanAction({ traceNo: traceA, weight: 7.1, scanType: "BARCODE_SCAN" })).data as ScanResult;
+    const b = (await recordScanAction({ traceNo: traceB, weight: 9.8, scanType: "BARCODE_SCAN" })).data as ScanResult;
+    const { data: products } = await adminClient().from("products").select("name, subcategory").in("id", [a.productId!, b.productId!]);
+
+    expect((products ?? []).map((row) => row.subcategory).sort()).toEqual(["안심", "채끝"]);
+    expect(JSON.stringify(products)).not.toContain("�");
+  });
+
+  it("텍스트 PDF(이메일 첨부) → 서버가 표를 되살린다 / 글자 없는 PDF·깨진 파일·큰 파일은 안내 문구로 거부되어 원본 보관으로 넘어간다", async () => {
+    const pdf = await pdfWithText();
+    const ok = await extractDocumentTableAction(fileForm(pdf, "거래명세서.pdf", "application/pdf"));
+
+    expect(ok.success).toBe(true);
+    expect(ok.data!.hasText).toBe(true);
+    expect(JSON.stringify(ok.data!.cells)).toContain("002123456781");
+
+    // 깨진 파일 — 예외로 죽지 않고 실패 결과(클라이언트는 원본만 보관으로 처리)
+    const broken = await extractDocumentTableAction(fileForm("이건 PDF가 아닙니다", "가짜.pdf", "application/pdf"));
+
+    expect(broken.success).toBe(false);
+
+    // 8MB 초과
+    const huge = await extractDocumentTableAction(fileForm(new Uint8Array(8 * 1024 * 1024 + 1), "큰파일.pdf", "application/pdf"));
+
+    expect(huge).toEqual({ success: false, error: "파일이 너무 큽니다. 8MB 이하로 올려주세요." });
+
+    // 파일이 없음
+    expect((await extractDocumentTableAction(new FormData())).success).toBe(false);
+  });
+
+  it("직원 계정으로도 파일을 올려 읽을 수 있고, 고객·비로그인은 안 된다", async () => {
+    const pdf = await pdfWithText();
+
+    await actAs(world.users.staffA);
+    expect((await extractDocumentTableAction(fileForm(pdf, "a.pdf", "application/pdf"))).success).toBe(true);
+
+    await actAs(world.users.retailerR);
+    expect((await extractDocumentTableAction(fileForm(pdf, "a.pdf", "application/pdf"))).success).toBe(false);
+
+    await actAs(null);
+    expect((await extractDocumentTableAction(fileForm(pdf, "a.pdf", "application/pdf"))).success).toBe(false);
+  });
+
+  it("사진·스캔본은 품목 줄 없이 원본만 저장된다(글자를 못 읽는 서류 — 손으로 받아적지 않는다)", async () => {
+    const form = new FormData();
+
+    form.append("payload", JSON.stringify({ supplierName: `사진축산-${world.runId}`, lines: [] }));
+    form.append("file", new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])], "거래명세서 사진 (1).JPG", { type: "image/jpeg" }));
+
+    const saved = await saveInboundDocumentAction(form);
+
+    expect(saved.success).toBe(true);
+
+    const { data: doc } = await adminClient().from("inbound_documents").select("id, storage_path, status").eq("id", (saved.data as { documentId: string }).documentId).single();
+    const { count } = await adminClient().from("inbound_document_lines").select("id", { count: "exact", head: true }).eq("document_id", doc!.id);
+
+    expect(doc!.storage_path).toBeTruthy();
+    expect(count).toBe(0);
   });
 });

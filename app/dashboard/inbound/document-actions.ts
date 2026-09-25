@@ -11,6 +11,7 @@ import {
   MtraceNotConfiguredError,
 } from "@/lib/livestock/mtrace-client";
 import { cacheTraceRecord } from "@/lib/livestock/master-cache";
+import { documentStorageName } from "@/lib/livestock/document-storage-name";
 
 /**
  * 공급처 원본 명세서 저장 (29단계 A).
@@ -647,8 +648,8 @@ export async function saveInboundDocumentAction(
     let fileStored = false;
 
     if (hasFile) {
-      const safeName = file.name.replace(/[^\w.\-가-힣]/g, "_").slice(-120);
-      const path = `${wholesalerId}/${documentId}/${safeName}`;
+      // 키는 ASCII만 받는다 — 원래 이름은 file_name 칸에 남아 있다.
+      const path = `${wholesalerId}/${documentId}/${documentStorageName(file.name, crypto.randomUUID())}`;
       const { error: uploadError } = await supabase.storage
         .from("inbound-documents")
         .upload(path, Buffer.from(await file.arrayBuffer()), {
