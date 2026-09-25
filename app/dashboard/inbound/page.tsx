@@ -16,6 +16,7 @@ import {
   resolveTraceOrigin,
   type ScanRequirementReport,
 } from "@/lib/livestock/inbound-requirements";
+import { documentLineExpectedQty, documentLineMatchStatus } from "@/lib/livestock/document-reconciliation";
 
 /** 이력 조회 기관 표기 — 설정 안내 문구에 쓴다. */
 const SOURCE_LABELS: Record<string, string> = {
@@ -141,6 +142,57 @@ export default async function InboundPage() {
       .order("created_at", { ascending: false })
       .limit(30);
 
+    // 대조 화면(29단계 B) 진입 배지용 — PENDING·CLOSED 문서만 줄 상태를 요약한다.
+    // N개 문서마다 RPC를 부르지 않고 연결표를 한 번에 읽어 서버에서 센다(스펙 5번과 같은 원칙).
+    const matchTargetDocIds = ((documentRows ?? []) as Array<Record<string, unknown>>)
+      .filter((row) => row.status === "PENDING" || row.status === "CLOSED")
+      .map((row) => String(row.id));
+
+    const matchSummaryByDocId = new Map<string, { completeLines: number; totalLines: number }>();
+
+    if (matchTargetDocIds.length > 0) {
+      const { data: matchLineRows } = await supabase
+        .from("inbound_document_lines")
+        .select("id, document_id, quantity")
+        .in("document_id", matchTargetDocIds);
+
+      const matchLines = (matchLineRows ?? []) as Array<{ id: string; document_id: string; quantity: number | null }>;
+      const matchLineIds = matchLines.map((row) => String(row.id));
+
+      const { data: matchLinkRows } =
+        matchLineIds.length > 0
+          ? await supabase
+              .from("inbound_document_line_scans")
+              .select("line_id, inbound_scans(status)")
+              .in("line_id", matchLineIds)
+          : { data: [] as Array<Record<string, unknown>> };
+
+      const linkedCountByLineId = new Map<string, number>();
+
+      ((matchLinkRows ?? []) as Array<Record<string, unknown>>).forEach((row) => {
+        const scan = row.inbound_scans as { status: string } | { status: string }[] | null;
+        const scanStatus = Array.isArray(scan) ? scan[0]?.status : scan?.status;
+
+        if (scanStatus === "VOIDED") return;
+
+        const lineId = String(row.line_id);
+
+        linkedCountByLineId.set(lineId, (linkedCountByLineId.get(lineId) ?? 0) + 1);
+      });
+
+      matchLines.forEach((line) => {
+        const expected = documentLineExpectedQty(line.quantity === null ? null : Number(line.quantity));
+        const linked = linkedCountByLineId.get(String(line.id)) ?? 0;
+        const status = documentLineMatchStatus(expected, linked);
+        const docId = String(line.document_id);
+        const current = matchSummaryByDocId.get(docId) ?? { completeLines: 0, totalLines: 0 };
+
+        current.totalLines += 1;
+        if (status === "COMPLETE") current.completeLines += 1;
+        matchSummaryByDocId.set(docId, current);
+      });
+    }
+
     documents = ((documentRows ?? []) as Array<Record<string, unknown>>).map((row) => {
       const counts = row.inbound_document_lines as Array<{ count: number }> | null;
 
@@ -155,6 +207,7 @@ export default async function InboundPage() {
         totalAmount: row.total_amount === null ? null : Number(row.total_amount),
         createdAt: String(row.created_at),
         lineCount: counts?.[0]?.count ?? 0,
+        matchSummary: matchSummaryByDocId.get(String(row.id)) ?? null,
       };
     });
 

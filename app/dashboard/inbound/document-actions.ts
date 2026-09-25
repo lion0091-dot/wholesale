@@ -991,6 +991,150 @@ export async function deleteInboundDocumentAction(
   }
 }
 
+/**
+ * 29단계 B — 사무실 대조 화면(app/dashboard/inbound/documents/[id]) 전용 액션.
+ * DB RPC(마이그레이션 118)가 소유권·상태 검사를 이미 다 하므로 여기서는 오류 코드를
+ * 사람 말로 바꾸는 것만 한다. 재고에는 영향이 없다(잠긴 결정) — 대조·집계용 연결이다.
+ */
+
+/** 줄에 박스를 수동으로 붙인다. 다른 줄에 붙어 있었으면 옮겨진다. */
+export async function linkScanToDocumentLineAction(
+  scanId: string,
+  lineId: string
+): Promise<ActionResult<{ expected: number; linked: number; status: string }>> {
+  try {
+    const { supabase } = await resolveDocumentScope();
+
+    const { data, error } = await supabase.rpc("link_scan_to_document_line", {
+      p_scan_id: scanId,
+      p_line_id: lineId,
+      p_how: "MANUAL",
+    });
+
+    if (error) {
+      if (error.message.includes("DOCUMENT_NOT_PENDING")) {
+        throw new RbacError("마감된 명세서에는 붙일 수 없습니다. 먼저 다시 열어주세요.");
+      }
+      if (error.message.includes("SCAN_VOIDED")) {
+        throw new RbacError("취소된 박스는 연결할 수 없습니다.");
+      }
+      if (error.message.includes("SCAN_NOT_FOUND")) {
+        throw new RbacError("해당 박스를 찾을 수 없습니다.");
+      }
+      if (error.message.includes("DOCUMENT_LINE_NOT_FOUND")) {
+        throw new RbacError("해당 명세서 줄을 찾을 수 없습니다.");
+      }
+      if (error.message.includes("FORBIDDEN")) {
+        throw new RbacError("이 명세서에 접근할 권한이 없습니다.");
+      }
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+
+    const row = (data ?? {}) as Record<string, unknown>;
+
+    return {
+      success: true,
+      data: {
+        expected: Number(row.expected ?? 0),
+        linked: Number(row.linked ?? 0),
+        status: String(row.status ?? ""),
+      },
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** 붙은 박스를 뗀다 — 재고에는 영향 없음. */
+export async function unlinkScanFromDocumentLineAction(scanId: string): Promise<ActionResult> {
+  try {
+    const { supabase } = await resolveDocumentScope();
+
+    const { error } = await supabase.rpc("unlink_scan_from_document_line", { p_scan_id: scanId });
+
+    if (error) {
+      if (error.message.includes("DOCUMENT_NOT_PENDING")) {
+        throw new RbacError("마감된 명세서에서는 뗄 수 없습니다. 먼저 다시 열어주세요.");
+      }
+      if (error.message.includes("FORBIDDEN")) {
+        throw new RbacError("이 명세서에 접근할 권한이 없습니다.");
+      }
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** 마감한다. 미입고 줄이 있으면 사유가 필수다(CLOSE_NOTE_REQUIRED). */
+export async function closeInboundDocumentAction(
+  documentId: string,
+  note: string | null
+): Promise<ActionResult<{ incompleteLines: number }>> {
+  try {
+    const { supabase } = await resolveDocumentScope();
+
+    const { data, error } = await supabase.rpc("close_inbound_document", {
+      p_document_id: documentId,
+      p_note: note?.trim() || null,
+    });
+
+    if (error) {
+      const closeNoteRequired = error.message.match(/CLOSE_NOTE_REQUIRED:(\d+)/);
+
+      if (closeNoteRequired) {
+        throw new RbacError(`미입고 ${closeNoteRequired[1]}줄이 있어 사유를 입력해야 마감할 수 있습니다.`);
+      }
+      if (error.message.includes("DOCUMENT_NOT_PENDING")) {
+        throw new RbacError("이미 마감됐거나 취소된 명세서입니다.");
+      }
+      if (error.message.includes("DOCUMENT_NOT_FOUND")) {
+        throw new RbacError("해당 명세서를 찾을 수 없습니다.");
+      }
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+
+    const row = (data ?? {}) as Record<string, unknown>;
+
+    return { success: true, data: { incompleteLines: Number(row.incomplete_lines ?? 0) } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** 마감을 되돌려 다시 대조 중 상태로 만든다. */
+export async function reopenInboundDocumentAction(documentId: string): Promise<ActionResult> {
+  try {
+    const { supabase } = await resolveDocumentScope();
+
+    const { error } = await supabase.rpc("reopen_inbound_document", { p_document_id: documentId });
+
+    if (error) {
+      if (error.message.includes("DOCUMENT_NOT_CLOSED")) {
+        throw new RbacError("마감된 명세서만 다시 열 수 있습니다.");
+      }
+      if (error.message.includes("DOCUMENT_NOT_FOUND")) {
+        throw new RbacError("해당 명세서를 찾을 수 없습니다.");
+      }
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
 /** 보관된 원본을 잠깐 열어보는 링크. 비공개 버킷이라 서명이 필요하다. */
 export async function getDocumentFileUrlAction(
   documentId: string

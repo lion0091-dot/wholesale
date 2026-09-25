@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   applyColumnMap,
@@ -91,6 +92,8 @@ export interface InboundDocumentRow {
   totalAmount: number | null;
   createdAt: string;
   lineCount: number;
+  /** 대조 화면(PENDING·CLOSED만) 진입용 — 줄 상태 요약. 그 외 상태(DRAFT·DISCARDED)는 null. */
+  matchSummary: { completeLines: number; totalLines: number } | null;
 }
 
 interface EditableLine extends DocumentLine {
@@ -820,6 +823,25 @@ export function InboundDocumentPanel({
                             ? `품목 ${document.lineCount}줄`
                             : "원본만 보관 (내용 없음)"}
                         </span>
+                        {document.matchSummary ? (
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              borderRadius: "5px",
+                              padding: "2px 6px",
+                              color:
+                                document.matchSummary.completeLines === document.matchSummary.totalLines
+                                  ? "#065f46"
+                                  : "#1e40af",
+                              backgroundColor:
+                                document.matchSummary.completeLines === document.matchSummary.totalLines
+                                  ? "#d1fae5"
+                                  : "#dbeafe",
+                            }}
+                          >
+                            {document.matchSummary.completeLines}/{document.matchSummary.totalLines} 완료
+                          </span>
+                        ) : null}
                         {document.documentNo ? (
                           <span style={{ color: "#94a3b8", fontSize: "12px" }}>
                             {document.documentNo}
@@ -827,6 +849,11 @@ export function InboundDocumentPanel({
                         ) : null}
 
                         <span style={{ marginLeft: "auto", display: "flex", gap: "8px" }}>
+                          {(document.status === "PENDING" || document.status === "CLOSED") && (
+                            <Link href={`/dashboard/inbound/documents/${document.id}`} style={linkButton}>
+                              대조
+                            </Link>
+                          )}
                           {document.hasFile ? (
                             <button
                               type="button"
