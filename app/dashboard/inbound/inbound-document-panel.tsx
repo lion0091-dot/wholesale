@@ -38,6 +38,7 @@ import {
 } from "./document-actions";
 import type { ScanProductOption } from "./inbound-scan-view";
 import { decodeDocumentFileText } from "@/lib/livestock/document-file-text";
+import { isMultiCellPaste, pasteIntoLines } from "@/lib/livestock/statement-grid";
 
 /**
  * 공급처 명세서 올리기 (29단계 A).
@@ -421,7 +422,7 @@ export function InboundDocumentPanel({
   const startManualEntry = () => {
     setGrid(null);
     setColumnMap({});
-    setLines([emptyLine(1)]);
+    setLines(Array.from({ length: 10 }, (_, index) => emptyLine(index + 1)));
     setEntryMethod("MANUAL");
     setMode("review");
     setNotice(null);
@@ -595,6 +596,50 @@ export function InboundDocumentPanel({
     setColumnMap(next);
     setLines(applyColumnMap(grid, next).map((line) => ({ ...line, productId: null })));
   };
+
+  // 엑셀처럼 쓰는 표: Enter·↓는 아래 칸, Shift+Enter·↑는 위 칸(맨 아래에서 누르면 새 줄), 엑셀에서 복사한 여러 칸은 붙여넣기.
+  const focusGridCell = (lineNo: number, col: number) => {
+    window.setTimeout(() => {
+      document.querySelector<HTMLInputElement>(`[data-grid="${lineNo}:${col}"]`)?.focus();
+    }, 0);
+  };
+
+  const pasteIntoGrid = (startLineNo: number, startCol: number, text: string) => {
+    setLines((current) => pasteIntoLines(current, startLineNo - 1, startCol, text, (index) => emptyLine(index + 1)));
+  };
+
+  const gridProps = (lineNo: number, col: number) => ({
+    "data-grid": `${lineNo}:${col}`,
+    onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => {
+      // 한글을 조합하는 중의 Enter는 글자를 확정하는 키라 이동시키지 않는다.
+      if (event.nativeEvent.isComposing) return;
+
+      const down = (event.key === "Enter" && !event.shiftKey) || event.key === "ArrowDown";
+      const up = (event.key === "Enter" && event.shiftKey) || event.key === "ArrowUp";
+
+      if (!down && !up) return;
+
+      event.preventDefault();
+
+      const target = down ? lineNo + 1 : lineNo - 1;
+
+      if (target < 1) return;
+
+      if (down && target > lines.length) {
+        setLines((current) => [...current, emptyLine(current.length + 1)]);
+      }
+
+      focusGridCell(target, col);
+    },
+    onPaste: (event: React.ClipboardEvent<HTMLInputElement>) => {
+      const text = event.clipboardData.getData("text");
+
+      if (!isMultiCellPaste(text)) return;
+
+      event.preventDefault();
+      pasteIntoGrid(lineNo, col, text);
+    },
+  });
 
   const updateLine = (lineNo: number, patch: Partial<EditableLine>) => {
     setLines((current) =>
@@ -1381,6 +1426,10 @@ export function InboundDocumentPanel({
                 </div>
               ) : null}
 
+              <p style={{ margin: "0 0 6px", fontSize: "12px", color: "#64748b", lineHeight: 1.6 }}>
+                엑셀처럼 쓰세요 — <strong>Enter</strong>나 ↓는 아래 칸, <strong>Shift+Enter</strong>나 ↑는 위 칸으로 옮겨 가고,
+                맨 아래에서 Enter를 누르면 새 줄이 생깁니다. 엑셀·구글 시트에서 복사한 여러 칸은 첫 칸을 눌러 붙여넣으면 한 번에 채워집니다.
+              </p>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                   <thead>
@@ -1392,6 +1441,7 @@ export function InboundDocumentPanel({
                       <th style={thStyle}>부위</th>
                       <th style={thStyle}>등급</th>
                       <th style={thStyle}>원산지</th>
+                      <th style={thStyle}>수량</th>
                       <th style={thStyle}>중량(kg)</th>
                       <th style={thStyle}>단가</th>
                       <th style={thStyle}>금액</th>
@@ -1408,6 +1458,7 @@ export function InboundDocumentPanel({
                         <tr key={line.lineNo} style={{ borderTop: "1px solid #e2e8f0" }}>
                           <td style={tdStyle}>
                             <input
+                              {...gridProps(line.lineNo, 0)}
                               value={line.itemName ?? ""}
                               onChange={(event) =>
                                 updateLine(line.lineNo, { itemName: event.target.value || null })
@@ -1433,6 +1484,7 @@ export function InboundDocumentPanel({
                           </td>
                           <td style={tdStyle}>
                             <input
+                              {...gridProps(line.lineNo, 1)}
                               value={line.traceNo ?? ""}
                               onChange={(event) =>
                                 updateLine(line.lineNo, { traceNo: event.target.value || null })
@@ -1442,6 +1494,7 @@ export function InboundDocumentPanel({
                           </td>
                           <td style={tdStyle}>
                             <input
+                              {...gridProps(line.lineNo, 2)}
                               value={line.lotNo ?? ""}
                               onChange={(event) =>
                                 updateLine(line.lineNo, { lotNo: event.target.value || null })
@@ -1452,6 +1505,7 @@ export function InboundDocumentPanel({
                           </td>
                           <td style={tdStyle}>
                             <input
+                              {...gridProps(line.lineNo, 3)}
                               value={line.partName ?? ""}
                               onChange={(event) =>
                                 updateLine(line.lineNo, { partName: event.target.value || null })
@@ -1462,6 +1516,7 @@ export function InboundDocumentPanel({
                           </td>
                           <td style={tdStyle}>
                             <input
+                              {...gridProps(line.lineNo, 4)}
                               value={line.grade ?? ""}
                               onChange={(event) =>
                                 updateLine(line.lineNo, { grade: event.target.value || null })
@@ -1472,6 +1527,7 @@ export function InboundDocumentPanel({
                           </td>
                           <td style={tdStyle}>
                             <input
+                              {...gridProps(line.lineNo, 5)}
                               value={line.origin ?? ""}
                               onChange={(event) =>
                                 updateLine(line.lineNo, { origin: event.target.value || null })
@@ -1482,6 +1538,19 @@ export function InboundDocumentPanel({
                           </td>
                           <td style={tdStyle}>
                             <input
+                              {...gridProps(line.lineNo, 6)}
+                              value={line.quantity ?? ""}
+                              onChange={(event) =>
+                                updateLine(line.lineNo, { quantity: toNumber(event.target.value) })
+                              }
+                              inputMode="numeric"
+                              placeholder="1"
+                              style={{ ...cellInput, minWidth: "50px" }}
+                            />
+                          </td>
+                          <td style={tdStyle}>
+                            <input
+                              {...gridProps(line.lineNo, 7)}
                               value={line.labeledWeight ?? ""}
                               onChange={(event) =>
                                 updateLine(line.lineNo, {
@@ -1494,6 +1563,7 @@ export function InboundDocumentPanel({
                           </td>
                           <td style={tdStyle}>
                             <input
+                              {...gridProps(line.lineNo, 8)}
                               value={line.unitPrice ?? ""}
                               onChange={(event) =>
                                 updateLine(line.lineNo, { unitPrice: toNumber(event.target.value) })
@@ -1504,6 +1574,7 @@ export function InboundDocumentPanel({
                           </td>
                           <td style={tdStyle}>
                             <input
+                              {...gridProps(line.lineNo, 9)}
                               value={line.amount ?? ""}
                               onChange={(event) =>
                                 updateLine(line.lineNo, { amount: toNumber(event.target.value) })
