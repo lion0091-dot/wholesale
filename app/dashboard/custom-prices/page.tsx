@@ -8,6 +8,7 @@ import {
   type CustomerOption,
   type ProductOption,
 } from "./custom-price-manager";
+import { CustomerTabs } from "../section-tabs";
 
 export const metadata = {
   title: "맞춤 단가 관리 | 도매업체 통합관리시스템",
@@ -103,6 +104,7 @@ export default async function CustomPricesPage({ searchParams }: CustomPricesPag
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <CustomerTabs />
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>맞춤 단가 관리</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>

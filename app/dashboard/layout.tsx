@@ -20,37 +20,50 @@ export const metadata: Metadata = {
  * ready=false 항목은 아직 화면이 없어 '준비중'으로 표시한다.
  */
 const NAV_GROUPS: DashboardNavItem[][] = [
-  [{ label: "대시보드", href: "/dashboard", icon: "📊", ready: true }],
+  [{ label: "대시보드", href: "/dashboard", icon: "📊", ready: true, alsoActiveFor: ["/dashboard/stats"] }],
   [
     { label: "입고 스캔", href: "/dashboard/inbound", icon: "📦", ready: true },
     { label: "출고 스캔", href: "/dashboard/outbound", icon: "🚚", ready: true },
-    { label: "입출고 내역", href: "/dashboard/stock-ledger", icon: "🔄", ready: true },
+    {
+      label: "재고 · 매입 내역",
+      href: "/dashboard/stock-ledger",
+      icon: "🔄",
+      ready: true,
+      alsoActiveFor: ["/dashboard/purchases"],
+    },
     { label: "세트 상품", href: "/dashboard/bundles", icon: "🎁", ready: true },
-    { label: "매입 정산", href: "/dashboard/purchases", icon: "🧾", ready: true },
-    { label: "상품 관리", href: "/dashboard/products", icon: "🥩", ready: true },
-    { label: "맞춤 단가 관리", href: "/dashboard/custom-prices", icon: "🏷️", ready: true },
-    { label: "공공 시세", href: "/dashboard/market-prices", icon: "📉", ready: true },
+    {
+      label: "상품 관리",
+      href: "/dashboard/products",
+      icon: "🥩",
+      ready: true,
+      alsoActiveFor: ["/dashboard/market-prices"],
+    },
   ],
+  [{ label: "발주 관리", href: "/dashboard/orders", icon: "🧾", ready: true }],
   [
-    { label: "발주 관리", href: "/dashboard/orders", icon: "🧾", ready: true },
-    { label: "판매 통계", href: "/dashboard/stats", icon: "📈", ready: true },
+    {
+      label: "고객 관리",
+      href: "/dashboard/customers",
+      icon: "👥",
+      ready: true,
+      alsoActiveFor: ["/dashboard/custom-prices", "/dashboard/receivables"],
+    },
   ],
+  // 설정 — 초대장·업체 설정 / 팀원 / 구독료는 한 메뉴의 탭이다(app/dashboard/settings-tabs.tsx, 2026-09-25).
   [
-    { label: "고객 관리", href: "/dashboard/customers", icon: "👥", ready: true },
-    { label: "미수금 정산", href: "/dashboard/receivables", icon: "💰", ready: true },
-    { label: "영업 · 초대장", href: "/dashboard/invites", icon: "💬", ready: true },
-  ],
-  [
-    { label: "팀원 관리", href: "/dashboard/team", icon: "🧑‍🤝‍🧑", ready: true },
-    { label: "구독료 청구서", href: "/dashboard/billing", icon: "🧮", ready: true },
+    {
+      label: "설정",
+      href: "/dashboard/invites",
+      icon: "⚙️",
+      ready: true,
+      alsoActiveFor: ["/dashboard/team", "/dashboard/billing"],
+    },
   ],
   // 이력관리 — 각 화면에 흩어져 있던 "이력보기" 버튼을 전용 메뉴로 모았다(2026-09-21).
+  // 상품/맞춤단가/발주 3종은 한 메뉴의 탭이다(app/dashboard/history/layout.tsx, 2026-09-25).
   // 대상 찾기(검색) 후 기존 AuditLogPanel을 그대로 재사용해 이력을 보여준다.
-  [
-    { label: "상품 이력", href: "/dashboard/history/products", icon: "📜", ready: true },
-    { label: "맞춤단가 이력", href: "/dashboard/history/custom-prices", icon: "📜", ready: true },
-    { label: "발주 이력", href: "/dashboard/history/orders", icon: "📜", ready: true },
-  ],
+  [{ label: "이력 관리", href: "/dashboard/history", icon: "📜", ready: true }],
 ];
 
 const ORG_ROLE_LABELS: Record<string, string> = {

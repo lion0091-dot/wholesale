@@ -23,12 +23,9 @@ export default async function OrderHistoryPickerPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <header>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>발주 이력</h1>
-        <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          발주서를 찾아 상태·결제·배송 변경 이력을 확인합니다.
-        </p>
-      </header>
+      <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>
+        발주서를 찾아 상태·결제·배송 변경 이력을 확인합니다.
+      </p>
 
       <OrderHistoryPicker
         initialEntries={data.entries}

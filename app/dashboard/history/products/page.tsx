@@ -38,12 +38,9 @@ export default async function ProductHistoryPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <header>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>상품 이력</h1>
-        <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          상품을 골라 가격·단위·재고·판매상태 변경 이력을 확인합니다.
-        </p>
-      </header>
+      <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>
+        상품을 골라 가격·단위·재고·판매상태 변경 이력을 확인합니다.
+      </p>
 
       <HistoryPickerList
         tableName="products"

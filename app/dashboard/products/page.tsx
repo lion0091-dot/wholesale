@@ -11,6 +11,7 @@ import type { PriceCsvProduct } from "@/lib/products/price-import";
 
 import { SeedDefaultProductsButton } from "./seed-default-products-button";
 import type { Product } from "@/types/database";
+import { ProductTabs } from "../section-tabs";
 
 export const metadata = {
   title: "상품 관리 | 도매업체 통합관리시스템",
@@ -118,6 +119,7 @@ export default async function DashboardProductsPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <ProductTabs />
       <header
         style={{
           display: "flex",

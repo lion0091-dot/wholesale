@@ -7,6 +7,7 @@ import {
   type PurchaseSummary,
   type PurchaseProduct,
 } from "./purchase-settlement-view";
+import { StockTabs } from "../section-tabs";
 
 export const metadata = {
   title: "매입 정산 | 도매업체 통합관리시스템",
@@ -122,6 +123,7 @@ export default async function PurchasesPage({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      <StockTabs />
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>매입 정산</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>

@@ -12,6 +12,7 @@ import {
 import { countBilledRetailers, currentBillingMonthRangeUtc } from "@/lib/supplier/billed-retailers";
 import { getActiveEventDiscount } from "@/lib/supplier/platform-events";
 import type { SubscriptionStatus } from "@/types/database";
+import { SettingsHeader } from "../settings-tabs";
 
 export const metadata = {
   title: "구독료 청구서 | 도매업체 통합관리시스템",
@@ -92,12 +93,11 @@ export default async function DashboardBillingPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "560px" }}>
-      <header>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>구독료 청구서</h1>
-        <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          이번 달 실제로 발주(취소 제외)한 거래처 수를 기준으로 계산되는 구간별 누진 구독료입니다.
-        </p>
-      </header>
+      <SettingsHeader />
+
+      <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>
+        이번 달 실제로 발주(취소 제외)한 거래처 수를 기준으로 계산되는 구간별 누진 구독료입니다.
+      </p>
 
       <div
         style={{

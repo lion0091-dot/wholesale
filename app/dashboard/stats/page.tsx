@@ -4,6 +4,7 @@ import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { formatWon } from "@/lib/orders/status";
 import type { OrderItem, OrderStatus } from "@/types/database";
+import { DashboardTabs } from "../section-tabs";
 
 export const metadata = {
   title: "판매 통계 | 도매업체 통합관리시스템",
@@ -133,6 +134,7 @@ export default async function DashboardStatsPage({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <DashboardTabs />
       <header>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
           <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>판매 통계</h1>

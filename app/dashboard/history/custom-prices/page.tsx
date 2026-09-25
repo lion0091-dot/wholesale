@@ -18,12 +18,9 @@ export default async function CustomPriceHistoryPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <header>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>맞춤단가 이력</h1>
-        <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          거래처+상품을 골라 맞춤단가 변경 이력을 확인합니다.
-        </p>
-      </header>
+      <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>
+        거래처+상품을 골라 맞춤단가 변경 이력을 확인합니다.
+      </p>
 
       <HistoryPickerList
         tableName="custom_prices"

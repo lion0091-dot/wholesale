@@ -22,6 +22,8 @@ export interface SidebarNavItem {
   icon: string;
   /** false면 링크 대신 '준비중' 배지로 표시한다. 생략 시 true. */
   ready?: boolean;
+  /** 이 항목 아래 탭으로 묶인 다른 화면 경로 — 그 화면에서도 이 메뉴를 활성으로 표시한다. */
+  alsoActiveFor?: string[];
 }
 
 const navIconStyle: React.CSSProperties = {
@@ -92,12 +94,32 @@ export function SidebarShell({
     setSidebarOpen(false);
   }, [pathname]);
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const matchesPath = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+
+  // "/dashboard" 같은 상위 경로는 모든 하위 화면의 접두어라, 맞는 항목이 여럿이면 가장 길게 맞는
+  // 항목 하나만 활성으로 본다(그렇지 않으면 대시보드가 어느 화면에서든 켜지고 헤더 제목도 고정된다).
+  // 축약 메뉴에만 있는 화면(/dashboard/quick/*)도 후보에 넣는다.
+  const candidates = [...navGroups.flat(), ...(mobileNavGroups?.flat() ?? [])];
+  let activeHref: string | null = null;
+  let activeLabel: string | null = null;
+  let bestLength = -1;
+
+  for (const item of candidates) {
+    for (const href of [item.href, ...(item.alsoActiveFor ?? [])]) {
+      if (matchesPath(href) && href.length > bestLength) {
+        bestLength = href.length;
+        activeHref = item.href;
+        activeLabel = item.label;
+      }
+    }
+  }
+
+  const isActive = (item: SidebarNavItem) => item.href === activeHref;
 
   const displayedNavGroups = mobileNavGroups && isMobileViewport ? mobileNavGroups : navGroups;
-  // 라벨 조회는 항상 전체 메뉴(navGroups) 기준 — 축약 메뉴에 없는 페이지를 들어가도
-  // 헤더 제목이 fallbackLabel로 빠지지 않아야 한다.
-  const currentLabel = navGroups.flat().find((item) => isActive(item.href))?.label ?? fallbackLabel;
+  // 헤더 제목은 항상 전체 메뉴 기준으로 고른 항목의 이름 — 축약 메뉴에 없는 페이지를 들어가도
+  // fallbackLabel로 빠지지 않아야 한다.
+  const currentLabel = activeLabel ?? fallbackLabel;
 
   return (
     <div className="dash-shell" data-sidebar-open={sidebarOpen}>
@@ -127,7 +149,7 @@ export function SidebarShell({
                     key={item.href}
                     href={item.href}
                     className="dash-nav-link"
-                    data-active={isActive(item.href)}
+                    data-active={isActive(item)}
                   >
                     <span aria-hidden style={navIconStyle}>{item.icon}</span>
                     <span>{item.label}</span>

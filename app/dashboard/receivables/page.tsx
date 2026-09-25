@@ -10,6 +10,7 @@ import {
 import { formatWon } from "@/lib/orders/status";
 import { getAlimtalkSettingsAction } from "@/app/actions/alimtalk-settings";
 import { ReceivablesView } from "./receivables-view";
+import { CustomerTabs } from "../section-tabs";
 
 export const metadata = {
   title: "미수금 정산 | 도매업체 통합관리시스템",
@@ -68,6 +69,7 @@ export default async function DashboardReceivablesPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <CustomerTabs />
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>미수금 정산</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>

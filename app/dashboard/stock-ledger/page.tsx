@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { StockLedgerView, type LedgerRow, type LedgerSummary, type LedgerProduct } from "./stock-ledger-view";
+import { StockTabs } from "../section-tabs";
 
 export const metadata = {
   title: "입출고 내역 | 도매업체 통합관리시스템",
@@ -99,6 +100,7 @@ export default async function StockLedgerPage({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      <StockTabs />
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>입출고 내역</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>

@@ -21,6 +21,7 @@ import { NegotiationSettingsForm } from "./negotiation-settings-form";
 import { getNegotiationSettingsAction } from "@/app/actions/negotiation-settings";
 import { MinOrderAmountForm } from "./min-order-amount-form";
 import { getOrderPolicySettingsAction } from "@/app/actions/order-policy-settings";
+import { SettingsHeader } from "../settings-tabs";
 
 export const metadata = {
   title: "영업 · 초대장 | 도매업체 통합관리시스템",
@@ -72,12 +73,11 @@ export default async function DashboardInvitesPage() {
   if (!account) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        <header>
-          <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>영업 · 초대장</h1>
-          <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-            고객(소매)에게 보낼 미니샵 전용 초대장을 발부합니다.
-          </p>
-        </header>
+        <SettingsHeader />
+
+        <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>
+          고객(소매)에게 보낼 미니샵 전용 초대장을 발부합니다.
+        </p>
 
         <div
           style={{
@@ -139,13 +139,12 @@ export default async function DashboardInvitesPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <header>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>영업 · 초대장</h1>
-        <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px", lineHeight: 1.7 }}>
-          고객(소매)에게 보낼 미니샵 전용 초대장(카카오톡 문구 + 발주 링크)을 발부합니다. 링크를 받은
-          고객(소매)만 내 상품과 단가를 볼 수 있습니다.
-        </p>
-      </header>
+      <SettingsHeader />
+
+      <p style={{ fontSize: "13px", color: "#64748b", margin: 0, lineHeight: 1.7 }}>
+        고객(소매)에게 보낼 미니샵 전용 초대장(카카오톡 문구 + 발주 링크)을 발부합니다. 링크를 받은
+        고객(소매)만 내 상품과 단가를 볼 수 있습니다.
+      </p>
 
       {!canIssue && restriction && (
         <PendingApprovalBanner

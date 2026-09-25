@@ -9,6 +9,7 @@ import {
   getSupplierAccount,
 } from "@/lib/supplier/verification";
 import type { OrderStatus } from "@/types/database";
+import { DashboardTabs } from "./section-tabs";
 
 interface DashboardOrder {
   id: string;
@@ -185,6 +186,7 @@ export default async function DashboardPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <DashboardTabs />
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>
           {businessName ? `${businessName} ` : ""}대시보드
@@ -248,31 +250,6 @@ export default async function DashboardPage() {
           hint="미니샵에 노출되는 활성 상품"
           accent="#0f172a"
         />
-        <div style={cardStyle}>
-          <div style={{ fontSize: "12px", fontWeight: 700, color: "#64748b", marginBottom: "10px" }}>
-            바로가기
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <Link
-              href="/dashboard/products"
-              style={{ fontSize: "13px", fontWeight: 600, color: "#2563eb" }}
-            >
-              상품 등록 / 단가 수정 →
-            </Link>
-            <Link
-              href="/dashboard/custom-prices"
-              style={{ fontSize: "13px", fontWeight: 600, color: "#2563eb" }}
-            >
-              고객(소매)별 맞춤 단가 설정 →
-            </Link>
-            <Link
-              href="/dashboard/orders"
-              style={{ fontSize: "13px", fontWeight: 600, color: "#2563eb" }}
-            >
-              발주 접수 처리 →
-            </Link>
-          </div>
-        </div>
       </section>
 
       <section style={cardStyle}>

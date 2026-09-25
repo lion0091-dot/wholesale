@@ -1,4 +1,5 @@
 import { MarketPriceBoard } from "./market-price-board";
+import { ProductTabs } from "../section-tabs";
 
 /**
  * 공공 경락가 화면 (공급사 전용).
@@ -12,6 +13,7 @@ import { MarketPriceBoard } from "./market-price-board";
 export default function MarketPricesPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      <ProductTabs />
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>
           공공 시세

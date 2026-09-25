@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { getOrgStaffContext } from "@/lib/auth/rbac";
 import { listOrganizationStaff, listStaffInvitesAction } from "@/app/actions/organization";
 import { TeamManagementPanel } from "./team-management-panel";
+import { SettingsHeader } from "../settings-tabs";
 
 export const metadata = {
   title: "팀원 관리 | 미트 파트너스",
@@ -70,9 +71,10 @@ export default async function TeamPage() {
 
   return (
     <main style={{ maxWidth: "720px", margin: "0 auto", padding: "24px 16px" }}>
-      <header style={{ marginBottom: "20px" }}>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>팀원 관리</h1>
-        <p style={{ fontSize: "13px", color: "#64748b", marginTop: "6px", lineHeight: 1.6 }}>
+      <SettingsHeader />
+
+      <header style={{ margin: "16px 0 20px" }}>
+        <p style={{ fontSize: "13px", color: "#64748b", margin: 0, lineHeight: 1.6 }}>
           카카오 로그인만으로 직원을 합류시킵니다. 초대 링크를 만들어 직원에게 전달하면,
           그 직원이 본인 카카오 계정으로 로그인하는 순간 자동으로 팀에 합류합니다.
         </p>
