@@ -141,21 +141,29 @@ export default async function InboundPage() {
     }
 
     // 올린 명세서 목록. 저장만 되고 다시 열어볼 곳이 없으면 쓸모가 없어서 함께 내린다.
-    // 줄 수는 행마다 세면 N+1이라 관계 count로 한 번에 받는다.
+    // 대조 화면(29단계 B) 진입 배지용 줄 상태 요약에 필요한 줄·연결표·박스 상태까지
+    // 명세서 아래에 중첩해 한 번에 받는다 — 명세서 ≤30건이라 행 상한에 안 걸리고, 줄 id를
+    // 모아 .in()으로 다시 조회하지 않으므로 URL 길이 한도로 결과가 잘리는 일이 없다.
     const { data: documentRows } = await supabase
       .from("inbound_documents")
       .select(
-        "id, supplier_name, document_no, issued_on, file_name, storage_path, status, total_amount, created_at, scan_finished_at, inbound_document_lines(count)"
+        "id, supplier_name, document_no, issued_on, file_name, storage_path, status, total_amount, created_at, scan_finished_at, inbound_document_lines(id, quantity, inbound_document_line_scans(scan_id, inbound_scans(status)))"
       )
       .eq("wholesaler_id", scope.wholesalerId)
       .order("created_at", { ascending: false })
       .limit(30);
 
-    // 대조 화면(29단계 B) 진입 배지용 — PENDING·CLOSED 문서만 줄 상태를 요약한다.
-    // N개 문서마다 RPC를 부르지 않고 연결표를 한 번에 읽어 서버에서 센다(스펙 5번과 같은 원칙).
-    const matchTargetDocIds = ((documentRows ?? []) as Array<Record<string, unknown>>)
-      .filter((row) => row.status === "PENDING" || row.status === "CLOSED")
-      .map((row) => String(row.id));
+    type NestedDocumentLine = {
+      id: string;
+      quantity: number | null;
+      inbound_document_line_scans: Array<{
+        scan_id: string;
+        inbound_scans: { status: string } | { status: string }[] | null;
+      }> | null;
+    };
+
+    // 카드 버튼이 #scan-<id>로 이동하므로, 화면에 실제로 그려진(최근 100건) 박스만 후보로 삼는다.
+    const visibleScanIds = new Set(((scanRows ?? []) as Array<{ id: string }>).map((row) => String(row.id)));
 
     const matchSummaryByDocId = new Map<
       string,
@@ -168,72 +176,56 @@ export default async function InboundPage() {
       }
     >();
 
-    if (matchTargetDocIds.length > 0) {
-      const { data: matchLineRows } = await supabase
-        .from("inbound_document_lines")
-        .select("id, document_id, quantity")
-        .in("document_id", matchTargetDocIds);
+    ((documentRows ?? []) as Array<Record<string, unknown>>).forEach((row) => {
+      if (row.status !== "PENDING" && row.status !== "CLOSED") return;
 
-      const matchLines = (matchLineRows ?? []) as Array<{ id: string; document_id: string; quantity: number | null }>;
-      const matchLineIds = matchLines.map((row) => String(row.id));
+      const lines = (row.inbound_document_lines as NestedDocumentLine[] | null) ?? [];
 
-      const { data: matchLinkRows } =
-        matchLineIds.length > 0
-          ? await supabase
-              .from("inbound_document_line_scans")
-              .select("line_id, scan_id, inbound_scans(status)")
-              .in("line_id", matchLineIds)
-          : { data: [] as Array<Record<string, unknown>> };
+      if (lines.length === 0) return;
 
-      const linkedCountByLineId = new Map<string, number>();
-      const docIdByLineId = new Map(matchLines.map((line) => [String(line.id), String(line.document_id)]));
-      const unresolvedByDocId = new Map<string, number>();
-      const firstUnresolvedScanByDocId = new Map<string, string>();
+      const summary = {
+        completeLines: 0,
+        totalLines: 0,
+        partialBoxesRemaining: 0,
+        unresolvedBoxes: 0,
+        firstUnresolvedScanId: null as string | null,
+      };
 
-      ((matchLinkRows ?? []) as Array<Record<string, unknown>>).forEach((row) => {
-        const scan = row.inbound_scans as { status: string } | { status: string }[] | null;
-        const scanStatus = Array.isArray(scan) ? scan[0]?.status : scan?.status;
+      lines.forEach((line) => {
+        let linked = 0;
 
-        if (scanStatus === "VOIDED") return;
+        (line.inbound_document_line_scans ?? []).forEach((link) => {
+          const scan = Array.isArray(link.inbound_scans) ? link.inbound_scans[0] : link.inbound_scans;
+          const scanStatus = scan?.status;
 
-        // 명세서와 이어졌어도 상품이 안 정해진 박스는 재고에 아직 안 들어간다.
-        if (scanStatus === "EXCEPTION" || scanStatus === "PENDING_MAPPING") {
-          const docId = docIdByLineId.get(String(row.line_id));
+          if (scanStatus === "VOIDED") return;
 
-          if (docId) {
-            unresolvedByDocId.set(docId, (unresolvedByDocId.get(docId) ?? 0) + 1);
-            if (!firstUnresolvedScanByDocId.has(docId)) firstUnresolvedScanByDocId.set(docId, String(row.scan_id));
+          // 명세서와 이어졌어도 상품이 안 정해진 박스는 재고에 아직 안 들어간다.
+          if (scanStatus === "EXCEPTION" || scanStatus === "PENDING_MAPPING") {
+            summary.unresolvedBoxes += 1;
+
+            if (!summary.firstUnresolvedScanId && visibleScanIds.has(String(link.scan_id))) {
+              summary.firstUnresolvedScanId = String(link.scan_id);
+            }
           }
-        }
 
-        const lineId = String(row.line_id);
+          linked += 1;
+        });
 
-        linkedCountByLineId.set(lineId, (linkedCountByLineId.get(lineId) ?? 0) + 1);
-      });
-
-      matchLines.forEach((line) => {
         const expected = documentLineExpectedQty(line.quantity === null ? null : Number(line.quantity));
-        const linked = linkedCountByLineId.get(String(line.id)) ?? 0;
         const status = documentLineMatchStatus(expected, linked);
-        const docId = String(line.document_id);
-        const current = matchSummaryByDocId.get(docId) ?? {
-          completeLines: 0,
-          totalLines: 0,
-          partialBoxesRemaining: 0,
-          unresolvedBoxes: unresolvedByDocId.get(docId) ?? 0,
-          firstUnresolvedScanId: firstUnresolvedScanByDocId.get(docId) ?? null,
-        };
 
-        current.totalLines += 1;
-        if (status === "COMPLETE") current.completeLines += 1;
+        summary.totalLines += 1;
+        if (status === "COMPLETE") summary.completeLines += 1;
         // 일부만 온 줄은 모자란 박스가 더 와야 한다 — 이건 맞춰 볼 일이 아니라 찍을 일이다.
-        if (status === "PARTIAL") current.partialBoxesRemaining += expected - linked;
-        matchSummaryByDocId.set(docId, current);
+        if (status === "PARTIAL") summary.partialBoxesRemaining += expected - linked;
       });
-    }
+
+      matchSummaryByDocId.set(String(row.id), summary);
+    });
 
     documents = ((documentRows ?? []) as Array<Record<string, unknown>>).map((row) => {
-      const counts = row.inbound_document_lines as Array<{ count: number }> | null;
+      const documentLines = (row.inbound_document_lines as unknown[] | null) ?? [];
 
       return {
         id: String(row.id),
@@ -245,7 +237,7 @@ export default async function InboundPage() {
         status: String(row.status),
         totalAmount: row.total_amount === null ? null : Number(row.total_amount),
         createdAt: String(row.created_at),
-        lineCount: counts?.[0]?.count ?? 0,
+        lineCount: documentLines.length,
         scanFinished: Boolean(row.scan_finished_at),
         matchSummary: matchSummaryByDocId.get(String(row.id)) ?? null,
       };

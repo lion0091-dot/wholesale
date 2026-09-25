@@ -155,4 +155,34 @@ describe("pickInboundNextStep", () => {
     expect(closing.waitNote?.who).toBe("현장");
     expect(pickInboundNextStep(base).waitNote).toBeNull();
   });
+
+  it("스캔 종료·스캔 중 카드는 안 온 박스가 남은 명세서로 보낸다(가장 오래된 명세서가 아니라)", () => {
+    const docs = [
+      { id: "old", scanFinished: true, completeLines: 2, totalLines: 2 },
+      { id: "new", scanFinished: true, completeLines: 0, totalLines: 2 },
+    ];
+    const finished = pickInboundNextStep({ ...base, pendingDocuments: docs, remainingBoxCount: 2 });
+    const scanning = pickInboundNextStep({
+      ...base,
+      pendingDocuments: docs.map((doc) => ({ ...doc, scanFinished: false })),
+      remainingBoxCount: 2,
+    });
+
+    expect(finished.key).toBe("scan-finished");
+    expect(finished.href).toBe("/dashboard/inbound/documents/new");
+    expect(scanning.secondaries[1].href).toBe("/dashboard/inbound/documents/new");
+  });
+
+  it("상품 미지정 박스가 있는 명세서로 '그래도 마감하러 가기'를 보낸다", () => {
+    const step = pickInboundNextStep({
+      ...base,
+      pendingDocuments: [
+        { id: "clean", completeLines: 1, totalLines: 1 },
+        { id: "dirty", completeLines: 1, totalLines: 1, unresolvedBoxes: 1, firstUnresolvedScanId: "s1" },
+      ],
+    });
+
+    expect(step.href).toBe("#scan-s1");
+    expect(step.secondaries[0].href).toBe("/dashboard/inbound/documents/dirty");
+  });
 });

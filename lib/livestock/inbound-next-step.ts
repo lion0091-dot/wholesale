@@ -65,6 +65,11 @@ export function documentReconcileHref(documentId: string): string {
   return `/dashboard/inbound/documents/${documentId}`;
 }
 
+/** 대조가 필요한 명세서로 안내한다 — 줄이 다 맞은 명세서가 아니라 안 온 박스가 남은 쪽이어야 사무실이 바로 처리한다. */
+function pickAttentionDocument(docs: InboundNextStepInput["pendingDocuments"]) {
+  return docs.find((doc) => doc.completeLines < doc.totalLines) ?? docs[0];
+}
+
 export function pickInboundNextStep(input: InboundNextStepInput): InboundNextStep {
   const { pendingDocuments, remainingBoxCount, needsCheckScanCount, firstNeedsCheckScanId } = input;
 
@@ -78,7 +83,7 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
         detail: `안 온 박스 ${remainingBoxCount}개가 남았습니다. 안 온 물건과 사유를 확인하고 마감하세요.`,
         waitNote: { who: "현장", text: "스캔 종료를 알렸습니다. 사무실이 확인하는 중입니다. 박스가 더 오면 스캔 화면에서 '스캔 다시 시작'을 누르세요." },
         buttonLabel: "확인·마감하기",
-        href: documentReconcileHref(pendingDocuments[0].id),
+        href: documentReconcileHref(pickAttentionDocument(pendingDocuments).id),
         secondaries: [{ label: "현장: 스캔 화면으로 이동", href: INBOUND_ANCHORS.scanForm }],
       };
     }
@@ -96,7 +101,7 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
         secondaries: [
           { label: "현장: 스캔 화면으로 이동", href: INBOUND_ANCHORS.scanForm },
           // 공급처가 물건을 덜 보냈으면 박스는 끝내 다 안 온다 — 이때는 안 온 물건을 사유와 함께 남기고 마감한다.
-          { label: "박스가 다 안 왔어도 확인·마감하기 (사무실)", href: documentReconcileHref(pendingDocuments[0].id) },
+          { label: "박스가 다 안 왔어도 확인·마감하기 (사무실)", href: documentReconcileHref(pickAttentionDocument(pendingDocuments).id) },
         ],
       };
     }
@@ -130,7 +135,12 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
         waitNote: null,
         buttonLabel: "상품 지정하러 가기",
         href: firstUnresolvedScanId ? `#scan-${firstUnresolvedScanId}` : INBOUND_ANCHORS.history,
-        secondaries: [{ label: "그래도 마감하러 가기", href: documentReconcileHref(pendingDocuments[0].id) }],
+        secondaries: [
+          {
+            label: "그래도 마감하러 가기",
+            href: documentReconcileHref((pendingDocuments.find((doc) => (doc.unresolvedBoxes ?? 0) > 0) ?? pendingDocuments[0]).id),
+          },
+        ],
       };
     }
 

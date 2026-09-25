@@ -22,15 +22,33 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
   const [closing, setClosing] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
 
-  // 현장 진행 상황을 기다리는 카드(스캔 중)는 30초마다 새로 불러와, 스캔 종료·전부 도착이 사무실 화면에 저절로 뜨게 한다.
+  // 현장 진행 상황을 기다리는 카드(스캔 중·스캔 종료)는 새로 불러와, 스캔 종료·다시 시작·전부 도착이
+  // 사무실 화면에 저절로 뜨게 한다. 스캔 종료 카드도 포함해야 현장이 '스캔 다시 시작'을 눌렀을 때
+  // 사무실이 낡은 화면으로 마감하지 않는다. 숨은 탭은 건너뛰고, 탭으로 돌아오는 즉시 한 번 새로 불러온다.
   useEffect(() => {
-    if (step.key !== "scan") return;
+    if (step.key !== "scan" && step.key !== "scan-finished") return;
+
+    let lastRefreshAt = Date.now();
+
+    const refresh = () => {
+      lastRefreshAt = Date.now();
+      router.refresh();
+    };
 
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") router.refresh();
-    }, 30_000);
+      if (document.visibilityState === "visible") refresh();
+    }, 60_000);
 
-    return () => window.clearInterval(timer);
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && Date.now() - lastRefreshAt > 10_000) refresh();
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [step.key, router]);
 
   const closeNow = async () => {
