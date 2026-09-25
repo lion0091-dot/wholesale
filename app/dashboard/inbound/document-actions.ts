@@ -43,6 +43,8 @@ export interface DocumentLineInput {
   itemName?: string | null;
   productId?: string | null;
   traceNo?: string | null;
+  /** 묶음(로트)번호 — 이력번호와 두 칸으로 나란히 오는 서식에서만. 묶음번호만 있는 서식은 traceNo로 온다. */
+  lotNo?: string | null;
   partName?: string | null;
   grade?: string | null;
   origin?: string | null;
@@ -101,29 +103,43 @@ export interface DocumentPrelookupProgress {
  * recordInboundScanAction 안 로직과 동일 패턴) — 다만 여기는 스캔 전에 서류만
  * 갖고 미리 하는 것이라 실패해도 서류 저장 자체를 막지 않는다.
  */
+interface TraceCheck {
+  found: boolean;
+  notConfigured: boolean;
+  unregisteredMembers: string[];
+  /** 로트면 그 구성 개체번호 목록(캐시에서도 되읽는다). 개체·조회 실패면 null. 두 칸 서식의 구성원 대조에 쓴다. */
+  memberTraceNos: string[] | null;
+}
+
 async function ensureTraceCached(
   supabase: Awaited<ReturnType<typeof createClient>>,
   traceNo: string
-): Promise<{ found: boolean; notConfigured: boolean; unregisteredMembers: string[] }> {
+): Promise<TraceCheck> {
   const { data: cached } = await supabase
     .from("master_livestock")
-    .select("trace_no")
+    .select("trace_no, trace_kind, raw_payload")
     .eq("trace_no", traceNo)
     .maybeSingle();
 
   if (cached) {
-    return { found: true, notConfigured: false, unregisteredMembers: [] };
+    return {
+      found: true,
+      notConfigured: false,
+      unregisteredMembers: [],
+      memberTraceNos:
+        (cached.trace_kind as string | null) === "group" ? extractGroupMemberTraceNos(cached.raw_payload) : null,
+    };
   }
 
   if (!isMtraceConfigured()) {
-    return { found: false, notConfigured: true, unregisteredMembers: [] };
+    return { found: false, notConfigured: true, unregisteredMembers: [], memberTraceNos: null };
   }
 
   try {
     const record = await fetchTraceRecord(traceNo);
 
     if (!record) {
-      return { found: false, notConfigured: false, unregisteredMembers: [] };
+      return { found: false, notConfigured: false, unregisteredMembers: [], memberTraceNos: null };
     }
 
     // 공용 캐시 적재는 service_role로만 (lib/livestock/master-cache.ts). 저장 실패는
@@ -135,9 +151,10 @@ async function ensureTraceCached(
     // 조회결과에 이력번호가 있고, 그 이력번호로도 조회가 돼야 한다). 가공장이
     // 로트 구성내역을 잘못 입력해 허위/누락 번호가 섞이는 경우가 실제로 흔하다.
     let unregisteredMembers: string[] = [];
+    let memberTraceNos: string[] | null = null;
 
     if (record.traceKind === "group") {
-      const memberTraceNos = extractGroupMemberTraceNos(record.rawPayload);
+      memberTraceNos = extractGroupMemberTraceNos(record.rawPayload);
 
       const memberChecks = await Promise.all(
         memberTraceNos.map(async (memberTraceNo) => {
@@ -159,7 +176,7 @@ async function ensureTraceCached(
       unregisteredMembers = memberChecks.filter((check) => !check.ok).map((check) => check.memberTraceNo);
     }
 
-    return { found: true, notConfigured: false, unregisteredMembers };
+    return { found: true, notConfigured: false, unregisteredMembers, memberTraceNos };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[inbound-document] ${traceNo} 사전 이력 조회 실패:`, message);
@@ -167,8 +184,74 @@ async function ensureTraceCached(
       found: false,
       notConfigured: error instanceof MtraceNotConfiguredError,
       unregisteredMembers: [],
+      memberTraceNos: null,
     };
   }
+}
+
+/**
+ * 한 줄의 이력번호·묶음번호를 함께 판정한다.
+ *
+ * 두 칸 서식(묶음번호 열 + 개체번호 열)이면 둘 다 조회하고, 로트 조회 결과의 구성원 목록에 그 개체가
+ * 있는지까지 대조한다 — 가공장이 로트 구성내역을 잘못 적거나 명세서의 두 칸이 어긋난 경우를 잡는다.
+ * 한 칸만 있으면 예전과 같다.
+ */
+async function checkDocumentLineNumbers(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  traceNo: string | null,
+  lotNo: string | null
+): Promise<{ notConfigured: boolean; failures: Array<{ message: string; numbers: string[] }> }> {
+  const failures: Array<{ message: string; numbers: string[] }> = [];
+  let notConfigured = false;
+
+  const traceCheck = traceNo ? await ensureTraceCached(supabase, traceNo) : null;
+  const lotCheck = lotNo ? await ensureTraceCached(supabase, lotNo) : null;
+
+  for (const [label, number, check] of [
+    ["이력번호", traceNo, traceCheck],
+    ["묶음번호", lotNo, lotCheck],
+  ] as const) {
+    if (!check || !number) continue;
+
+    if (check.notConfigured) {
+      notConfigured = true;
+    } else if (!check.found) {
+      failures.push({ message: `${label} ${number} 정부 이력조회에서 확인되지 않음`, numbers: [number] });
+    } else if (check.unregisteredMembers.length > 0) {
+      failures.push({
+        message: `로트 ${number} 구성원 미등록: ${check.unregisteredMembers.join(", ")}`,
+        numbers: check.unregisteredMembers,
+      });
+    }
+  }
+
+  // 구성원 대조 — 로트 조회가 됐고 구성원 목록이 있을 때만. 목록이 비어 있으면(응답 구조가 다른 경우) 판단하지 않는다.
+  if (
+    traceNo &&
+    lotNo &&
+    traceCheck?.found &&
+    lotCheck?.found &&
+    lotCheck.memberTraceNos &&
+    lotCheck.memberTraceNos.length > 0 &&
+    !lotCheck.memberTraceNos.some((member) => member.toUpperCase() === traceNo)
+  ) {
+    failures.push({
+      message: `이력번호 ${traceNo}는 묶음번호 ${lotNo}의 구성원이 아님 (구성원 ${lotCheck.memberTraceNos.length}개 중 없음)`,
+      numbers: [traceNo, lotNo],
+    });
+  }
+
+  return { notConfigured, failures };
+}
+
+/** 실패 사유를 한 줄로 저장하되, 공급처에 확인 요청할 번호를 앞머리에 정해진 형식으로 적어 되읽을 수 있게 한다. */
+const FAILED_NUMBERS_PREFIX = "확인 필요 번호: ";
+const FAILED_NUMBERS_SEPARATOR = " — ";
+
+function formatPrelookupError(failures: Array<{ message: string; numbers: string[] }>): string {
+  const numbers = [...new Set(failures.flatMap((failure) => failure.numbers))];
+
+  return `${FAILED_NUMBERS_PREFIX}${numbers.join(", ")}${FAILED_NUMBERS_SEPARATOR}${failures.map((f) => f.message).join("; ")}`;
 }
 
 /**
@@ -207,16 +290,34 @@ const DISCARD_SKIPPED_PRELOOKUP_ERROR = "서류 취소로 조회를 건너뜀";
  * 번호를 확인해달라는 잘못된 안내가 된다. 에러 메시지에 적어둔 실제 미등록
  * 개체번호를 대신 보여준다.
  */
-function extractFailedTraceNos(row: { trace_no: string | null; prelookup_error: string | null }): string[] {
-  if (row.prelookup_error?.startsWith(LOT_MEMBER_MISSING_PREFIX)) {
-    return row.prelookup_error
+function extractFailedTraceNos(row: {
+  trace_no: string | null;
+  lot_no?: string | null;
+  prelookup_error: string | null;
+}): string[] {
+  const error = row.prelookup_error ?? "";
+
+  // 새 형식(두 칸 서식 이후): "확인 필요 번호: a, b — 사유"
+  if (error.startsWith(FAILED_NUMBERS_PREFIX)) {
+    const end = error.indexOf(FAILED_NUMBERS_SEPARATOR);
+    const list = error.slice(FAILED_NUMBERS_PREFIX.length, end === -1 ? undefined : end);
+
+    return list
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+
+  // 옛 형식(이미 저장된 줄) — 로트 구성원 미등록
+  if (error.startsWith(LOT_MEMBER_MISSING_PREFIX)) {
+    return error
       .slice(LOT_MEMBER_MISSING_PREFIX.length)
       .split(",")
       .map((v) => v.trim())
       .filter(Boolean);
   }
 
-  return row.trace_no ? [row.trace_no] : [];
+  return [row.trace_no, row.lot_no ?? null].filter((v): v is string => Boolean(v));
 }
 
 async function loadPrelookupProgress(
@@ -225,13 +326,14 @@ async function loadPrelookupProgress(
 ): Promise<Omit<DocumentPrelookupProgress, "documentId">> {
   const { data } = await supabase
     .from("inbound_document_lines")
-    .select("prelookup_status, trace_no, prelookup_error")
+    .select("prelookup_status, trace_no, lot_no, prelookup_error")
     .eq("document_id", documentId)
     .not("prelookup_status", "is", null);
 
   const rows = (data ?? []) as Array<{
     prelookup_status: string;
     trace_no: string | null;
+    lot_no: string | null;
     prelookup_error: string | null;
   }>;
   const done = rows.filter((row) => row.prelookup_status === "DONE").length;
@@ -273,13 +375,13 @@ export async function processDocumentPrelookupChunkAction(
 
     const { data: pendingLines } = await supabase
       .from("inbound_document_lines")
-      .select("id, trace_no")
+      .select("id, trace_no, lot_no")
       .eq("document_id", documentId)
       .eq("prelookup_status", "PENDING")
       .order("line_no", { ascending: true })
       .limit(PRELOOKUP_CHUNK_MAX_ROWS);
 
-    const rows = (pendingLines ?? []) as Array<{ id: string; trace_no: string | null }>;
+    const rows = (pendingLines ?? []) as Array<{ id: string; trace_no: string | null; lot_no: string | null }>;
     const startedAt = Date.now();
 
     for (const row of rows) {
@@ -287,40 +389,27 @@ export async function processDocumentPrelookupChunkAction(
         break;
       }
 
-      const traceNo = (row.trace_no ?? "").trim().toUpperCase();
+      // 조회 가능한 형태만 넘긴다 — 정식 형태가 아닌 값(공급처 자체 코드 등)은 조회 대상이 아니다.
+      const traceNo = isEligibleForPrelookup(row.trace_no) ? row.trace_no!.trim().toUpperCase() : null;
+      const lotNo = isEligibleForPrelookup(row.lot_no) ? row.lot_no!.trim().toUpperCase() : null;
 
       // 아래 update들은 전부 .eq("prelookup_status", "PENDING")로 걸어서, 같은 줄을
       // 두 요청(탭 두 개 등)이 동시에 처리해도 나중 응답이 먼저 응답을 덮어쓰지
       // 않게 한다(정부 API 중복 호출 자체는 막지 못하지만 최종 기록은 안전하다).
       try {
-        const check = await ensureTraceCached(supabase, traceNo);
+        const { notConfigured, failures } = await checkDocumentLineNumbers(supabase, traceNo, lotNo);
 
-        if (check.notConfigured) {
+        if (notConfigured || failures.length === 0) {
           // 인증키 미설정은 공급처 잘못이 아니다 — 재시도해도 의미 없으니 DONE으로 넘긴다.
           await supabase
             .from("inbound_document_lines")
             .update({ prelookup_status: "DONE", prelookup_error: null })
             .eq("id", row.id)
             .eq("prelookup_status", "PENDING");
-        } else if (check.found && check.unregisteredMembers.length === 0) {
-          await supabase
-            .from("inbound_document_lines")
-            .update({ prelookup_status: "DONE", prelookup_error: null })
-            .eq("id", row.id)
-            .eq("prelookup_status", "PENDING");
-        } else if (check.found) {
-          await supabase
-            .from("inbound_document_lines")
-            .update({
-              prelookup_status: "FAILED",
-              prelookup_error: `${LOT_MEMBER_MISSING_PREFIX}${check.unregisteredMembers.join(", ")}`,
-            })
-            .eq("id", row.id)
-            .eq("prelookup_status", "PENDING");
         } else {
           await supabase
             .from("inbound_document_lines")
-            .update({ prelookup_status: "FAILED", prelookup_error: "정부 이력조회에서 확인되지 않음" })
+            .update({ prelookup_status: "FAILED", prelookup_error: formatPrelookupError(failures) })
             .eq("id", row.id)
             .eq("prelookup_status", "PENDING");
         }
@@ -580,15 +669,18 @@ export async function saveInboundDocumentAction(
     // 적는 경우가 흔함) 대표 한 줄만 조회 대상으로 삼는다 — 나머지도 전부 PENDING
     // 으로 걸면 조회 자체는 캐시로 금방 끝나도 청크당 처리 건수(20건)만 갉아먹어
     // 정작 새로운 번호 처리가 뒤로 밀린다.
-    const seenPrelookupTraceNos = new Set<string>();
+    // 두 칸 서식은 (이력번호, 묶음번호) 짝이 조회 단위다 — 같은 로트가 여러 줄에 반복돼도 개체가 다르면 따로 대조한다.
+    const seenPrelookupKeys = new Set<string>();
 
     const lineRows = lines.map((line, index) => {
-      const eligible = isEligibleForPrelookup(line.traceNo);
-      const normalizedTraceNo = (line.traceNo ?? "").trim().toUpperCase();
-      const isFirstOccurrence = eligible && !seenPrelookupTraceNos.has(normalizedTraceNo);
+      const traceEligible = isEligibleForPrelookup(line.traceNo);
+      const lotEligible = isEligibleForPrelookup(line.lotNo);
+      const eligible = traceEligible || lotEligible;
+      const key = `${traceEligible ? (line.traceNo ?? "").trim().toUpperCase() : ""}|${lotEligible ? (line.lotNo ?? "").trim().toUpperCase() : ""}`;
+      const isFirstOccurrence = eligible && !seenPrelookupKeys.has(key);
 
       if (eligible) {
-        seenPrelookupTraceNos.add(normalizedTraceNo);
+        seenPrelookupKeys.add(key);
       }
 
       return {
@@ -600,6 +692,7 @@ export async function saveInboundDocumentAction(
         // 스캔 쪽은 항상 대문자로 정규화하므로 여기서도 맞춘다 — 소문자 'l'로 적힌
         // 로트번호가 자동 상품 확정에서 빠지던 문제(2026-09-24 점검).
         trace_no: line.traceNo?.trim().toUpperCase() || null,
+        lot_no: line.lotNo?.trim().toUpperCase() || null,
         part_name: line.partName?.trim() || null,
         grade: line.grade?.trim() || null,
         origin: line.origin?.trim() || null,

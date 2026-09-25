@@ -80,8 +80,42 @@ function lineGapsFor(
   productOrigin: string | null,
 ): Gap[] {
   const gaps: Gap[] = [];
+  // 조회에 쓸 수 있는 번호 — 두 칸 서식에서 이력번호 칸이 비고 묶음번호만 있어도 조회는 된다.
+  const anyTraceNo = line.traceNo ?? line.lotNo;
+  // 원문 한 줄의 번호 여럿을 나눈 뒷줄. 중량·금액은 첫 줄에 합계로 있으므로 여기서 "없다"고 하면 틀린 안내다.
+  const isSplitTail = line.splitOf !== null && line.splitOf.index > 0;
 
-  if (!line.itemName && !line.traceNo) {
+  if (line.splitOf) {
+    gaps.push(
+      isSplitTail
+        ? {
+            code: "TRACE_SPLIT_TAIL",
+            level: "RECOMMENDED",
+            source: "FROM_STAFF",
+            label: `원문 한 줄에 이력번호 ${line.splitOf.count}개가 있어 나눈 줄입니다 (${line.splitOf.index + 1}/${line.splitOf.count}) — 중량·금액은 첫 줄에 합계로 두었습니다`,
+            why: "박스별 중량은 서류가 말해주지 않아 나눠 추정하지 않았습니다. 박스별로 알면 여기 적어주세요. 모르면 그대로 두어도 됩니다 — 창고 저울이 실중량을 채웁니다.",
+          }
+        : {
+            code: "TRACE_SPLIT_HEAD",
+            level: "RECOMMENDED",
+            source: "FROM_STAFF",
+            label: `이 줄의 중량·수량·금액은 이력번호 ${line.splitOf.count}개(아래 ${line.splitOf.count - 1}줄 포함) 합계입니다`,
+            why: "원문 한 줄에 이력번호가 여럿 적혀 있어 번호마다 줄을 나눴습니다. 합계는 첫 줄에만 남겼습니다.",
+          },
+    );
+  }
+
+  if (line.traceTruncated) {
+    gaps.push({
+      code: "TRACE_TRUNCATED",
+      level: "RECOMMENDED",
+      source: "FROM_STAFF",
+      label: "이력번호가 엑셀 과학표기(예: 1.4E+11)로 잘려 와서 복원할 수 없습니다",
+      why: "엑셀이 긴 숫자를 줄여서 내보내 뒷자리가 사라졌습니다. 원본 엑셀에서 이력번호 열을 '텍스트' 형식으로 바꿔 다시 내보내거나, 번호를 직접 적어주세요.",
+    });
+  }
+
+  if (!line.itemName && !anyTraceNo) {
     gaps.push({
       code: "ITEM_UNKNOWN",
       level: "REQUIRED",
@@ -99,7 +133,7 @@ function lineGapsFor(
     });
   }
 
-  if (line.labeledWeight === null) {
+  if (line.labeledWeight === null && !isSplitTail) {
     gaps.push({
       code: "WEIGHT_MISSING",
       level: "REQUIRED",
@@ -110,7 +144,7 @@ function lineGapsFor(
   }
 
   // 단가와 금액 중 하나만 있어도 중량으로 나머지를 계산할 수 있다.
-  if (line.unitPrice === null && line.amount === null) {
+  if (line.unitPrice === null && line.amount === null && !isSplitTail) {
     gaps.push({
       code: "PRICE_MISSING",
       level: "REQUIRED",
@@ -120,7 +154,7 @@ function lineGapsFor(
     });
   }
 
-  if (!line.traceNo) {
+  if (!anyTraceNo && !line.traceTruncated) {
     gaps.push({
       code: "TRACE_MISSING",
       level: "RECOMMENDED",
@@ -162,10 +196,22 @@ function lineGapsFor(
     }
   }
 
+  // 묶음번호 칸과 이력번호 칸이 나란히 있는데 종류가 뒤바뀌어 있다(묶음 칸에 12자리 개체번호,
+  // 이력 칸에 L… 묶음번호). 칸 단위 판정(buildGrid)은 다수결이라 한 줄만 뒤바뀐 건 여기서 짚는다.
+  if (line.traceNo && line.lotNo && /^\d{12}$/.test(line.lotNo.trim()) && /^(L\d{14}|\d{15})$/i.test(traceNo)) {
+    gaps.push({
+      code: "LOT_TRACE_SWAPPED",
+      level: "RECOMMENDED",
+      source: "FROM_STAFF",
+      label: "이력번호 칸에 묶음번호가, 묶음번호 칸에 개체번호가 들어 있습니다 — 서로 바뀐 것 같습니다",
+      why: "개체번호는 12자리 숫자, 묶음번호는 L로 시작하는 15자리입니다. 이대로 두면 사전조회가 구성원 대조를 잘못합니다.",
+    });
+  }
+
   // 등급은 그 자체로 필수가 아니다 — 이력번호가 있으면 공공조회가 채워준다.
   // 하지만 둘 다 없으면 품질을 알 길이 아예 없다. 등급은 축산물 가격을 좌우하므로
   // 그 경우에만 짚는다 (사장님 확정: "필수는 아니고 있으면 받기").
-  if (!line.grade && !line.traceNo) {
+  if (!line.grade && !anyTraceNo) {
     gaps.push({
       code: "GRADE_UNKNOWN",
       level: "RECOMMENDED",
@@ -177,7 +223,7 @@ function lineGapsFor(
 
   // 원산지는 필수다(사장님 확정 2026-09-23). 알 수 있는 경로가 셋이라
   // 셋 다 막혔을 때만 걸린다 — 서류 기재 / 이력번호로 공공조회 / 연결된 상품.
-  if (!line.origin && !line.traceNo && !resolvedProductId) {
+  if (!line.origin && !anyTraceNo && !resolvedProductId) {
     gaps.push({
       code: "ORIGIN_UNKNOWN",
       level: "REQUIRED",

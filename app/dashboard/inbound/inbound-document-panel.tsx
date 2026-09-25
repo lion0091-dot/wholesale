@@ -44,6 +44,7 @@ import type { ScanProductOption } from "./inbound-scan-view";
 const FIELD_LABELS: Record<DocumentField, string> = {
   itemName: "품목",
   traceNo: "이력번호",
+  lotNo: "묶음번호(이력번호 칸과 따로 있을 때만)",
   partName: "부위",
   grade: "등급",
   origin: "원산지",
@@ -56,6 +57,7 @@ const FIELD_LABELS: Record<DocumentField, string> = {
 const FIELD_ORDER: DocumentField[] = [
   "itemName",
   "traceNo",
+  "lotNo",
   "partName",
   "grade",
   "origin",
@@ -101,6 +103,9 @@ function emptyLine(lineNo: number): EditableLine {
     raw: "",
     itemName: null,
     traceNo: null,
+    lotNo: null,
+    traceTruncated: false,
+    splitOf: null,
     partName: null,
     grade: null,
     origin: null,
@@ -448,7 +453,7 @@ export function InboundDocumentPanel({
     const usable =
       mode === "storeOnly"
         ? []
-        : lines.filter((line) => line.itemName || line.traceNo || line.labeledWeight !== null);
+        : lines.filter((line) => line.itemName || line.traceNo || line.lotNo || line.labeledWeight !== null);
 
     if (mode !== "storeOnly" && usable.length === 0) {
       setError("저장할 품목이 없습니다.");
@@ -479,6 +484,7 @@ export function InboundDocumentPanel({
         itemName: line.itemName,
         productId: line.productId,
         traceNo: line.traceNo,
+        lotNo: line.lotNo,
         partName: line.partName,
         grade: line.grade,
         origin: line.origin,
@@ -1095,6 +1101,7 @@ export function InboundDocumentPanel({
                       <th style={thStyle}>품목</th>
                       <th style={thStyle}>내 상품</th>
                       <th style={thStyle}>이력번호</th>
+                      <th style={thStyle}>묶음번호</th>
                       <th style={thStyle}>부위</th>
                       <th style={thStyle}>등급</th>
                       <th style={thStyle}>원산지</th>
@@ -1144,6 +1151,16 @@ export function InboundDocumentPanel({
                                 updateLine(line.lineNo, { traceNo: event.target.value || null })
                               }
                               style={cellInput}
+                            />
+                          </td>
+                          <td style={tdStyle}>
+                            <input
+                              value={line.lotNo ?? ""}
+                              onChange={(event) =>
+                                updateLine(line.lineNo, { lotNo: event.target.value || null })
+                              }
+                              placeholder="두 칸 서식일 때만"
+                              style={{ ...cellInput, minWidth: "120px" }}
                             />
                           </td>
                           <td style={tdStyle}>

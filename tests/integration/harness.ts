@@ -126,7 +126,15 @@ export interface World {
     fields?: { part?: string | null; grade?: string | null; speciesGroup?: string | null; traceKind?: string; originCountry?: string | null }
   ): Promise<void>;
   /** 공급사 A의 명세서 한 장에 줄 하나(이력번호→상품)를 만든다. */
-  createDocumentLine(options: { traceNo: string; product?: WorldProduct; partName?: string; grade?: string; status?: string }): Promise<void>;
+  createDocumentLine(options: {
+    traceNo: string | null;
+    /** 두 칸 서식(묶음번호+개체번호)의 묶음번호 칸 */
+    lotNo?: string | null;
+    product?: WorldProduct;
+    partName?: string;
+    grade?: string;
+    status?: string;
+  }): Promise<void>;
   cleanup(): Promise<void>;
 }
 
@@ -400,7 +408,7 @@ async function buildWorld(tracker: Tracker): Promise<World> {
       }
     },
 
-    async createDocumentLine({ traceNo, product, partName, grade, status = "PENDING" }) {
+    async createDocumentLine({ traceNo, lotNo = null, product, partName, grade, status = "PENDING" }) {
       const documentId = randomUUID();
 
       must(
@@ -416,6 +424,7 @@ async function buildWorld(tracker: Tracker): Promise<World> {
           part_name: partName ?? null,
           grade: grade ?? null,
           trace_no: traceNo,
+          lot_no: lotNo,
         }),
         "inbound_document_lines"
       );

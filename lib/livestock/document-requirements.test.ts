@@ -14,6 +14,9 @@ function makeLine(overrides: Partial<DocumentLine> = {}): DocumentLine {
     raw: "한우 등심 1++ 10kg 300000",
     itemName: "한우 등심",
     traceNo: "002123456789",
+    lotNo: null,
+    traceTruncated: false,
+    splitOf: null,
     partName: "등심",
     grade: "1++",
     origin: "국내산",
@@ -226,5 +229,48 @@ describe("이력번호 축종코드 진단 (첫 자리: 소0·돼지1·닭2·계
   it("15자리 묶음번호·L 접두어 묶음번호는 구조 검사 대상이 아니다", () => {
     expect(codes(makeLine({ traceNo: "L01234567890123" }))).not.toContain("TRACE_CODE_UNKNOWN");
     expect(codes(makeLine({ traceNo: "123456789012345" }))).not.toContain("TRACE_CODE_UNKNOWN");
+  });
+});
+
+describe("묶음번호 칸·나눈 줄·과학표기 잘림", () => {
+  const codes = (line: DocumentLine) => buildGapReport(makeHeader(), [line]).lineGaps.flatMap((entry) => entry.gaps.map((gap) => gap.code));
+
+  it("이력번호 칸이 비어도 묶음번호가 있으면 '이력번호 없음'이 아니다 — 조회는 묶음번호로 된다", () => {
+    const result = codes(makeLine({ traceNo: null, lotNo: "L12512266043001", grade: null, origin: null }));
+
+    expect(result).not.toContain("TRACE_MISSING");
+    expect(result).not.toContain("GRADE_UNKNOWN");
+    expect(result).not.toContain("ORIGIN_UNKNOWN");
+  });
+
+  it("두 칸이 뒤바뀐 줄(이력 칸에 L…, 묶음 칸에 12자리)은 짚는다", () => {
+    expect(codes(makeLine({ traceNo: "L12512266043001", lotNo: "150070100622" }))).toContain("LOT_TRACE_SWAPPED");
+    expect(codes(makeLine({ traceNo: "150070100622", lotNo: "L12512266043001" }))).not.toContain("LOT_TRACE_SWAPPED");
+  });
+
+  it("나눈 뒷줄은 중량·금액이 비어 있어도 '없다'고 하지 않고 나눈 줄임을 알린다", () => {
+    const tail = codes(makeLine({ labeledWeight: null, amount: null, splitOf: { index: 1, count: 3 } }));
+
+    expect(tail).toContain("TRACE_SPLIT_TAIL");
+    expect(tail).not.toContain("WEIGHT_MISSING");
+    expect(tail).not.toContain("PRICE_MISSING");
+
+    const head = codes(makeLine({ splitOf: { index: 0, count: 3 } }));
+
+    expect(head).toContain("TRACE_SPLIT_HEAD");
+    expect(head).not.toContain("TRACE_SPLIT_TAIL");
+  });
+
+  it("나눈 뒷줄이라도 단가까지 없으면 원문 자체에 가격이 없던 것 — 첫 줄에서 걸린다", () => {
+    const head = codes(makeLine({ unitPrice: null, amount: null, splitOf: { index: 0, count: 2 } }));
+
+    expect(head).toContain("PRICE_MISSING");
+  });
+
+  it("과학표기로 잘린 번호는 '이력번호 없음'(공급처 탓) 대신 복원 불가(엑셀 형식 탓)로 안내한다", () => {
+    const result = codes(makeLine({ traceNo: null, traceTruncated: true }));
+
+    expect(result).toContain("TRACE_TRUNCATED");
+    expect(result).not.toContain("TRACE_MISSING");
   });
 });

@@ -308,6 +308,32 @@ describe("recordScanAction — 상품 자동 결정", () => {
     expect(await stockOf(product.id)).toBe(7);
   });
 
+  it("두 칸 서식(묶음번호+개체번호) 명세서는 박스 바코드가 묶음번호로 찍혀도 그 줄의 상품으로 확정된다", async () => {
+    const product = await newProduct();
+    const memberTraceNo = world.newTraceNo();
+    const lotNo = `L${String(Date.now()).padStart(14, "0").slice(-14)}`;
+
+    await world.seedTrace(lotNo, { traceKind: "group" });
+    await world.createDocumentLine({ traceNo: memberTraceNo, lotNo, product });
+    const data = scanData(await recordScanAction({ traceNo: lotNo, weight: 7, scanType: "BARCODE_SCAN" }));
+
+    expect(data).toMatchObject({ status: "NORMAL", productId: product.id });
+  });
+
+  it("같은 묶음번호에 서로 다른 상품이 걸린 줄이 둘이면 자동으로 고르지 않는다(되묻는다)", async () => {
+    const first = await newProduct();
+    const second = await newProduct();
+    const lotNo = `L${String(Date.now() + 1).padStart(14, "0").slice(-14)}`;
+
+    await world.seedTrace(lotNo, { traceKind: "group", part: null, speciesGroup: null });
+    await world.createDocumentLine({ traceNo: world.newTraceNo(), lotNo, product: first });
+    await world.createDocumentLine({ traceNo: world.newTraceNo(), lotNo, product: second });
+    const data = scanData(await recordScanAction({ traceNo: lotNo, weight: 7, scanType: "BARCODE_SCAN" }));
+
+    expect(data.status).toBe("PENDING_MAPPING");
+    expect(data.productId).toBeNull();
+  });
+
   it("취소된 명세서의 줄은 무시한다", async () => {
     const product = await newProduct();
     const traceNo = world.newTraceNo();

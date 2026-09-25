@@ -64,6 +64,10 @@
 - [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) — 이력번호 바코드/카메라 스캔 → 공공 API 대조 검증 → 박스 단위 입고. 스택 결정(별도 백엔드 대신 기존 Next.js+Supabase에 얹음, RLS가 이유), 잠긴 설계 결정 8가지(재고 단위는 이력번호가 아닌 박스, 원장 파생 재고, `products` 스키마 무변경, 출고 박스 단위 추적, Hobby 크론 제약 우회), 입고 9종 + 출고 6종 로컬 DB 테스트 통과. **출고 자동 차감까지 완료** — 주문 확정 시 `orders` 트리거가 선입선출로 박스에서 차감하고 취소 시 원복, 재고 부족이면 확정 자체를 막는다. 원장 첫 편입 시 기존 수동 재고를 `OPENING_BALANCE`로 이관해 증발을 막는다. 공공 API 인증키 미발급이라 실호출 전무, npm 프록시 차단으로 타입체크 미실행.
 
 
+## 명세서 번호 표기 경우의 수 대응 (2026-09-25, 29단계 보강)
+
+- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) 맨 아래 "29단계 보강" 절 — 하이픈·0 탈락·과학표기·`로트/LOT` 헤더·한 칸에 번호 여럿(줄 나눔, 합계는 첫 줄)·부속 줄 합치기·**묶음번호 열+개체번호 열 두 칸**(`inbound_document_lines.lot_no`, 마이그레이션 115, 사전조회가 로트 구성원 대조). 묶음번호만 있는 명세서는 여전히 `trace_no`(재고 단위 = 로트). **명세서 줄을 번호로 찾는 새 쿼리는 `trace_no OR lot_no`를 본다.** 115 라이브 미적용, 실제 파일 미검증.
+
 ## 보안 점검 — 권한 게이트 NULL 비교 버그 수정 (2026-09-24, 별도 발견)
 
 - [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) 맨 아래 "보안 점검" 절 — plpgsql `IF a <> NULL`이 거짓으로 취급돼 고객 계정이 남의 재고를 조정하고 staff가 owner/manager 전용 RPC를 우회하던 구멍. 마이그레이션 097에서 `can_manage_wholesaler` 헬퍼 + 8개 함수 게이트 교체, 엑셀 대량입고 이중 처리 방지 포함. 098에서 후속 8건 전부 처리(공용 이력캐시 `upsert_master_livestock`은 service_role 전용 → 서버는 `lib/livestock/master-cache.ts`로만 호출, 원가(매입단가)는 관리자만 입력, 명세서 완전삭제 관리자만, 출고 스캔 `p_scan_id` 박스 지정 등). **새 RPC의 소유/권한 검사는 `<>` 비교 대신 `can_access_wholesaler` / `can_manage_wholesaler`를 쓴다.** 로컬 DB 테스트 스크립트는 첫머리에서 `upsert_master_livestock`을 테스트 세션에만 다시 GRANT한다.

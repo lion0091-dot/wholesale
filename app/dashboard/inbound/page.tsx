@@ -87,16 +87,18 @@ export default async function InboundPage() {
         supabase
           .from("inbound_document_lines")
           .select(
-            "id, trace_no, item_name, labeled_weight, unit_price, inbound_documents!inner(status, supplier_name)"
+            "id, trace_no, lot_no, item_name, labeled_weight, unit_price, inbound_documents!inner(status, supplier_name)"
           )
           .eq("inbound_documents.status", "PENDING")
-          .not("trace_no", "is", null),
+          .or("trace_no.not.is.null,lot_no.not.is.null"),
       ]);
 
+    // 두 칸 서식(묶음번호+개체번호)은 박스 바코드가 어느 쪽이든 찍힐 수 있어 둘 다 대조 대상이다.
     pendingDocumentTraceNos = [
       ...new Set(
-        ((pendingDocLineRows ?? []) as Array<{ trace_no: string | null }>)
-          .map((row) => (row.trace_no ?? "").trim().toUpperCase())
+        ((pendingDocLineRows ?? []) as Array<{ trace_no: string | null; lot_no: string | null }>)
+          .flatMap((row) => [row.trace_no, row.lot_no])
+          .map((value) => (value ?? "").trim().toUpperCase())
           .filter((value) => value.length > 0)
       ),
     ];
@@ -117,7 +119,11 @@ export default async function InboundPage() {
       awaitingDocumentLines = ((pendingDocLineRows ?? []) as Array<Record<string, unknown>>)
         .filter((row) => {
           const traceNo = (row.trace_no as string | null)?.trim().toUpperCase() ?? "";
-          return traceNo.length > 0 && !matchedTraceNos.has(traceNo);
+          const lotNo = (row.lot_no as string | null)?.trim().toUpperCase() ?? "";
+          const hasNumber = traceNo.length > 0 || lotNo.length > 0;
+
+          // 개체번호로든 로트번호로든 이미 찍혔으면 대기가 아니다.
+          return hasNumber && !matchedTraceNos.has(traceNo) && !(lotNo.length > 0 && matchedTraceNos.has(lotNo));
         })
         .map((row) => {
           const document = Array.isArray(row.inbound_documents)
@@ -126,7 +132,8 @@ export default async function InboundPage() {
 
           return {
             id: String(row.id),
-            traceNo: String(row.trace_no),
+            // 탭하면 입력칸에 채울 번호 — 개체번호가 있으면 그것(더 구체적), 없으면 로트번호.
+            traceNo: String(row.trace_no ?? row.lot_no),
             itemName: (row.item_name as string | null) ?? null,
             labeledWeight: row.labeled_weight === null ? null : Number(row.labeled_weight),
             unitPrice: row.unit_price === null ? null : Number(row.unit_price),
@@ -211,9 +218,10 @@ export default async function InboundPage() {
         supabase
           .from("inbound_document_lines")
           .select(
-            "trace_no, item_name, grade, origin, unit_price, labeled_weight, inbound_documents!inner(supplier_name, status)"
+            "trace_no, lot_no, item_name, grade, origin, unit_price, labeled_weight, inbound_documents!inner(supplier_name, status)"
           )
-          .in("trace_no", traceNos)
+          // 스캔된 번호가 개체번호 칸에 있든 묶음번호 칸에 있든 그 줄이 명세서 근거다.
+          .or(`trace_no.in.(${traceNos.join(",")}),lot_no.in.(${traceNos.join(",")})`)
           .neq("inbound_documents.status", "DISCARDED"),
       ]);
 
@@ -234,22 +242,24 @@ export default async function InboundPage() {
       // 같은 번호가 여러 명세서에 있으면 먼저 읽은 것을 쓴다 — 어느 쪽이 맞는지는
       // 사람이 판단할 문제라 여기서 고르지 않는다.
       ((docLineRows ?? []) as Array<Record<string, unknown>>).forEach((row) => {
-        const key = String(row.trace_no);
-
-        if (documentByTrace.has(key)) return;
-
         const document = Array.isArray(row.inbound_documents)
           ? row.inbound_documents[0]
           : row.inbound_documents;
-
-        documentByTrace.set(key, {
+        const facts = {
           supplier: ((document as Record<string, unknown> | null)?.supplier_name as string | null) ?? null,
           itemName: (row.item_name as string | null) ?? null,
           grade: (row.grade as string | null) ?? null,
           origin: (row.origin as string | null) ?? null,
           unitPrice: row.unit_price === null ? null : Number(row.unit_price),
           labeledWeight: row.labeled_weight === null ? null : Number(row.labeled_weight),
-        });
+        };
+
+        // 개체번호·묶음번호 어느 쪽으로 찍혔든 찾히도록 둘 다 열쇠로 건다(스캔된 번호만 해당).
+        [row.trace_no, row.lot_no]
+          .filter((value): value is string => typeof value === "string" && traceNos.includes(value))
+          .forEach((key) => {
+            if (!documentByTrace.has(key)) documentByTrace.set(key, facts);
+          });
       });
     }
 
