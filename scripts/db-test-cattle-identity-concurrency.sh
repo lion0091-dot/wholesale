@@ -16,6 +16,8 @@ alter table public.profiles disable trigger user;
 delete from public.profiles where id='$U';
 alter table public.profiles enable trigger user;
 delete from auth.users where id='$U';
+-- 테스트가 열어 둔 권한을 되돌린다(실서비스에서는 service_role만 실행 가능 — 098).
+revoke execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date) from authenticated, anon, public;
 SQL
 }
 cleanup
