@@ -16,8 +16,10 @@ function openDocumentPanelIfTargeted(href: string) {
 export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
   return (
     <section
+      id="inbound-next-step"
       aria-label="지금 할 일"
       style={{
+        scrollMarginTop: "12px",
         border: "2px solid #2563eb",
         backgroundColor: "#eff6ff",
         borderRadius: "14px",

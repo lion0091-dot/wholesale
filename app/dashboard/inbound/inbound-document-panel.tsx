@@ -626,6 +626,9 @@ export function InboundDocumentPanel({
     } else {
       router.refresh();
     }
+
+    // 다 끝나면 화면 맨 위 "지금 할 일" 카드(다음 단계)로 시선을 옮긴다.
+    document.getElementById(INBOUND_ANCHORS.nextStep.slice(1))?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   // 저장 뒤 화면에서 실제로 일어나는 순서: ① 이력번호 미리 조회(진행 막대) → ② 못 찾은 번호는 공급처에 등록 요청

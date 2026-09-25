@@ -31,6 +31,7 @@ export interface InboundNextStep {
 }
 
 export const INBOUND_ANCHORS = {
+  nextStep: "#inbound-next-step",
   documents: "#inbound-documents",
   scanForm: "#inbound-scan-form",
   history: "#inbound-history",
