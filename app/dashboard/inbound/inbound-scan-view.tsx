@@ -934,7 +934,7 @@ export function InboundScanView({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <section style={panelStyle}>
+      <section id="inbound-scan-form" style={{ ...panelStyle, scrollMarginTop: "12px" }}>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end" }}>
           <div style={{ flex: "1 1 220px", minWidth: 0 }}>
             <label htmlFor="trace_no" style={labelStyle}>
@@ -1318,9 +1318,9 @@ export function InboundScanView({
         </section>
       )}
 
-      <section style={panelStyle}>
+      <section id="inbound-history" style={{ ...panelStyle, scrollMarginTop: "12px" }}>
         <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "10px" }}>
-          입고 내역 <span style={{ color: "#94a3b8", fontWeight: 400 }}>최근 100건</span>
+          입고 내역<span style={{ color: "#94a3b8", fontWeight: 400 }}>최근 100건</span>
         </div>
 
         {pending.length === 0 && rows.length === 0 ? (

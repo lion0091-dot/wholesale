@@ -17,6 +17,8 @@ import {
   type ScanRequirementReport,
 } from "@/lib/livestock/inbound-requirements";
 import { documentLineExpectedQty, documentLineMatchStatus } from "@/lib/livestock/document-reconciliation";
+import { pickInboundNextStep } from "@/lib/livestock/inbound-next-step";
+import { InboundNextStepCard } from "./inbound-next-step-card";
 
 /** 이력 조회 기관 표기 — 설정 안내 문구에 쓴다. */
 const SOURCE_LABELS: Record<string, string> = {
@@ -392,6 +394,24 @@ export default async function InboundPage() {
 
   const configured = configuredTraceSources();
 
+  // 문서 목록은 최신순이라, 대조를 안내할 때는 가장 오래 기다린 명세서부터 보도록 뒤집는다.
+  const nextStep = pickInboundNextStep({
+    pendingDocuments: documents
+      .filter((doc) => doc.status === "PENDING")
+      .reverse()
+      .map((doc) => ({
+        id: doc.id,
+        completeLines: doc.matchSummary?.completeLines ?? 0,
+        totalLines: doc.matchSummary?.totalLines ?? 0,
+      })),
+    awaitingLineCount: awaitingDocumentLines.length,
+    needsCheckScanCount: scans.filter(
+      (scan) => scan.status === "EXCEPTION" || scan.status === "PENDING_MAPPING"
+    ).length,
+    hasAnyDocument: documents.some((doc) => doc.status !== "DISCARDED"),
+    hasAnyScan: scans.some((scan) => scan.status !== "VOIDED"),
+  });
+
   // 원가(매입단가) 입력·명세서 완전 삭제 같은 관리 행위 권한 — DB의 can_manage_wholesaler()와
   // 같은 기준(owner 본인 / 조직 owner·manager / super_admin). 조직 없이 업체가 잡힌 건 owner다.
   const canManage = Boolean(
@@ -432,9 +452,20 @@ export default async function InboundPage() {
         </div>
       )}
 
-      <InboundDocumentPanel products={products} documents={documents} canManageDocuments={canManage} />
+      <InboundNextStepCard step={nextStep} />
 
-      <InboundImportPanel />
+      <div id="inbound-documents" style={{ scrollMarginTop: "12px" }}>
+        <InboundDocumentPanel products={products} documents={documents} canManageDocuments={canManage} />
+      </div>
+
+      <details>
+        <summary style={{ fontSize: "13px", color: "#475569", cursor: "pointer", padding: "4px 0" }}>
+          고급: 엑셀로 한꺼번에 입고하기
+        </summary>
+        <div style={{ marginTop: "10px" }}>
+          <InboundImportPanel />
+        </div>
+      </details>
 
       <InboundScanView
         initialScans={scans}
