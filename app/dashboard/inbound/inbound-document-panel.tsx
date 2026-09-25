@@ -839,7 +839,7 @@ export function InboundDocumentPanel({
                                   : "#dbeafe",
                             }}
                           >
-                            {document.matchSummary.completeLines}/{document.matchSummary.totalLines} 완료
+                            {document.matchSummary.completeLines}/{document.matchSummary.totalLines}줄 도착
                           </span>
                         ) : null}
                         {document.documentNo ? (
@@ -851,7 +851,7 @@ export function InboundDocumentPanel({
                         <span style={{ marginLeft: "auto", display: "flex", gap: "8px" }}>
                           {(document.status === "PENDING" || document.status === "CLOSED") && (
                             <Link href={`/dashboard/inbound/documents/${document.id}`} style={linkButton}>
-                              대조
+                              도착 확인
                             </Link>
                           )}
                           {document.hasFile ? (

@@ -86,10 +86,10 @@ export interface DocumentReconciliationViewProps {
 }
 
 const STATUS_BADGE: Record<LineMatchStatus, { label: string; bg: string; color: string }> = {
-  AWAITING: { label: "대기", bg: "#f1f5f9", color: "#64748b" },
-  PARTIAL: { label: "일부", bg: "#fef3c7", color: "#92400e" },
-  COMPLETE: { label: "완료", bg: "#dcfce7", color: "#166534" },
-  OVER: { label: "초과", bg: "#fee2e2", color: "#991b1b" },
+  AWAITING: { label: "아직 안 옴", bg: "#f1f5f9", color: "#64748b" },
+  PARTIAL: { label: "일부만 옴", bg: "#fef3c7", color: "#92400e" },
+  COMPLETE: { label: "다 옴", bg: "#dcfce7", color: "#166534" },
+  OVER: { label: "더 많이 옴", bg: "#fee2e2", color: "#991b1b" },
 };
 
 const SCAN_STATUS_BADGE: Record<string, { label: string; bg: string; color: string }> = {
@@ -130,6 +130,8 @@ export function DocumentReconciliationView({
   const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [closeNote, setCloseNote] = useState("");
   const [closing, setClosing] = useState(false);
+  // 평소엔 볼 일이 없다 — 명세서와 맞아 보이는 박스가 있을 때만 처음부터 펼친다.
+  const [showUnlinked, setShowUnlinked] = useState(unlinkedBoxes.some((box) => box.candidates.length > 0));
 
   const isPending = status === "PENDING";
   const lineById = useMemo(() => new Map(lines.map((line) => [line.id, line])), [lines]);
@@ -153,6 +155,7 @@ export function DocumentReconciliationView({
   }, [lines]);
 
   const incompleteLines = lines.filter((line) => line.status !== "COMPLETE");
+  const matchableUnlinkedCount = unlinkedBoxes.filter((box) => box.candidates.length > 0).length;
 
   const runAction = async (key: string, run: () => Promise<{ success: boolean; error?: string }>) => {
     setBusyKey(key);
@@ -348,33 +351,36 @@ export function DocumentReconciliationView({
         </p>
       )}
 
-      {/* 요약 띠 */}
-      <section style={panelStyle}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "16px", fontSize: "13px" }}>
-          <span>줄 {lines.length}개</span>
-          {(Object.keys(STATUS_BADGE) as LineMatchStatus[]).map((key) => (
-            <span key={key} style={{ color: STATUS_BADGE[key].color, fontWeight: 700 }}>
-              {STATUS_BADGE[key].label} {summary.counts[key]}
-            </span>
-          ))}
-          <span>안 붙은 박스 {unlinkedBoxes.length}개</span>
-          <span>
-            표기 {summary.labeledTotal.toFixed(2)}kg / 실측 {summary.actualTotal.toFixed(2)}kg (
-            {summary.diff >= 0 ? "+" : ""}
-            {summary.diff.toFixed(2)}kg)
-          </span>
-        </div>
+      {/* 지금 할 일 안내 + 요약 */}
+      <section style={{ ...panelStyle, backgroundColor: "#f8fafc" }}>
+        <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#0f172a", lineHeight: 1.6 }}>
+          {!isPending
+            ? "마감된 명세서입니다. 고칠 것이 있으면 위의 '다시 열기'를 누르세요."
+            : lines.length > 0 && incompleteLines.length === 0
+              ? "명세서에 적힌 물건이 모두 도착했습니다. 위의 '마감'을 누르면 끝납니다."
+              : `명세서 ${lines.length}줄 중 ${summary.counts.COMPLETE}줄이 도착했습니다. 나머지는 현장에서 박스를 찍으면 자동으로 채워집니다.`}
+        </p>
+
+        {isPending && matchableUnlinkedCount > 0 && (
+          <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#92400e" }}>
+            명세서와 맞아 보이는 박스가 {matchableUnlinkedCount}개 있습니다. 아래에서 확인해 주세요.
+          </p>
+        )}
+
+        <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#64748b" }}>
+          명세서 무게 합계 {summary.labeledTotal.toFixed(1)}kg · 지금까지 잰 무게 {summary.actualTotal.toFixed(1)}kg
+        </p>
 
         {incompleteLines.length > 0 && (
           <button type="button" onClick={copySupplierRequest} style={{ ...secondaryButton, marginTop: "10px" }}>
-            공급처에 보낼 문구 복사 (미입고 {incompleteLines.length}줄)
+            안 온 물건 {incompleteLines.length}줄, 공급처에 보낼 문구 복사
           </button>
         )}
       </section>
 
       {/* 줄 표 */}
       <section style={panelStyle}>
-        <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "10px" }}>명세서 줄</div>
+        <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "10px" }}>명세서에 적힌 물건</div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           {lines.map((line) => {
@@ -414,11 +420,11 @@ export function DocumentReconciliationView({
                     {line.traceNo ?? line.lotNo ?? "번호 없음"}
                   </span>
                   <span style={{ fontSize: "12px", color: "#334155" }}>
-                    {line.linked} / {line.expected}
+                    도착 {line.linked} / 예정 {line.expected}
                   </span>
                   {line.labeledWeight !== null && (
                     <span style={{ fontSize: "12px", color: "#64748b" }}>
-                      {line.isSplitContinuation ? "첫 줄 합계에 포함" : `표기 ${line.labeledWeight}kg`}
+                      {line.isSplitContinuation ? "첫 줄 합계에 포함" : `명세서 ${line.labeledWeight}kg`}
                     </span>
                   )}
                   <span
@@ -439,7 +445,7 @@ export function DocumentReconciliationView({
                 {expanded && (
                   <div style={{ padding: "0 12px 12px", display: "flex", flexDirection: "column", gap: "6px" }}>
                     {line.boxes.length === 0 ? (
-                      <p style={{ margin: 0, fontSize: "12px", color: "#94a3b8" }}>붙은 박스가 없습니다.</p>
+                      <p style={{ margin: 0, fontSize: "12px", color: "#94a3b8" }}>아직 도착한 박스가 없습니다.</p>
                     ) : (
                       line.boxes.map((box) => {
                         const scanBadge = SCAN_STATUS_BADGE[box.status];
@@ -492,7 +498,7 @@ export function DocumentReconciliationView({
                                 disabled={busyKey === `unlink-${box.scanId}`}
                                 style={{ ...linkButton, marginLeft: "auto" }}
                               >
-                                떼기
+                                연결 해제
                               </button>
                             )}
                           </div>
@@ -507,42 +513,57 @@ export function DocumentReconciliationView({
         </div>
       </section>
 
-      {/* 안 붙은 박스 */}
+      {/* 명세서와 연결 안 된 박스 — 평소엔 접어 둔다 */}
       <section style={panelStyle}>
-        <div
+        <button
+          type="button"
+          onClick={() => setShowUnlinked((value) => !value)}
           style={{
+            width: "100%",
             display: "flex",
-            flexWrap: "wrap",
-            alignItems: "flex-end",
+            justifyContent: "space-between",
+            alignItems: "center",
             gap: "10px",
-            marginBottom: "10px",
+            border: "none",
+            background: "none",
+            cursor: "pointer",
+            padding: 0,
+            textAlign: "left",
           }}
         >
-          <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>
-            안 붙은 박스 ({unlinkedBoxes.length}개)
-          </div>
-          <div style={{ display: "flex", gap: "6px", alignItems: "center", marginLeft: "auto" }}>
-            <input
-              type="date"
-              value={fromInput}
-              onChange={(event) => setFromInput(event.target.value)}
-              style={{ ...inputStyle, width: "auto" }}
-            />
-            <span style={{ fontSize: "12px", color: "#94a3b8" }}>~</span>
-            <input
-              type="date"
-              value={toInput}
-              onChange={(event) => setToInput(event.target.value)}
-              style={{ ...inputStyle, width: "auto" }}
-            />
-            <button type="button" onClick={applyRange} style={secondaryButton}>
-              적용
-            </button>
-          </div>
-        </div>
+          <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>
+            명세서와 연결 안 된 박스 ({unlinkedBoxes.length}개)
+          </span>
+          <span style={{ fontSize: "12px", color: "#64748b" }}>{showUnlinked ? "접기" : "펼치기"}</span>
+        </button>
 
+        {showUnlinked && (
+          <>
+            <p style={{ margin: "8px 0 10px", fontSize: "12px", color: "#64748b", lineHeight: 1.6 }}>
+              현장에서 찍었지만 이 명세서의 어느 물건과도 자동으로 이어지지 않은 박스입니다. 명세서에 있는 물건이면
+              해당하는 줄을 눌러 이어 주세요. 명세서에 없는 물건이면 그대로 두셔도 됩니다.
+            </p>
+            <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", marginBottom: "10px" }}>
+              <span style={{ fontSize: "12px", color: "#64748b" }}>찍은 날짜 범위</span>
+              <input
+                type="date"
+                value={fromInput}
+                onChange={(event) => setFromInput(event.target.value)}
+                style={{ ...inputStyle, width: "auto" }}
+              />
+              <span style={{ fontSize: "12px", color: "#94a3b8" }}>~</span>
+              <input
+                type="date"
+                value={toInput}
+                onChange={(event) => setToInput(event.target.value)}
+                style={{ ...inputStyle, width: "auto" }}
+              />
+              <button type="button" onClick={applyRange} style={secondaryButton}>
+                다시 찾기
+              </button>
+            </div>
         {unlinkedBoxes.length === 0 ? (
-          <p style={{ margin: 0, fontSize: "13px", color: "#94a3b8" }}>이 기간에 안 붙은 박스가 없습니다.</p>
+          <p style={{ margin: 0, fontSize: "13px", color: "#94a3b8" }}>이 기간에 연결 안 된 박스가 없습니다.</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {unlinkedBoxes.map((box) => {
@@ -644,19 +665,19 @@ export function DocumentReconciliationView({
                               style={{ ...candidateButton, borderStyle: "dashed" }}
                               title={
                                 candidate.basis === "SUGGESTED_UNCONFIRMED"
-                                  ? "축종 미확인 — 중량만으로 제안"
-                                  : "축종·중량으로 제안"
+                                  ? "축종은 모르지만 무게가 비슷합니다"
+                                  : "축종과 무게가 비슷합니다"
                               }
                             >
-                              {lineLabel(line)} (제안
-                              {candidate.basis === "SUGGESTED_UNCONFIRMED" ? " · 축종 미확인" : ""})
+                              {lineLabel(line)} (비슷해 보임
+                              {candidate.basis === "SUGGESTED_UNCONFIRMED" ? " · 무게만 비슷" : ""})
                             </button>
                           );
                         })}
 
                       {numberCandidates.length === 0 && suggested.length === 0 && (
                         <span style={{ fontSize: "12px", color: "#94a3b8" }}>
-                          후보 없음 — 서류에 없는 물건일 수 있습니다.
+                          맞는 줄이 안 보입니다 — 명세서에 없는 물건일 수 있습니다.
                         </span>
                       )}
 
@@ -668,7 +689,7 @@ export function DocumentReconciliationView({
                         }}
                         style={{ ...inputStyle, width: "auto", marginLeft: "auto" }}
                       >
-                        <option value="">다른 줄에 수동 배정</option>
+                        <option value="">직접 줄 고르기</option>
                         {lines.map((line) => (
                           <option key={line.id} value={line.id}>
                             {line.lineNo}. {lineLabel(line)}
@@ -681,6 +702,8 @@ export function DocumentReconciliationView({
               );
             })}
           </div>
+        )}
+          </>
         )}
       </section>
 
