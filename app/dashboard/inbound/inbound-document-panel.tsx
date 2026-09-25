@@ -628,6 +628,33 @@ export function InboundDocumentPanel({
     }
   };
 
+  // 저장 뒤 화면에서 실제로 일어나는 순서: ① 이력번호 미리 조회(진행 막대) → ② 못 찾은 번호는 공급처에 등록 요청
+  // → ③ 박스가 오면 스캔. 카드가 그 순서를 그대로 말해 준다.
+  const failedCount = prelookupProgress?.failedTraceNos.length ?? 0;
+  const scanLink = { label: "스캔 시작", href: INBOUND_ANCHORS.scanForm };
+  const scanHint =
+    "박스가 오면 바코드를 찍고 저울에 잰 무게를 넣으세요. 명세서와 저절로 이어지고, 그때 재고가 늘어납니다.";
+  const postSaveStep: UploadStep =
+    prelookupProgress && !prelookupProgress.finished
+      ? {
+          title: "저장했습니다. 지금 이력번호를 미리 확인하는 중입니다",
+          detail:
+            "명세서에 적힌 번호를 정부 이력조회에서 하나씩 찾아보는 중입니다. 위쪽 파란 막대가 다 차면 끝나고, 창을 닫아도 이어서 처리됩니다. 끝날 때까지 잠시만 기다려 주세요.",
+        }
+      : failedCount > 0
+        ? {
+            title: `저장했습니다. 확인이 안 된 번호가 ${failedCount}개 있습니다`,
+            detail:
+              "위쪽 빨간 글씨의 번호는 정부 이력조회에서 못 찾았습니다. 공급처가 아직 등록하지 않았거나 번호가 틀린 것입니다. \"요청 문구 복사\"를 눌러 공급처에 보내 등록을 요청하세요. 물건이 오기 전에 해 두는 것이 좋고, 답을 기다리는 동안에도 다른 박스는 찍을 수 있습니다. " +
+              scanHint,
+            link: scanLink,
+          }
+        : {
+            title: "저장했습니다. 이력번호도 모두 확인됐습니다",
+            detail: "이제 할 일은 하나입니다. " + scanHint,
+            link: scanLink,
+          };
+
   const columnCount = grid?.cells.reduce((max, row) => Math.max(max, row.length), 0) ?? 0;
 
   return (
@@ -795,12 +822,8 @@ export function InboundDocumentPanel({
               saving || extracting
                 ? { title: "처리 중입니다", detail: "잠시만 기다려 주세요." }
                 : mode === "idle"
-                  ? justSaved
-                    ? {
-                        title: "저장했습니다. 이제 박스를 찍으세요",
-                        detail: "현장에서 박스가 오면 바코드를 찍고 무게를 넣으면 명세서와 저절로 이어집니다.",
-                        link: { label: "스캔 시작", href: INBOUND_ANCHORS.scanForm },
-                      }
+                  ? justSaved || prelookupProgress
+                    ? postSaveStep
                     : {
                         title: "1단계: 명세서 파일을 고르세요",
                         detail: "사진 찍기, 파일 고르기, 표 붙여넣기 중 하나로 시작합니다.",
