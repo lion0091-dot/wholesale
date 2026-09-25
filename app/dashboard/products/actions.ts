@@ -184,7 +184,8 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
 /**
  * 같은 정체성 키의 상품이 이미 있으면 거부한다(키 규칙이 있는 축종만 — identity-key.ts).
  * 보관된 상품도 대상이다: 같은 상품을 새로 만들지 말고 복원해서 쓰게 안내한다.
- * DB 유니크 제약은 아직 없다 — 이미 있는 중복을 정리한 뒤에 걸어야 해서다(동시 등록 두 건은 이 검사를 함께 통과할 수 있음).
+ * 소는 DB 유니크 인덱스(idx_products_cattle_identity, 마이그레이션 121)가 동시 등록 두 건까지 막는다 — 이 검사는 그 전에 친절한 문구를 주는 용도다.
+ * 단위가 "세트"인 세트 상품은 인덱스 대상이 아니다.
  */
 async function assertNoDuplicateIdentity(
   supabase: Awaited<ReturnType<typeof createClient>>,

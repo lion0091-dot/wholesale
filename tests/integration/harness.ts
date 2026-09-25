@@ -330,23 +330,27 @@ async function buildWorld(tracker: Tracker): Promise<World> {
     async createProduct(overrides = {}) {
       const id = randomUUID();
       const name = `테스트상품-${runId}-${productIds.length + 1}`;
+      const row = {
+        id,
+        wholesaler_id: wholesalerA,
+        name,
+        category: "돼지",
+        subcategory: "목살",
+        origin: "국내산",
+        base_price: 15000,
+        unit: "kg",
+        stock_quantity: 5,
+        is_active: true,
+        ...overrides,
+      };
 
-      must(
-        await admin.from("products").insert({
-          id,
-          wholesaler_id: wholesalerA,
-          name,
-          category: "돼지",
-          subcategory: "목살",
-          origin: "국내산",
-          base_price: 15000,
-          unit: "kg",
-          stock_quantity: 5,
-          is_active: true,
-          ...overrides,
-        }),
-        "products"
-      );
+      // 소 상품은 같은 (부위·등급·원산지)를 DB가 막는다(마이그레이션 121). 테스트가 부위를 신경 쓰지 않고 소 상품을
+      // 여러 개 만들 수 있게, 등급을 안 정했으면 상품마다 다른 등급을 붙인다(등급을 명시한 테스트는 그대로).
+      if (row.category === "소" && !("grade" in overrides)) {
+        (row as Record<string, unknown>).grade = `테스트등급-${runId}-${productIds.length + 1}`;
+      }
+
+      must(await admin.from("products").insert(row), "products");
       productIds.push(id);
 
       return { id, name };
