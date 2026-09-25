@@ -36,6 +36,9 @@ export const INBOUND_ANCHORS = {
   history: "#inbound-history",
 } as const;
 
+/** 카드 버튼이 명세서 올리기 칸으로 이동할 때 접혀 있는 칸을 함께 열도록 알리는 창 이벤트 이름. */
+export const OPEN_DOCUMENT_PANEL_EVENT = "inbound:open-document-panel";
+
 export function documentReconcileHref(documentId: string): string {
   return `/dashboard/inbound/documents/${documentId}`;
 }

@@ -1,5 +1,17 @@
+"use client";
+
 import Link from "next/link";
-import type { InboundNextStep } from "@/lib/livestock/inbound-next-step";
+import {
+  INBOUND_ANCHORS,
+  OPEN_DOCUMENT_PANEL_EVENT,
+  type InboundNextStep,
+} from "@/lib/livestock/inbound-next-step";
+
+function openDocumentPanelIfTargeted(href: string) {
+  if (href === INBOUND_ANCHORS.documents) {
+    window.dispatchEvent(new Event(OPEN_DOCUMENT_PANEL_EVENT));
+  }
+}
 
 export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
   return (
@@ -24,6 +36,7 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
       </div>
       <Link
         href={step.href}
+        onClick={() => openDocumentPanelIfTargeted(step.href)}
         style={{
           display: "block",
           textAlign: "center",
@@ -42,6 +55,7 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
         <Link
           key={link.label}
           href={link.href}
+          onClick={() => openDocumentPanelIfTargeted(link.href)}
           style={{ fontSize: "13px", color: "#1d4ed8", textAlign: "center", textDecoration: "underline" }}
         >
           {link.label}

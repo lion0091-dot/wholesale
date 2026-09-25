@@ -13,6 +13,7 @@ import {
   type DocumentLine,
 } from "@/lib/livestock/document-parser";
 import { buildGapReport, buildSupplierRequestSummary } from "@/lib/livestock/document-requirements";
+import { INBOUND_ANCHORS, OPEN_DOCUMENT_PANEL_EVENT } from "@/lib/livestock/inbound-next-step";
 import {
   deleteInboundDocumentAction,
   discardInboundDocumentAction,
@@ -173,6 +174,19 @@ export function InboundDocumentPanel({
   const [prelookupProgress, setPrelookupProgress] = useState<DocumentPrelookupProgress | null>(null);
   const [prelookupRunning, setPrelookupRunning] = useState(false);
   const [unresolvedSupplierName, setUnresolvedSupplierName] = useState("");
+
+  // 입고 화면 맨 위 카드의 "명세서 올리기" 버튼이 이 칸으로 이동하면서 접혀 있으면 함께 연다.
+  useEffect(() => {
+    const openPanel = () => setOpen(true);
+
+    if (window.location.hash === INBOUND_ANCHORS.documents) {
+      openPanel();
+    }
+
+    window.addEventListener(OPEN_DOCUMENT_PANEL_EVENT, openPanel);
+
+    return () => window.removeEventListener(OPEN_DOCUMENT_PANEL_EVENT, openPanel);
+  }, []);
 
   // 새로고침·재접속 시 끝나지 않은 사전조회가 있으면 이어받는다.
   useEffect(() => {
