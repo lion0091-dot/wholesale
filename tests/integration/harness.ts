@@ -142,7 +142,11 @@ export interface World {
     partName?: string;
     grade?: string;
     status?: string;
-  }): Promise<void>;
+    /** 수량 칸(박스 수). 없으면 1로 본다(118). */
+    quantity?: number | null;
+    /** 같은 문서에 줄을 더 넣고 싶을 때 — 앞 호출이 돌려준 문서 id */
+    documentId?: string;
+  }): Promise<{ documentId: string; lineId: string }>;
   cleanup(): Promise<void>;
 }
 
@@ -416,26 +420,36 @@ async function buildWorld(tracker: Tracker): Promise<World> {
       }
     },
 
-    async createDocumentLine({ traceNo, lotNo = null, product, partName, grade, status = "PENDING" }) {
-      const documentId = randomUUID();
+    async createDocumentLine({ traceNo, lotNo = null, product, partName, grade, status = "PENDING", quantity = null, documentId }) {
+      const docId = documentId ?? randomUUID();
+      const lineId = randomUUID();
+
+      if (!documentId) {
+        must(
+          await admin.from("inbound_documents").insert({ id: docId, wholesaler_id: wholesalerA, supplier_name: "테스트공급처", status }),
+          "inbound_documents"
+        );
+      }
+
+      const { count } = await admin.from("inbound_document_lines").select("id", { count: "exact", head: true }).eq("document_id", docId);
 
       must(
-        await admin.from("inbound_documents").insert({ id: documentId, wholesaler_id: wholesalerA, supplier_name: "테스트공급처", status }),
-        "inbound_documents"
-      );
-      must(
         await admin.from("inbound_document_lines").insert({
-          document_id: documentId,
-          line_no: 1,
+          id: lineId,
+          document_id: docId,
+          line_no: (count ?? 0) + 1,
           item_name: product?.name ?? partName ?? "명세서 품목",
           product_id: product?.id ?? null,
           part_name: partName ?? null,
           grade: grade ?? null,
           trace_no: traceNo,
           lot_no: lotNo,
+          quantity,
         }),
         "inbound_document_lines"
       );
+
+      return { documentId: docId, lineId };
     },
 
     async cleanup() {

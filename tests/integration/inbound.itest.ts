@@ -617,6 +617,156 @@ describe("relink_pending_scans_to_documents — 스캔 먼저, 명세서 나중"
   });
 });
 
+describe("명세서 줄 ↔ 박스 연결 (118, 대조용 — 재고와 무관)", () => {
+  const admin = adminClient();
+
+  async function linkOf(scanId: string) {
+    const { data } = await admin.from("inbound_document_line_scans").select("line_id, linked_how").eq("scan_id", scanId).maybeSingle();
+
+    return data;
+  }
+
+  async function statusOf(lineId: string) {
+    const { data } = await getActorClient().rpc("document_line_match_status", { p_line_id: lineId });
+
+    return (data as Array<{ expected: number; linked: number; status: string }>)[0];
+  }
+
+  it("해당 줄이 하나면 찍는 순간 자동으로 붙고 줄은 완료가 된다", async () => {
+    const product = await newProduct();
+    const traceNo = world.newTraceNo();
+
+    await world.seedTrace(traceNo);
+    const { lineId } = await world.createDocumentLine({ traceNo, product });
+
+    const data = scanData(await recordScanAction({ traceNo, weight: 7, scanType: "BARCODE_SCAN" }));
+
+    expect(await linkOf(data.scanId)).toMatchObject({ line_id: lineId, linked_how: "AUTO" });
+    expect(await statusOf(lineId)).toMatchObject({ expected: 1, linked: 1, status: "COMPLETE" });
+  });
+
+  it("같은 개체 3박스 — 수량 3이면 세 번째까지 중복 확인 없이 들어가고, 네 번째는 묻는다", async () => {
+    const product = await newProduct();
+    const traceNo = world.newTraceNo();
+
+    await world.seedTrace(traceNo);
+    const { lineId } = await world.createDocumentLine({ traceNo, product, quantity: 3 });
+
+    // 같은 번호·같은 중량을 연달아 — 명세서가 없었다면 두 번째부터 중복 의심 창이 떴다.
+    for (let index = 0; index < 3; index += 1) {
+      const result = await recordScanAction({ traceNo, weight: 8, scanType: "BARCODE_SCAN" });
+
+      expect(result.success).toBe(true);
+      expect(result.data && "duplicate" in result.data).toBe(false);
+    }
+
+    expect(await statusOf(lineId)).toMatchObject({ expected: 3, linked: 3, status: "COMPLETE" });
+    expect(await stockOf(product.id)).toBe(24);
+
+    const fourth = await recordScanAction({ traceNo, weight: 8, scanType: "BARCODE_SCAN" });
+
+    expect(fourth.data && "duplicate" in fourth.data).toBe(true);
+  });
+
+  it("같은 번호가 서로 다른 상품의 두 줄에 있으면 붙이지 않는다 — 사무실에서 고른다", async () => {
+    const first = await newProduct();
+    const second = await newProduct();
+    const traceNo = world.newTraceNo();
+
+    await world.seedTrace(traceNo, { part: null, speciesGroup: null });
+    const { documentId } = await world.createDocumentLine({ traceNo, product: first });
+    await world.createDocumentLine({ traceNo, product: second, documentId });
+
+    const data = scanData(await recordScanAction({ traceNo, weight: 5, scanType: "BARCODE_SCAN" }));
+
+    expect(data.status).toBe("PENDING_MAPPING");
+    expect(await linkOf(data.scanId)).toBeNull();
+  });
+
+  it("여럿이어도 자리가 남은 줄이 하나면 그 줄에 붙는다", async () => {
+    const product = await newProduct();
+    const traceNo = world.newTraceNo();
+
+    await world.seedTrace(traceNo);
+    const { documentId, lineId: firstLine } = await world.createDocumentLine({ traceNo, product, quantity: 1 });
+    const { lineId: secondLine } = await world.createDocumentLine({ traceNo, product, quantity: 1, documentId });
+
+    const a = scanData(await recordScanAction({ traceNo, weight: 6, scanType: "BARCODE_SCAN" }));
+
+    // 첫 박스는 두 줄 다 비어 있어 애매 → 안 붙음. 사무실이 첫 줄에 붙였다고 치자.
+    expect(await linkOf(a.scanId)).toBeNull();
+    const linked = await getActorClient().rpc("link_scan_to_document_line", { p_scan_id: a.scanId, p_line_id: firstLine, p_how: "MANUAL" });
+    expect(linked.error).toBeNull();
+
+    // 두 번째 박스는 남은 자리가 둘째 줄 하나뿐 → 자동으로 붙는다. 같은 번호·다른 중량이라 중복 창과는 무관.
+    const b = scanData(await recordScanAction({ traceNo, weight: 6.5, scanType: "BARCODE_SCAN" }));
+
+    expect(await linkOf(b.scanId)).toMatchObject({ line_id: secondLine, linked_how: "AUTO" });
+  });
+
+  it("박스를 취소하면 연결이 풀리고 줄은 다시 대기가 된다", async () => {
+    const product = await newProduct();
+    const traceNo = world.newTraceNo();
+
+    await world.seedTrace(traceNo);
+    const { lineId } = await world.createDocumentLine({ traceNo, product });
+    const data = scanData(await recordScanAction({ traceNo, weight: 7, scanType: "BARCODE_SCAN" }));
+
+    expect(await statusOf(lineId)).toMatchObject({ status: "COMPLETE" });
+    await voidScanAction(data.scanId, "오입력");
+
+    expect(await linkOf(data.scanId)).toBeNull();
+    expect(await statusOf(lineId)).toMatchObject({ linked: 0, status: "AWAITING" });
+  });
+
+  it("마감 — 미입고 줄이 남아 있으면 사유 없이는 못 닫고, 사유를 적으면 닫히며 되열 수 있다", async () => {
+    const product = await newProduct();
+    const actor = getActorClient();
+    const { documentId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), product });
+
+    const refused = await actor.rpc("close_inbound_document", { p_document_id: documentId, p_note: null });
+
+    expect(refused.error?.message).toContain("CLOSE_NOTE_REQUIRED:1");
+
+    const closed = await actor.rpc("close_inbound_document", { p_document_id: documentId, p_note: "공급처 결품 통보" });
+
+    expect(closed.error).toBeNull();
+
+    const { data: doc } = await admin.from("inbound_documents").select("status, note").eq("id", documentId).single();
+
+    expect(doc?.status).toBe("CLOSED");
+    expect(doc?.note).toContain("공급처 결품 통보");
+
+    // 마감된 서류엔 못 붙인다.
+    const traceNo = world.newTraceNo();
+    await world.seedTrace(traceNo);
+    const scan = scanData(await recordScanAction({ traceNo, weight: 3, scanType: "BARCODE_SCAN" }));
+    const { data: lines } = await admin.from("inbound_document_lines").select("id").eq("document_id", documentId);
+    const blocked = await actor.rpc("link_scan_to_document_line", { p_scan_id: scan.scanId, p_line_id: lines?.[0]?.id, p_how: "MANUAL" });
+
+    expect(blocked.error?.message).toContain("DOCUMENT_NOT_PENDING");
+
+    const reopened = await actor.rpc("reopen_inbound_document", { p_document_id: documentId });
+
+    expect(reopened.error).toBeNull();
+  });
+
+  it("명세서를 나중에 올려도(거슬러 확정) 이미 찍힌 박스가 줄에 붙는다", async () => {
+    const product = await newProduct();
+    const traceNo = world.newTraceNo();
+
+    await world.seedTrace(traceNo);
+    const data = scanData(await recordScanAction({ traceNo, weight: 7, scanType: "BARCODE_SCAN", productId: product.id }));
+
+    expect(await linkOf(data.scanId)).toBeNull();
+
+    const { lineId } = await world.createDocumentLine({ traceNo, product });
+    await getActorClient().rpc("relink_pending_scans_to_documents");
+
+    expect(await linkOf(data.scanId)).toMatchObject({ line_id: lineId, linked_how: "AUTO" });
+  });
+});
+
 describe("voidScanAction", () => {
   it("입고를 취소하면 재고가 원복되고, 다시 취소하면 '이미 취소' 안내가 나온다", async () => {
     const product = await newProduct();

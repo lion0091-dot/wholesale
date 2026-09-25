@@ -323,6 +323,18 @@ export async function recordScanAction(input: {
 
     const row = data as Record<string, unknown>;
 
+    // 명세서 줄에 박스를 붙인다(대조용, 재고와 무관 — 118). 해당 줄이 하나로 정해질 때만 붙고,
+    // 애매하면 사무실 대조 화면 몫으로 남는다. 실패해도 입고는 이미 끝났으므로 막지 않는다.
+    if (row.scan_id) {
+      const { error: linkError } = await supabase.rpc("auto_link_scan_to_document_line", {
+        p_scan_id: String(row.scan_id),
+      });
+
+      if (linkError) {
+        console.error("[inbound] 명세서 줄 자동 배정 실패:", linkError.message);
+      }
+    }
+
     // 나중에 사람이 상품을 지정할 때 학습하려면 그 박스의 상품코드를 알아야 한다.
     // 실패해도 입고 자체는 이미 끝났으므로 흐름을 막지 않는다.
     if (gtin && row.scan_id) {

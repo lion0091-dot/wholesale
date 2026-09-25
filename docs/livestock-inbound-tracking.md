@@ -1087,3 +1087,14 @@ SECURITY DEFINER RPC 여러 개가 아래 두 패턴으로 검사했다.
 검증: `inbound.itest.ts` 48건(거슬러 확정 3건 — PENDING·EXCEPTION·여럿이면 안 함, 충돌 2건 추가). 라이브 미적용(113→117 순).
 
 **여전히 남은 것:** 같은 개체 N박스·로트 첫 박스에 줄 전부 사라짐(수량 기준 대조, B단계), GS1 AI(10) 자체 로트(실사례 나올 때), EAN-13만·바코드 없는 박스(원리상 불가).
+
+### 29단계 B 착수 — 줄↔박스 연결표 DB 뼈대 (`20260930000118_document_line_scan_links.sql`, 2026-09-25)
+
+사장님 결정: **애매한 줄 배정은 사무실에서.** 재고 확정 시점은 그대로(스캔이 만든다) — 이번 B단계는 대조·집계 층만 얹는다. 화면·서버 액션·테스트는 [inbound-document-reconciliation-spec.md](inbound-document-reconciliation-spec.md)를 스펙으로 별도(Sonnet) 세션에서 구현한다.
+
+- `inbound_document_line_scans` 연결표(박스 하나 = 줄 하나, 쓰기는 RPC만, SELECT는 문서 권한). 설계 문서의 "`matched_scan_id` 컬럼"은 수량 N 때문에 연결표로 바꿈. 줄 상태는 저장 안 하고 계산(`document_line_match_status`: 예정 = 수량 칸 또는 1, AWAITING/PARTIAL/COMPLETE/OVER, VOIDED 제외).
+- `auto_link_scan_to_document_line` — 해당 줄이 하나, 또는 자리가 남은 줄이 하나일 때만 붙임(여럿이면 되묻는다 원칙). `recordScanAction`이 스캔 직후 부르고, `relink_pending_scans_to_documents`(117)에 최근 30일 미배정 박스 배정 루프를 덧붙임.
+- **중복 의심 창 우회** — `record_inbound_scan_base`(로컬 본문 기준 패치)가 같은 번호·같은 중량이 창 안에 있어도 대조 중 명세서에 자리가 남은 줄이 있으면 묻지 않는다. 같은 개체 3박스 문제 해소. 자리가 다 차면 예전대로 묻는다.
+- 박스 취소 트리거로 연결 자동 해제. `close_inbound_document`(미입고 있으면 사유 필수 `CLOSE_NOTE_REQUIRED:n`, note에 `[마감 시각] …`), `reopen_inbound_document`.
+
+검증: `inbound.itest.ts` 55건(118 7건 추가: 자동 배정·수량 3 연속 스캔 무확인+4번째 확인·두 줄 애매하면 안 붙음·자리 남은 줄 하나면 붙음·취소 시 해제·마감 사유·거슬러 배정). 라이브 미적용(113→118 순).
