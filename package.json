@@ -20,7 +20,9 @@
     "popbill": "^1.64.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "unpdf": "^1.8.1"
+    "read-excel-file": "^9.3.10",
+    "unpdf": "^1.8.1",
+    "write-excel-file": "^4.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",

@@ -24,6 +24,7 @@ import {
   deleteInboundDocumentAction,
   discardInboundDocumentAction,
   extractDocumentTableAction,
+  extractExcelTableAction,
   findUnfinishedDocumentPrelookupAction,
   getDocumentFileUrlAction,
   loadSupplierFormatAction,
@@ -415,6 +416,18 @@ export function InboundDocumentPanel({
     setError(null);
   };
 
+  // 직접 입력 — 위의 방법이 다 어려울 때 마지막으로 고르는 길(사장님 2026-09-26). 사진을 올린 뒤라면 그 사진을 보면서 옮겨 적는다.
+  // 사무실에서 종이 명세서를 옮겨 적는 용도이며, 현장 스캔 화면에는 영향이 없다.
+  const startManualEntry = () => {
+    setGrid(null);
+    setColumnMap({});
+    setLines([emptyLine(1)]);
+    setEntryMethod("MANUAL");
+    setMode("review");
+    setNotice(null);
+    setError(null);
+  };
+
   const startFromText = (text: string, sourceFile: File | null) => {
     startFromGrid(parseDocumentText(text), sourceFile);
   };
@@ -456,10 +469,35 @@ export function InboundDocumentPanel({
       return;
     }
 
-    if (/\.xlsx?$/i.test(picked.name)) {
-      setError(
-        "엑셀 파일(.xlsx)은 바로 읽을 수 없습니다. 엑셀에서 '다른 이름으로 저장 > CSV'로 저장하시거나, 표를 복사해 아래 칸에 붙여넣어주세요.",
-      );
+    // 구형 엑셀(.xls)은 형식이 달라 읽지 못한다 — 새 형식(.xlsx)으로 저장해 달라고 안내한다.
+    if (/\.xls$/i.test(picked.name)) {
+      setError("구형 엑셀(.xls)은 읽을 수 없습니다. 엑셀에서 '다른 이름으로 저장'으로 .xlsx 형식으로 저장해 올려주세요.");
+      return;
+    }
+
+    // 엑셀(.xlsx) — 입력 양식에 적어 저장한 파일을 그대로 올린다. 서버가 표를 읽어 PDF와 같은 경로로 이어진다.
+    if (/\.xlsx$/i.test(picked.name) || picked.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+      setExtracting(true);
+
+      const formData = new FormData();
+
+      formData.append("file", picked);
+
+      const result = await extractExcelTableAction(formData);
+
+      setExtracting(false);
+
+      if (!result.success || !result.data) {
+        setError(result.error ?? "엑셀 파일을 읽지 못했습니다. 파일이 손상됐거나 암호가 걸려 있는지 확인해주세요.");
+        return;
+      }
+
+      if (result.data.cells.length === 0) {
+        setError("엑셀 파일에 내용이 없습니다. '명세서' 시트에 줄을 적고 저장한 뒤 다시 올려주세요.");
+        return;
+      }
+
+      startFromGrid(buildGrid(result.data.cells), picked);
       return;
     }
 
@@ -883,7 +921,7 @@ export function InboundDocumentPanel({
                     ? postSaveStep
                     : {
                         title: "1단계: 명세서 파일을 고르세요",
-                        detail: "사진 찍기, 파일 고르기, 표 붙여넣기 중 하나로 시작합니다.",
+                        detail: "입력 양식(엑셀)·파일 고르기·표 붙여넣기 중 하나로 시작합니다. 다 어려우면 맨 아래 '화면에서 직접 입력하기'를 누르세요.",
                       }
                   : !supplierName.trim()
                     ? {
@@ -913,13 +951,21 @@ export function InboundDocumentPanel({
                   onClick={() => fileInputRef.current?.click()}
                   style={{ ...secondaryButton, ...(activeUploadField === "pick" ? HIGHLIGHT_BUTTON : {}) }}
                 >
-                  파일 고르기 (CSV · PDF · 사진)
+                  파일 고르기 (엑셀 · CSV · PDF · 사진)
                 </button>
+                <a href="/dashboard/inbound/statement-template" download style={{ ...secondaryButton, textDecoration: "none", display: "inline-block" }}>
+                  입력 양식 내려받기 (엑셀)
+                </a>
               </div>
+
+              <p style={{ margin: 0, fontSize: "12px", color: "#64748b", lineHeight: 1.6 }}>
+                종이로 받은 명세서는 <strong>입력 양식</strong>을 내려받아 엑셀에 옮겨 적고, 저장한 파일(.xlsx)을 그대로 올리세요.
+                헤더가 이미 들어 있어 칸이 저절로 잡힙니다.
+              </p>
 
               {extracting ? (
                 <p style={{ margin: 0, fontSize: "13px", color: "#1e40af" }}>
-                  PDF에서 표를 읽는 중입니다…
+                  파일에서 표를 읽는 중입니다…
                 </p>
               ) : null}
 
@@ -936,7 +982,7 @@ export function InboundDocumentPanel({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,.txt,.pdf,image/*"
+                accept=".xlsx,.csv,.txt,.pdf,image/*,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 onChange={(event) => void handleFile(event.target.files?.[0] ?? null)}
                 style={{ display: "none" }}
               />
@@ -957,6 +1003,15 @@ export function InboundDocumentPanel({
                   style={{ ...secondaryButton, marginTop: "8px" }}
                 >
                   붙여넣은 내용 읽기
+                </button>
+              </div>
+
+              <div style={{ borderTop: "1px dashed #cbd5e1", paddingTop: "12px" }}>
+                <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#64748b", lineHeight: 1.6 }}>
+                  위 방법이 어려우면 마지막으로, 화면에서 줄을 하나씩 직접 입력할 수 있습니다.
+                </p>
+                <button type="button" onClick={startManualEntry} style={secondaryButton}>
+                  화면에서 직접 입력하기
                 </button>
               </div>
 
@@ -1151,8 +1206,13 @@ export function InboundDocumentPanel({
                   color: "#1e40af",
                 }}
               >
-                {storeOnlyReason} 이 화면에서 받아적으실 필요는 없습니다 — 원본은 그대로 남으니
-                필요할 때 열어보시면 됩니다.
+                {storeOnlyReason} 원본은 그대로 남으니 필요할 때 열어보시면 됩니다. 명세서와 박스를 자동으로 맞춰 보려면 아래
+                버튼으로 이 서류를 보면서 줄을 직접 입력할 수 있습니다.
+                <div style={{ marginTop: "8px" }}>
+                  <button type="button" onClick={startManualEntry} style={secondaryButton}>
+                    이 서류를 보면서 줄 직접 입력하기
+                  </button>
+                </div>
               </div>
 
               {previewUrl ? (

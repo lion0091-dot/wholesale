@@ -813,6 +813,32 @@ export async function extractDocumentTableAction(
   }
 }
 
+/** 엑셀(.xlsx) 파일의 표를 읽어 글자 격자로 돌려준다 — PDF와 같은 모양이라 화면이 같은 경로로 이어 받는다. */
+export async function extractExcelTableAction(
+  formData: FormData
+): Promise<ActionResult<{ cells: string[][]; sheetName: string }>> {
+  try {
+    await resolveDocumentScope();
+
+    const file = formData.get("file");
+
+    if (!(file instanceof File) || file.size === 0) {
+      throw new RbacError("파일이 없습니다.");
+    }
+
+    if (file.size > MAX_FILE_BYTES) {
+      throw new RbacError("파일이 너무 큽니다. 8MB 이하로 올려주세요.");
+    }
+
+    const { extractExcelTable } = await import("@/lib/livestock/excel-table");
+    const table = await extractExcelTable(new Uint8Array(await file.arrayBuffer()));
+
+    return { success: true, data: { cells: table.cells, sheetName: table.sheetName } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
 export interface LearnedFormat {
   supplierName: string;
   columnMap: Record<string, number>;
