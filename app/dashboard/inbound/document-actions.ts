@@ -1110,6 +1110,38 @@ export async function closeInboundDocumentAction(
   }
 }
 
+/** 현장이 "스캔 종료"를 표시하거나(finished=true) 다시 시작한다(false). 재고·대조에는 영향이 없는 표시다. */
+export async function setDocumentsScanFinishedAction(
+  documentIds: string[],
+  finished: boolean
+): Promise<ActionResult<{ changed: number }>> {
+  try {
+    const { supabase } = await resolveDocumentScope();
+
+    if (documentIds.length === 0) {
+      return { success: true, data: { changed: 0 } };
+    }
+
+    const { data, error } = await supabase.rpc("set_documents_scan_finished", {
+      p_document_ids: documentIds,
+      p_finished: finished,
+    });
+
+    if (error) {
+      if (error.message.includes("DOCUMENT_NOT_FOUND")) {
+        throw new RbacError("해당 명세서를 찾을 수 없습니다.");
+      }
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+
+    return { success: true, data: { changed: Number(data ?? 0) } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
 /** 마감을 되돌려 다시 대조 중 상태로 만든다. */
 export async function reopenInboundDocumentAction(documentId: string): Promise<ActionResult> {
   try {

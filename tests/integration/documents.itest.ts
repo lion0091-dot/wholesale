@@ -10,6 +10,7 @@ import {
   closeInboundDocumentAction,
   linkScanToDocumentLineAction,
   reopenInboundDocumentAction,
+  setDocumentsScanFinishedAction,
   unlinkScanFromDocumentLineAction,
 } from "@/app/dashboard/inbound/document-actions";
 import { documentLineExpectedQty, documentLineMatchStatus } from "@/lib/livestock/document-reconciliation";
@@ -250,5 +251,82 @@ describe("줄 상태 집계 — 서버 계산이 document_line_match_status RPC�
 
     expect(rpcRow).toEqual({ expected, linked, status });
     expect(status).toBe("PARTIAL");
+  });
+});
+
+describe("setDocumentsScanFinishedAction — 현장 스캔 종료 표시", () => {
+  async function scanFinishedAt(documentId: string) {
+    const { data } = await adminClient()
+      .from("inbound_documents")
+      .select("scan_finished_at, scan_finished_by")
+      .eq("id", documentId)
+      .single();
+
+    return data;
+  }
+
+  it("정상 — 직원도 종료를 표시하고 다시 시작할 수 있다(표시자가 남는다)", async () => {
+    const product = await newProduct();
+    const { documentId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), product });
+
+    await actAs(world.users.staffA);
+
+    const finished = await setDocumentsScanFinishedAction([documentId], true);
+
+    expect(finished).toEqual({ success: true, data: { changed: 1 } });
+
+    const marked = await scanFinishedAt(documentId);
+
+    expect(marked?.scan_finished_at).not.toBeNull();
+    expect(marked?.scan_finished_by).toBe(world.users.staffA.id);
+
+    const resumed = await setDocumentsScanFinishedAction([documentId], false);
+
+    expect(resumed).toEqual({ success: true, data: { changed: 1 } });
+    expect((await scanFinishedAt(documentId))?.scan_finished_at).toBeNull();
+  });
+
+  it("표시는 재고나 줄 상태를 바꾸지 않는다", async () => {
+    const product = await newProduct();
+    const { documentId, lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), product });
+
+    await setDocumentsScanFinishedAction([documentId], true);
+
+    const { data } = await getActorClient().rpc("document_line_match_status", { p_line_id: lineId });
+
+    expect((data as Array<{ status: string }>)[0].status).toBe("AWAITING");
+  });
+
+  it("남의 업체 명세서는 찾을 수 없다고 거부한다", async () => {
+    const product = await newProduct();
+    const { documentId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), product });
+
+    await actAs(world.users.ownerB);
+
+    const denied = await setDocumentsScanFinishedAction([documentId], true);
+
+    expect(denied).toMatchObject({ success: false });
+    expect((await scanFinishedAt(documentId))?.scan_finished_at).toBeNull();
+  });
+
+  it("고객·비로그인 계정은 표시할 수 없다", async () => {
+    const product = await newProduct();
+    const { documentId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), product });
+
+    await actAs(world.users.retailerR);
+    expect(await setDocumentsScanFinishedAction([documentId], true)).toMatchObject({ success: false });
+
+    await actAs(null);
+    expect(await setDocumentsScanFinishedAction([documentId], true)).toMatchObject({ success: false });
+    expect((await scanFinishedAt(documentId))?.scan_finished_at).toBeNull();
+  });
+
+  it("마감된 명세서는 건너뛴다(변경 0건)", async () => {
+    const product = await newProduct();
+    const { documentId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), product, status: "CLOSED" });
+
+    const result = await setDocumentsScanFinishedAction([documentId], true);
+
+    expect(result).toEqual({ success: true, data: { changed: 0 } });
   });
 });

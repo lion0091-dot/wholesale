@@ -95,7 +95,8 @@ export default async function InboundPage() {
             "id, trace_no, lot_no, item_name, labeled_weight, unit_price, quantity, inbound_documents!inner(status, supplier_name)"
           )
           .eq("inbound_documents.status", "PENDING")
-          .or("trace_no.not.is.null,lot_no.not.is.null"),
+          .or("trace_no.not.is.null,lot_no.not.is.null")
+          .order("line_no", { ascending: true }),
       ]);
 
     pendingDocumentTraceNos = [
@@ -144,7 +145,7 @@ export default async function InboundPage() {
     const { data: documentRows } = await supabase
       .from("inbound_documents")
       .select(
-        "id, supplier_name, document_no, issued_on, file_name, storage_path, status, total_amount, created_at, inbound_document_lines(count)"
+        "id, supplier_name, document_no, issued_on, file_name, storage_path, status, total_amount, created_at, scan_finished_at, inbound_document_lines(count)"
       )
       .eq("wholesaler_id", scope.wholesalerId)
       .order("created_at", { ascending: false })
@@ -158,7 +159,13 @@ export default async function InboundPage() {
 
     const matchSummaryByDocId = new Map<
       string,
-      { completeLines: number; totalLines: number; partialBoxesRemaining: number }
+      {
+        completeLines: number;
+        totalLines: number;
+        partialBoxesRemaining: number;
+        unresolvedBoxes: number;
+        firstUnresolvedScanId: string | null;
+      }
     >();
 
     if (matchTargetDocIds.length > 0) {
@@ -174,17 +181,30 @@ export default async function InboundPage() {
         matchLineIds.length > 0
           ? await supabase
               .from("inbound_document_line_scans")
-              .select("line_id, inbound_scans(status)")
+              .select("line_id, scan_id, inbound_scans(status)")
               .in("line_id", matchLineIds)
           : { data: [] as Array<Record<string, unknown>> };
 
       const linkedCountByLineId = new Map<string, number>();
+      const docIdByLineId = new Map(matchLines.map((line) => [String(line.id), String(line.document_id)]));
+      const unresolvedByDocId = new Map<string, number>();
+      const firstUnresolvedScanByDocId = new Map<string, string>();
 
       ((matchLinkRows ?? []) as Array<Record<string, unknown>>).forEach((row) => {
         const scan = row.inbound_scans as { status: string } | { status: string }[] | null;
         const scanStatus = Array.isArray(scan) ? scan[0]?.status : scan?.status;
 
         if (scanStatus === "VOIDED") return;
+
+        // 명세서와 이어졌어도 상품이 안 정해진 박스는 재고에 아직 안 들어간다.
+        if (scanStatus === "EXCEPTION" || scanStatus === "PENDING_MAPPING") {
+          const docId = docIdByLineId.get(String(row.line_id));
+
+          if (docId) {
+            unresolvedByDocId.set(docId, (unresolvedByDocId.get(docId) ?? 0) + 1);
+            if (!firstUnresolvedScanByDocId.has(docId)) firstUnresolvedScanByDocId.set(docId, String(row.scan_id));
+          }
+        }
 
         const lineId = String(row.line_id);
 
@@ -200,6 +220,8 @@ export default async function InboundPage() {
           completeLines: 0,
           totalLines: 0,
           partialBoxesRemaining: 0,
+          unresolvedBoxes: unresolvedByDocId.get(docId) ?? 0,
+          firstUnresolvedScanId: firstUnresolvedScanByDocId.get(docId) ?? null,
         };
 
         current.totalLines += 1;
@@ -224,6 +246,7 @@ export default async function InboundPage() {
         totalAmount: row.total_amount === null ? null : Number(row.total_amount),
         createdAt: String(row.created_at),
         lineCount: counts?.[0]?.count ?? 0,
+        scanFinished: Boolean(row.scan_finished_at),
         matchSummary: matchSummaryByDocId.get(String(row.id)) ?? null,
       };
     });
@@ -422,8 +445,11 @@ export default async function InboundPage() {
       .reverse()
       .map((doc) => ({
         id: doc.id,
+        scanFinished: doc.scanFinished,
         completeLines: doc.matchSummary?.completeLines ?? 0,
         totalLines: doc.matchSummary?.totalLines ?? 0,
+        unresolvedBoxes: doc.matchSummary?.unresolvedBoxes ?? 0,
+        firstUnresolvedScanId: doc.matchSummary?.firstUnresolvedScanId ?? null,
       })),
     remainingBoxCount: nextStepRemainingBoxCount,
     needsCheckScanCount: scans.filter(
@@ -491,6 +517,9 @@ export default async function InboundPage() {
       <InboundScanView
         initialScans={scans}
         remainingBoxCount={nextStepRemainingBoxCount}
+        scanDocuments={documents
+          .filter((doc) => doc.status === "PENDING")
+          .map((doc) => ({ id: doc.id, scanFinished: doc.scanFinished }))}
         products={products}
         shippableOrders={shippableOrders}
         scanRequirements={scanRequirements}

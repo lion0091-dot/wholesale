@@ -8,7 +8,17 @@
 
 export interface InboundNextStepInput {
   /** 대기(PENDING) 명세서 — 오래된 것부터. completeLines/totalLines는 줄 상태 요약. */
-  pendingDocuments: Array<{ id: string; completeLines: number; totalLines: number }>;
+  pendingDocuments: Array<{
+    id: string;
+    /** 현장이 스캔 종료를 표시했는가. */
+    scanFinished?: boolean;
+    completeLines: number;
+    totalLines: number;
+    /** 명세서에 이어졌지만 상품이 안 정해져(이력 확인 필요 등) 재고에 아직 안 들어간 박스 수. */
+    unresolvedBoxes?: number;
+    /** 그 중 첫 박스 — 카드 버튼이 이 박스로 바로 이동한다. */
+    firstUnresolvedScanId?: string | null;
+  }>;
   /**
    * 명세서 기준으로 아직 안 들어온 박스 수 — 박스가 하나도 안 온 줄은 예정 수량만큼, 일부만 온 줄은
    * 모자란 만큼 센다(수량 2인 줄에 1박스만 왔으면 1개가 남는다).
@@ -20,15 +30,23 @@ export interface InboundNextStepInput {
   firstNeedsCheckScanId?: string | null;
 }
 
-export type InboundNextStepKey = "scan" | "reconcile" | "close" | "upload";
+export type InboundNextStepKey = "scan" | "scan-finished" | "reconcile" | "close" | "upload";
 
 export interface InboundNextStep {
   key: InboundNextStepKey;
+  /** 이 단계를 하는 사람 — 명세서는 사무실, 박스 스캔은 현장. */
+  who: "사무실" | "현장";
   title: string;
   detail: string | null;
   buttonLabel: string;
+  /** true면 누를 수 없는 대기 표시 — 사무실이 현장 스캔을 기다리는 단계. */
+  buttonDisabled?: boolean;
+  /** 있으면 큰 버튼이 이동이 아니라 이 명세서를 바로 마감한다(모든 줄이 맞고 재고도 다 반영된 경우). */
+  closeDocumentId?: string;
   /** "#id"는 같은 화면 안 이동, "/"로 시작하면 다른 화면. */
   href: string;
+  /** 이 단계를 하지 않는 쪽에게 "지금은 기다리면 된다"고 알리는 안내. */
+  waitNote: { who: "사무실" | "현장"; text: string } | null;
   /** 큰 버튼 아래 작은 링크들 — 명세서 없이 바로 스캔하는 길, 확인이 필요한 박스 보기. */
   secondaries: Array<{ label: string; href: string }>;
 }
@@ -51,14 +69,35 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
   const { pendingDocuments, remainingBoxCount, needsCheckScanCount, firstNeedsCheckScanId } = input;
 
   if (pendingDocuments.length > 0) {
+    if (remainingBoxCount > 0 && pendingDocuments.every((doc) => doc.scanFinished)) {
+      // 박스가 끝내 다 안 왔다고 현장이 알렸다 — 안 온 물건을 사유와 함께 남기고 마감하는 단계다.
+      return {
+        key: "scan-finished",
+        who: "사무실",
+        title: "현장 스캔이 종료됐습니다",
+        detail: `안 온 박스 ${remainingBoxCount}개가 남았습니다. 안 온 물건과 사유를 확인하고 마감하세요.`,
+        waitNote: { who: "현장", text: "스캔 종료를 알렸습니다. 사무실이 확인하는 중입니다. 박스가 더 오면 스캔 화면에서 '스캔 다시 시작'을 누르세요." },
+        buttonLabel: "확인·마감하기",
+        href: documentReconcileHref(pendingDocuments[0].id),
+        secondaries: [{ label: "현장: 스캔 화면으로 이동", href: INBOUND_ANCHORS.scanForm }],
+      };
+    }
+
     if (remainingBoxCount > 0) {
       return {
         key: "scan",
-        title: "박스를 찍어 주세요",
-        detail: `아직 안 들어온 박스 ${remainingBoxCount}개`,
-        buttonLabel: "스캔 시작",
+        who: "사무실",
+        title: "현장에서 스캔 중입니다",
+        detail: `아직 안 들어온 박스 ${remainingBoxCount}개. 종료까지 기다려 주세요. 스캔이 끝나면 이 버튼이 "마감하기"로 바뀝니다.`,
+        waitNote: null,
+        buttonLabel: "스캔 중 대기",
+        buttonDisabled: true,
         href: INBOUND_ANCHORS.scanForm,
-        secondaries: [],
+        secondaries: [
+          { label: "현장: 스캔 화면으로 이동", href: INBOUND_ANCHORS.scanForm },
+          // 공급처가 물건을 덜 보냈으면 박스는 끝내 다 안 온다 — 이때는 안 온 물건을 사유와 함께 남기고 마감한다.
+          { label: "박스가 다 안 왔어도 확인·마감하기 (사무실)", href: documentReconcileHref(pendingDocuments[0].id) },
+        ],
       };
     }
 
@@ -69,19 +108,40 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
 
       return {
         key: "reconcile",
+        who: "사무실",
         title: "확인이 필요한 줄이 있습니다",
         detail: `명세서와 박스를 맞춰 봐야 하는 줄 ${lineCount}개`,
+        waitNote: { who: "현장", text: "스캔은 끝났습니다. 사무실이 명세서와 맞춰 보는 중입니다." },
         buttonLabel: "맞춰 보기",
         href: documentReconcileHref(unfinished[0].id),
         secondaries: [],
       };
     }
 
+    const unresolved = pendingDocuments.reduce((sum, doc) => sum + (doc.unresolvedBoxes ?? 0), 0);
+    const firstUnresolvedScanId = pendingDocuments.find((doc) => doc.firstUnresolvedScanId)?.firstUnresolvedScanId;
+
+    if (unresolved > 0) {
+      return {
+        key: "close",
+        who: "사무실",
+        title: "전부 도착했습니다",
+        detail: `다만 상품 확인이 필요한 박스 ${unresolved}개는 재고에 아직 안 들어갔습니다. 그 박스의 상품을 지정하면 이 카드가 "마감하기"로 바뀝니다.`,
+        waitNote: null,
+        buttonLabel: "상품 지정하러 가기",
+        href: firstUnresolvedScanId ? `#scan-${firstUnresolvedScanId}` : INBOUND_ANCHORS.history,
+        secondaries: [{ label: "그래도 마감하러 가기", href: documentReconcileHref(pendingDocuments[0].id) }],
+      };
+    }
+
     return {
       key: "close",
-      title: "전부 도착했습니다",
-      detail: "마감하면 이 명세서는 끝납니다",
-      buttonLabel: "마감하러 가기",
+      who: "사무실",
+      title: "전부 입고 완료되었습니다",
+      detail: "재고에 모두 반영됐습니다. 마감하면 명세서 확인까지 끝납니다.",
+      waitNote: { who: "현장", text: "스캔은 끝났습니다. 사무실이 마감하면 이 명세서는 끝납니다." },
+      buttonLabel: "마감하기",
+      closeDocumentId: pendingDocuments[0].id,
       href: documentReconcileHref(pendingDocuments[0].id),
       secondaries: [],
     };
@@ -102,10 +162,12 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
 
   return {
     key: "upload",
+    who: "사무실",
     title: "먼저 명세서를 올리세요",
     detail: "공급처 명세서가 있으면 박스를 찍을 때 자동으로 맞춰 줍니다",
     buttonLabel: "명세서 올리기",
     href: INBOUND_ANCHORS.documents,
+    waitNote: null,
     secondaries,
   };
 }

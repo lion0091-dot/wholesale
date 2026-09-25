@@ -13,6 +13,33 @@ export const HIGHLIGHT_BUTTON: CSSProperties = {
   boxShadow: "0 0 0 4px rgba(37, 99, 235, 0.45)",
 };
 
+export type Who = "사무실" | "현장" | "현장·사무실";
+
+const WHO_STYLE: Record<Who, { bg: string; fg: string }> = {
+  사무실: { bg: "#e0e7ff", fg: "#3730a3" },
+  현장: { bg: "#ffedd5", fg: "#9a3412" },
+  "현장·사무실": { bg: "#dcfce7", fg: "#166534" },
+};
+
+/** 이 단계를 누가 하는지 — 사무실 직원 / 현장 직원. 같은 "1단계"가 두 군데 있어도 헷갈리지 않게 한다. */
+export function WhoBadge({ who }: { who: Who }) {
+  return (
+    <span
+      style={{
+        alignSelf: "flex-start",
+        fontSize: "11px",
+        fontWeight: 800,
+        borderRadius: "999px",
+        padding: "2px 9px",
+        backgroundColor: WHO_STYLE[who].bg,
+        color: WHO_STYLE[who].fg,
+      }}
+    >
+      {who === "현장·사무실" ? who : `${who} 업무`}
+    </span>
+  );
+}
+
 export interface StepCardStep {
   title: string;
   detail: string;
@@ -20,7 +47,7 @@ export interface StepCardStep {
   action?: { label: string; onClick: () => void };
 }
 
-export function StepCard({ step }: { step: StepCardStep }) {
+export function StepCard({ step, who }: { step: StepCardStep; who?: Who }) {
   return (
     <div
       style={{
@@ -33,6 +60,7 @@ export function StepCard({ step }: { step: StepCardStep }) {
         gap: "8px",
       }}
     >
+      {who ? <WhoBadge who={who} /> : null}
       <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>{step.title}</div>
       <div style={{ fontSize: "13px", color: "#475569" }}>{step.detail}</div>
       {step.action ? (

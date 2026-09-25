@@ -48,7 +48,25 @@ describe("pickInboundNextStep", () => {
     });
 
     expect(step.key).toBe("close");
+    expect(step.title).toBe("전부 입고 완료되었습니다");
+    expect(step.buttonLabel).toBe("마감하기");
+    expect(step.closeDocumentId).toBe("d1");
     expect(step.href).toBe("/dashboard/inbound/documents/d1");
+  });
+
+  it("전부 도착했어도 상품이 안 정해진 박스가 있으면 '입고 완료'라고 하지 않고 먼저 확인시킨다", () => {
+    const step = pickInboundNextStep({
+      ...base,
+      pendingDocuments: [
+        { id: "d1", completeLines: 2, totalLines: 2, unresolvedBoxes: 1, firstUnresolvedScanId: "s9" },
+      ],
+    });
+
+    expect(step.title).toBe("전부 도착했습니다");
+    expect(step.detail).toContain("재고에 아직 안 들어갔습니다");
+    expect(step.buttonLabel).toBe("상품 지정하러 가기");
+    expect(step.href).toBe("#scan-s9");
+    expect(step.secondaries[0].href).toBe("/dashboard/inbound/documents/d1");
   });
 
   it("줄이 다 안 맞아도 남은 박스가 있으면(수량 2에 1박스만 옴) 맞춰 보기가 아니라 스캔을 안내한다", () => {
@@ -56,6 +74,32 @@ describe("pickInboundNextStep", () => {
       ...base,
       pendingDocuments: [{ id: "d1", completeLines: 2, totalLines: 3 }],
       remainingBoxCount: 1,
+    });
+
+    expect(step.key).toBe("scan");
+  });
+
+  it("현장이 스캔 종료를 표시했으면 남은 박스가 있어도 사무실 카드는 확인·마감하기다", () => {
+    const step = pickInboundNextStep({
+      ...base,
+      pendingDocuments: [{ id: "d1", scanFinished: true, completeLines: 1, totalLines: 2 }],
+      remainingBoxCount: 1,
+    });
+
+    expect(step.key).toBe("scan-finished");
+    expect(step.buttonLabel).toBe("확인·마감하기");
+    expect(step.buttonDisabled).toBeUndefined();
+    expect(step.href).toBe("/dashboard/inbound/documents/d1");
+  });
+
+  it("명세서가 둘 이상이고 하나라도 스캔 중이면 아직 스캔 단계다", () => {
+    const step = pickInboundNextStep({
+      ...base,
+      pendingDocuments: [
+        { id: "d1", scanFinished: true, completeLines: 1, totalLines: 2 },
+        { id: "d2", scanFinished: false, completeLines: 0, totalLines: 1 },
+      ],
+      remainingBoxCount: 2,
     });
 
     expect(step.key).toBe("scan");
@@ -88,6 +132,27 @@ describe("pickInboundNextStep", () => {
     });
 
     expect(step.key).toBe("scan");
-    expect(step.secondaries).toEqual([]);
+    expect(step.secondaries.map((link) => link.label)[0]).toBe("현장: 스캔 화면으로 이동");
+  });
+
+  it("스캔 단계에서는 사무실에게 기다리라고, 확인·마감 단계에서는 현장에게 스캔이 끝났다고 알린다", () => {
+    const scanning = pickInboundNextStep({
+      ...base,
+      pendingDocuments: [{ id: "d1", completeLines: 0, totalLines: 2 }],
+      remainingBoxCount: 2,
+    });
+    const closing = pickInboundNextStep({
+      ...base,
+      pendingDocuments: [{ id: "d1", completeLines: 2, totalLines: 2 }],
+    });
+
+    expect(scanning.who).toBe("사무실");
+    expect(scanning.buttonLabel).toBe("스캔 중 대기");
+    expect(scanning.buttonDisabled).toBe(true);
+    expect(scanning.detail).toContain("기다려 주세요");
+    expect(scanning.secondaries[0].href).toBe("#inbound-scan-form");
+    expect(scanning.secondaries[1].href).toBe("/dashboard/inbound/documents/d1");
+    expect(closing.waitNote?.who).toBe("현장");
+    expect(pickInboundNextStep(base).waitNote).toBeNull();
   });
 });

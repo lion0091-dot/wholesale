@@ -1,6 +1,7 @@
 "use client";
 
 import { INBOUND_ANCHORS } from "@/lib/livestock/inbound-next-step";
+import { setDocumentsScanFinishedAction } from "./document-actions";
 import { HIGHLIGHT_BUTTON, HIGHLIGHT_FIELD, ResultCardView, StepCard, type StepCardStep } from "./step-card";
 import {
   buildFailureCard,
@@ -117,6 +118,8 @@ function hasBarcodeDetector(): boolean {
 
 interface Props {
   initialScans: InboundScanRow[];
+  /** 대기(PENDING) 명세서와 현장 스캔 종료 표시 여부. */
+  scanDocuments: Array<{ id: string; scanFinished: boolean }>;
   /** 명세서 기준으로 아직 안 들어온 박스 수(수량 반영). 단계 안내 카드에 쓴다. */
   remainingBoxCount: number;
   /**
@@ -247,6 +250,7 @@ function ScanRequirementList({ report }: { report: ScanRequirementReport }) {
 
 export function InboundScanView({
   initialScans,
+  scanDocuments,
   remainingBoxCount,
   products,
   shippableOrders,
@@ -914,6 +918,71 @@ export function InboundScanView({
       : resultCard.card
     : null;
 
+  // 현장 "스캔 종료" — 박스가 끝내 다 안 올 때 사무실이 마감으로 넘어가도록 알린다(재고·대조와 무관한 표시).
+  const scanAllFinished = scanDocuments.length > 0 && scanDocuments.every((doc) => doc.scanFinished);
+  const [finishingScan, setFinishingScan] = useState(false);
+
+  const handleScanFinished = async (finished: boolean) => {
+    if (
+      finished &&
+      !window.confirm(
+        `명세서에서 아직 안 들어온 박스 ${remainingBoxCount}개는 안 온 것으로 알리고 스캔을 종료합니다. 사무실이 확인 후 마감합니다.\n\n종료할까요?`
+      )
+    ) {
+      return;
+    }
+
+    setFinishingScan(true);
+
+    const result = await setDocumentsScanFinishedAction(
+      scanDocuments.filter((doc) => doc.scanFinished !== finished).map((doc) => doc.id),
+      finished
+    );
+
+    setFinishingScan(false);
+
+    if (!result.success) {
+      setResultCard({ card: buildFailureCard(result.error ?? "처리하지 못했습니다."), scanId: null });
+      return;
+    }
+
+    router.refresh();
+  };
+
+  // 박스 나눠서 입고 — 코드 한 번 → 상품·무게 2개 이상 → 전체 입고. 카드와 칸 강조가 같은 판단을 쓴다.
+  const splitBoxCode = (parseBarcode(splitTraceNo).traceNo ?? splitTraceNo.trim()).trim();
+  const splitValidCount = splitRows.filter((row) => row.productId && Number.parseFloat(row.weight) > 0).length;
+  const activeSplitField: "box" | "rows" | "submit" | null = splitSubmitting
+    ? null
+    : !splitBoxCode
+      ? "box"
+      : splitValidCount < 2
+        ? "rows"
+        : "submit";
+  const splitStep: StepCardStep = splitSubmitting
+    ? { title: "입고 중입니다", detail: "잠시만 기다려 주세요." }
+    : !splitBoxCode
+      ? {
+          title: "1단계: 박스에 적힌 코드를 입력하세요",
+          detail:
+            "소·돼지처럼 여러 품목이 섞여 온 공급처 박스입니다. 박스 코드는 한 번만 넣습니다. 이력번호가 박스 안 고기마다 따로 있으면 아래 줄마다 적을 수 있습니다.",
+        }
+      : splitValidCount < 2
+        ? {
+            title: "2단계: 박스 안 상품과 무게를 2개 이상 입력하세요",
+            detail: `박스를 열어 실제로 들어 있는 상품마다 상품을 고르고 무게를 넣습니다. 지금 ${splitValidCount}개 입력됐습니다. 파란 칸을 채우세요. 줄이 모자라면 "+ 상품 추가"를 누르세요.`,
+          }
+        : {
+            title: '3단계: "전체 입고"를 누르세요',
+            detail: `상품 ${splitValidCount}개로 나눠 한꺼번에 입고합니다. 누르기 전에는 재고가 늘어나지 않습니다.`,
+            action: { label: "전체 입고", onClick: () => void handleSplitSubmit() },
+          };
+
+  // 상품이 안 정해져 재고에 못 들어간 박스들 — 상품 지정 안내 카드와 선택칸 강조의 근거.
+  const unresolvedRows = rows.filter(
+    (row) => !row.isSample && (row.status === "PENDING_MAPPING" || row.status === "EXCEPTION")
+  );
+
   // 카드가 안내하는 단계의 칸·버튼을 같은 색으로 강조한다. 명세서 박스를 다 찍은 뒤엔 강조할 칸이 없다.
   const scanAllArrived = remainingBoxCount === 0 && pendingDocumentTraceNos.length > 0;
   const activeScanField: "trace" | "weight" | "submit" | null =
@@ -931,20 +1000,36 @@ export function InboundScanView({
 
   // 지금 할 단계 안내 — 바코드 → 실중량 → 등록 순서를 카드가 말해 준다.
   const scanStep: StepCardStep =
-    pending.length > 0
+    remainingBoxCount > 0 && scanAllFinished
+      ? {
+          title: "스캔 종료를 알렸습니다",
+          detail:
+            "사무실이 안 온 박스를 확인하고 마감합니다. 박스가 더 오면 아래 '스캔 다시 시작'을 누르고 이어서 찍으세요.",
+        }
+      : pending.length > 0
       ? { title: "등록 중입니다", detail: "이력번호를 조회하고 있습니다. 잠시만 기다려 주세요." }
       : !traceNo.trim()
         ? remainingBoxCount === 0 && pendingDocumentTraceNos.length > 0
           ? {
               title: "명세서의 박스를 모두 찍었습니다",
-              detail: "이제 확인하고 마감하는 단계입니다.",
+              detail: "스캔은 끝났습니다. 이제 사무실이 확인하고 마감합니다.",
               link: { label: "다음 할 일 보기", href: INBOUND_ANCHORS.nextStep },
             }
           : {
               title: "1단계: 박스의 바코드를 찍으세요",
               detail:
-                "스캐너로 찍거나 이력번호를 입력합니다." +
-                (remainingBoxCount > 0 ? ` 명세서 기준으로 아직 안 들어온 박스는 ${remainingBoxCount}개입니다.` : ""),
+                "박스에 붙은 바코드를 스캐너로 찍으면 이력번호가 자동으로 채워집니다." +
+                " 잘못 찍었다면 아래 입고 내역에서 그 박스의 '취소'를 누르세요." +
+                (awaitingDocumentLines.length > 0
+                  ? " 바코드가 안 찍히면 아래 \"명세서 대기 품목\"에서 그 물건을 눌러 번호를 채우세요."
+                  : " 바코드가 안 찍히면 박스 라벨의 번호를 직접 입력하세요.") +
+                (remainingBoxCount > 0
+                  ? ` 명세서 기준으로 아직 안 들어온 박스는 ${remainingBoxCount}개입니다. 다 찍었는데 박스가 남았으면 사무실에 알려 주세요 — 사무실이 '안 온 물건'으로 마감합니다.`
+                  : ""),
+              link:
+                awaitingDocumentLines.length > 0
+                  ? { label: "명세서 대기 품목 보기", href: "#inbound-awaiting" }
+                  : undefined,
             }
         : !weight.trim()
           ? {
@@ -966,9 +1051,23 @@ export function InboundScanView({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <StepCard step={scanStep} />
+      <StepCard who="현장" step={scanStep} />
 
       {shownResultCard ? <ResultCardView card={shownResultCard} onDismiss={() => setResultCard(null)} /> : null}
+
+      {remainingBoxCount > 0 && scanDocuments.length > 0 ? (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          {scanAllFinished ? (
+            <button type="button" disabled={finishingScan} onClick={() => void handleScanFinished(false)} style={buttonStyle}>
+              {finishingScan ? "처리 중…" : "스캔 다시 시작"}
+            </button>
+          ) : (
+            <button type="button" disabled={finishingScan} onClick={() => void handleScanFinished(true)} style={buttonStyle}>
+              {finishingScan ? "처리 중…" : `스캔 종료 (남은 박스 ${remainingBoxCount}개는 안 옴)`}
+            </button>
+          )}
+        </div>
+      ) : null}
 
       <section id="inbound-scan-form" style={{ ...panelStyle, scrollMarginTop: "12px" }}>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -1192,13 +1291,14 @@ export function InboundScanView({
       </section>
 
       {awaitingDocumentLines.length > 0 && (
-        <section style={panelStyle}>
+        <section id="inbound-awaiting" style={{ ...panelStyle, scrollMarginTop: "12px" }}>
           <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>
             명세서 대기 품목 <span style={{ color: "#94a3b8", fontWeight: 400 }}>아직 안 들어온 것</span>
           </div>
           <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 10px" }}>
             바코드가 잘 안 찍히거나 로트번호를 옮겨 적어야 할 때, 아래에서 탭하면 이력번호 칸에
-            채워집니다. 실제 등록은 실중량을 확인하고 눌러야 끝납니다.
+            채워집니다. 현장용입니다 — 손에 든 박스와 같은 물건을 고르세요(순서는 상관없습니다). 사무실은 누를 필요가 없습니다. 실제 등록은
+            실중량을 확인하고 눌러야 끝납니다.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             {awaitingDocumentLines.map((line) => (
@@ -1238,6 +1338,9 @@ export function InboundScanView({
 
       {splitMode && (
         <section style={panelStyle}>
+          <div style={{ marginBottom: "10px" }}>
+            <StepCard who="현장" step={splitStep} />
+          </div>
           <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "6px" }}>
             박스 나눠서 입고
           </div>
@@ -1287,7 +1390,7 @@ export function InboundScanView({
             value={splitTraceNo}
             onChange={(event) => setSplitTraceNo(event.target.value)}
             placeholder="박스에 적힌 이력번호/코드 (한 번만)"
-            style={{ ...inputStyle, marginBottom: "10px" }}
+            style={{ ...inputStyle, marginBottom: "10px", ...(activeSplitField === "box" ? HIGHLIGHT_FIELD : {}) }}
           />
 
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -1297,7 +1400,12 @@ export function InboundScanView({
                   value={row.productId}
                   onChange={(event) => updateSplitRow(row.id, { productId: event.target.value })}
                   aria-label="상품 선택"
-                  style={{ ...inputStyle, width: "auto", flex: "1 1 220px" }}
+                  style={{
+                    ...inputStyle,
+                    width: "auto",
+                    flex: "1 1 220px",
+                    ...(activeSplitField === "rows" && !row.productId ? HIGHLIGHT_FIELD : {}),
+                  }}
                 >
                   <option value="">상품 선택…</option>
                   {products.map((product) => (
@@ -1312,7 +1420,11 @@ export function InboundScanView({
                   onChange={(event) => updateSplitRow(row.id, { weight: event.target.value })}
                   placeholder="무게(kg)"
                   inputMode="decimal"
-                  style={{ ...inputStyle, width: "110px" }}
+                  style={{
+                    ...inputStyle,
+                    width: "110px",
+                    ...(activeSplitField === "rows" && !(Number.parseFloat(row.weight) > 0) ? HIGHLIGHT_FIELD : {}),
+                  }}
                 />
                 {/* 소·돼지가 섞여 온 박스는 안에 든 고기마다 이력번호가 따로 있다.
                     비우면 위 박스 코드를 그대로 쓴다(같은 소에서 나온 부위들인 경우). */}
@@ -1347,6 +1459,7 @@ export function InboundScanView({
                 backgroundColor: "#0f172a",
                 color: "#fff",
                 opacity: splitSubmitting ? 0.6 : 1,
+                ...(activeSplitField === "submit" ? HIGHLIGHT_BUTTON : {}),
               }}
             >
               {splitSubmitting ? "입고 중…" : "전체 입고"}
@@ -1368,6 +1481,20 @@ export function InboundScanView({
           />
         </section>
       )}
+
+      {unresolvedRows.length > 0 && pending.length === 0 ? (
+        <StepCard
+          who="현장·사무실"
+          step={{
+            title: `상품을 지정하세요 (박스 ${unresolvedRows.length}개)`,
+            detail:
+              "상품이 정해져야 재고에 들어갑니다. 아래 입고 내역에서 '상품 확인 필요'나 '이력 확인 필요'가 붙은 박스를 찾아, " +
+              "그 박스의 파란 '상품 선택…' 칸에서 실제 물건과 같은 상품을 고르세요. 고르는 즉시 지정되고 재고가 늘어납니다. " +
+              "무슨 물건인지 모르겠으면 현장 직원에게 물어보세요. 다 지정하면 맨 위 카드가 바뀝니다.",
+            link: { label: "첫 박스로 이동", href: `#scan-${unresolvedRows[0].id}` },
+          }}
+        />
+      ) : null}
 
       <section id="inbound-history" style={{ ...panelStyle, scrollMarginTop: "12px" }}>
         <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "10px" }}>
@@ -1559,7 +1686,7 @@ export function InboundScanView({
                         defaultValue=""
                         onChange={(event) => void handleResolve(scan.id, event.target.value)}
                         aria-label="상품 지정"
-                        style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: "12px" }}
+                        style={{ ...inputStyle, ...HIGHLIGHT_FIELD, width: "auto", padding: "6px 8px", fontSize: "12px" }}
                       >
                         <option value="">상품 선택…</option>
                         {products.map((product) => (

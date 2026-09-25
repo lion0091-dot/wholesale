@@ -95,12 +95,20 @@ export interface InboundDocumentRow {
   issuedOn: string | null;
   fileName: string | null;
   hasFile: boolean;
+  /** 현장이 "스캔 종료"를 표시했는가 (대기 명세서만 의미 있다). */
+  scanFinished: boolean;
   status: string;
   totalAmount: number | null;
   createdAt: string;
   lineCount: number;
   /** 대조 화면(PENDING·CLOSED만) 진입용 — 줄 상태 요약. 그 외 상태(DRAFT·DISCARDED)는 null. */
-  matchSummary: { completeLines: number; totalLines: number; partialBoxesRemaining: number } | null;
+  matchSummary: {
+    completeLines: number;
+    totalLines: number;
+    partialBoxesRemaining: number;
+    unresolvedBoxes: number;
+    firstUnresolvedScanId: string | null;
+  } | null;
 }
 
 interface EditableLine extends DocumentLine {
@@ -666,9 +674,9 @@ export function InboundDocumentPanel({
   // 저장 뒤 화면에서 실제로 일어나는 순서: ① 이력번호 미리 조회(진행 막대) → ② 못 찾은 번호는 공급처에 등록 요청
   // → ③ 박스가 오면 스캔. 카드가 그 순서를 그대로 말해 준다.
   const failedCount = prelookupProgress?.failedTraceNos.length ?? 0;
-  const scanLink = { label: "스캔 시작", href: INBOUND_ANCHORS.scanForm };
+  const scanLink = { label: "현장: 스캔 화면으로 이동", href: INBOUND_ANCHORS.scanForm };
   const scanHint =
-    "박스가 오면 바코드를 찍고 저울에 잰 무게를 넣으세요. 명세서와 저절로 이어지고, 그때 재고가 늘어납니다.";
+    "박스가 오면 현장에서 바코드를 찍고 저울에 잰 무게를 넣습니다. 사무실은 기다리면 됩니다. 명세서와 저절로 이어지고, 그때 재고가 늘어납니다.";
   const postSaveStep: UploadStep =
     prelookupProgress && !prelookupProgress.finished
       ? {
@@ -686,7 +694,7 @@ export function InboundDocumentPanel({
           }
         : {
             title: "저장했습니다. 이력번호도 모두 확인됐습니다",
-            detail: "이제 할 일은 하나입니다. " + scanHint,
+            detail: "이제 남은 일은 현장 스캔입니다. " + scanHint,
             link: scanLink,
           };
 
@@ -865,6 +873,7 @@ export function InboundDocumentPanel({
           ) : null}
 
           <UploadStepCard
+            who="사무실"
             step={
               saving || extracting
                 ? { title: "처리 중입니다", detail: "잠시만 기다려 주세요." }
