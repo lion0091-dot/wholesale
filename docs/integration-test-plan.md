@@ -97,10 +97,7 @@
 - ⬜ 축종+상품명+원산지 조합 중복 생성 시도 → **현재는 막히지 않음**(서버 액션·화면·DB 모두 검사 없음, `products.itest.ts`의 `[발견]`). 본인 데이터만 어지럽히는 수준이라 급하진 않지만 정책 결정 필요.
 - ✅ 저장 후 잠긴 필드(축종/상품명/원산지) 변경 시도 → 바꿔 보내도 안 바뀜(서버 액션이 그 컬럼을 UPDATE에 안 실음, `products.itest.ts`). DB 잠금은 없어 직접 UPDATE는 가능(본인 상품 한정).
 - 🟩 이미 거래(주문/입고) 기록 있는 상품 완전삭제 시도 → DB가 FK로 막음(order_items·stock_ledger RESTRICT). `product_has_stock_history`로 앱이 보관 유도. 보관하면 판매 꺼짐·고객에게 안 보임·주문 불가, 해제 시 판매는 꺼진 채 복귀 (`db-test-product-management.sql`)
-- 🟩 세트 조립: 원재료 재고 부족 → 실패 (`db-test-product-bundles.sql` — 점검 1의 자동배정 박스 스캔 수정으로 이 스크립트가 끝까지 통과하게 됨)
-- 🟩 세트 조립: 유통기한 지난 박스 제외 / 보관 처리된 구성품 → 차단 (`db-test-fifo-bundle-integrity.sql`)
-- 🟩 세트 조립: 세트 안에 세트(중첩) → 차단 — 세트를 구성품으로(NESTED_BUNDLE), 구성품을 세트로(COMPONENT_CANNOT_BE_BUNDLE) 양방향. 구성품 없음·자기 자신·수량 0·남의 상품·거래 기록 있는 상품·중복 지정도 거부, 세트 단위 강제, 축종·원산지 상속, 다른 회사의 수정·해제 거부 (`db-test-product-management.sql`). **직원(staff)이 세트를 지정·해제할 수 있던 것은 105에서 owner/manager로 제한**(조립·해체는 창고 작업이라 직원 유지).
-- 🟩 세트 조립: 이력번호 없는 재고로 조립 시도 → 차단 — 박스만 세며, 수동 재고가 남은 상품은 세트 지정 자체를 거부(100) (`db-test-fifo-bundle-integrity.sql`)
+- ⬛ 세트(BOM) 조립·해체·중첩·이력 역추적 시나리오 — 세트 개념 자체를 제거해(마이그레이션 122, 2026-09-26) 대상 없음.
 - 🟩 거래처별 개별가격 — 등록·같은 식당 같은 상품 중복 거부(유니크)·매니저 켜고 끄기·직원은 조회만·다른 회사 격리, 꺼진 개별가격은 주문에 못 쓰고(103) 켜면 기준가 대신 개별가격만 통과, 기준가 일괄변경(정상/0원/남의 상품 분리 집계, 보관 상품 제외, 활성화 옵션) (`db-test-product-management.sql`). 0원/음수는 CHECK(>=0)와 RPC(>0)로 거부.
 - 🟩 다른 공급사 상품ID로 접근 시도 → 거부 (`db-test-tenant-gate-null.sql`, `db-test-access-isolation.sql`)
 - 🟩 핫딜 판매한도 도달 후 추가 주문 시 자동 차단 — 품목 트리거·reserve 둘 다 HOT_DEAL_QUOTA_EXCEEDED (`db-test-access-isolation.sql`). 카탈로그가 기준가로 되돌아가는 건 앱 레벨.

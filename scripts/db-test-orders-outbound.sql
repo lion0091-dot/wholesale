@@ -1,5 +1,5 @@
 -- 4. 출고·주문 통합테스트 — DB 레벨(주문 생성 게이트, 상태 전이, 바이어 취소, 확정·취소 재고, 출고 스캔, 출고 확정, 격리)
---    동시 확정 경쟁은 db-test-order-stock-concurrency.sh, 세트(BOM)는 db-test-product-bundles / db-test-fifo-bundle-integrity 가 다룬다.
+--    동시 확정 경쟁은 db-test-order-stock-concurrency.sh 가 다룬다.
 --
 -- 실행(로컬 Docker DB, 전부 롤백):
 --   (echo "begin;"; cat scripts/db-test-orders-outbound.sql; echo "rollback;") | docker exec -i supabase_db_wholesale psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f -

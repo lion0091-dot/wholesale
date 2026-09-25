@@ -156,14 +156,6 @@ describe("recordScanAction — 권한·입력 검증", () => {
     expect(result).toEqual({ success: false, error: "이력번호 형식이 올바르지 않습니다. 다시 스캔해주세요." });
   });
 
-  it("자체 세트번호는 입고 화면에서 거부하고 세트 상품 화면으로 안내한다", async () => {
-    const result = await recordScanAction({ traceNo: "SET-260924-001", weight: 5, scanType: "MANUAL" });
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("세트 박스 번호");
-    expect(fetchTraceMock).not.toHaveBeenCalled();
-  });
-
   it("중량이 0·음수·숫자가 아니면 거부한다", async () => {
     const traceNo = world.newTraceNo();
 

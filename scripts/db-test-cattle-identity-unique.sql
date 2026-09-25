@@ -36,12 +36,14 @@ begin
            (v_w,'등심 1++ 수입','소','등심','1++','미국',0,'kg',0,false);
     insert into t_result values (2,'U2 부위·등급·원산지가 하나라도 다르면 허용', true);
 
-    -- U3: 세트 상품(단위 세트)은 키가 겹쳐도 여러 개 허용
-    insert into public.products (wholesaler_id,name,category,origin,base_price,unit,stock_quantity,is_active)
-    values (v_w,'세트A','소','국내산',0,'세트',0,false),
-           (v_w,'세트B','소','국내산',0,'세트',0,false);
-    v_bundle_ok := true;
-    insert into t_result values (3,'U3 단위 세트 상품은 키가 같아도 여러 개 허용', v_bundle_ok);
+    -- U3: 단위가 달라도 같은 키의 소 상품은 거부된다(세트 예외 없음 — 마이그레이션 122)
+    v_bundle_ok := false;
+    begin
+        insert into public.products (wholesaler_id,name,category,subcategory,grade,origin,base_price,unit,stock_quantity,is_active)
+        values (v_w,'등심 1++ 박스','소','등심','1++','국내산',0,'박스',0,false);
+    exception when unique_violation then v_bundle_ok := true;
+    end;
+    insert into t_result values (3,'U3 단위가 달라도 같은 키는 unique_violation', v_bundle_ok);
 
     -- U4: 다른 공급사는 같은 키여도 허용 (인덱스가 공급사별)
     insert into auth.users (id,email) values ('22222222-2222-2222-2222-222222222222','b@t.com');

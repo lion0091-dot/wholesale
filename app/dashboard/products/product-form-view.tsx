@@ -20,9 +20,7 @@ interface ProductFormViewProps {
 }
 
 const FALLBACK_CATEGORIES = ["소", "돼지", "닭/오리", "양", "가공육"];
-// '세트'는 자체 세트 상품용이다(23단계). 목록에서 빠지면 세트 상품을 폼으로 열 때
-// 단위가 비어 보이고 저장 시 kg으로 떨어진다 — DB 트리거가 되돌리지만 화면이 거짓말을 한다.
-const UNITS = ["kg", "박스", "마리", "팩", "세트"];
+const UNITS = ["kg", "박스", "마리", "팩"];
 const FORM_ID = "product-form";
 const QUICK_ADD_AMOUNTS = [1000, 5000, 10000, 50000];
 

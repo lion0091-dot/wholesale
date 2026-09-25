@@ -31,7 +31,6 @@ const NAV_GROUPS: DashboardNavItem[][] = [
       ready: true,
       alsoActiveFor: ["/dashboard/purchases"],
     },
-    { label: "세트 상품", href: "/dashboard/bundles", icon: "🎁", ready: true },
     {
       label: "상품 관리",
       href: "/dashboard/products",

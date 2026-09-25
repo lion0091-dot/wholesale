@@ -14,7 +14,7 @@
  * 문자열 안에서 이력번호처럼 생긴 숫자를 찾는 폴백으로 내려간다.
  */
 
-export type BarcodeFormat = "plain" | "gs1" | "url" | "bundle" | "unknown";
+export type BarcodeFormat = "plain" | "gs1" | "url" | "unknown";
 
 export interface ParsedBarcode {
   /** 뽑아낸 이력번호. 못 찾으면 null */
@@ -34,15 +34,6 @@ export interface ParsedBarcode {
 
 /** 개체식별번호 12자리 또는 묶음번호(L+14 / 15자리). */
 const TRACE_PATTERN = /(?:^|[^0-9A-Z])(L\d{14}|\d{15}|\d{12})(?:[^0-9A-Z]|$)/;
-
-/**
- * 우리가 발행한 자체 세트번호 (SET-YYMMDD-NNN, 23단계).
- *
- * 정부 이력번호가 아니라 세트 박스 한 개의 식별자다. 출고 스캔은 inbound_scans의
- * trace_no로 박스를 찾으므로 이 번호도 같은 자리에 들어간다 — 그래서 파서가
- * 이 형태를 알아야 세트 박스를 찍을 수 있다. 숫자 자릿수 폴백에는 걸리지 않는다.
- */
-const BUNDLE_SET_PATTERN = /^SET-\d{6}-\d{3,6}$/;
 
 /**
  * GS1-128 고정길이 AI. 값 길이가 정해져 있어 구분자 없이 이어 붙는다.
@@ -239,11 +230,6 @@ export function parseBarcode(input: string): ParsedBarcode {
   // ① 순수 이력번호 — 전체가 딱 떨어지는 경우
   if (/^(L\d{14}|\d{15}|\d{12})$/i.test(value)) {
     return { ...base, traceNo: value.toUpperCase(), format: "plain" };
-  }
-
-  // ①-b 자체 세트번호 — 우리가 발행한 세트 박스
-  if (BUNDLE_SET_PATTERN.test(value.toUpperCase())) {
-    return { ...base, traceNo: value.toUpperCase(), format: "bundle" };
   }
 
   // ③ QR(URL) — 주소 안에서 번호를 뽑는다

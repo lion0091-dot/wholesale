@@ -14,13 +14,6 @@ describe("parseBarcode", () => {
     expect(parseBarcode("L12345678901234").format).toBe("plain");
   });
 
-  it("우리가 발행한 세트번호(SET-YYMMDD-NNN)를 bundle로 인식한다", () => {
-    const result = parseBarcode("SET-260924-001");
-
-    expect(result.format).toBe("bundle");
-    expect(result.traceNo).toBe("SET-260924-001");
-  });
-
   it("QR(URL)에서 이력번호를 뽑아낸다", () => {
     const result = parseBarcode("https://mtrace.go.kr/lookup?traceNo=002123456789");
 

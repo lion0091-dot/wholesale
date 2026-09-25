@@ -1,5 +1,4 @@
--- 2. 상품 관리 통합테스트 — DB 레벨(삭제/보관 게이트, 세트 중첩 가드, 거래처별 개별가격, 발주정지, 정체성 잠금 현황)
---    세트 조립·해체·이력 역추적 자체는 db-test-product-bundles.sql / db-test-fifo-bundle-integrity.sql이 다룬다.
+-- 2. 상품 관리 통합테스트 — DB 레벨(삭제/보관 게이트, 거래처별 개별가격, 발주정지, 정체성 잠금·유니크)
 --
 -- 실행(로컬 Docker DB, 전부 롤백):
 --   (echo "begin;"; cat scripts/db-test-product-management.sql; echo "rollback;") | docker exec -i supabase_db_wholesale psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f -
@@ -69,13 +68,13 @@ insert into public.retailers (id,profile_id,restaurant_name,representative_name,
 insert into public.wholesaler_retailers (id,wholesaler_id,retailer_id,status) values
  ('b3999999-0000-0000-0000-000000000001','a3999999-0000-0000-0000-000000000001','d3999999-0000-0000-0000-000000000001','active'),
  ('b3999999-0000-0000-0000-000000000002','a3999999-0000-0000-0000-000000000002','d3999999-0000-0000-0000-000000000002','active');
--- P1 거래 있음(주문) / P2 재고 기록만 / P3 아무 기록 없음 / P4 세트 구성품 / P5 세트 대상(재고 0, 기록 없음) / P6 발주정지·개별가격용 / PB B사 상품
+-- P1 거래 있음(주문) / P2 재고 기록만 / P3 아무 기록 없음 / P4·P5 예비 상품 / P6 발주정지·개별가격용 / PB B사 상품
 insert into public.products (id,wholesaler_id,name,category,subcategory,origin,base_price,unit,stock_quantity) values
  ('c3999999-0000-0000-0000-000000000001','a3999999-0000-0000-0000-000000000001','P1 등심','소','등심','국내산',68000,'kg',10),
  ('c3999999-0000-0000-0000-000000000002','a3999999-0000-0000-0000-000000000002','PB 삼겹','돼지','삼겹살','국내산',20000,'kg',5),
  ('c3999999-0000-0000-0000-000000000003','a3999999-0000-0000-0000-000000000001','P3 안심','소','안심','국내산',90000,'kg',0),
  ('c3999999-0000-0000-0000-000000000004','a3999999-0000-0000-0000-000000000001','P4 구성품','돼지','목살','국내산',15000,'kg',0),
- ('c3999999-0000-0000-0000-000000000005','a3999999-0000-0000-0000-000000000001','P5 세트대상','돼지','세트','국내산',0,'kg',0),
+ ('c3999999-0000-0000-0000-000000000005','a3999999-0000-0000-0000-000000000001','P5 예비','돼지','앞다리살','국내산',0,'kg',0),
  ('c3999999-0000-0000-0000-000000000006','a3999999-0000-0000-0000-000000000001','P6 삼겹','돼지','삼겹살','국내산',30000,'kg',10),
  ('c3999999-0000-0000-0000-000000000007','a3999999-0000-0000-0000-000000000001','P2 갈비','소','갈비','국내산',50000,'kg',0);
 insert into public.orders (id,wholesaler_id,retailer_id,order_number,total_amount,status,delivery_address) values
@@ -103,38 +102,10 @@ insert into results (who,what,expected,result) values
 
 -- ========== 2-B. 정체성(축종·상품명·원산지) 잠금 — 현재 DB 현황(정보) ==========
 insert into results (who,what,expected,result) values
- ('A사장','같은 축종·상품명·원산지로 또 등록 → DB 유니크 없음(앱에서만 막음, 정보)','ALLOWED', pg_temp.try($q$insert into public.products (id,wholesaler_id,name,category,subcategory,origin,base_price,unit,stock_quantity) values ('c3999999-0000-0000-0000-000000000009','a3999999-0000-0000-0000-000000000001','P6 삼겹','돼지','삼겹살','국내산',31000,'kg',0)$q$)),
+ ('A사장','같은 축종·부위·등급·원산지의 소 상품을 또 등록 → DB 유니크가 거부(마이그레이션 121)','DENIED: duplicate key value violates unique constraint "idx_products_cattle_identity"', pg_temp.try($q$insert into public.products (id,wholesaler_id,name,category,subcategory,origin,base_price,unit,stock_quantity) values ('c3999999-0000-0000-0000-000000000008','a3999999-0000-0000-0000-000000000001','P1 등심 복사','소','등심','국내산',31000,'kg',0)$q$)),
+ ('A사장','돼지는 수동 등록 상품(trace_key 없음)이라 DB 유니크 대상이 아님 — 앱이 손 등록을 막는다(정보)','ALLOWED', pg_temp.try($q$insert into public.products (id,wholesaler_id,name,category,subcategory,origin,base_price,unit,stock_quantity) values ('c3999999-0000-0000-0000-000000000009','a3999999-0000-0000-0000-000000000001','P6 삼겹','돼지','삼겹살','국내산',31000,'kg',0)$q$)),
  ('A사장','거래 있는 상품의 축종·원산지 직접 변경 → DB 잠금 없음(앱 폼에서만 읽기전용, 정보)','1', pg_temp.rows($q$update public.products set category='돼지', origin='수입산' where id='c3999999-0000-0000-0000-000000000001'$q$)),
  ('A사장','  └ 원복','1', pg_temp.rows($q$update public.products set category='소', origin='국내산' where id='c3999999-0000-0000-0000-000000000001'$q$));
-
--- ========== 2-C. 세트(BOM) 지정 가드 ==========
-insert into results (who,what,expected,result) values
- ('A사장','구성품 없는 세트 → 거부','DENIED: BUNDLE_HAS_NO_ITEMS', pg_temp.try($q$select public.save_product_bundle('[]'::jsonb, null, 'c3999999-0000-0000-0000-000000000005')$q$)),
- ('A사장','거래 기록 있는 상품을 세트로 지정 → 거부','DENIED: PRODUCT_HAS_STOCK_HISTORY', pg_temp.try($q$select public.save_product_bundle('[{"product_id":"c3999999-0000-0000-0000-000000000004","quantity":2}]'::jsonb, null, 'c3999999-0000-0000-0000-000000000007')$q$)),
- ('A사장','수동 재고 남은 상품을 세트로 지정 → 거부','DENIED: PRODUCT_HAS_MANUAL_STOCK', pg_temp.try($q$select public.save_product_bundle('[{"product_id":"c3999999-0000-0000-0000-000000000004","quantity":2}]'::jsonb, null, 'c3999999-0000-0000-0000-000000000006')$q$)),
- ('A사장','B사 상품을 구성품으로 → 거부','DENIED: COMPONENT_NOT_FOUND', pg_temp.try($q$select public.save_product_bundle('[{"product_id":"c3999999-0000-0000-0000-000000000002","quantity":1}]'::jsonb, null, 'c3999999-0000-0000-0000-000000000005')$q$)),
- ('A사장','자기 자신을 구성품으로 → 거부','DENIED: SELF_COMPONENT', pg_temp.try($q$select public.save_product_bundle('[{"product_id":"c3999999-0000-0000-0000-000000000005","quantity":1}]'::jsonb, null, 'c3999999-0000-0000-0000-000000000005')$q$)),
- ('A사장','구성 수량 0 → 거부','DENIED: INVALID_COMPONENT_QUANTITY', pg_temp.try($q$select public.save_product_bundle('[{"product_id":"c3999999-0000-0000-0000-000000000004","quantity":0}]'::jsonb, null, 'c3999999-0000-0000-0000-000000000005')$q$)),
- ('A사장','정상 세트 지정(P5 = P4×2 + P3×1) → 허용','ALLOWED', pg_temp.try($q$select public.save_product_bundle('[{"product_id":"c3999999-0000-0000-0000-000000000004","quantity":2},{"product_id":"c3999999-0000-0000-0000-000000000003","quantity":1}]'::jsonb, null, 'c3999999-0000-0000-0000-000000000005', null, 50000, null, null)$q$)),
- ('A사장','  └ 세트코드 발행·단위 세트','BND-0001|세트|2', pg_temp.val($q$select b.bundle_code||'|'||p.unit||'|'||(select count(*) from public.product_bundle_items i where i.bundle_id=b.id) from public.product_bundles b join public.products p on p.id=b.product_id where b.product_id='c3999999-0000-0000-0000-000000000005'$q$)),
- ('A사장','같은 상품을 또 세트로 → 거부','DENIED: ALREADY_A_BUNDLE', pg_temp.try($q$select public.save_product_bundle('[{"product_id":"c3999999-0000-0000-0000-000000000004","quantity":1}]'::jsonb, null, 'c3999999-0000-0000-0000-000000000005')$q$)),
- ('A사장','세트(P5)를 다른 세트의 구성품으로(중첩) → 거부','DENIED: NESTED_BUNDLE', pg_temp.try($q$select public.save_product_bundle('[{"product_id":"c3999999-0000-0000-0000-000000000005","quantity":1}]'::jsonb, null, null, '중첩세트', 1000)$q$)),
- ('A사장','구성품(P4)을 세트로 지정(역중첩) → 거부','DENIED: COMPONENT_CANNOT_BE_BUNDLE', pg_temp.try($q$select public.save_product_bundle('[{"product_id":"c3999999-0000-0000-0000-000000000003","quantity":1}]'::jsonb, null, 'c3999999-0000-0000-0000-000000000004')$q$)),
- ('A사장','세트 상품 단위를 kg으로 바꾸기 → 트리거가 세트로 유지','세트', pg_temp.val($q$with u as (update public.products set unit='kg' where id='c3999999-0000-0000-0000-000000000005' returning unit) select unit from u$q$)),
- ('A사장','이름 지정으로 새 세트 상품 자동 생성 → 축종·원산지 상속','ALLOWED', pg_temp.try($q$select public.save_product_bundle('[{"product_id":"c3999999-0000-0000-0000-000000000004","quantity":3}]'::jsonb, null, null, '목살 3kg 세트', 40000, 'MYCODE', '메모')$q$)),
- ('A사장','  └ 새 세트 상품 확인','돼지|국내산|세트|MYCODE', pg_temp.val($q$select p.category||'|'||p.origin||'|'||p.unit||'|'||b.bundle_code from public.product_bundles b join public.products p on p.id=b.product_id where p.name='목살 3kg 세트'$q$)),
- ('A사장','제작 기록 없는 세트 해제 → 허용','ALLOWED', pg_temp.try($q$select public.delete_product_bundle((select id from public.product_bundles where bundle_code='MYCODE'))$q$));
--- B사장 테스트에서 쓸 A사 세트 ID(RLS 때문에 B 세션에선 조회가 안 되므로 여기서 잡아 둔다)
-create temp table seedb as select id as bundle_id from public.product_bundles where bundle_code='BND-0001';
-grant select on seedb to authenticated;
-set request.jwt.claim.sub = '93999999-0000-0000-0000-000000000003';
-insert into results (who,what,expected,result) values
- ('A직원','세트 지정 → 거부(105, owner/manager)','DENIED: FORBIDDEN', pg_temp.try($q$select public.save_product_bundle('[{"product_id":"c3999999-0000-0000-0000-000000000004","quantity":1}]'::jsonb, null, null, '직원세트', 1000)$q$)),
- ('A직원','세트 해제 → 거부(105)','DENIED: FORBIDDEN', pg_temp.try($q$select public.delete_product_bundle((select bundle_id from seedb))$q$));
-set request.jwt.claim.sub = '93999999-0000-0000-0000-000000000005';
-insert into results (who,what,expected,result) values
- ('B사장','A사 세트 수정 → 거부','DENIED: BUNDLE_NOT_FOUND', pg_temp.try($q$select public.save_product_bundle('[{"product_id":"c3999999-0000-0000-0000-000000000002","quantity":1}]'::jsonb, (select bundle_id from seedb))$q$)),
- ('B사장','A사 세트 해제 → 거부','DENIED: BUNDLE_NOT_FOUND', pg_temp.try($q$select public.delete_product_bundle((select bundle_id from seedb))$q$));
 
 -- ========== 2-D. 거래처별 개별가격 ==========
 set request.jwt.claim.sub = '93999999-0000-0000-0000-000000000001';

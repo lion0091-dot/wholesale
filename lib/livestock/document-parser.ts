@@ -245,7 +245,7 @@ export function parseTraceCell(raw: string, options: TraceCellOptions = {}): Tra
   const barcode = parseBarcode(value);
   const explicitGs1 = value.includes("\u001d") || /^\(\d{2,4}\)/.test(value);
 
-  if (barcode.format === "url" || barcode.format === "bundle" || (barcode.format === "gs1" && explicitGs1)) {
+  if (barcode.format === "url" || (barcode.format === "gs1" && explicitGs1)) {
     return { traceNos: barcode.traceNo ? [barcode.traceNo] : [], truncated: false };
   }
 

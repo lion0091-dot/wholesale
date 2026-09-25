@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
-import { parseBarcode } from "@/lib/livestock/barcode-parser";
 import {
   extractGroupMemberTraceNos,
   fetchTraceRecord,
@@ -261,12 +260,11 @@ function formatPrelookupError(failures: Array<{ message: string; numbers: string
 
 /**
  * 이 값이 사전조회 대상인지 — 정부가 실제로 조회해줄 수 있는 형태인지만 본다.
- * 우리가 발행한 세트번호(SET-YYMMDD-NNN)는 정부 조회 대상이 아니라 제외한다.
  */
 function isEligibleForPrelookup(value: string | null | undefined): boolean {
   const trimmed = value?.trim().toUpperCase() ?? "";
 
-  return trimmed.length > 0 && isPlausibleTraceNo(trimmed) && parseBarcode(trimmed).format !== "bundle";
+  return trimmed.length > 0 && isPlausibleTraceNo(trimmed);
 }
 
 /** 한 번 청크 호출에서 쓸 시간 예산. 로트 줄은 개체 재확인까지 붙어 느리므로 건수보다 시간으로 끊는다. */

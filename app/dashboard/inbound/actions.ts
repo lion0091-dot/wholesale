@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
-import { parseBarcode } from "@/lib/livestock/barcode-parser";
 import {
   fetchTraceRecord,
   isMtraceConfigured,
@@ -189,13 +188,6 @@ export async function recordScanAction(input: {
 
     if (!isPlausibleTraceNo(traceNo)) {
       throw new RbacError("이력번호 형식이 올바르지 않습니다. 다시 스캔해주세요.");
-    }
-
-    // 자체 세트번호는 우리가 발행한 박스 식별자라 공공 이력에 없다. 여기서 찍으면
-    // 조회 실패로 예외만 쌓이고 같은 세트가 또 만들어진다 — 세트는 '세트 상품'
-    // 화면에서 제작하고 출고 스캔에서 찍는다.
-    if (parseBarcode(traceNo).format === "bundle") {
-      throw new RbacError("세트 박스 번호입니다. 세트는 '세트 상품' 화면에서 제작해주세요.");
     }
 
     if (!Number.isFinite(input.weight) || input.weight <= 0) {

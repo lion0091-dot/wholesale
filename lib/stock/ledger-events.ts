@@ -22,11 +22,6 @@ export const LEDGER_EVENTS: LedgerEventMeta[] = [
   { code: "OUTBOUND_UNASSIGN", label: "배정정정", bg: "#f1f5f9", color: "#64748b" },
   { code: "ADJUSTMENT", label: "조정", bg: "#fef3c7", color: "#92400e" },
   { code: "LOSS", label: "손실", bg: "#fee2e2", color: "#991b1b" },
-  // 세트 제작/해체 — 구성품(kg)과 세트(세트)가 단위가 달라 합산이 아니라 짝으로 읽는다.
-  { code: "BUNDLE_CONSUME", label: "세트투입", bg: "#f3e8ff", color: "#6b21a8" },
-  { code: "BUNDLE_ASSEMBLE", label: "세트제작", bg: "#ede9fe", color: "#5b21b6" },
-  { code: "BUNDLE_RESTORE", label: "세트해체(복원)", bg: "#f1f5f9", color: "#64748b" },
-  { code: "BUNDLE_DISASSEMBLE", label: "세트해체", bg: "#f1f5f9", color: "#64748b" },
 ];
 
 const BY_CODE = new Map(LEDGER_EVENTS.map((event) => [event.code, event]));

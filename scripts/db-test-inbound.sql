@@ -1,5 +1,5 @@
 -- 3. 입고 통합테스트 — DB 레벨(스캔 상태 판정, 중복, 실중량 ±2%, 취소, 직접 쓰기 차단, 명세서 사전조회 상태기계, 엑셀 대량 입고)
---    세트(BOM)·출고·주문 확정 차감은 db-test-product-bundles / db-test-order-stock-regression 이 다룬다.
+--    출고·주문 확정 차감은 db-test-order-stock-regression 이 다룬다.
 --
 -- 실행(로컬 Docker DB, 전부 롤백):
 --   (echo "begin;"; cat scripts/db-test-inbound.sql; echo "rollback;") | docker exec -i supabase_db_wholesale psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f -

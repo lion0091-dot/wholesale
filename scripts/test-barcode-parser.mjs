@@ -33,20 +33,6 @@ const cases = [
     traceNo: "002123456789",
     weightKg: null,
   },
-  {
-    label: "자체 세트번호",
-    input: "SET-260922-001",
-    traceNo: "SET-260922-001",
-    weightKg: null,
-    format: "bundle",
-  },
-  {
-    label: "자체 세트번호(소문자 입력)",
-    input: "set-260922-012",
-    traceNo: "SET-260922-012",
-    weightKg: null,
-    format: "bundle",
-  },
   { label: "잡음 섞인 값", input: "TRACE:002123456789 END", traceNo: "002123456789", weightKg: null },
   { label: "빈 값", input: "", traceNo: null, weightKg: null },
   // 아래부터는 실제 스캔 원문을 구할 수 없어(물리 라벨이라 텍스트로 공개된 예시가 없음)
