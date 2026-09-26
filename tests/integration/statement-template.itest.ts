@@ -13,6 +13,12 @@ import { applyColumnMap, buildGrid } from "@/lib/livestock/document-parser";
 
 let world: World;
 
+let docNoSeq = 0;
+
+/** 전표번호는 필수라 테스트마다 겹치지 않는 번호를 준다. */
+const docNo = () => `T-${Date.now().toString(36)}-${(docNoSeq += 1)}`;
+
+
 beforeAll(async () => {
   world = await seedWorld();
 });
@@ -75,7 +81,7 @@ describe("채운 양식을 바로 올리기 — 엑셀 읽기 → 저장 → 박
 
     const form = new FormData();
 
-    form.append("payload", JSON.stringify({ supplierName: `양식축산-${world.runId}`, lines: lines.map((line) => ({ ...line, productId: null })) }));
+    form.append("payload", JSON.stringify({ supplierName: `양식축산-${world.runId}`, documentNo: docNo(), lines: lines.map((line) => ({ ...line, productId: null })) }));
     form.append("file", new File([new Uint8Array(workbook)], "공급처 전표.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
 
     const saved = await saveInboundDocumentAction(form);
@@ -124,6 +130,7 @@ describe("화면에서 직접 입력한 줄(entryMethod MANUAL) — 사진을 �
       "payload",
       JSON.stringify({
         supplierName: `직접입력축산-${world.runId}`,
+        documentNo: docNo(),
         entryMethod: "MANUAL",
         columnMap: null,
         lines: [{ lineNo: 1, raw: "", itemName: "한우 양지", traceNo: trace, partName: "양지", grade: "1", quantity: 1, labeledWeight: 8.5, unitPrice: 20000, amount: 170000, productId: null }],
@@ -178,14 +185,24 @@ describe("같은 전표 중복 업로드 막기", () => {
     expect(second.success).toBe(false);
     expect(second.error).toContain("이미 올라와 있습니다");
 
-    // 번호가 다르거나, 공급처가 다르거나, 번호를 안 적었으면 막지 않는다.
+    // 번호가 다르거나 공급처가 다르면 막지 않는다.
     expect((await saveWith(supplier, "A-101")).success).toBe(true);
     expect((await saveWith(`${supplier}-다른곳`, "A-100")).success).toBe(true);
-    expect((await saveWith(supplier, null)).success).toBe(true);
-    expect((await saveWith(supplier, null)).success).toBe(true);
 
     await adminClient().from("inbound_documents").update({ status: "DISCARDED" }).eq("id", (first.data as { documentId: string }).documentId);
 
     expect((await saveWith(supplier, "A-100")).success).toBe(true);
+  });
+
+  it("전표번호가 비었거나 공백뿐이면 저장이 거부되고 무엇을 하라고 알려 준다", async () => {
+    await actAs(world.users.ownerA);
+
+    for (const empty of [null, "", "   "]) {
+      const result = await saveWith(`번호필수-${world.runId}`, empty);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("전표번호를 입력해주세요");
+      expect(result.error).toContain("전표 번호");
+    }
   });
 });

@@ -27,6 +27,12 @@ import { pickInboundNextStep } from "@/lib/livestock/inbound-next-step";
 
 let world: World;
 
+let docNoSeq = 0;
+
+/** 전표번호는 필수라 테스트마다 겹치지 않는 번호를 준다. */
+const docNo = () => `T-${Date.now().toString(36)}-${(docNoSeq += 1)}`;
+
+
 beforeAll(async () => {
   world = await seedWorld();
 });
@@ -401,7 +407,7 @@ describe("SC-5 이메일로 받은 전표를 폰 파일함에서 골라 올린�
 
     const form = new FormData();
 
-    form.append("payload", JSON.stringify({ supplierName: `파일함축산-${world.runId}`, lines: lines.map((line) => ({ ...line, productId: null })) }));
+    form.append("payload", JSON.stringify({ supplierName: `파일함축산-${world.runId}`, documentNo: docNo(), lines: lines.map((line) => ({ ...line, productId: null })) }));
     form.append("file", new File([eucKrEncode(csv) as BlobPart], "전표.CSV", { type: "" }));
 
     const saved = await saveInboundDocumentAction(form);
@@ -465,7 +471,7 @@ describe("SC-5 이메일로 받은 전표를 폰 파일함에서 골라 올린�
   it("사진·스캔본은 품목 줄 없이 원본만 저장된다(글자를 못 읽는 서류 — 손으로 받아적지 않는다)", async () => {
     const form = new FormData();
 
-    form.append("payload", JSON.stringify({ supplierName: `사진축산-${world.runId}`, lines: [] }));
+    form.append("payload", JSON.stringify({ supplierName: `사진축산-${world.runId}`, documentNo: docNo(), lines: [] }));
     form.append("file", new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])], "거래명세서 사진 (1).JPG", { type: "image/jpeg" }));
 
     const saved = await saveInboundDocumentAction(form);
@@ -632,7 +638,7 @@ describe("SC-나중에 — 박스를 먼저 찍고 전표를 나중에 올려도
   async function saveDocument(lines: Array<Record<string, unknown>>): Promise<string> {
     const form = new FormData();
 
-    form.append("payload", JSON.stringify({ supplierName: `나중전표-${world.runId}`, lines: lines.map((line, index) => ({ lineNo: index + 1, ...line })) }));
+    form.append("payload", JSON.stringify({ supplierName: `나중전표-${world.runId}`, documentNo: docNo(), lines: lines.map((line, index) => ({ lineNo: index + 1, ...line })) }));
 
     const saved = await saveInboundDocumentAction(form);
 
@@ -695,7 +701,7 @@ describe("SC-정정 — 전표 내용이 틀려 취소 처리하고 다시 올�
   async function saveDoc(lines: Array<Record<string, unknown>>, documentNo?: string): Promise<string> {
     const form = new FormData();
 
-    form.append("payload", JSON.stringify({ supplierName: `정정전표-${world.runId}`, documentNo: documentNo ?? null, lines: lines.map((line, index) => ({ lineNo: index + 1, ...line })) }));
+    form.append("payload", JSON.stringify({ supplierName: `정정전표-${world.runId}`, documentNo: documentNo ?? docNo(), lines: lines.map((line, index) => ({ lineNo: index + 1, ...line })) }));
 
     const saved = await saveInboundDocumentAction(form);
 

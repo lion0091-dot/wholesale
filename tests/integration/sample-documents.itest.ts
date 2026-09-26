@@ -16,6 +16,12 @@ const SAMPLE_DIR = path.resolve(__dirname, "../../docs/test-samples");
 
 let world: World;
 
+let docNoSeq = 0;
+
+/** 전표번호는 필수라 테스트마다 겹치지 않는 번호를 준다. */
+const docNo = () => `T-${Date.now().toString(36)}-${(docNoSeq += 1)}`;
+
+
 beforeAll(async () => {
   world = await seedWorld();
 });
@@ -41,7 +47,7 @@ function linesOfCsv(name: string) {
 async function saveLines(supplierName: string, lines: ReturnType<typeof applyColumnMap>): Promise<{ documentId: string; lineIds: string[] }> {
   const form = new FormData();
 
-  form.append("payload", JSON.stringify({ supplierName: `${supplierName}-${world.runId}`, lines: lines.map((line) => ({ ...line, productId: null })) }));
+  form.append("payload", JSON.stringify({ supplierName: `${supplierName}-${world.runId}`, documentNo: docNo(), lines: lines.map((line) => ({ ...line, productId: null })) }));
 
   const saved = await saveInboundDocumentAction(form);
 

@@ -585,6 +585,11 @@ export async function saveInboundDocumentAction(
       throw new RbacError("공급처 이름을 입력해주세요.");
     }
 
+    // 전표번호는 필수다 — 번호가 있어야 같은 전표를 두 번 올리는 것을 막고, 나중에 어느 전표인지 찾을 수 있다.
+    if (!input.documentNo?.trim()) {
+      throw new RbacError("전표번호를 입력해주세요. 종이 전표 위쪽에 적힌 번호를 \"전표 번호\" 칸에 적으면 됩니다.");
+    }
+
     // 품목 줄이 없어도 저장한다 — 사진이나 스캔본처럼 글자를 못 읽는 서류는
     // 원본 보관만이 목적이다(잠긴 결정: 읽을 수 없는 문서를 입고 화면에서
     // 손으로 받아적게 만들지 않는다).
