@@ -26,6 +26,8 @@ interface DashboardShellProps {
   /** null이면 배지 자체를 숨김(슈퍼관리자 감독 열람, 업체 레코드 없는 계정 등) */
   subscriptionStatus: SubscriptionStatus | null;
   isDemoMode: boolean;
+  /** 헤더의 "지금 할 일" 종 배지. 업체 범위가 없으면 null */
+  todoBell?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -37,6 +39,7 @@ export function DashboardShell({
   roleLabel,
   subscriptionStatus,
   isDemoMode,
+  todoBell,
   children,
 }: DashboardShellProps) {
   return (
@@ -102,6 +105,7 @@ export function DashboardShell({
       }
       headerRight={
         <>
+          {todoBell}
           {subscriptionStatus && (
             <Link
               href="/dashboard/billing"

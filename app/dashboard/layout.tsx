@@ -4,6 +4,8 @@ import { getOrgStaffContext } from "@/lib/auth/rbac";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { FALLBACK_DISPLAY_NAME, resolveDisplayName } from "@/lib/auth/display-name";
 import { DashboardShell, type DashboardNavItem } from "./dashboard-shell";
+import { TodoBell } from "@/components/todo-bell";
+import { fetchTodoCounts, type TodoCounts } from "@/lib/supplier/todo-counts";
 import type { SubscriptionStatus } from "@/types/database";
 
 export const metadata: Metadata = {
@@ -104,6 +106,9 @@ export default async function DashboardLayout({
   // 슈퍼관리자(조직 미소속 감독 열람)나 아직 업체 레코드가 없는 계정은 null —
   // 배지 자체를 숨긴다(관리자 전용 화면과 달리 여기선 "해당 없음"을 굳이 안 보여줌).
   let subscriptionStatus: SubscriptionStatus | null = null;
+  // 종 배지용 업체 범위. 슈퍼관리자 미소속·업체 레코드 없음이면 null이라 배지를 숨긴다.
+  let todoWholesalerId: string | null = null;
+  let todoCounts: TodoCounts | null = null;
 
   if (context) {
     roleLabel = context.isSuperAdmin
@@ -127,7 +132,7 @@ export default async function DashboardLayout({
     if (context.organizationId) {
       const { data: organization } = await supabase
         .from("organizations")
-        .select("name, wholesalers ( subscription_status )")
+        .select("name, wholesaler_id, wholesalers ( subscription_status )")
         .eq("id", context.organizationId)
         .maybeSingle();
 
@@ -140,16 +145,22 @@ export default async function DashboardLayout({
         : organization?.wholesalers;
 
       subscriptionStatus = (wholesaler?.subscription_status as SubscriptionStatus | undefined) ?? null;
+      todoWholesalerId = (organization?.wholesaler_id as string | null | undefined) ?? null;
     } else {
       // 조직 생성 전 단계 — Phase 1의 wholesalers 업체명을 사용한다.
       const { data: wholesaler } = await supabase
         .from("wholesalers")
-        .select("business_name, subscription_status")
+        .select("id, business_name, subscription_status")
         .eq("profile_id", context.userId)
         .maybeSingle();
 
       organizationName = wholesaler?.business_name ?? "도매업체 통합관리시스템";
       subscriptionStatus = (wholesaler?.subscription_status as SubscriptionStatus | undefined) ?? null;
+      todoWholesalerId = context.isSuperAdmin ? null : ((wholesaler?.id as string | undefined) ?? null);
+    }
+
+    if (todoWholesalerId) {
+      todoCounts = await fetchTodoCounts(supabase, todoWholesalerId);
     }
   }
 
@@ -170,6 +181,7 @@ export default async function DashboardLayout({
       roleLabel={roleLabel}
       subscriptionStatus={subscriptionStatus}
       isDemoMode={!context || !isSupabaseConfigured()}
+      todoBell={todoCounts ? <TodoBell initialCounts={todoCounts} /> : null}
     >
       {children}
     </DashboardShell>
