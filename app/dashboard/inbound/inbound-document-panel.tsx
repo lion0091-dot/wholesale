@@ -13,7 +13,7 @@ import {
   type DocumentLine,
 } from "@/lib/livestock/document-parser";
 import { buildGapReport, buildSupplierRequestSummary } from "@/lib/livestock/document-requirements";
-import { INBOUND_ANCHORS, OPEN_DOCUMENT_PANEL_EVENT } from "@/lib/livestock/inbound-next-step";
+import { INBOUND_ANCHORS, INBOUND_SCAN_PATH, OPEN_DOCUMENT_PANEL_EVENT } from "@/lib/livestock/inbound-next-step";
 import {
   HIGHLIGHT_BUTTON,
   HIGHLIGHT_FIELD,
@@ -664,12 +664,12 @@ export function InboundDocumentPanel({
         : lines.filter((line) => line.itemName || line.traceNo || line.lotNo || line.labeledWeight !== null);
 
     if (mode !== "storeOnly" && usable.length === 0) {
-      setError("저장할 품목이 없습니다.");
+      setError("저장할 품목이 없습니다. 아래 표에 품목명·이력번호·중량 중 하나라도 적은 줄이 있어야 저장됩니다.");
       return;
     }
 
     if (!supplierName.trim()) {
-      setError("공급처 이름을 입력해주세요.");
+      setError("공급처 이름을 입력해주세요. 위쪽 \"공급처 이름\" 칸에 적으면 됩니다. (예: 대성축산)");
       return;
     }
 
@@ -758,7 +758,7 @@ export function InboundDocumentPanel({
   // 저장 뒤 화면에서 실제로 일어나는 순서: ① 이력번호 미리 조회(진행 막대) → ② 못 찾은 번호는 공급처에 등록 요청
   // → ③ 박스가 오면 스캔. 카드가 그 순서를 그대로 말해 준다.
   const failedCount = prelookupProgress?.failedTraceNos.length ?? 0;
-  const scanLink = { label: "현장: 스캔 화면으로 이동", href: INBOUND_ANCHORS.scanForm };
+  const scanLink = { label: "현장: 스캔 화면으로 이동", href: `${INBOUND_SCAN_PATH}${INBOUND_ANCHORS.scanForm}` };
   const scanHint =
     "박스가 오면 현장에서 바코드를 찍고 저울에 잰 무게를 넣습니다. 사무실은 기다리면 됩니다. 명세서와 저절로 이어지고, 그때 재고가 늘어납니다.";
   const postSaveStep: UploadStep =

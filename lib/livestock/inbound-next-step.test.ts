@@ -188,18 +188,6 @@ describe("pickInboundNextStep", () => {
 });
 
 describe("pickInboundNextStep — 따라가기 끊김 방지", () => {
-  it("품목이 0줄인 명세서는 '입고 완료'가 아니라 취소 후 다시 올리라고 안내한다", () => {
-    const step = pickInboundNextStep({
-      ...base,
-      pendingDocuments: [{ id: "empty", completeLines: 0, totalLines: 0 }],
-    });
-
-    expect(step.key).toBe("empty-document");
-    expect(step.title).not.toContain("입고 완료");
-    expect(step.detail).toContain("취소 처리");
-    expect(step.href).toBe("#inbound-documents");
-  });
-
   it("스캔 대기 카드는 물건이 안 오는 경우의 탈출구를 본문에서 직접 알려 준다", () => {
     const step = pickInboundNextStep({
       ...base,

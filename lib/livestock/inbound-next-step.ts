@@ -36,7 +36,6 @@ export type InboundNextStepKey =
   | "reconcile"
   | "close"
   | "upload"
-  | "empty-document"
   | "field-scan"
   | "field-done"
   | "field-start";
@@ -90,23 +89,6 @@ function pickAttentionDocument(docs: InboundNextStepInput["pendingDocuments"]) {
 
 export function pickInboundNextStep(input: InboundNextStepInput): InboundNextStep {
   const { pendingDocuments, remainingBoxCount, needsCheckScanCount, firstNeedsCheckScanId } = input;
-
-  // 읽힌 품목이 하나도 없는 명세서 — 마감할 게 없으니 "입고 완료"로 안내하면 안 된다. 취소하고 다시 올리게 한다.
-  const emptyDocument = pendingDocuments.find((doc) => doc.totalLines === 0);
-
-  if (emptyDocument) {
-    return {
-      key: "empty-document",
-      who: "사무실",
-      title: "품목이 하나도 읽히지 않은 명세서가 있습니다",
-      detail:
-        "올린 파일에서 물건을 찾지 못했습니다. 아래 목록에서 그 명세서의 '취소 처리'를 누른 뒤, 파일을 다시 올리거나 직접 입력해 주세요.",
-      buttonLabel: "명세서 목록으로 가기",
-      href: INBOUND_ANCHORS.documents,
-      waitNote: null,
-      secondaries: [],
-    };
-  }
 
   if (pendingDocuments.length > 0) {
     if (remainingBoxCount > 0 && pendingDocuments.every((doc) => doc.scanFinished)) {
