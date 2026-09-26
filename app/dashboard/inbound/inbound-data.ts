@@ -73,16 +73,10 @@ export async function loadInboundData(
     const supabase = await createClient();
     const weightTolerance = await loadWeightTolerance(supabase, scope.wholesalerId);
 
-    const { data: unlinkedRows } = await supabase.rpc("list_unlinked_boxes_for_documents", {
+    // 다른 조회와 나란히 보낸다(순서대로 기다리면 화면을 열 때마다 그만큼 늦어진다). 결과는 아래에서 받는다.
+    const unlinkedRowsPromise = supabase.rpc("list_unlinked_boxes_for_documents", {
       p_wholesaler_id: scope.wholesalerId,
     });
-    const unlinked = ((unlinkedRows ?? []) as Array<{ scan_id: string; document_id: string; document_status: string }>).map((row) => ({
-      scanId: String(row.scan_id),
-      documentId: String(row.document_id),
-      documentStatus: row.document_status,
-    }));
-    lateBoxes = unlinked.filter((row) => row.documentStatus === "CLOSED");
-    unlinkedOpenBoxes = unlinked.filter((row) => row.documentStatus === "PENDING");
 
     // 입고 내역은 계속 쌓이기만 하므로 최근 100건만 불러온다. 현장에서 보는 건
     // "방금 찍은 것들"이고, 과거 조회는 이력관리 메뉴가 따로 담당한다.
@@ -121,6 +115,15 @@ export async function loadInboundData(
           .or("trace_no.not.is.null,lot_no.not.is.null")
           .order("line_no", { ascending: true }),
       ]);
+
+    const { data: unlinkedRows } = await unlinkedRowsPromise;
+    const unlinked = ((unlinkedRows ?? []) as Array<{ scan_id: string; document_id: string; document_status: string }>).map((row) => ({
+      scanId: String(row.scan_id),
+      documentId: String(row.document_id),
+      documentStatus: row.document_status,
+    }));
+    lateBoxes = unlinked.filter((row) => row.documentStatus === "CLOSED");
+    unlinkedOpenBoxes = unlinked.filter((row) => row.documentStatus === "PENDING");
 
     pendingDocumentTraceNos = [
       ...new Set(

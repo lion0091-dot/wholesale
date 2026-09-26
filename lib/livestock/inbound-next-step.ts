@@ -139,6 +139,22 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
 
   if (late.length === 0) return step;
 
+  // 대기 전표가 없어 카드가 "먼저 전표를 올리세요"뿐이면, 이미 와 있는 박스 처리가 더 급하다 — 종 배지에서 넘어온 사람이
+  // 작은 링크를 찾지 않아도 되게 큰 버튼으로 올린다.
+  if (step.key === "upload") {
+    return {
+      key: "reconcile",
+      who: "사무실",
+      title: "마감된 전표 뒤에 박스가 왔습니다",
+      detail: `박스 ${late.length}개가 이미 마감된 전표의 번호와 같습니다. 그 전표를 다시 열어 박스를 이어 주세요. 더 온 이유를 적고 다시 마감하면 끝입니다.`,
+      waitNote: null,
+      buttonLabel: "전표 다시 열러 가기",
+      href: documentReconcileHref(late[0].documentId),
+      // 원래 카드의 작은 링크(전표 없이 스캔, 확인이 필요한 박스 보기)는 그대로 남긴다 — 길이 하나도 사라지지 않게.
+      secondaries: [{ label: "새 전표 올리기", href: INBOUND_ANCHORS.documents }, ...step.secondaries],
+    };
+  }
+
   return {
     ...step,
     secondaries: [

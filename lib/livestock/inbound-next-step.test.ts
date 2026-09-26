@@ -17,7 +17,6 @@ describe("pickInboundNextStep", () => {
 
   it("마감된 전표 뒤에 온 박스가 있으면 어떤 단계에서든 그 전표를 다시 열러 가는 링크를 덧붙인다", () => {
     const lateBoxes = [{ scanId: "s1", documentId: "closed-doc" }];
-    const upload = pickInboundNextStep({ ...base, lateBoxes });
     const scanning = pickInboundNextStep({
       ...base,
       lateBoxes,
@@ -25,14 +24,10 @@ describe("pickInboundNextStep", () => {
       remainingBoxCount: 4,
     });
 
-    for (const step of [upload, scanning]) {
-      const link = step.secondaries.at(-1);
+    const link = scanning.secondaries.at(-1);
 
-      expect(link?.href).toBe("/dashboard/inbound/documents/closed-doc");
-      expect(link?.label).toContain("마감된 전표 뒤에 온 박스 1개");
-    }
-
-    expect(upload.key).toBe("upload");
+    expect(link?.href).toBe("/dashboard/inbound/documents/closed-doc");
+    expect(link?.label).toContain("마감된 전표 뒤에 온 박스 1개");
     expect(scanning.key).toBe("scan");
   });
 
@@ -52,6 +47,15 @@ describe("pickInboundNextStep", () => {
 
   it("대기 전표가 없으면 안 이어진 박스가 있어도 전표 올리기 카드 그대로다(이어 붙일 전표가 없다)", () => {
     expect(pickInboundNextStep({ ...base, unlinkedOpenBoxes: [{ scanId: "s1", documentId: "d2" }] }).key).toBe("upload");
+  });
+
+  it("대기 전표가 없고 마감된 전표 뒤에 온 박스만 있으면 그 전표를 다시 여는 것이 큰 버튼이다", () => {
+    const step = pickInboundNextStep({ ...base, lateBoxes: [{ scanId: "s1", documentId: "closed-doc" }] });
+
+    expect(step.key).toBe("reconcile");
+    expect(step.buttonLabel).toBe("전표 다시 열러 가기");
+    expect(step.href).toBe("/dashboard/inbound/documents/closed-doc");
+    expect(step.buttonDisabled).toBeUndefined();
   });
 
   it("뒤늦게 온 박스가 없으면 링크를 덧붙이지 않는다", () => {
