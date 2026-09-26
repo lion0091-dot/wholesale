@@ -138,4 +138,44 @@ describe("성능 가드 — 큰 데이터에서도 주기적으로 부르는 경
       expect(elapsed, `${i + 1}번째 ${Math.round(elapsed)}ms`).toBeLessThan(LIMIT_MS);
     }
   });
+
+  it(`전표 대조 화면의 번호 매칭(match_document_lines_for_traces)이 박스 번호 300개에서 ${LIMIT_MS}ms 안이다`, async () => {
+    await actAs(world.users.ownerA);
+
+    const traces = scanIds.slice(0, 300).map((_, index) => String(900000000000 + index * 2));
+    // 마감 전표 줄과 같은 번호도 섞어 넣어 실제로 일치하는 행이 나오는지 함께 본다.
+    traces.push(String(100000000000 + 1), String(100000000000 + 101));
+
+    const started = performance.now();
+    const { data, error } = await getActorClient().rpc("match_document_lines_for_traces", { p_wholesaler_id: world.wholesalerA, p_trace_nos: traces });
+    const elapsed = performance.now() - started;
+
+    expect(error).toBeNull();
+    expect(elapsed, `걸린 시간 ${Math.round(elapsed)}ms`).toBeLessThan(LIMIT_MS);
+    expect((data ?? []).length).toBeGreaterThan(0);
+  });
+
+  it(`입고 화면의 '아직 안 만난 줄' 조회(list_awaiting_document_line_ids)가 ${LIMIT_MS}ms 안이다`, async () => {
+    await actAs(world.users.ownerA);
+
+    const started = performance.now();
+    const { error } = await getActorClient().rpc("list_awaiting_document_line_ids", { p_wholesaler_id: world.wholesalerA });
+    const elapsed = performance.now() - started;
+
+    expect(error).toBeNull();
+    expect(elapsed, `걸린 시간 ${Math.round(elapsed)}ms`).toBeLessThan(LIMIT_MS);
+  });
+
+  it("동시에 20명이 종 배지와 안 이어진 박스 조회를 불러도 전부 상한 안에 끝난다(부하)", async () => {
+    await actAs(world.users.ownerA);
+
+    const started = performance.now();
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => getActorClient().rpc("list_unlinked_boxes_for_documents", { p_wholesaler_id: world.wholesalerA }))
+    );
+    const elapsed = performance.now() - started;
+
+    expect(results.every((result) => result.error === null)).toBe(true);
+    expect(elapsed, `20건 동시 ${Math.round(elapsed)}ms`).toBeLessThan(LIMIT_MS * 2);
+  });
 });
