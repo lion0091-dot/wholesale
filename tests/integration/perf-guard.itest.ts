@@ -166,6 +166,30 @@ describe("성능 가드 — 큰 데이터에서도 주기적으로 부르는 경
     expect(elapsed, `걸린 시간 ${Math.round(elapsed)}ms`).toBeLessThan(LIMIT_MS);
   });
 
+  it(`박스 번호 하나로 전표 줄을 찾는 단건 경로(lookup_document_part_name → document_lines_matching_trace)가 40번 연달아 ${LIMIT_MS}ms 안이다`, async () => {
+    await actAs(world.users.ownerA);
+
+    const started = performance.now();
+    let found: unknown = null;
+
+    for (let i = 0; i < 40; i += 1) {
+      // 없는 번호와 있는 번호를 번갈아 부른다(스캔 하나가 이 경로를 여러 번 탄다).
+      const traceNo = i % 2 === 0 ? String(100000000000 + i * 100 + 3) : String(700000000000 + i);
+      const { data, error } = await getActorClient().rpc("lookup_document_part_name", { p_wholesaler_id: world.wholesalerA, p_trace_no: traceNo });
+
+      expect(error).toBeNull();
+
+      if (i === 0) {
+        found = data;
+      }
+    }
+
+    const elapsed = performance.now() - started;
+
+    expect(elapsed, `40번 ${Math.round(elapsed)}ms`).toBeLessThan(LIMIT_MS);
+    expect(found).toBe("등심");
+  });
+
   it("동시에 20명이 종 배지와 안 이어진 박스 조회를 불러도 전부 상한 안에 끝난다(부하)", async () => {
     await actAs(world.users.ownerA);
 
