@@ -125,7 +125,7 @@ describe("buildScanResultCard", () => {
     );
 
     expect(card.detail).toContain("timeout");
-    expect(card.detail).toContain("한 번 더 찍어");
+    expect(card.detail).toContain("자동으로 다시 조회");
   });
 
   it("사정이 겹치면 빨강이 제목, 나머지는 덧붙인다", () => {

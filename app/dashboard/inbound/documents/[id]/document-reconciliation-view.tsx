@@ -12,6 +12,7 @@ import {
   unlinkScanFromDocumentLineAction,
 } from "../../document-actions";
 import { resolveMappingAction } from "../../actions";
+import { TraceNoFixer } from "../../trace-no-fixer";
 import type { ScanProductOption } from "../../inbound-scan-view";
 import { InboundTabs } from "../../../section-tabs";
 
@@ -560,8 +561,8 @@ export function DocumentReconciliationView({
 
         {isPending && exceptionLinkedCount > 0 && firstException && (
           <p style={{ margin: "8px 0 0", fontSize: "13px", color: "#991b1b", lineHeight: 1.7 }}>
-            <strong>이력을 못 찾은 박스 {exceptionLinkedCount}개</strong> — 번호부터 확인하세요. 번호가 틀렸으면 입고 스캔 화면에서
-            그 박스를 취소하고 다시 찍으세요. 번호가 맞으면 박스 옆에서 상품을 지정하세요.
+            <strong>이력을 못 찾은 박스 {exceptionLinkedCount}개</strong> — 번호부터 확인하세요. 번호가 틀렸으면 박스 옆 <strong>번호 바꾸기</strong>로
+            바로잡으세요(무게·위치는 그대로 옮겨지고 저절로 확인됩니다). 번호가 맞으면 시스템이 자동으로 다시 조회하니 기다리거나, 박스 옆에서 상품을 지정하세요.
             <Link
               href={`/dashboard/inbound#scan-${firstException.scanId}`}
               style={{ ...secondaryButton, marginLeft: "8px", textDecoration: "none", display: "inline-block" }}
@@ -746,6 +747,9 @@ export function DocumentReconciliationView({
                             <span style={{ color: "#94a3b8" }}>
                               {box.linkedHow === "AUTO" ? "자동" : "수동"}
                             </span>
+                            {isPending && box.status === "EXCEPTION" && (
+                              <TraceNoFixer scanId={box.scanId} traceNo={box.traceNo} compact />
+                            )}
                             {isPending && (box.status === "PENDING_MAPPING" || box.status === "EXCEPTION") && (
                               <select
                                 defaultValue=""

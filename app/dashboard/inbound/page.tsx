@@ -6,6 +6,7 @@ import { isMtraceConfigured, configuredTraceSources } from "@/lib/livestock/mtra
 import { pickFieldNextStep } from "@/lib/livestock/inbound-next-step";
 import { InboundNextStepCard } from "./inbound-next-step-card";
 import { InboundTabs } from "../section-tabs";
+import { InboundAutoRetry } from "./inbound-auto-retry";
 
 /** 이력 조회 기관 표기 — 설정 안내 문구에 쓴다. */
 const SOURCE_LABELS: Record<string, string> = {
@@ -32,6 +33,7 @@ export default async function InboundPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <InboundTabs />
+      <InboundAutoRetry />
 
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>입고 스캔</h1>
@@ -52,7 +54,7 @@ export default async function InboundPage() {
           }}
         >
           <strong>이력 조회 인증키가 아직 없습니다.</strong> 입고 기록은 정상으로 남지만 이력 검증이
-          되지 않아 “확인 필요”로 쌓입니다. 키를 등록한 뒤 다시 조회하면 채워집니다.
+          되지 않아 “확인 필요”로 쌓입니다. 키를 등록하면 시스템이 자동으로 다시 조회해 채웁니다.
         </div>
       ) : (
         <div style={{ fontSize: "12px", color: "#64748b" }}>

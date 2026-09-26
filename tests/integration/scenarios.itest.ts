@@ -623,3 +623,66 @@ describe("SC-기준 — 줄마다 박스 수/무게로 세서 한 전표가 저�
     expect(step.detail).not.toContain("박스 1개");
   });
 });
+
+describe("SC-나중에 — 박스를 먼저 찍고 전표를 나중에 올려도 저절로 이어지고 마감된다", () => {
+  async function saveDocument(lines: Array<Record<string, unknown>>): Promise<string> {
+    const form = new FormData();
+
+    form.append("payload", JSON.stringify({ supplierName: `나중전표-${world.runId}`, lines: lines.map((line, index) => ({ lineNo: index + 1, ...line })) }));
+
+    const saved = await saveInboundDocumentAction(form);
+
+    expect(saved.success).toBe(true);
+
+    return (saved.data as { documentId: string }).documentId;
+  }
+
+  async function linkedScanIdsOf(documentId: string): Promise<string[]> {
+    const { data: lines } = await adminClient().from("inbound_document_lines").select("id").eq("document_id", documentId);
+    const { data: links } = await adminClient()
+      .from("inbound_document_line_scans")
+      .select("scan_id")
+      .in("line_id", ((lines ?? []) as Array<{ id: string }>).map((line) => line.id));
+
+    return ((links ?? []) as Array<{ scan_id: string }>).map((link) => link.scan_id);
+  }
+
+  it("번호가 있는 줄(내 상품 칸 비움): 먼저 찍힌 박스가 전표를 저장하는 순간 이어지고 다 찼으면 마감된다", async () => {
+    const traceNo = world.newTraceNo();
+    const box = await scanPart(traceNo, "등심", 5);
+
+    expect(await linkedLineIds(box.scanId)).toEqual([]);
+
+    const documentId = await saveDocument([{ itemName: "한우 등심", traceNo, partName: "등심", quantity: 1 }]);
+
+    expect(await linkedScanIdsOf(documentId)).toEqual([box.scanId]);
+    expect(await docStatus(documentId)).toBe("CLOSED");
+  });
+
+  it("번호 없는 줄: 먼저 찍힌 박스가 무게·부위로 이어진다", async () => {
+    const box = await scanPart(world.newTraceNo(), "부채살", 12.1);
+    const documentId = await saveDocument([{ itemName: "한우 부채살", partName: "부채살", labeledWeight: 12 }]);
+
+    expect(await linkedScanIdsOf(documentId)).toEqual([box.scanId]);
+    expect(await docStatus(documentId)).toBe("CLOSED");
+  });
+
+  it("개체번호 10kg 줄: 먼저 찍힌 세 박스가 모두 이어지고 무게 합이 맞으면 마감된다", async () => {
+    const traceNo = world.newTraceNo();
+    const a = await scanPart(traceNo, "설도", 3.4);
+    const b = await scanPart(traceNo, "설도", 3.3);
+    const c = await scanPart(traceNo, "설도", 3.2);
+    const documentId = await saveDocument([{ itemName: "한우 설도", traceNo, partName: "설도", labeledWeight: 10 }]);
+
+    expect((await linkedScanIdsOf(documentId)).sort()).toEqual([a.scanId, b.scanId, c.scanId].sort());
+    expect(await docStatus(documentId)).toBe("CLOSED");
+  });
+
+  it("부위가 안 맞는 박스는 무게가 같아도 이어지지 않는다", async () => {
+    const box = await scanPart(world.newTraceNo(), "홍두깨", 8);
+    const documentId = await saveDocument([{ itemName: "한우 도가니", partName: "도가니", labeledWeight: 8 }]);
+
+    expect(await linkedScanIdsOf(documentId)).not.toContain(box.scanId);
+    expect(await docStatus(documentId)).toBe("PENDING");
+  });
+});

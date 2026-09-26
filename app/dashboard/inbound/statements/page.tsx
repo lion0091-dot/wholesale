@@ -6,6 +6,7 @@ import { InboundImportPanel } from "../inbound-import-panel";
 import { pickInboundNextStep } from "@/lib/livestock/inbound-next-step";
 import { InboundNextStepCard } from "../inbound-next-step-card";
 import { InboundTabs } from "../../section-tabs";
+import { InboundAutoRetry } from "../inbound-auto-retry";
 import Link from "next/link";
 
 export const metadata = {
@@ -26,6 +27,7 @@ export default async function InboundStatementsPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <InboundTabs />
+      <InboundAutoRetry />
 
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>전표입력</h1>

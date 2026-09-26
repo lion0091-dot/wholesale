@@ -1,6 +1,7 @@
 "use client";
 
 import { INBOUND_ANCHORS, describeRemaining } from "@/lib/livestock/inbound-next-step";
+import { TraceNoFixer } from "./trace-no-fixer";
 import { setDocumentsScanFinishedAction } from "./document-actions";
 import { HIGHLIGHT_BUTTON, HIGHLIGHT_FIELD, ResultCardView, StepCard, type StepCardStep } from "./step-card";
 import {
@@ -1681,6 +1682,10 @@ export function InboundScanView({
                   )}
 
                   <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                    {scan.status === "EXCEPTION" && !scan.isSample && (
+                      <TraceNoFixer scanId={scan.id} traceNo={scan.traceNo} compact />
+                    )}
+
                     {needsProduct && (
                       <select
                         defaultValue=""

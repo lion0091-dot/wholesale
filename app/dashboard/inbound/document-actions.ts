@@ -12,6 +12,7 @@ import {
 } from "@/lib/livestock/mtrace-client";
 import { cacheTraceRecord } from "@/lib/livestock/master-cache";
 import { autoCloseDocuments } from "@/lib/livestock/auto-close";
+import { autoLinkRecentUnlinkedScans } from "@/lib/livestock/auto-link-numberless";
 import { documentStorageName } from "@/lib/livestock/document-storage-name";
 
 /**
@@ -773,7 +774,8 @@ export async function saveInboundDocumentAction(
     // 판정·확정 로직은 스캔 시점/수동 지정과 같은 DB 함수라 결과가 순서에 안 갈린다. 실패해도 저장은 살린다.
     let relinkedScanCount = 0;
 
-    if (lineRows.some((line) => line.product_id)) {
+    // 줄에 "내 상품"이 없어도 부른다 — 이 함수는 상품 확정뿐 아니라 먼저 찍힌 박스를 전표 줄에 잇는 일도 한다(118).
+    if (lineRows.length > 0) {
       const { data: relinked, error: relinkError } = await supabase.rpc("relink_pending_scans_to_documents");
 
       if (relinkError) {
@@ -781,6 +783,9 @@ export async function saveInboundDocumentAction(
       } else {
         relinkedScanCount = Array.isArray(relinked) ? relinked.length : 0;
       }
+
+      // 번호로 안 정해지는 박스(번호 없는 줄·쪼갠 전표)는 무게·축종·부위로 마저 잇는다.
+      await autoLinkRecentUnlinkedScans(supabase, wholesalerId);
     }
 
     // 박스를 먼저 찍어 둔 경우, 전표를 저장하는 순간 모든 줄이 이미 채워졌을 수 있다.

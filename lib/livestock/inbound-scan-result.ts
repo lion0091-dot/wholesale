@@ -64,7 +64,7 @@ function failureIssue(data: ScanResultInput, scanId: string): ResultIssue {
       tone: "red",
       title: "이력 조회 기능이 설정되지 않아 확인하지 못했습니다",
       detail:
-        "인증키가 아직 등록되지 않았습니다. 다시 찍어도 지금은 통과하지 않습니다. 입고는 기록됐으니 아래 목록에서 상품을 직접 지정하면 재고가 잡힙니다.",
+        "인증키가 아직 등록되지 않았습니다. 다시 찍어도 지금은 통과하지 않습니다. 키가 등록되면 시스템이 자동으로 다시 조회합니다. 급하면 입고는 기록됐으니 아래 목록에서 상품을 직접 지정하면 재고가 잡힙니다.",
       action: jump,
     };
   }
@@ -74,8 +74,8 @@ function failureIssue(data: ScanResultInput, scanId: string): ResultIssue {
       tone: "red",
       title: "이력 조회 중 오류가 있었습니다",
       detail:
-        `${data.failDetail ? `(${data.failDetail}) ` : ""}일시적일 수 있으니 한 번 더 찍어 보세요. ` +
-        "계속 안 되면 아래 목록에서 상품을 직접 지정하세요.",
+        `${data.failDetail ? `(${data.failDetail}) ` : ""}일시적일 수 있어 시스템이 몇 분 뒤 자동으로 다시 조회합니다. ` +
+        "급하면 박스 옆 '다시 조회'를 누르거나 아래 목록에서 상품을 직접 지정하세요.",
       action: jump,
     };
   }
@@ -84,7 +84,8 @@ function failureIssue(data: ScanResultInput, scanId: string): ResultIssue {
     tone: "red",
     title: "이 번호는 이력에서 확인되지 않았습니다",
     detail:
-      "바코드를 다시 확인해 보세요. 번호가 맞다면 아래 목록에서 상품을 직접 지정하면 재고가 잡힙니다. " +
+      "번호가 틀렸다면 박스 옆 '번호 바꾸기'로 바로잡으세요(무게는 그대로 옮겨집니다). " +
+      "번호가 맞다면 이력에 등록되는 대로 시스템이 자동으로 다시 조회하고, 급하면 아래 목록에서 상품을 직접 지정하세요. " +
       "여러 품목이 섞인 공급처 박스 바코드라면 \"박스 나눠서 입고\"를 쓰세요.",
     action: jump,
   };

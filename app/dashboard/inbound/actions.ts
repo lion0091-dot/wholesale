@@ -141,6 +141,145 @@ function toResult(error: unknown): ActionResult<never> {
   };
 }
 
+type Client = Awaited<ReturnType<typeof createClient>>;
+
+interface TraceLookupResult {
+  failReason: "API_ERROR" | "NOT_FOUND" | null;
+  failDetail: string | null;
+  failIsNotConfigured: boolean;
+}
+
+/**
+ * 이력번호를 조회한다 — 마스터 캐시를 먼저 보고, 없을 때만 공공 API를 부르고 캐시에 적재한다.
+ * 실패해도 던지지 않고 사유를 돌려준다(현장 입고를 막지 않는다).
+ */
+async function lookupTrace(supabase: Client, traceNo: string): Promise<TraceLookupResult> {
+  const { data: cached } = await supabase
+    .from("master_livestock")
+    .select("trace_no")
+    .eq("trace_no", traceNo)
+    .maybeSingle();
+
+  let failReason: TraceLookupResult["failReason"] = null;
+  // 실패 사유의 실제 메시지 — NOT_FOUND(호출은 성공, 결과 없음)면 비워둔다.
+  // API_ERROR일 때만 채워서 DB만 보고도 "승인 미반영"인지 "진짜 오류"인지 구분한다
+  // (2026-09-22 — resultCode 오류가 NOT_FOUND로 오인되던 문제 수정 이후 도입).
+  let failDetail: string | null = null;
+  // API_ERROR 중에서도 "설정 자체가 안 됨"(재시도해도 절대 안 됨)과 "일시적 오류일
+  // 수도 있음"(재시도하면 될 수도 있음)은 화면 안내가 달라야 한다(2026-09-23 발견).
+  // DB(livestock_exception_log.reason)에는 API_ERROR 하나로만 남긴다 — CHECK 제약이
+  // 정해진 4개 값만 허용해서 세분화된 값을 그대로 넘기면 저장 자체가 깨진다.
+  let failIsNotConfigured = false;
+
+  if (!cached) {
+    if (!isMtraceConfigured()) {
+      // 인증키 미발급 상태. 물건은 실제로 들어왔으므로 막지 않고 예외로 남긴다.
+      failReason = "API_ERROR";
+      failDetail = "이력 조회 인증키가 설정되지 않았습니다.";
+      failIsNotConfigured = true;
+    } else {
+      try {
+        const record = await fetchTraceRecord(traceNo);
+
+        if (record) {
+          // 공용 캐시 적재는 service_role로만 (lib/livestock/master-cache.ts 주석 참고).
+          await cacheTraceRecord(record);
+        } else {
+          failReason = "NOT_FOUND";
+        }
+      } catch (error) {
+        // 조회 실패로 현장 입고를 막지 않는다 — 예외로 남기고 나중에 보정한다.
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[mtrace] ${traceNo} 이력 조회 실패:`, message);
+        failReason = "API_ERROR";
+        failDetail = message.slice(0, 500);
+        // isMtraceConfigured()는 "셋 중 하나라도" 키가 있으면 true라 여기까지 왔지만,
+        // 이 번호가 실제로 필요로 하는 기관(예: 닭인데 POULTRY_TRACE_API_KEY 없음)은
+        // 여전히 미설정일 수 있다 — 그 경우도 "재시도해도 절대 안 통과"로 안내해야 한다.
+        failIsNotConfigured = error instanceof MtraceNotConfiguredError;
+      }
+    }
+  }
+
+  return { failReason, failDetail, failIsNotConfigured };
+}
+
+interface FinishedScan {
+  status: string;
+  productId: string | null;
+  autoCreated: { productName: string; needsPrice: boolean } | null;
+  autoClosedDocument: boolean;
+}
+
+/**
+ * 박스를 기록(또는 번호 교체)한 직후의 뒷처리. 실패해도 입고 자체는 이미 끝났으므로 어느 단계도 흐름을 막지 않는다.
+ * ① 전표 줄에 붙이기(대조용, 재고와 무관 — 118) ② 바코드 상품코드 기록 ③ 상품 자동 생성 ④ 부위로 마저 붙이기 ⑤ 자동 마감.
+ */
+async function finishRecordedScan(
+  supabase: Client,
+  input: { scanId: string; status: string; gtin: string | null }
+): Promise<FinishedScan> {
+  let status = input.status;
+  let productId: string | null = null;
+
+  let linkedLineId: string | null = null;
+
+  const { data: linkedLine, error: linkError } = await supabase.rpc("auto_link_scan_to_document_line", {
+    p_scan_id: input.scanId,
+  });
+
+  linkedLineId = (linkedLine as string | null) ?? null;
+
+  if (linkError) {
+    console.error("[inbound] 전표 줄 자동 배정 실패:", linkError.message);
+  }
+
+  // 나중에 사람이 상품을 지정할 때 학습하려면 그 박스의 상품코드를 알아야 한다.
+  if (input.gtin) {
+    const { error: gtinError } = await supabase.rpc("set_scan_gtin", {
+      p_scan_id: input.scanId,
+      p_gtin: input.gtin,
+    });
+
+    if (gtinError) {
+      console.error("[inbound] 상품코드 기록 실패:", gtinError.message);
+    }
+  }
+
+  // 처음 취급하는 고기면 이력 정보(축종·부위·등급)로 상품을 자동 생성한다.
+  // 공공 API가 이미 알려준 값을 사람이 다시 입력하게 할 이유가 없다.
+  // 부위를 모르면 자동 생성이 건너뛰어지고 아래 목록에서 되묻는다.
+  let autoCreated: FinishedScan["autoCreated"] = null;
+
+  if (status === "PENDING_MAPPING") {
+    const { data: created } = await supabase.rpc("autocreate_product_for_scan", { p_scan_id: input.scanId });
+    const createdRow = created as Record<string, unknown> | null;
+
+    if (createdRow?.product_id) {
+      status = "NORMAL";
+      productId = String(createdRow.product_id);
+
+      if (createdRow.created) {
+        autoCreated = {
+          productName: String(createdRow.product_name ?? ""),
+          needsPrice: Boolean(createdRow.needs_price),
+        };
+      }
+    }
+  }
+
+  // 번호만으로 줄이 안 정해졌으면 부위로 마저 붙인다(쪼갠 전표의 줄 고르기, 번호 없는 줄의 무게·축종·부위 대조).
+  // 상품 자동 생성 뒤에 해야 상품의 부위까지 쓸 수 있다.
+  if (!linkedLineId) {
+    await autoLinkNumberlessScan(supabase, input.scanId);
+  }
+
+  // 이 박스로 전표의 모든 줄이 채워졌고 문제 박스도 없으면 사람이 할 일이 없으니 마감해 둔다.
+  const autoClosedDocument = (await autoCloseDocumentsForScan(supabase, input.scanId)).length > 0;
+
+  return { status, productId, autoCreated, autoClosedDocument };
+}
+
 /**
  * 바코드/카메라 스캔 1건 처리.
  *
@@ -198,54 +337,8 @@ export async function recordScanAction(input: {
       throw new RbacError("중량을 입력해주세요.");
     }
 
-    // 1) 마스터 캐시 확인
-    const { data: cached } = await supabase
-      .from("master_livestock")
-      .select("trace_no")
-      .eq("trace_no", traceNo)
-      .maybeSingle();
-
-    let failReason: "API_ERROR" | "NOT_FOUND" | null = null;
-    // 실패 사유의 실제 메시지 — NOT_FOUND(호출은 성공, 결과 없음)면 비워둔다.
-    // API_ERROR일 때만 채워서 DB만 보고도 "승인 미반영"인지 "진짜 오류"인지 구분한다
-    // (2026-09-22 — resultCode 오류가 NOT_FOUND로 오인되던 문제 수정 이후 도입).
-    let failDetail: string | null = null;
-    // API_ERROR 중에서도 "설정 자체가 안 됨"(재시도해도 절대 안 됨)과 "일시적 오류일
-    // 수도 있음"(재시도하면 될 수도 있음)은 화면 안내가 달라야 한다(2026-09-23 발견).
-    // DB(livestock_exception_log.reason)에는 API_ERROR 하나로만 남긴다 — CHECK 제약이
-    // 정해진 4개 값만 허용해서 세분화된 값을 그대로 넘기면 저장 자체가 깨진다.
-    let failIsNotConfigured = false;
-
-    // 2) 캐시에 없으면 공공 API 호출 → 마스터 적재
-    if (!cached) {
-      if (!isMtraceConfigured()) {
-        // 인증키 미발급 상태. 물건은 실제로 들어왔으므로 막지 않고 예외로 남긴다.
-        failReason = "API_ERROR";
-        failDetail = "이력 조회 인증키가 설정되지 않았습니다.";
-        failIsNotConfigured = true;
-      } else {
-        try {
-          const record = await fetchTraceRecord(traceNo);
-
-          if (record) {
-            // 공용 캐시 적재는 service_role로만 (lib/livestock/master-cache.ts 주석 참고).
-            await cacheTraceRecord(record);
-          } else {
-            failReason = "NOT_FOUND";
-          }
-        } catch (error) {
-          // 조회 실패로 현장 입고를 막지 않는다 — 예외로 남기고 나중에 보정한다.
-          const message = error instanceof Error ? error.message : String(error);
-          console.error(`[mtrace] ${traceNo} 이력 조회 실패:`, message);
-          failReason = "API_ERROR";
-          failDetail = message.slice(0, 500);
-          // isMtraceConfigured()는 "셋 중 하나라도" 키가 있으면 true라 여기까지 왔지만,
-          // 이 번호가 실제로 필요로 하는 기관(예: 닭인데 POULTRY_TRACE_API_KEY 없음)은
-          // 여전히 미설정일 수 있다 — 그 경우도 "재시도해도 절대 안 통과"로 안내해야 한다.
-          failIsNotConfigured = error instanceof MtraceNotConfiguredError;
-        }
-      }
-    }
+    // 1~2) 이력 조회 — 마스터 캐시를 먼저 보고, 없을 때만 공공 API를 부른다.
+    const { failReason, failDetail, failIsNotConfigured } = await lookupTrace(supabase, traceNo);
 
     // 3) 상품을 자동으로 정할 수 있는지 본다. 사람이 직접 고른 값이 없을 때만.
     //
@@ -319,70 +412,16 @@ export async function recordScanAction(input: {
 
     const row = data as Record<string, unknown>;
 
-    // 전표 줄에 박스를 붙인다(대조용, 재고와 무관 — 118). 해당 줄이 하나로 정해질 때만 붙고,
-    // 애매하면 사무실 대조 화면 몫으로 남는다. 실패해도 입고는 이미 끝났으므로 막지 않는다.
-    let linkedLineId: string | null = null;
+    // 전표 줄 붙이기·상품 코드 기록·상품 자동 생성·자동 마감을 한 묶음으로 처리한다.
+    const finished = row.scan_id
+      ? await finishRecordedScan(supabase, { scanId: String(row.scan_id), status: String(row.status), gtin })
+      : { status: String(row.status), productId: null, autoCreated: null, autoClosedDocument: false };
 
-    if (row.scan_id) {
-      const { data: linkedLine, error: linkError } = await supabase.rpc("auto_link_scan_to_document_line", {
-        p_scan_id: String(row.scan_id),
-      });
+    row.status = finished.status;
+    if (finished.productId) row.product_id = finished.productId;
 
-      linkedLineId = (linkedLine as string | null) ?? null;
-
-      if (linkError) {
-        console.error("[inbound] 전표 줄 자동 배정 실패:", linkError.message);
-      }
-    }
-
-    // 나중에 사람이 상품을 지정할 때 학습하려면 그 박스의 상품코드를 알아야 한다.
-    // 실패해도 입고 자체는 이미 끝났으므로 흐름을 막지 않는다.
-    if (gtin && row.scan_id) {
-      const { error: gtinError } = await supabase.rpc("set_scan_gtin", {
-        p_scan_id: String(row.scan_id),
-        p_gtin: gtin,
-      });
-
-      if (gtinError) {
-        console.error("[inbound] 상품코드 기록 실패:", gtinError.message);
-      }
-    }
-
-    // 처음 취급하는 고기면 이력 정보(축종·부위·등급)로 상품을 자동 생성한다.
-    // 공공 API가 이미 알려준 값을 사람이 다시 입력하게 할 이유가 없다.
-    // 부위를 모르면 자동 생성이 건너뛰어지고 아래 목록에서 되묻는다.
-    let autoCreated: { productName: string; needsPrice: boolean } | null = null;
-
-    if (row.status === "PENDING_MAPPING") {
-      const { data: created } = await supabase.rpc("autocreate_product_for_scan", {
-        p_scan_id: String(row.scan_id),
-      });
-
-      const createdRow = created as Record<string, unknown> | null;
-
-      if (createdRow?.product_id) {
-        row.status = "NORMAL";
-        row.product_id = createdRow.product_id;
-
-        if (createdRow.created) {
-          autoCreated = {
-            productName: String(createdRow.product_name ?? ""),
-            needsPrice: Boolean(createdRow.needs_price),
-          };
-        }
-      }
-    }
-
-    // 번호만으로 줄이 안 정해졌으면 부위로 마저 붙인다(쪼갠 전표의 줄 고르기, 번호 없는 줄의 무게·축종·부위 대조).
-    // 상품 자동 생성 뒤에 해야 상품의 부위까지 쓸 수 있다.
-    if (row.scan_id && !linkedLineId) {
-      await autoLinkNumberlessScan(supabase, String(row.scan_id));
-    }
-
-    // 이 박스로 전표의 모든 줄이 채워졌고 문제 박스도 없으면 사람이 할 일이 없으니 마감해 둔다.
-    const autoClosedDocument = row.scan_id
-      ? (await autoCloseDocumentsForScan(supabase, String(row.scan_id))).length > 0
-      : false;
+    const autoCreated = finished.autoCreated;
+    const autoClosedDocument = finished.autoClosedDocument;
 
     revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/products");
@@ -419,6 +458,195 @@ export async function recordScanAction(input: {
         productConflict,
       },
     };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export interface ReplaceTraceResult {
+  /** 교체된 새 박스 id. 조회가 여전히 안 돼 아무것도 안 바꿨으면 원래 박스 id. */
+  scanId: string;
+  traceNo: string;
+  /** NORMAL: 재고 반영 / PENDING_MAPPING: 상품 확인 필요 / EXCEPTION: 이력 못 찾음 */
+  status: "NORMAL" | "PENDING_MAPPING" | "EXCEPTION";
+  /** 번호를 실제로 바꾸거나 다시 기록했는가. false면 재조회했지만 여전히 못 찾아 그대로 뒀다. */
+  changed: boolean;
+  autoCreatedProductName: string | null;
+  autoClosedDocument: boolean;
+  failReason: "API_ERROR" | "NOT_FOUND" | null;
+  failDetail: string | null;
+  failIsNotConfigured: boolean;
+}
+
+/**
+ * 이력번호를 바로잡거나(다른 번호) 다시 조회한다(같은 번호). 재고에 안 들어간 박스(이력 못 찾음·상품 확인 필요)만 된다.
+ * 옛 박스를 취소하고 같은 실중량으로 새 번호를 기록한 뒤 사람이 넣은 값을 옮긴다(마이그레이션 124) — 조회가 되면
+ * 상품 생성·재고 반영·전표 줄 연결까지 원래 스캔과 같은 경로로 이어진다.
+ */
+async function replaceTrace(
+  supabase: Client,
+  input: { scanId: string; oldTraceNo: string; newTraceNo: string; confirmDuplicate: boolean }
+): Promise<ActionResult<ReplaceTraceResult | { duplicate: DuplicateWarning }>> {
+  const traceNo = input.newTraceNo.trim().toUpperCase();
+
+  if (!isPlausibleTraceNo(traceNo)) {
+    throw new RbacError("이력번호 형식이 올바르지 않습니다. 12자리 숫자(또는 묶음번호)를 확인해주세요.");
+  }
+
+  const lookup = await lookupTrace(supabase, traceNo);
+  const sameNumber = traceNo === input.oldTraceNo.trim().toUpperCase();
+
+  // 같은 번호를 다시 조회했는데 여전히 못 찾았으면 아무것도 바꾸지 않는다 — 박스를 헛되이 갈아치우지 않는다.
+  if (sameNumber && lookup.failReason) {
+    return {
+      success: true,
+      data: {
+        scanId: input.scanId,
+        traceNo,
+        status: "EXCEPTION",
+        changed: false,
+        autoCreatedProductName: null,
+        autoClosedDocument: false,
+        failReason: lookup.failReason,
+        failDetail: lookup.failDetail,
+        failIsNotConfigured: lookup.failIsNotConfigured,
+      },
+    };
+  }
+
+  const { data, error } = await supabase.rpc("replace_inbound_scan_trace_no", {
+    p_scan_id: input.scanId,
+    p_new_trace_no: traceNo,
+    p_fail_reason: lookup.failReason,
+    p_fail_detail: lookup.failDetail,
+    p_confirm_duplicate: input.confirmDuplicate,
+  });
+
+  if (error) {
+    const duplicate = error.message.match(/DUPLICATE_SUSPECTED:(\d{2}:\d{2})/);
+
+    if (duplicate) {
+      return { success: true, data: { duplicate: { lastScannedAt: duplicate[1] } } };
+    }
+    if (error.message.includes("SCAN_NOT_EDITABLE")) {
+      throw new RbacError("이미 재고에 들어갔거나 취소된 박스는 번호를 바꿀 수 없습니다. 새로고침 후 확인해주세요.");
+    }
+    if (error.message.includes("SCAN_NOT_FOUND")) {
+      throw new RbacError("해당 박스를 찾을 수 없습니다.");
+    }
+
+    throw new Error(error.message);
+  }
+
+  const row = (data ?? {}) as Record<string, unknown>;
+  const newScanId = String(row.scan_id);
+  const finished = await finishRecordedScan(supabase, {
+    scanId: newScanId,
+    status: String(row.status),
+    // 상품코드(GTIN)는 DB 함수가 새 박스로 옮겼다 — 여기서 다시 쓰지 않고 자동 생성 학습에만 쓰인다.
+    gtin: null,
+  });
+
+  revalidatePath(REVALIDATE_PATH, "layout");
+  revalidatePath("/dashboard/products");
+
+  return {
+    success: true,
+    data: {
+      scanId: newScanId,
+      traceNo,
+      status: finished.status as ReplaceTraceResult["status"],
+      changed: true,
+      autoCreatedProductName: finished.autoCreated?.productName ?? null,
+      autoClosedDocument: finished.autoClosedDocument,
+      failReason: finished.status === "EXCEPTION" ? lookup.failReason : null,
+      failDetail: finished.status === "EXCEPTION" ? lookup.failDetail : null,
+      failIsNotConfigured: finished.status === "EXCEPTION" && lookup.failIsNotConfigured,
+    },
+  };
+}
+
+/** 박스의 이력번호를 바로잡는다(사람이 새 번호를 넣음). 재고에 안 들어간 박스만. */
+export async function replaceScanTraceNoAction(
+  scanId: string,
+  newTraceNo: string,
+  confirmDuplicate = false
+): Promise<ActionResult<ReplaceTraceResult | { duplicate: DuplicateWarning }>> {
+  try {
+    const { supabase, wholesalerId } = await resolveInboundScope();
+
+    const { data: scan } = await supabase
+      .from("inbound_scans")
+      .select("trace_no")
+      .eq("id", scanId)
+      .eq("wholesaler_id", wholesalerId)
+      .maybeSingle();
+
+    if (!scan) {
+      throw new RbacError("해당 박스를 찾을 수 없습니다.");
+    }
+
+    return await replaceTrace(supabase, {
+      scanId,
+      oldTraceNo: String(scan.trace_no),
+      newTraceNo,
+      confirmDuplicate,
+    });
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** 자동 재조회 한 번에 처리하는 박스 수, 같은 박스를 다시 조회하기까지의 간격(분) — 정부 API 호출 한도를 아낀다. */
+const AUTO_RETRY_BATCH = 3;
+const AUTO_RETRY_INTERVAL_MINUTES = 30;
+
+/**
+ * 이력조회 실패로 남은 박스를 시스템이 알아서 다시 조회한다. 입고 화면이 열려 있는 동안 몇 분마다 부른다.
+ * 조회가 되면 상품 생성·재고 반영까지 이어지고, 여전히 못 찾으면 건드리지 않는다. 인증키가 없으면 헛호출하지 않는다.
+ */
+export async function retryUnresolvedScansAction(): Promise<ActionResult<{ checked: number; resolved: number }>> {
+  try {
+    const { supabase, wholesalerId } = await resolveInboundScope();
+    const cutoff = new Date(Date.now() - AUTO_RETRY_INTERVAL_MINUTES * 60_000).toISOString();
+
+    const { data: candidates } = await supabase
+      .from("inbound_scans")
+      .select("id, trace_no")
+      .eq("wholesaler_id", wholesalerId)
+      .eq("status", "EXCEPTION")
+      .or(`lookup_retried_at.is.null,lookup_retried_at.lt.${cutoff}`)
+      .order("created_at", { ascending: true })
+      .limit(AUTO_RETRY_BATCH);
+
+    const rows = (candidates ?? []) as Array<{ id: string; trace_no: string }>;
+
+    if (rows.length === 0) {
+      return { success: true, data: { checked: 0, resolved: 0 } };
+    }
+
+    await supabase.rpc("touch_scan_lookup_retry", { p_scan_ids: rows.map((row) => row.id) });
+
+    let resolved = 0;
+
+    for (const row of rows) {
+      try {
+        const result = await replaceTrace(supabase, {
+          scanId: row.id,
+          oldTraceNo: row.trace_no,
+          newTraceNo: row.trace_no,
+          confirmDuplicate: true,
+        });
+        const data = result.data as ReplaceTraceResult | undefined;
+
+        if (result.success && data && "changed" in data && data.changed && data.status !== "EXCEPTION") resolved += 1;
+      } catch (error) {
+        // 다른 창이 먼저 처리했거나 형식이 안 맞는 번호 — 이 박스는 넘어간다.
+        console.error(`[inbound] 자동 재조회 건너뜀 (${row.trace_no}):`, error instanceof Error ? error.message : error);
+      }
+    }
+
+    return { success: true, data: { checked: rows.length, resolved } };
   } catch (error) {
     return toResult(error);
   }

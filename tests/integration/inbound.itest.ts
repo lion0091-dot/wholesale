@@ -15,8 +15,11 @@ vi.mock("@/lib/livestock/mtrace-client", async (importOriginal) => {
 import { fetchTraceRecord, isMtraceConfigured, MtraceNotConfiguredError, type MtraceRecord } from "@/lib/livestock/mtrace-client";
 import {
   recordScanAction,
+  replaceScanTraceNoAction,
   resolveMappingAction,
+  retryUnresolvedScansAction,
   voidScanAction,
+  type ReplaceTraceResult,
   type ScanResult,
 } from "@/app/dashboard/inbound/actions";
 import { closeInboundDocumentAction } from "@/app/dashboard/inbound/document-actions";
@@ -1146,5 +1149,259 @@ describe("소 외 축종 자동 생성 — 정체성 키 = 이력번호 출처(�
       .eq("trace_key", "돼지:400775");
 
     expect(count).toBe(1);
+  });
+});
+
+describe("replaceScanTraceNoAction — 이력조회 실패 박스의 번호를 그 자리에서 바로잡는다", () => {
+  function replaced(result: Awaited<ReturnType<typeof replaceScanTraceNoAction>>): ReplaceTraceResult {
+    expect(result.success).toBe(true);
+
+    return result.data as ReplaceTraceResult;
+  }
+
+  async function failedScan(weight = 5, extra: Record<string, unknown> = {}) {
+    const wrong = world.newTraceNo();
+
+    fetchTraceMock.mockResolvedValueOnce(null);
+    const failed = scanData(await recordScanAction({ traceNo: wrong, weight, scanType: "BARCODE_SCAN", ...extra }));
+
+    expect(failed.status).toBe("EXCEPTION");
+
+    return { wrong, failed };
+  }
+
+  it("맞는 번호로 바꾸면 조회가 되어 상품이 만들어지고 재고에 들어가며, 사람이 넣은 값은 그대로 옮겨진다", async () => {
+    const { wrong, failed } = await failedScan(5, { labeledWeight: 5.2 });
+    const good = world.newTraceNo();
+
+    await adminClient()
+      .from("inbound_scans")
+      .update({ storage_location: "A-3 선반", gtin: "08800000000017", best_before: "2099-01-01" })
+      .eq("id", failed.scanId);
+    const oldRow = (await adminClient().from("inbound_scans").select("created_at, scanned_by").eq("id", failed.scanId).single()).data!;
+
+    fetchTraceMock.mockResolvedValueOnce(apiRecord(good));
+    const result = replaced(await replaceScanTraceNoAction(failed.scanId, good));
+
+    expect(result).toMatchObject({ status: "NORMAL", changed: true, traceNo: good });
+
+    const { data: oldScan } = await adminClient().from("inbound_scans").select("status, memo").eq("id", failed.scanId).single();
+    const { data: newScan } = await adminClient()
+      .from("inbound_scans")
+      .select("status, product_id, weight, remaining_weight, labeled_weight, storage_location, gtin, best_before, created_at, scanned_by")
+      .eq("id", result.scanId)
+      .single();
+
+    expect(oldScan).toMatchObject({ status: "VOIDED" });
+    expect(String(oldScan!.memo)).toContain(`${wrong} → ${good}`);
+    expect(newScan).toMatchObject({
+      status: "NORMAL",
+      weight: 5,
+      remaining_weight: 5,
+      labeled_weight: 5.2,
+      storage_location: "A-3 선반",
+      gtin: "08800000000017",
+      best_before: "2099-01-01",
+      created_at: oldRow.created_at,
+      scanned_by: oldRow.scanned_by,
+    });
+    const { data: ledger } = await adminClient().from("stock_ledger").select("qty_delta, event_type").eq("inbound_scan_id", result.scanId);
+
+    expect(ledger).toEqual([{ qty_delta: 5, event_type: "INBOUND" }]);
+    expect((await adminClient().from("livestock_exception_log").select("resolved_status").eq("inbound_scan_id", failed.scanId)).data).toEqual([
+      { resolved_status: "DISCARDED" },
+    ]);
+  });
+
+  it("새 번호도 이력에 없으면 그 번호의 '이력 못 찾음' 박스로 바뀐다", async () => {
+    const { failed } = await failedScan();
+    const stillWrong = world.newTraceNo();
+
+    fetchTraceMock.mockResolvedValueOnce(null);
+    const result = replaced(await replaceScanTraceNoAction(failed.scanId, stillWrong));
+
+    expect(result).toMatchObject({ status: "EXCEPTION", changed: true, failReason: "NOT_FOUND", traceNo: stillWrong });
+    expect((await scanRow(stillWrong))[0].status).toBe("EXCEPTION");
+  });
+
+  it("같은 번호를 다시 조회했는데 여전히 못 찾으면 박스를 갈아치우지 않는다", async () => {
+    const { wrong, failed } = await failedScan();
+
+    fetchTraceMock.mockResolvedValueOnce(null);
+    const result = replaced(await replaceScanTraceNoAction(failed.scanId, wrong));
+
+    expect(result).toMatchObject({ status: "EXCEPTION", changed: false, scanId: failed.scanId });
+    expect((await scanRow(wrong)).map((row) => row.status)).toEqual(["EXCEPTION"]);
+  });
+
+  it("같은 번호가 그 사이 이력에 등록됐으면 다시 조회해 상품·재고까지 이어진다", async () => {
+    const { wrong, failed } = await failedScan(4);
+
+    fetchTraceMock.mockResolvedValueOnce(apiRecord(wrong));
+    const result = replaced(await replaceScanTraceNoAction(failed.scanId, wrong));
+
+    expect(result).toMatchObject({ status: "NORMAL", changed: true });
+    expect((await scanRow(wrong)).map((row) => row.status).sort()).toEqual(["NORMAL", "VOIDED"]);
+  });
+
+  it("재고에 이미 들어간 박스는 번호를 바꿀 수 없다", async () => {
+    const product = await newProduct();
+    const traceNo = world.newTraceNo();
+
+    await world.seedTrace(traceNo);
+    const normal = scanData(await recordScanAction({ traceNo, weight: 5, scanType: "BARCODE_SCAN", productId: product.id }));
+    const result = await replaceScanTraceNoAction(normal.scanId, world.newTraceNo());
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("재고에 들어갔");
+    expect(await stockOf(product.id)).toBe(5);
+  });
+
+  it("형식이 틀린 번호는 조회 전에 거부하고 박스는 그대로다", async () => {
+    const { failed } = await failedScan();
+    const result = await replaceScanTraceNoAction(failed.scanId, "abc");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("이력번호 형식");
+    expect((await adminClient().from("inbound_scans").select("status").eq("id", failed.scanId).single()).data).toEqual({ status: "EXCEPTION" });
+  });
+
+  it("고친 번호가 이미 같은 무게로 찍힌 박스와 겹치면 확인을 묻고, 옛 박스는 그대로 둔다", async () => {
+    const { failed } = await failedScan(5);
+    const taken = world.newTraceNo();
+
+    await world.seedTrace(taken);
+    scanData(await recordScanAction({ traceNo: taken, weight: 5, scanType: "BARCODE_SCAN", productId: (await newProduct()).id }));
+
+    fetchTraceMock.mockResolvedValueOnce(apiRecord(taken));
+    const asked = await replaceScanTraceNoAction(failed.scanId, taken);
+
+    expect(asked.data).toMatchObject({ duplicate: { lastScannedAt: expect.any(String) } });
+    expect((await adminClient().from("inbound_scans").select("status").eq("id", failed.scanId).single()).data).toEqual({ status: "EXCEPTION" });
+
+    fetchTraceMock.mockResolvedValueOnce(apiRecord(taken));
+    const confirmed = replaced(await replaceScanTraceNoAction(failed.scanId, taken, true));
+
+    expect(confirmed.changed).toBe(true);
+  });
+
+  it("다른 업체 계정은 남의 박스 번호를 바꿀 수 없다", async () => {
+    const { failed } = await failedScan();
+
+    await actAs(world.users.ownerB);
+    const result = await replaceScanTraceNoAction(failed.scanId, world.newTraceNo());
+
+    expect(result.success).toBe(false);
+    expect((await adminClient().from("inbound_scans").select("status").eq("id", failed.scanId).single()).data).toEqual({ status: "EXCEPTION" });
+  });
+
+  it("고친 번호가 올려둔 전표 줄에 있으면 새 박스가 그 줄에 이어지고 다 찼으면 저절로 마감된다", async () => {
+    const { failed } = await failedScan(5);
+    const good = world.newTraceNo();
+    const line = await world.createDocumentLine({ traceNo: good, itemName: "한우 등심", partName: "등심", quantity: 1 });
+
+    fetchTraceMock.mockResolvedValueOnce(apiRecord(good));
+    const result = replaced(await replaceScanTraceNoAction(failed.scanId, good));
+    const { data: links } = await adminClient().from("inbound_document_line_scans").select("line_id").eq("scan_id", result.scanId);
+
+    expect(links).toEqual([{ line_id: line.lineId }]);
+    expect(result.autoClosedDocument).toBe(true);
+    expect((await adminClient().from("inbound_documents").select("status").eq("id", line.documentId).single()).data).toEqual({ status: "CLOSED" });
+  });
+});
+
+describe("retryUnresolvedScansAction — 이력조회 실패 박스를 시스템이 알아서 다시 조회한다", () => {
+  async function isolateExistingExceptions() {
+    await adminClient()
+      .from("inbound_scans")
+      .update({ lookup_retried_at: new Date().toISOString() })
+      .eq("wholesaler_id", world.wholesalerA)
+      .eq("status", "EXCEPTION");
+  }
+
+  async function failedScanFor(traceNo: string, weight: number) {
+    fetchTraceMock.mockResolvedValueOnce(null);
+    const failed = scanData(await recordScanAction({ traceNo, weight, scanType: "BARCODE_SCAN" }));
+
+    expect(failed.status).toBe("EXCEPTION");
+
+    return failed;
+  }
+
+  it("그 사이 등록된 번호는 상품·재고까지 이어지고, 여전히 못 찾은 번호는 그대로 둔다", async () => {
+    await isolateExistingExceptions();
+
+    const nowFound = world.newTraceNo();
+    const stillMissing = world.newTraceNo();
+
+    await failedScanFor(nowFound, 6);
+    await failedScanFor(stillMissing, 7);
+
+    fetchTraceMock.mockReset();
+    fetchTraceMock.mockImplementation(async (traceNo: string) => (traceNo === nowFound ? apiRecord(nowFound) : null));
+
+    const result = await retryUnresolvedScansAction();
+
+    expect(result).toEqual({ success: true, data: { checked: 2, resolved: 1 } });
+    expect((await scanRow(nowFound)).map((row) => row.status).sort()).toEqual(["NORMAL", "VOIDED"]);
+    expect((await scanRow(stillMissing)).map((row) => row.status)).toEqual(["EXCEPTION"]);
+  });
+
+  it("같은 박스는 30분 안에 다시 조회하지 않는다(정부 API 호출 한도 보호)", async () => {
+    await isolateExistingExceptions();
+
+    const missing = world.newTraceNo();
+
+    await failedScanFor(missing, 3);
+
+    fetchTraceMock.mockReset();
+    fetchTraceMock.mockResolvedValue(null);
+
+    const first = await retryUnresolvedScansAction();
+    const callsAfterFirst = fetchTraceMock.mock.calls.length;
+    const second = await retryUnresolvedScansAction();
+
+    expect(first.data).toEqual({ checked: 1, resolved: 0 });
+    expect(callsAfterFirst).toBe(1);
+    expect(second.data).toEqual({ checked: 0, resolved: 0 });
+    expect(fetchTraceMock.mock.calls.length).toBe(callsAfterFirst);
+  });
+
+  it("한 번에 최대 3건만 처리한다", async () => {
+    await isolateExistingExceptions();
+
+    for (let index = 0; index < 4; index += 1) {
+      await failedScanFor(world.newTraceNo(), 2 + index);
+    }
+
+    fetchTraceMock.mockReset();
+    fetchTraceMock.mockResolvedValue(null);
+
+    expect((await retryUnresolvedScansAction()).data).toEqual({ checked: 3, resolved: 0 });
+  });
+
+  it("이력 조회 인증키가 없으면 정부 API를 헛호출하지 않는다", async () => {
+    await isolateExistingExceptions();
+
+    const missing = world.newTraceNo();
+
+    await failedScanFor(missing, 3);
+
+    fetchTraceMock.mockReset();
+    configuredMock.mockReturnValue(false);
+
+    const result = await retryUnresolvedScansAction();
+
+    expect(result.data).toEqual({ checked: 1, resolved: 0 });
+    expect(fetchTraceMock).not.toHaveBeenCalled();
+    expect((await scanRow(missing)).map((row) => row.status)).toEqual(["EXCEPTION"]);
+  });
+
+  it("고객·비로그인은 호출할 수 없다", async () => {
+    await actAs(world.users.retailerR);
+    expect((await retryUnresolvedScansAction()).success).toBe(false);
+
+    await actAs(null);
+    expect((await retryUnresolvedScansAction()).success).toBe(false);
   });
 });

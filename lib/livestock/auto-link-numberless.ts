@@ -55,6 +55,44 @@ function itemTextOf(line: LineRow): string {
   return [line.item_name, line.part_name].filter(Boolean).join(" ");
 }
 
+/**
+ * 박스를 먼저 찍어 두고 전표를 나중에 올렸을 때 — 최근 박스 중 어느 줄에도 안 붙은 것을 오래된 순으로 훑어
+ * 같은 규칙(autoLinkNumberlessScan)으로 잇는다. 한 번에 최대 100건만 본다. 이은 박스 수를 돌려준다.
+ */
+export async function autoLinkRecentUnlinkedScans(supabase: Client, wholesalerId: string): Promise<number> {
+  try {
+    const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+
+    const { data: recent } = await supabase
+      .from("inbound_scans")
+      .select("id")
+      .eq("wholesaler_id", wholesalerId)
+      .neq("status", "VOIDED")
+      .gte("created_at", since)
+      .order("created_at", { ascending: true })
+      .limit(300);
+
+    const ids = ((recent ?? []) as Array<{ id: string }>).map((row) => row.id);
+
+    if (ids.length === 0) return 0;
+
+    const { data: linked } = await supabase.from("inbound_document_line_scans").select("scan_id").in("scan_id", ids);
+    const linkedIds = new Set(((linked ?? []) as Array<{ scan_id: string }>).map((row) => row.scan_id));
+    const unlinked = ids.filter((id) => !linkedIds.has(id)).slice(0, 100);
+
+    let count = 0;
+
+    for (const scanId of unlinked) {
+      if (await autoLinkNumberlessScan(supabase, scanId)) count += 1;
+    }
+
+    return count;
+  } catch (error) {
+    console.error("[inbound] 나중에 올린 전표에 박스 잇기 실패:", error);
+    return 0;
+  }
+}
+
 /** 이은 줄 id를 돌려준다. 잇지 않았으면 null. 실패해도 입고는 이미 끝났으므로 조용히 넘긴다. */
 export async function autoLinkNumberlessScan(supabase: Client, scanId: string): Promise<string | null> {
   try {
