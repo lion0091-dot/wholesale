@@ -27,6 +27,18 @@ const STOCK_TABS = [
   { label: "매입 정산", href: "/dashboard/purchases" },
 ] as const;
 
+// 입고는 현장(입고 스캔)과 사무실(전표입력) 두 화면이다. 입고 스캔은 하위 경로(전표입력·대조 화면)까지
+// 잡지 않도록 exact, 전표입력은 명세서 대조 화면(/documents/<id>)에서도 활성이다. 폰에는 전표입력 탭이 없다.
+const INBOUND_TABS = [
+  { label: "입고 스캔", href: "/dashboard/inbound", exact: true },
+  {
+    label: "전표입력",
+    href: "/dashboard/inbound/statements",
+    alsoActiveFor: ["/dashboard/inbound/documents"],
+    desktopOnly: true,
+  },
+] as const;
+
 export function DashboardTabs() {
   return <PillTabs tabs={DASHBOARD_TABS} ariaLabel="대시보드 종류" />;
 }
@@ -41,4 +53,8 @@ export function ProductTabs() {
 
 export function StockTabs() {
   return <PillTabs tabs={STOCK_TABS} ariaLabel="재고·매입 화면" />;
+}
+
+export function InboundTabs() {
+  return <PillTabs tabs={INBOUND_TABS} ariaLabel="입고 화면 종류" />;
 }

@@ -1100,3 +1100,12 @@ SECURITY DEFINER RPC 여러 개가 아래 두 패턴으로 검사했다.
 - 박스 취소 트리거로 연결 자동 해제. `close_inbound_document`(미입고 있으면 사유 필수 `CLOSE_NOTE_REQUIRED:n`, note에 `[마감 시각] …`), `reopen_inbound_document`.
 
 검증: `inbound.itest.ts` 55건(118 7건 추가: 자동 배정·수량 3 연속 스캔 무확인+4번째 확인·두 줄 애매하면 안 붙음·자리 남은 줄 하나면 붙음·취소 시 해제·마감 사유·거슬러 배정). 라이브 미적용(113→118 순).
+
+## 입고 화면 분리 — 입고 스캔(현장) / 전표입력(사무실) (2026-09-26)
+
+- **입고 스캔** `/dashboard/inbound` = 스캔·실중량·상품 지정·스캔 종료·입고 내역(현장, 폰+PC). 맨 위 카드는 현장용 `pickFieldNextStep`(링크는 전부 같은 화면 `#앵커`).
+- **전표입력** `/dashboard/inbound/statements` = 명세서 올리기·양식·직접 입력·목록·엑셀 대량 입고(사무실, PC). 카드는 사무실용 `pickInboundNextStep`(스캔 쪽 링크는 `/dashboard/inbound#…`로 화면 간 이동). 대조 화면 `/dashboard/inbound/documents/<id>`도 이 탭 아래(탭 `alsoActiveFor`, 돌아가기 링크 "← 전표입력으로").
+- 폰에는 전표입력 **탭이 없다**(`PillTab.desktopOnly`, 900px 이하 숨김). URL 직접 접근은 막지 않는다. 옛 임시 처리(`isOfficeOnlyTarget`, 카드의 폰 안내 블록, 명세서 패널 CSS 숨김)는 삭제.
+- 두 화면의 조회는 `app/dashboard/inbound/inbound-data.ts`(`loadInboundData`) 공용. 전표입력은 `scanDetails:false`로 박스별 필수항목 대조를 건너뛴다.
+- 사이드바 메뉴 이름은 PC "입고"(하위 경로에서도 활성), 폰 "입고 스캔". 서버 액션의 `revalidatePath`는 `"layout"` 옵션으로 하위 화면까지 갱신. 종 배지 "대조 중인 명세서"는 전표입력으로 이동.
+- 재고·DB 변경 없음. 미검증: 실계정 화면 클릭(폰 탭 숨김, 카드 링크 이동), 매뉴얼 "명세서" 표기 갱신 미반영.

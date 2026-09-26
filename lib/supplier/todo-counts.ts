@@ -13,7 +13,7 @@ export const TODO_ITEMS: Array<{ key: TodoKey; label: string; href: string }> = 
   { key: "newOrders", label: "새 발주 (접수 대기)", href: "/dashboard/orders" },
   { key: "cancelRequests", label: "취소 요청", href: "/dashboard/orders" },
   { key: "needsCheckBoxes", label: "확인 필요 박스", href: "/dashboard/inbound" },
-  { key: "openDocuments", label: "대조 중인 명세서", href: "/dashboard/inbound" },
+  { key: "openDocuments", label: "대조 중인 명세서", href: "/dashboard/inbound/statements" },
 ];
 
 export function totalTodo(counts: TodoCounts): number {

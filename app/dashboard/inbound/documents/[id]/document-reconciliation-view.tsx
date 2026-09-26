@@ -12,6 +12,7 @@ import {
 } from "../../document-actions";
 import { resolveMappingAction } from "../../actions";
 import type { ScanProductOption } from "../../inbound-scan-view";
+import { InboundTabs } from "../../../section-tabs";
 
 /**
  * 29단계 B — 명세서 ↔ 실물 박스 사무실 대조 화면.
@@ -257,9 +258,11 @@ export function DocumentReconciliationView({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <InboundTabs />
+
       <header style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <Link href="/dashboard/inbound" style={{ fontSize: "12px", color: "#64748b" }}>
-          ← 입고 화면으로
+        <Link href="/dashboard/inbound/statements" style={{ fontSize: "12px", color: "#64748b" }}>
+          ← 전표입력으로
         </Link>
 
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>

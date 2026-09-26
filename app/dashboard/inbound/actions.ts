@@ -365,7 +365,7 @@ export async function recordScanAction(input: {
       }
     }
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/products");
 
     return {
@@ -451,7 +451,7 @@ export async function resolveMappingAction(
       }
     }
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/products");
 
     const row = (data ?? {}) as Record<string, unknown>;
@@ -526,7 +526,7 @@ export async function resolveMappingToOrderAction(
       throw new Error(error.message);
     }
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/products");
     revalidatePath("/dashboard/outbound");
 
@@ -570,7 +570,7 @@ export async function voidScanAction(scanId: string, reason?: string): Promise<A
       throw new Error(error.message);
     }
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/products");
 
     return { success: true };
@@ -791,7 +791,7 @@ export async function processImportChunkAction(
 
     const finished = done + failed >= Number(job.total_rows);
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
 
     return {
       success: true,
@@ -915,7 +915,7 @@ export async function setScanStorageLocationAction(
       throw new RbacError("해당 입고 건을 찾을 수 없습니다.");
     }
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
 
     return { success: true, data: { photoPath, photoWarning } };
   } catch (error) {

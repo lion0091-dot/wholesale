@@ -8,7 +8,6 @@ import { WhoBadge } from "./step-card";
 import {
   INBOUND_ANCHORS,
   OPEN_DOCUMENT_PANEL_EVENT,
-  isOfficeOnlyTarget,
   type InboundNextStep,
 } from "@/lib/livestock/inbound-next-step";
 
@@ -73,10 +72,6 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
 
     router.refresh();
   };
-
-  // 명세서 작업(올리기·대조·마감)은 사무실 PC 전용이라 폰에서는 큰 버튼 대신 안내를 보여준다.
-  const mainIsOfficeOnly =
-    !step.buttonDisabled && (Boolean(step.closeDocumentId) || isOfficeOnlyTarget(step.href));
 
   const mainAction = step.buttonDisabled ? (
     <div
@@ -176,32 +171,7 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
           <span>{step.waitNote.text}</span>
         </div>
       ) : null}
-      {mainIsOfficeOnly ? (
-        <>
-          <div className="dash-desktop-only">{mainAction}</div>
-          <div
-            className="dash-mobile-only"
-            style={{
-              flexDirection: "column",
-              gap: "8px",
-              border: "1px dashed #94a3b8",
-              backgroundColor: "#f8fafc",
-              borderRadius: "10px",
-              padding: "12px",
-              fontSize: "13px",
-              color: "#334155",
-              lineHeight: 1.6,
-            }}
-          >
-            <span>이 단계(명세서 작업)는 <strong>사무실 PC</strong>에서 진행합니다. 폰에서는 아래에서 박스를 바로 스캔하세요.</span>
-            <a href={INBOUND_ANCHORS.scanForm} style={{ color: "#1d4ed8", fontWeight: 700 }}>
-              스캔 화면으로 이동
-            </a>
-          </div>
-        </>
-      ) : (
-        mainAction
-      )}
+      {mainAction}
       {closeError ? (
         <p style={{ margin: 0, fontSize: "13px", color: "#991b1b" }}>{closeError}</p>
       ) : null}
@@ -209,7 +179,6 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
         <Link
           key={link.label}
           href={link.href}
-          className={isOfficeOnlyTarget(link.href) ? "dash-desktop-only" : undefined}
           onClick={() => openDocumentPanelIfTargeted(link.href)}
           style={{ fontSize: "13px", color: "#1d4ed8", textAlign: "center", textDecoration: "underline" }}
         >

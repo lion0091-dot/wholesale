@@ -24,7 +24,13 @@ export const metadata: Metadata = {
 const NAV_GROUPS: DashboardNavItem[][] = [
   [{ label: "대시보드", href: "/dashboard", icon: "📊", ready: true, alsoActiveFor: ["/dashboard/stats"] }],
   [
-    { label: "입고 스캔", href: "/dashboard/inbound", icon: "📦", ready: true },
+    {
+      label: "입고",
+      href: "/dashboard/inbound",
+      icon: "📦",
+      ready: true,
+      alsoActiveFor: ["/dashboard/inbound/statements", "/dashboard/inbound/documents"],
+    },
     { label: "출고 스캔", href: "/dashboard/outbound", icon: "🚚", ready: true },
     {
       label: "재고 · 매입 내역",

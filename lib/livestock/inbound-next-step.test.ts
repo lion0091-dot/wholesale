@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INBOUND_ANCHORS, isOfficeOnlyTarget, pickInboundNextStep, type InboundNextStepInput } from "./inbound-next-step";
+import { pickFieldNextStep, pickInboundNextStep, type InboundNextStepInput } from "./inbound-next-step";
 
 const base: InboundNextStepInput = {
   pendingDocuments: [],
@@ -12,7 +12,7 @@ describe("pickInboundNextStep", () => {
     const step = pickInboundNextStep(base);
 
     expect(step.key).toBe("upload");
-    expect(step.secondaries.map((link) => link.href)).toEqual(["#inbound-scan-form"]);
+    expect(step.secondaries.map((link) => link.href)).toEqual(["/dashboard/inbound#inbound-scan-form"]);
   });
 
   it("대기 명세서에 안 들어온 품목이 있으면 스캔을 안내한다", () => {
@@ -65,7 +65,7 @@ describe("pickInboundNextStep", () => {
     expect(step.title).toBe("전부 도착했습니다");
     expect(step.detail).toContain("재고에 아직 안 들어갔습니다");
     expect(step.buttonLabel).toBe("상품 지정하러 가기");
-    expect(step.href).toBe("#scan-s9");
+    expect(step.href).toBe("/dashboard/inbound#scan-s9");
     expect(step.secondaries[0].href).toBe("/dashboard/inbound/documents/d1");
   });
 
@@ -120,7 +120,7 @@ describe("pickInboundNextStep", () => {
 
     expect(step.key).toBe("upload");
     expect(step.href).toBe("#inbound-documents");
-    expect(step.secondaries).toContainEqual({ label: "확인이 필요한 박스 2개 보기", href: "#scan-abc" });
+    expect(step.secondaries).toContainEqual({ label: "확인이 필요한 박스 2개 보기", href: "/dashboard/inbound#scan-abc" });
   });
 
   it("대기 명세서가 있으면 확인 필요 박스가 있어도 명세서 흐름이 먼저다", () => {
@@ -150,7 +150,7 @@ describe("pickInboundNextStep", () => {
     expect(scanning.buttonLabel).toBe("스캔 중 대기");
     expect(scanning.buttonDisabled).toBe(true);
     expect(scanning.detail).toContain("기다려 주세요");
-    expect(scanning.secondaries[0].href).toBe("#inbound-scan-form");
+    expect(scanning.secondaries[0].href).toBe("/dashboard/inbound#inbound-scan-form");
     expect(scanning.secondaries[1].href).toBe("/dashboard/inbound/documents/d1");
     expect(closing.waitNote?.who).toBe("현장");
     expect(pickInboundNextStep(base).waitNote).toBeNull();
@@ -182,20 +182,75 @@ describe("pickInboundNextStep", () => {
       ],
     });
 
-    expect(step.href).toBe("#scan-s1");
+    expect(step.href).toBe("/dashboard/inbound#scan-s1");
     expect(step.secondaries[0].href).toBe("/dashboard/inbound/documents/dirty");
   });
 });
 
-describe("isOfficeOnlyTarget — 폰에서 숨길 명세서 작업 목적지", () => {
-  it("명세서 칸과 대조 화면은 사무실 전용이다", () => {
-    expect(isOfficeOnlyTarget(INBOUND_ANCHORS.documents)).toBe(true);
-    expect(isOfficeOnlyTarget("/dashboard/inbound/documents/abc")).toBe(true);
+describe("pickFieldNextStep — 입고 스캔(현장) 화면 카드", () => {
+  it("명세서가 없으면 바로 스캔을 안내한다", () => {
+    const step = pickFieldNextStep(base);
+
+    expect(step.key).toBe("field-start");
+    expect(step.who).toBe("현장");
+    expect(step.href).toBe("#inbound-scan-form");
   });
 
-  it("스캔 화면·박스 이동·이력은 폰에서도 쓴다", () => {
-    expect(isOfficeOnlyTarget(INBOUND_ANCHORS.scanForm)).toBe(false);
-    expect(isOfficeOnlyTarget(INBOUND_ANCHORS.history)).toBe(false);
-    expect(isOfficeOnlyTarget("#scan-s1")).toBe(false);
+  it("명세서 기준으로 남은 박스가 있으면 몇 개 더 찍을지 알려 준다", () => {
+    const step = pickFieldNextStep({
+      ...base,
+      pendingDocuments: [{ id: "d1", completeLines: 0, totalLines: 3 }],
+      remainingBoxCount: 4,
+    });
+
+    expect(step.key).toBe("field-scan");
+    expect(step.title).toContain("4");
+  });
+
+  it("현장이 스캔 종료를 알렸으면 사무실이 확인 중이라고 안내한다", () => {
+    const step = pickFieldNextStep({
+      ...base,
+      pendingDocuments: [{ id: "d1", scanFinished: true, completeLines: 1, totalLines: 2 }],
+      remainingBoxCount: 1,
+    });
+
+    expect(step.key).toBe("field-done");
+    expect(step.waitNote?.who).toBe("사무실");
+  });
+
+  it("다 찍었는데 상품 미지정 박스가 있으면 그 박스로 보낸다", () => {
+    const step = pickFieldNextStep({
+      ...base,
+      pendingDocuments: [{ id: "d1", completeLines: 2, totalLines: 2 }],
+      needsCheckScanCount: 1,
+      firstNeedsCheckScanId: "s7",
+    });
+
+    expect(step.buttonLabel).toBe("상품 지정하러 가기");
+    expect(step.href).toBe("#scan-s7");
+  });
+
+  it("다 찍었고 확인할 박스도 없으면 사무실이 마감한다고 알린다", () => {
+    const step = pickFieldNextStep({
+      ...base,
+      pendingDocuments: [{ id: "d1", completeLines: 2, totalLines: 2 }],
+    });
+
+    expect(step.key).toBe("field-done");
+    expect(step.detail).toContain("사무실");
+  });
+
+  it("현장 카드의 링크는 전부 같은 화면 안이다(명세서 화면으로 보내지 않는다)", () => {
+    const steps = [
+      pickFieldNextStep({ ...base, needsCheckScanCount: 2, firstNeedsCheckScanId: "a" }),
+      pickFieldNextStep({ ...base, pendingDocuments: [{ id: "d", completeLines: 0, totalLines: 1 }], remainingBoxCount: 1 }),
+      pickFieldNextStep({ ...base, pendingDocuments: [{ id: "d", completeLines: 1, totalLines: 1 }] }),
+    ];
+
+    steps.forEach((step) => {
+      [step.href, ...step.secondaries.map((link) => link.href)].forEach((href) => {
+        expect(href.startsWith("#")).toBe(true);
+      });
+    });
   });
 });

@@ -430,7 +430,7 @@ export async function processDocumentPrelookupChunkAction(
     }
 
     const progress = await loadPrelookupProgress(supabase, documentId);
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
 
     return { success: true, data: { documentId, ...progress } };
   } catch (error) {
@@ -466,7 +466,7 @@ export async function retryDocumentPrelookupAction(
       throw error;
     }
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
 
     return { success: true, data: { retried: (data ?? []).length } };
   } catch (error) {
@@ -761,7 +761,7 @@ export async function saveInboundDocumentAction(
       }
     }
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
 
     return {
       success: true,
@@ -908,7 +908,7 @@ export async function discardInboundDocumentAction(
       .eq("document_id", documentId)
       .eq("prelookup_status", "PENDING");
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
 
     return { success: true };
   } catch (error) {
@@ -952,7 +952,7 @@ export async function restoreInboundDocumentAction(
       .eq("prelookup_status", "FAILED")
       .eq("prelookup_error", DISCARD_SKIPPED_PRELOOKUP_ERROR);
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
 
     return { success: true };
   } catch (error) {
@@ -1008,7 +1008,7 @@ export async function deleteInboundDocumentAction(
 
     if (error) throw error;
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
 
     return { success: true };
   } catch (error) {
@@ -1055,7 +1055,7 @@ export async function linkScanToDocumentLineAction(
       throw new Error(error.message);
     }
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
 
     const row = (data ?? {}) as Record<string, unknown>;
 
@@ -1089,7 +1089,7 @@ export async function unlinkScanFromDocumentLineAction(scanId: string): Promise<
       throw new Error(error.message);
     }
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
 
     return { success: true };
   } catch (error) {
@@ -1125,7 +1125,7 @@ export async function closeInboundDocumentAction(
       throw new Error(error.message);
     }
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
 
     const row = (data ?? {}) as Record<string, unknown>;
 
@@ -1159,7 +1159,7 @@ export async function setDocumentsScanFinishedAction(
       throw new Error(error.message);
     }
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
 
     return { success: true, data: { changed: Number(data ?? 0) } };
   } catch (error) {
@@ -1184,7 +1184,7 @@ export async function reopenInboundDocumentAction(documentId: string): Promise<A
       throw new Error(error.message);
     }
 
-    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(REVALIDATE_PATH, "layout");
 
     return { success: true };
   } catch (error) {

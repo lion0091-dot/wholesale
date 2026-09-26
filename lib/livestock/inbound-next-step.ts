@@ -30,7 +30,15 @@ export interface InboundNextStepInput {
   firstNeedsCheckScanId?: string | null;
 }
 
-export type InboundNextStepKey = "scan" | "scan-finished" | "reconcile" | "close" | "upload";
+export type InboundNextStepKey =
+  | "scan"
+  | "scan-finished"
+  | "reconcile"
+  | "close"
+  | "upload"
+  | "field-scan"
+  | "field-done"
+  | "field-start";
 
 export interface InboundNextStep {
   key: InboundNextStepKey;
@@ -43,7 +51,7 @@ export interface InboundNextStep {
   buttonDisabled?: boolean;
   /** 있으면 큰 버튼이 이동이 아니라 이 명세서를 바로 마감한다(모든 줄이 맞고 재고도 다 반영된 경우). */
   closeDocumentId?: string;
-  /** "#id"는 같은 화면 안 이동, "/"로 시작하면 다른 화면. */
+  /** "#id"는 같은 화면 안 이동, "/"로 시작하면 다른 화면(입고 스캔 ↔ 전표입력). */
   href: string;
   /** 이 단계를 하지 않는 쪽에게 "지금은 기다리면 된다"고 알리는 안내. */
   waitNote: { who: "사무실" | "현장"; text: string } | null;
@@ -58,19 +66,20 @@ export const INBOUND_ANCHORS = {
   history: "#inbound-history",
 } as const;
 
+/** 입고는 두 화면이다 — 현장이 쓰는 입고 스캔, 사무실이 쓰는 전표입력(명세서 올리기·대조·마감). */
+export const INBOUND_SCAN_PATH = "/dashboard/inbound";
+export const INBOUND_STATEMENTS_PATH = "/dashboard/inbound/statements";
+
+/** 전표입력 화면에서 입고 스캔 화면의 칸으로 가는 링크(다른 화면이라 경로를 붙인다). */
+const SCAN_FORM_LINK = `${INBOUND_SCAN_PATH}${INBOUND_ANCHORS.scanForm}`;
+const SCAN_HISTORY_LINK = `${INBOUND_SCAN_PATH}${INBOUND_ANCHORS.history}`;
+const scanBoxLink = (scanId: string) => `${INBOUND_SCAN_PATH}#scan-${scanId}`;
+
 /** 카드 버튼이 명세서 올리기 칸으로 이동할 때 접혀 있는 칸을 함께 열도록 알리는 창 이벤트 이름. */
 export const OPEN_DOCUMENT_PANEL_EVENT = "inbound:open-document-panel";
 
 export function documentReconcileHref(documentId: string): string {
   return `/dashboard/inbound/documents/${documentId}`;
-}
-
-/**
- * 명세서 옮겨 적기·대조는 사무실 PC에서만 한다(사장님 2026-09-26). 폰에서는 이 목적지로 가는
- * 버튼·링크를 숨긴다 — 명세서 칸(올리기·양식·직접 입력)과 대조 화면이 여기 해당한다.
- */
-export function isOfficeOnlyTarget(href: string): boolean {
-  return href === INBOUND_ANCHORS.documents || href.startsWith("/dashboard/inbound/documents/");
 }
 
 /** 대조가 필요한 명세서로 안내한다 — 줄이 다 맞은 명세서가 아니라 안 온 박스가 남은 쪽이어야 사무실이 바로 처리한다. */
@@ -92,7 +101,7 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
         waitNote: { who: "현장", text: "스캔 종료를 알렸습니다. 사무실이 확인하는 중입니다. 박스가 더 오면 스캔 화면에서 '스캔 다시 시작'을 누르세요." },
         buttonLabel: "확인·마감하기",
         href: documentReconcileHref(pickAttentionDocument(pendingDocuments).id),
-        secondaries: [{ label: "현장: 스캔 화면으로 이동", href: INBOUND_ANCHORS.scanForm }],
+        secondaries: [{ label: "현장: 스캔 화면으로 이동", href: SCAN_FORM_LINK }],
       };
     }
 
@@ -105,9 +114,9 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
         waitNote: null,
         buttonLabel: "스캔 중 대기",
         buttonDisabled: true,
-        href: INBOUND_ANCHORS.scanForm,
+        href: SCAN_FORM_LINK,
         secondaries: [
-          { label: "현장: 스캔 화면으로 이동", href: INBOUND_ANCHORS.scanForm },
+          { label: "현장: 스캔 화면으로 이동", href: SCAN_FORM_LINK },
           // 공급처가 물건을 덜 보냈으면 박스는 끝내 다 안 온다 — 이때는 안 온 물건을 사유와 함께 남기고 마감한다.
           { label: "박스가 다 안 왔어도 확인·마감하기 (사무실)", href: documentReconcileHref(pickAttentionDocument(pendingDocuments).id) },
         ],
@@ -142,7 +151,7 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
         detail: `다만 상품 확인이 필요한 박스 ${unresolved}개는 재고에 아직 안 들어갔습니다. 그 박스의 상품을 지정하면 이 카드가 "마감하기"로 바뀝니다.`,
         waitNote: null,
         buttonLabel: "상품 지정하러 가기",
-        href: firstUnresolvedScanId ? `#scan-${firstUnresolvedScanId}` : INBOUND_ANCHORS.history,
+        href: firstUnresolvedScanId ? scanBoxLink(firstUnresolvedScanId) : SCAN_HISTORY_LINK,
         secondaries: [
           {
             label: "그래도 마감하러 가기",
@@ -168,13 +177,13 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
   // 대기 명세서가 없으면 다음 할 일은 언제나 명세서 올리기다. 남아 있는 확인 필요 박스(상품이 정해지지
   // 않으면 재고에 안 들어간다)는 숨기지 않고 작은 링크로 옆에 둔다.
   const secondaries: Array<{ label: string; href: string }> = [
-    { label: "명세서 없이 바로 스캔", href: INBOUND_ANCHORS.scanForm },
+    { label: "명세서 없이 바로 스캔", href: SCAN_FORM_LINK },
   ];
 
   if (needsCheckScanCount > 0) {
     secondaries.push({
       label: `확인이 필요한 박스 ${needsCheckScanCount}개 보기`,
-      href: firstNeedsCheckScanId ? `#scan-${firstNeedsCheckScanId}` : INBOUND_ANCHORS.history,
+      href: firstNeedsCheckScanId ? scanBoxLink(firstNeedsCheckScanId) : SCAN_HISTORY_LINK,
     });
   }
 
@@ -187,5 +196,86 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
     href: INBOUND_ANCHORS.documents,
     waitNote: null,
     secondaries,
+  };
+}
+
+/**
+ * 입고 스캔(현장) 화면 맨 위 카드 — 현장이 지금 할 일 하나. 명세서 올리기·대조·마감은 사무실 일이라 여기 없다.
+ * 링크는 모두 같은 화면 안(#앵커)이다.
+ */
+export function pickFieldNextStep(input: InboundNextStepInput): InboundNextStep {
+  const { pendingDocuments, remainingBoxCount, needsCheckScanCount, firstNeedsCheckScanId } = input;
+
+  const needsCheckLinks =
+    needsCheckScanCount > 0
+      ? [
+          {
+            label: `확인이 필요한 박스 ${needsCheckScanCount}개 보기`,
+            href: firstNeedsCheckScanId ? `#scan-${firstNeedsCheckScanId}` : INBOUND_ANCHORS.history,
+          },
+        ]
+      : [];
+
+  if (pendingDocuments.length > 0 && remainingBoxCount > 0) {
+    if (pendingDocuments.every((doc) => doc.scanFinished)) {
+      return {
+        key: "field-done",
+        who: "현장",
+        title: "스캔 종료를 알렸습니다",
+        detail: `안 온 박스 ${remainingBoxCount}개는 사무실이 확인하고 마감합니다. 박스가 더 오면 아래 '스캔 다시 시작'을 누르고 이어서 찍으세요.`,
+        buttonLabel: "스캔 화면으로",
+        href: INBOUND_ANCHORS.scanForm,
+        waitNote: { who: "사무실", text: "사무실이 안 온 물건을 확인하는 중입니다." },
+        secondaries: needsCheckLinks,
+      };
+    }
+
+    return {
+      key: "field-scan",
+      who: "현장",
+      title: `박스 ${remainingBoxCount}개를 더 찍어 주세요`,
+      detail: "명세서 기준으로 아직 안 들어온 박스입니다. 다 찍었는데 남았으면 사무실에 알려 주세요.",
+      buttonLabel: "박스 스캔하기",
+      href: INBOUND_ANCHORS.scanForm,
+      waitNote: null,
+      secondaries: needsCheckLinks,
+    };
+  }
+
+  if (pendingDocuments.length > 0) {
+    if (needsCheckScanCount > 0) {
+      return {
+        key: "field-done",
+        who: "현장",
+        title: "명세서의 박스를 모두 찍었습니다",
+        detail: `상품 확인이 필요한 박스 ${needsCheckScanCount}개는 재고에 아직 안 들어갔습니다. 상품을 지정해 주세요.`,
+        buttonLabel: "상품 지정하러 가기",
+        href: firstNeedsCheckScanId ? `#scan-${firstNeedsCheckScanId}` : INBOUND_ANCHORS.history,
+        waitNote: { who: "사무실", text: "이후 사무실이 명세서와 맞춰 보고 마감합니다." },
+        secondaries: [],
+      };
+    }
+
+    return {
+      key: "field-done",
+      who: "현장",
+      title: "명세서의 박스를 모두 찍었습니다",
+      detail: "스캔은 끝났습니다. 이제 사무실이 명세서와 맞춰 보고 마감합니다.",
+      buttonLabel: "박스 더 스캔하기",
+      href: INBOUND_ANCHORS.scanForm,
+      waitNote: { who: "사무실", text: "사무실이 확인하는 중입니다." },
+      secondaries: [],
+    };
+  }
+
+  return {
+    key: "field-start",
+    who: "현장",
+    title: "박스의 바코드를 스캔하세요",
+    detail: "명세서 없이 스캔해도 바로 재고에 반영됩니다. 사무실이 명세서를 올려 두면 저절로 맞춰집니다.",
+    buttonLabel: "스캔 시작",
+    href: INBOUND_ANCHORS.scanForm,
+    waitNote: null,
+    secondaries: needsCheckLinks,
   };
 }
