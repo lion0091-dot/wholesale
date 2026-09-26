@@ -27,6 +27,8 @@ export interface InboundData {
   pendingDocumentTraceNos: string[];
   awaitingDocumentLines: AwaitingDocumentLine[];
   storageLocationSuggestions: string[];
+  /** 보관(감춤) 처리돼 상품 지정 목록에서 빠진 상품 수 — 목록이 비었을 때 "상품이 없다"고만 말하지 않고 보관을 풀라고 안내하는 데 쓴다. */
+  archivedProductCount: number;
   /** 안내 카드(현장용·사무실용 둘 다)가 받는 입력. */
   nextStepInput: InboundNextStepInput;
   /** 아직 안 들어온 박스 수(전표 기준). 무게 기준 줄은 덜 온 줄마다 1로 센다. */
@@ -67,6 +69,7 @@ export async function loadInboundData(
   // 창고 구조가 업체마다 달라(플랫폼) 고정 위치 목록 대신, 이 업체가 그동안
   // 직접 입력한 위치 이름을 제안 목록으로 쓴다.
   let storageLocationSuggestions: string[] = [];
+  let archivedProductCount = 0;
 
 
   if (scope?.wholesalerId) {
@@ -330,6 +333,16 @@ export async function loadInboundData(
 
     products = (productRows ?? []) as ScanProductOption[];
 
+    if (products.length === 0) {
+      const { count } = await supabase
+        .from("products")
+        .select("id", { count: "exact", head: true })
+        .eq("wholesaler_id", scope.wholesalerId)
+        .not("archived_at", "is", null);
+
+      archivedProductCount = count ?? 0;
+    }
+
     shippableOrders = ((orderRows ?? []) as Array<Record<string, unknown>>).map((row) => {
       const retailer = Array.isArray(row.retailers) ? row.retailers[0] : row.retailers;
 
@@ -561,6 +574,7 @@ export async function loadInboundData(
     pendingDocumentTraceNos,
     awaitingDocumentLines,
     storageLocationSuggestions,
+    archivedProductCount,
     nextStepInput,
     remainingBoxCount: nextStepRemainingBoxCount,
     remainingWeightLines: nextStepRemainingWeightLines,

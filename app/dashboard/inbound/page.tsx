@@ -77,6 +77,7 @@ export default async function InboundPage() {
         pendingDocumentTraceNos={data.pendingDocumentTraceNos}
         awaitingDocumentLines={data.awaitingDocumentLines}
         storageLocationSuggestions={data.storageLocationSuggestions}
+        archivedProductCount={data.archivedProductCount}
         canEditPurchasePrice={data.canManage}
       />
     </div>

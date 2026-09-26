@@ -150,6 +150,8 @@ interface Props {
   awaitingDocumentLines: AwaitingDocumentLine[];
   /** 이 업체가 그동안 직접 입력한 위치 이름 — 고정 목록 대신 제안용으로 쓴다. */
   storageLocationSuggestions: string[];
+  /** 보관(감춤)돼 목록에서 빠진 상품 수 — 지정할 상품이 없을 때 보관을 풀라고 안내한다. */
+  archivedProductCount?: number;
   /** 매입단가 칸 노출 여부 — owner/manager/super_admin만 true. 직원은 칸이 없고 값도 안 보낸다. */
   canEditPurchasePrice: boolean;
 }
@@ -181,6 +183,35 @@ const SOURCE_STYLE: Record<string, { label: string; bg: string; fg: string }> = 
  * 전표 중 어느 쪽에서 온 값인지 알아야 틀렸을 때 어디를 고칠지 알 수 있고,
  * 양쪽이 어긋나는 경우도 드러나야 하기 때문이다(사장님 요청).
  */
+/**
+ * 박스 옆 대조 요약 — 칸 표는 기본으로 접고, 이력조회와 전표가 어긋난 항목(등급 불일치 등)만 한 줄로 남긴다.
+ * 칸 표를 늘 펼쳐 두면 박스마다 화면 반 장을 차지해 정작 볼 것이 묻힌다.
+ */
+function ScanRequirementSummary({ report }: { report: ScanRequirementReport }) {
+  const [open, setOpen] = useState(false);
+  const conflicts = report.fields.filter((field) => field.conflict);
+
+  return (
+    <div style={{ width: "100%", marginTop: "2px" }}>
+      {!open &&
+        conflicts.map((field) => (
+          <p key={`conflict-${field.key}`} style={{ margin: "2px 0 0", fontSize: "11px", color: "#b45309" }}>
+            {field.conflict} — 어느 쪽이 맞는지 확인이 필요합니다.
+          </p>
+        ))}
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        style={{ border: "none", background: "none", padding: "2px 0", color: "#2563eb", fontSize: "11px", cursor: "pointer" }}
+      >
+        {open ? "대조 항목 접기 ▲" : `대조 항목 보기 ▼${report.missingRequired > 0 ? ` (비어 있는 필수 ${report.missingRequired}개)` : ""}`}
+      </button>
+      {open ? <ScanRequirementList report={report} /> : null}
+    </div>
+  );
+}
+
 function ScanRequirementList({ report }: { report: ScanRequirementReport }) {
   return (
     <div style={{ width: "100%", marginTop: "4px" }}>
@@ -266,6 +297,7 @@ export function InboundScanView({
   pendingDocumentTraceNos,
   awaitingDocumentLines,
   storageLocationSuggestions,
+  archivedProductCount = 0,
   canEditPurchasePrice,
 }: Props) {
   const router = useRouter();
@@ -1130,7 +1162,7 @@ export function InboundScanView({
             {scan.unit}
           </span>
 
-          {scan.labeledWeight !== null && scan.weightVariance !== null && (
+          {!needsProduct && scan.labeledWeight !== null && scan.weightVariance !== null && (
             <span
               title={`표기 ${scan.labeledWeight}${scan.unit} → 실측 ${scan.weight}${scan.unit}`}
               style={{
@@ -1147,7 +1179,7 @@ export function InboundScanView({
             </span>
           )}
 
-          {scan.purchaseAmount !== null && (
+          {!needsProduct && scan.purchaseAmount !== null && (
             <span style={{ fontSize: "11px", color: "#475569" }}>
               매입 {formatWon(scan.purchaseAmount)}
               {scan.purchaseSupplier ? ` · ${scan.purchaseSupplier}` : ""}
@@ -1188,7 +1220,7 @@ export function InboundScanView({
           </p>
         )}
 
-        {!scan.isSample && (
+        {!scan.isSample && !needsProduct && (
           <div style={{ width: "100%", display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
             {scan.storageLocation && (
               <span
@@ -1265,7 +1297,21 @@ export function InboundScanView({
             ? scan.sampleRequirementReport
             : scanRequirements[scan.id];
 
-          return report ? <ScanRequirementList report={report} /> : null;
+          if (needsProduct) {
+            // 재고에 아직 안 들어간 박스는 칸별 대조표(축종·등급·원산지 …)가 아니라 할 일 한 줄만 보여 준다.
+            return (
+              <p style={{ margin: "4px 0 0", width: "100%", fontSize: "12px", color: "#7f1d1d", lineHeight: 1.5 }}>
+                {scan.status === "EXCEPTION"
+                  ? "이력을 찾지 못했습니다. 번호가 틀렸으면 '번호 바꾸기', 맞으면 '다시 조회'(시스템도 자동으로 다시 조회합니다). 급하면 상품을 직접 지정하세요."
+                  : "이력은 확인됐지만 상품을 못 정했습니다. 아래에서 상품을 고르세요."}
+              </p>
+            );
+          }
+
+          // 취소된 박스에는 대조표가 의미 없다.
+          if (scan.status === "VOIDED") return null;
+
+          return report ? <ScanRequirementSummary report={report} /> : null;
         })()}
 
         {needsProduct && declinedSplitTraceNos.has(scan.traceNo) && (
@@ -1286,7 +1332,9 @@ export function InboundScanView({
               href="/dashboard/products"
               style={{ fontSize: "12px", fontWeight: 700, color: "#1d4ed8", textDecoration: "underline" }}
             >
-              지정할 상품이 없습니다 — 상품 관리에서 먼저 상품을 등록하세요
+              {archivedProductCount > 0
+                ? `지정할 상품이 없습니다 — 보관된 상품 ${archivedProductCount}개가 있습니다. 상품 관리 → '보관함'에서 '복원'하면 여기서 고를 수 있습니다. 시험 입력이면 이 박스를 '취소'하세요`
+                : "지정할 상품이 없습니다 — 양·가공육은 상품 관리에서 직접 등록하고, 소·돼지·닭/오리는 이력이 조회되면 입고 스캔으로 자동 등록됩니다. 시험 입력이면 이 박스를 '취소'하세요"}
             </Link>
           )}
 

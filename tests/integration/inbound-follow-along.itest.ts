@@ -235,3 +235,15 @@ describe("따라가기 4 — 상품 지정 목록에는 판매중지 상품(입�
   });
 });
 
+describe("따라가기 5 — 상품이 없는 이유가 '보관'이면 화면 데이터가 그 수를 알려 준다", () => {
+  it("보관된 상품만 있는 업체는 목록이 비고 보관 상품 수가 함께 온다", async () => {
+    await adminClient().from("products").update({ archived_at: new Date().toISOString() }).eq("wholesaler_id", world.wholesalerA).is("archived_at", null);
+    await actAs(world.users.ownerA);
+
+    const data = await loadInboundData(scope, { scanDetails: false });
+
+    expect(data.products).toHaveLength(0);
+    expect(data.archivedProductCount).toBeGreaterThan(0);
+  });
+});
+
