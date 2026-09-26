@@ -359,9 +359,11 @@ export function DocumentReconciliationView({
         <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#0f172a", lineHeight: 1.6 }}>
           {!isPending
             ? "마감된 명세서입니다. 고칠 것이 있으면 위의 '다시 열기'를 누르세요."
-            : lines.length > 0 && incompleteLines.length === 0
-              ? "명세서에 적힌 물건이 모두 도착했습니다. 위의 '마감'을 누르면 끝납니다."
-              : `명세서 ${lines.length}줄 중 ${summary.counts.COMPLETE}줄이 도착했습니다. 나머지는 현장에서 박스를 찍으면 자동으로 채워집니다.`}
+            : lines.length === 0
+              ? "이 명세서에서 읽힌 물건이 없습니다. 아래 안내대로 처음부터 다시 해 주세요."
+              : incompleteLines.length === 0
+                ? "명세서에 적힌 물건이 모두 도착했습니다. 위의 '마감'을 누르면 끝납니다."
+                : `명세서 ${lines.length}줄 중 ${summary.counts.COMPLETE}줄이 도착했습니다. 안 온 물건 ${incompleteLines.length}줄은 아래 둘 중 하나로 하면 됩니다.`}
         </p>
 
         {isPending && lines.length > 0 && incompleteLines.length === 0 && (
@@ -384,6 +386,25 @@ export function DocumentReconciliationView({
         <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#64748b" }}>
           명세서 무게 합계 {summary.labeledTotal.toFixed(1)}kg · 지금까지 잰 무게 {summary.actualTotal.toFixed(1)}kg
         </p>
+
+        {isPending && lines.length === 0 && (
+          <p style={{ margin: "8px 0 0", fontSize: "13px", color: "#334155", lineHeight: 1.7 }}>
+            ① <Link href="/dashboard/inbound/statements" style={{ color: "#1d4ed8", fontWeight: 700 }}>전표입력</Link> 화면의
+            명세서 목록에서 이 명세서의 <strong>취소 처리</strong>를 누르세요. ② 같은 화면에서 파일을 다시 올리거나 직접 입력하세요.
+          </p>
+        )}
+
+        {isPending && incompleteLines.length > 0 && (
+          <ol style={{ margin: "8px 0 0", paddingLeft: "20px", fontSize: "13px", color: "#334155", lineHeight: 1.7 }}>
+            <li>
+              <strong>물건이 아직 오는 중이면</strong> — 기다리세요. 현장에서 박스를 찍으면 이 화면에 저절로 채워집니다.
+            </li>
+            <li>
+              <strong>공급처가 끝내 안 보낸 물건이면</strong> — 위쪽 <strong>마감</strong> 버튼을 누르고 사유(예: 공급처 결품)를 적으면
+              마감됩니다. 아래 버튼으로 공급처에 보낼 문구를 복사할 수 있습니다.
+            </li>
+          </ol>
+        )}
 
         {incompleteLines.length > 0 && (
           <button type="button" onClick={copySupplierRequest} style={{ ...secondaryButton, marginTop: "10px" }}>

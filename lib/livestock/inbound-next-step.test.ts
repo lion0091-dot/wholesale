@@ -187,6 +187,41 @@ describe("pickInboundNextStep", () => {
   });
 });
 
+describe("pickInboundNextStep — 따라가기 끊김 방지", () => {
+  it("품목이 0줄인 명세서는 '입고 완료'가 아니라 취소 후 다시 올리라고 안내한다", () => {
+    const step = pickInboundNextStep({
+      ...base,
+      pendingDocuments: [{ id: "empty", completeLines: 0, totalLines: 0 }],
+    });
+
+    expect(step.key).toBe("empty-document");
+    expect(step.title).not.toContain("입고 완료");
+    expect(step.detail).toContain("취소 처리");
+    expect(step.href).toBe("#inbound-documents");
+  });
+
+  it("스캔 대기 카드는 물건이 안 오는 경우의 탈출구를 본문에서 직접 알려 준다", () => {
+    const step = pickInboundNextStep({
+      ...base,
+      pendingDocuments: [{ id: "d1", completeLines: 0, totalLines: 2 }],
+      remainingBoxCount: 2,
+    });
+
+    expect(step.detail).toContain("확인·마감하기");
+  });
+
+  it("상품 지정 안내는 스캔 화면에서 지정한 뒤 전표입력 탭으로 돌아오라고 말한다", () => {
+    const step = pickInboundNextStep({
+      ...base,
+      pendingDocuments: [
+        { id: "d1", completeLines: 1, totalLines: 1, unresolvedBoxes: 1, firstUnresolvedScanId: "s1" },
+      ],
+    });
+
+    expect(step.detail).toContain("전표입력");
+  });
+});
+
 describe("pickFieldNextStep — 입고 스캔(현장) 화면 카드", () => {
   it("명세서가 없으면 바로 스캔을 안내한다", () => {
     const step = pickFieldNextStep(base);

@@ -36,6 +36,7 @@ export type InboundNextStepKey =
   | "reconcile"
   | "close"
   | "upload"
+  | "empty-document"
   | "field-scan"
   | "field-done"
   | "field-start";
@@ -90,6 +91,23 @@ function pickAttentionDocument(docs: InboundNextStepInput["pendingDocuments"]) {
 export function pickInboundNextStep(input: InboundNextStepInput): InboundNextStep {
   const { pendingDocuments, remainingBoxCount, needsCheckScanCount, firstNeedsCheckScanId } = input;
 
+  // 읽힌 품목이 하나도 없는 명세서 — 마감할 게 없으니 "입고 완료"로 안내하면 안 된다. 취소하고 다시 올리게 한다.
+  const emptyDocument = pendingDocuments.find((doc) => doc.totalLines === 0);
+
+  if (emptyDocument) {
+    return {
+      key: "empty-document",
+      who: "사무실",
+      title: "품목이 하나도 읽히지 않은 명세서가 있습니다",
+      detail:
+        "올린 파일에서 물건을 찾지 못했습니다. 아래 목록에서 그 명세서의 '취소 처리'를 누른 뒤, 파일을 다시 올리거나 직접 입력해 주세요.",
+      buttonLabel: "명세서 목록으로 가기",
+      href: INBOUND_ANCHORS.documents,
+      waitNote: null,
+      secondaries: [],
+    };
+  }
+
   if (pendingDocuments.length > 0) {
     if (remainingBoxCount > 0 && pendingDocuments.every((doc) => doc.scanFinished)) {
       // 박스가 끝내 다 안 왔다고 현장이 알렸다 — 안 온 물건을 사유와 함께 남기고 마감하는 단계다.
@@ -110,7 +128,7 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
         key: "scan",
         who: "사무실",
         title: "현장에서 스캔 중입니다",
-        detail: `아직 안 들어온 박스 ${remainingBoxCount}개. 종료까지 기다려 주세요. 스캔이 끝나면 이 버튼이 "마감하기"로 바뀝니다.`,
+        detail: `아직 안 들어온 박스 ${remainingBoxCount}개. 물건이 오는 중이면 기다려 주세요. 스캔이 끝나면 이 버튼이 "마감하기"로 바뀝니다. 공급처가 끝내 안 보낸 물건이면 아래 "박스가 다 안 왔어도 확인·마감하기"를 누르세요.`,
         waitNote: null,
         buttonLabel: "스캔 중 대기",
         buttonDisabled: true,
@@ -148,7 +166,7 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
         key: "close",
         who: "사무실",
         title: "전부 도착했습니다",
-        detail: `다만 상품 확인이 필요한 박스 ${unresolved}개는 재고에 아직 안 들어갔습니다. 그 박스의 상품을 지정하면 이 카드가 "마감하기"로 바뀝니다.`,
+        detail: `다만 상품 확인이 필요한 박스 ${unresolved}개는 재고에 아직 안 들어갔습니다. 입고 스캔 화면에서 그 박스의 상품을 지정한 뒤 위쪽 "전표입력" 탭으로 돌아오면 이 카드가 "마감하기"로 바뀝니다.`,
         waitNote: null,
         buttonLabel: "상품 지정하러 가기",
         href: firstUnresolvedScanId ? scanBoxLink(firstUnresolvedScanId) : SCAN_HISTORY_LINK,
