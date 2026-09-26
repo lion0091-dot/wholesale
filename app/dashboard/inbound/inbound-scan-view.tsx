@@ -1156,7 +1156,9 @@ export function InboundScanView({
             </span>
           )}
           <span style={{ fontFamily: "monospace", fontSize: "13px" }}>{scan.traceNo}</span>
-          <span style={{ fontWeight: 600 }}>{scan.productName ?? "상품 미지정"}</span>
+          {(scan.productName || scan.status !== "VOIDED") && (
+            <span style={{ fontWeight: 600 }}>{scan.productName ?? "상품 미지정"}</span>
+          )}
           <span style={{ fontWeight: 600 }}>
             {scan.weight}
             {scan.unit}
