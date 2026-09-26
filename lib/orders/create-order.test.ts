@@ -38,6 +38,15 @@ describe("translateHotDealQuotaError", () => {
     expect(message).toContain("1++:등심");
   });
 
+  it("별칭이 있는 상품은 DB가 준 원래 이름 대신 고객에게 보이던 이름으로 안내한다", () => {
+    const names = new Map([["등심 1++", "꽃등심 특선"]]);
+    const message = translateHotDealQuotaError("HOT_DEAL_QUOTA_EXCEEDED:등심 1++:20:15:10", names);
+
+    expect(message).toContain("꽃등심 특선");
+    expect(message).not.toContain("등심 1++");
+    expect(translateHotDealQuotaError("HOT_DEAL_QUOTA_EXCEEDED:안심 1+:20:15:10", names)).toContain("안심 1+");
+  });
+
   it("패턴이 아닌 메시지는 null을 돌려준다", () => {
     expect(translateHotDealQuotaError("INSUFFICIENT_STOCK:돼지고기:5:10")).toBeNull();
     expect(translateHotDealQuotaError("알 수 없는 오류")).toBeNull();

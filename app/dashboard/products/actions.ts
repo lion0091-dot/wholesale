@@ -628,6 +628,48 @@ export async function setProductArchivedAction(
   }
 }
 
+/** 목록에서 고객 노출 별칭만 빠르게 바꾼다 — 비우면 조합된 상품명으로 되돌아간다. 정체성 키가 아니라 언제든 바꿀 수 있다. */
+export async function updateProductAliasAction(productId: string, alias: string): Promise<ActionResult> {
+  try {
+    const { supabase, context, wholesalerId } = await resolveProductScope();
+
+    if (!UUID_PATTERN.test(productId)) {
+      throw new RbacError("올바른 상품 식별자가 아닙니다.");
+    }
+
+    const trimmed = alias.trim();
+
+    if (trimmed.length > 40) {
+      throw new RbacError("고객에게 보일 이름은 40자 이내로 입력해주세요.");
+    }
+
+    let query = supabase
+      .from("products")
+      .update({ display_alias: trimmed || null, updated_at: new Date().toISOString() })
+      .eq("id", productId);
+
+    if (!context.isSuperAdmin) {
+      query = query.eq("wholesaler_id", wholesalerId);
+    }
+
+    const { data, error } = await query.select("id").maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data) {
+      throw new RbacError("권한이 없거나 해당 상품을 찾을 수 없습니다.");
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(`/dashboard/products/${productId}/edit`);
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
 // ====================================================================
 // 7. 기본 납품 품목 일괄 등록
 // ====================================================================

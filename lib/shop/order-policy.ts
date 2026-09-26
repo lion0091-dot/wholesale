@@ -42,7 +42,10 @@ export function normalizeQuantity(raw: number, unit: string, stockQuantity: numb
 
 export interface CartLine {
   productId: string;
+  /** 고객에게 보이는 이름 — 별칭이 있으면 별칭, 없으면 조합된 상품명. */
   name: string;
+  /** 별칭과 무관한 상품 원래 이름(products.name). DB 오류 문구 속 이름을 고객 노출 이름으로 바꿀 때만 쓴다. */
+  catalogName?: string;
   category: string;
   subcategory: string | null;
   unit: string;

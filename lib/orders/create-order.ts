@@ -62,14 +62,16 @@ export function classifyCreateOrderError(message: string): CreateOrderErrorCode 
 // name을 lazy가 아닌 greedy로 잡는다 — INSUFFICIENT_STOCK_PATTERN도 같은 문제가 있음.
 const HOT_DEAL_QUOTA_EXCEEDED_PATTERN = /HOT_DEAL_QUOTA_EXCEEDED:(.+):([\d.]+):([\d.]+):([\d.]+)/;
 
-export function translateHotDealQuotaError(message: string): string | null {
+export function translateHotDealQuotaError(message: string, displayNames?: ReadonlyMap<string, string>): string | null {
   const matched = message.match(HOT_DEAL_QUOTA_EXCEEDED_PATTERN);
 
   if (!matched) {
     return null;
   }
 
-  const [, productName] = matched;
+  const [, catalogName] = matched;
+  // DB는 별칭을 모르고 상품 원래 이름으로 알린다 — 고객에게는 화면에 보이던 이름 하나만 나가게 바꿔 준다.
+  const productName = displayNames?.get(catalogName) ?? catalogName;
 
   return `${productName} 핫딜 매진 — 방금 다른 주문이 먼저 가져갔습니다. 일반 단가로 다시 담아 발주해주세요.`;
 }
@@ -128,6 +130,9 @@ export async function createOrderWithItems(
   }
 
   const orderId = insertedOrder.id as string;
+  const displayNames = new Map(
+    params.lines.flatMap((line) => (line.catalogName ? [[line.catalogName, line.name] as const] : []))
+  );
 
   // 품목 INSERT 트리거(20260930000103)가 핫딜 줄마다 상품 행을 잠근다 — 두 손님이 같은
   // 상품들을 서로 다른 순서로 담으면 데드락이 날 수 있으니 상품 ID 순으로 고정해 넣는다
@@ -158,7 +163,7 @@ export async function createOrderWithItems(
     // 여기서 먼저 나온다 — 아래 reserve 단계와 같은 분류·문구로 돌려준다.
     return {
       error:
-        translateHotDealQuotaError(itemsError.message) ?? "발주 품목 저장에 실패했습니다. 다시 시도해주세요.",
+        translateHotDealQuotaError(itemsError.message, displayNames) ?? "발주 품목 저장에 실패했습니다. 다시 시도해주세요.",
       code: classifyCreateOrderError(itemsError.message),
     };
   }
@@ -174,7 +179,7 @@ export async function createOrderWithItems(
     await discardUnfulfilledOrder(supabase, orderId);
     return {
       error:
-        translateHotDealQuotaError(quotaError.message) ??
+        translateHotDealQuotaError(quotaError.message, displayNames) ??
         "핫딜 한도 확인 중 오류가 발생했습니다. 다시 시도해주세요.",
       code: classifyCreateOrderError(quotaError.message),
     };

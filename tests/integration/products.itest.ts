@@ -15,6 +15,7 @@ import {
   setProductArchivedAction,
   toggleProductFlagAction,
   updateProductAction,
+  updateProductAliasAction,
   updateProductStockAction,
 } from "@/app/dashboard/products/actions";
 
@@ -68,6 +69,7 @@ describe("상품 액션 — 권한·격리", () => {
       const results = [
         await createProductAction(form()),
         await updateProductAction(product.id, form()),
+        await updateProductAliasAction(product.id, "몰래 바꾼 이름"),
         await toggleProductFlagAction(product.id, "is_active", false),
         await updateProductStockAction(product.id, 3, "STOCKTAKE"),
         await deleteProductAction(product.id),
@@ -103,6 +105,7 @@ describe("상품 액션 — 권한·격리", () => {
     await actAs(world.users.ownerB);
 
     expect((await updateProductAction(product.id, form({ base_price: "1" }))).success).toBe(false);
+    expect((await updateProductAliasAction(product.id, "남의 상품 별칭")).success).toBe(false);
     expect((await toggleProductFlagAction(product.id, "is_active", false)).success).toBe(false);
     expect((await updateProductStockAction(product.id, 999, "STOCKTAKE")).success).toBe(false);
     expect((await deleteProductAction(product.id)).success).toBe(false);
@@ -114,7 +117,7 @@ describe("상품 액션 — 권한·격리", () => {
 
     const after = await row(product.id);
 
-    expect(after).toMatchObject({ is_active: true, archived_at: null });
+    expect(after).toMatchObject({ is_active: true, archived_at: null, display_alias: null });
     expect(Number(after.base_price)).toBe(15000);
     expect(Number(after.stock_quantity)).toBe(5);
   });
@@ -195,6 +198,14 @@ describe("createProductAction", () => {
 
     expect(tooLong.success).toBe(false);
     expect(tooLong.error).toContain("40자 이내");
+
+    // 목록의 빠른 별칭 수정 — 이름·다른 값은 건드리지 않는다.
+    expect((await updateProductAliasAction(id, "  목록에서 바꾼 이름  ")).success).toBe(true);
+    expect(await row(id)).toMatchObject({ name: "별칭 시험 상품", display_alias: "목록에서 바꾼 이름" });
+    expect((await updateProductAliasAction(id, "   ")).success).toBe(true);
+    expect(await row(id)).toMatchObject({ display_alias: null });
+    expect((await updateProductAliasAction(id, "가".repeat(41))).success).toBe(false);
+    expect((await updateProductAliasAction("not-a-uuid", "x")).success).toBe(false);
   });
 
   it("이력 대상 축종(소·돼지·닭/오리)은 손으로 등록할 수 없고, 이력번호가 없는 양·가공육은 등록된다", async () => {

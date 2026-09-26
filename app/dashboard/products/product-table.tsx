@@ -12,6 +12,7 @@ import {
   deleteProductAction,
   toggleProductFlagAction,
   updateProductStockAction,
+  updateProductAliasAction,
   setProductArchivedAction,
 } from "./actions";
 import { STOCK_ADJUST_REASONS } from "@/lib/products/stock-adjust-reasons";
@@ -200,6 +201,8 @@ export function ProductTable({
   const [error, setError] = useState<string | null>(null);
   const [editingStockId, setEditingStockId] = useState<string | null>(null);
   const [stockInput, setStockInput] = useState("");
+  const [editingAliasId, setEditingAliasId] = useState<string | null>(null);
+  const [aliasInput, setAliasInput] = useState("");
   const [stockReason, setStockReason] = useState<string>(STOCK_ADJUST_REASONS[0].code);
 
   // 개발용 미리보기 — 입고 화면(4가지 이력번호 유형)이 실제로 확정되면 상품
@@ -222,8 +225,9 @@ export function ProductTable({
   );
 
   const visibleProducts = allProducts.filter((product) => {
-    const matchesKeyword = keyword
-      ? product.name.toLowerCase().includes(keyword.trim().toLowerCase())
+    const needle = keyword.trim().toLowerCase();
+    const matchesKeyword = needle
+      ? product.name.toLowerCase().includes(needle) || (product.display_alias ?? "").toLowerCase().includes(needle)
       : true;
     const matchesCategory = category === "all" ? true : product.category === category;
 
@@ -313,6 +317,73 @@ export function ProductTable({
 
       return result;
     });
+  };
+
+  const handleSaveAlias = (product: Product) => {
+    void run(product.id, async () => {
+      const result = await updateProductAliasAction(product.id, aliasInput);
+
+      if (result.success) {
+        setEditingAliasId(null);
+      }
+
+      return result;
+    });
+  };
+
+  // 고객에게 보이는 이름 — 별칭이 있으면 그것, 없으면 조합된 상품명이 나간다. 목록에서 바로 정하고 바꾼다.
+  const renderAliasEditor = (product: Product) => {
+    if (editingAliasId === product.id) {
+      return (
+        <div style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "4px", flexWrap: "wrap" }}>
+          <input
+            type="text"
+            value={aliasInput}
+            maxLength={40}
+            autoFocus
+            aria-label="고객에게 보일 이름"
+            placeholder={`비우면 "${product.name}"로 보여요`}
+            onChange={(event) => setAliasInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") handleSaveAlias(product);
+              if (event.key === "Escape") setEditingAliasId(null);
+            }}
+            style={{ padding: "5px 8px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", minWidth: "160px" }}
+          />
+          <button
+            type="button"
+            disabled={busyId === product.id}
+            onClick={() => handleSaveAlias(product)}
+            style={{ padding: "5px 10px", fontSize: "12px", fontWeight: 700, border: "none", borderRadius: "6px", backgroundColor: "#2563eb", color: "#fff", cursor: "pointer" }}
+          >
+            저장
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditingAliasId(null)}
+            style={{ padding: "5px 10px", fontSize: "12px", border: "1px solid #cbd5e1", borderRadius: "6px", backgroundColor: "#fff", color: "#475569", cursor: "pointer" }}
+          >
+            취소
+          </button>
+        </div>
+      );
+    }
+
+    const alias = product.display_alias?.trim();
+
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setAliasInput(alias ?? "");
+          setEditingAliasId(product.id);
+          setError(null);
+        }}
+        style={{ display: "block", border: "none", background: "none", padding: "2px 0", marginTop: "2px", fontSize: "11px", color: "#2563eb", cursor: "pointer", textAlign: "left" }}
+      >
+        {alias ? `고객에게 보이는 이름: ${alias} ✎` : "+ 고객에게 보일 이름 정하기"}
+      </button>
+    );
   };
 
   const handleArchive = (product: Product, archived: boolean) => {
@@ -524,6 +595,7 @@ export function ProductTable({
                             {product.subcategory ? ` · ${product.subcategory}` : ""} · {product.origin}
                             {product.grade ? ` · ${product.grade}` : ""}
                           </div>
+                          {renderAliasEditor(product)}
                           {(product.created_by || product.updated_by) && (
                             <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "2px" }}>
                               등록: {(product.created_by && memberNames[product.created_by]) || "-"}
@@ -757,6 +829,7 @@ export function ProductTable({
                       {product.subcategory ? ` · ${product.subcategory}` : ""} · {product.origin}
                       {product.grade ? ` · ${product.grade}` : ""}
                     </div>
+                    {renderAliasEditor(product)}
                   </div>
                 </div>
 

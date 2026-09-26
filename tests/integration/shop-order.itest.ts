@@ -212,6 +212,30 @@ describe("submitOrderAction — 정상 주문과 서버 재계산", () => {
     });
   });
 
+  it("별칭이 있는 상품은 고객에게 나가는 이름이 별칭 하나뿐이다 — 요약·품목 스냅샷·핫딜 매진 안내 모두, 조합된 상품명은 안 나온다", async () => {
+    const product = await newProduct({ display_alias: "꽃등심 특선" });
+    const result = await submit({ items: [{ productId: product.id, quantity: 4 }] });
+
+    expect(result.success).toBe(true);
+    expect(result.itemsSummary).toContain("꽃등심 특선");
+    expect(result.itemsSummary).not.toContain(product.name);
+
+    const [order] = (await ordersOf(world.retailerR)).filter((row) => row.order_number === result.orderNumber);
+    const { data: items } = await adminClient().from("order_items").select("product_name").eq("order_id", String(order.id));
+
+    expect(items).toEqual([{ product_name: "꽃등심 특선" }]);
+
+    const hot = await newProduct({ display_alias: "핫딜 별칭", hot_deal_active: true, hot_deal_price: 30000, hot_deal_quantity_limit: 10, hot_deal_quantity_sold: 8, stock_quantity: 50 });
+    const outcomes = await Promise.all([
+      submit({ items: [{ productId: hot.id, quantity: 2 }] }),
+      submit({ items: [{ productId: hot.id, quantity: 2 }] }),
+    ]);
+    const loss = outcomes.find((outcome) => !outcome.success);
+
+    expect(loss?.error).toContain("핫딜 별칭");
+    expect(loss?.error).not.toContain(hot.name);
+  });
+
   it("클라이언트가 끼워 보낸 단가·금액은 무시하고 서버 카탈로그 가격으로 계산한다", async () => {
     const product = await newProduct();
     const tampered = { productId: product.id, quantity: 4, unitPrice: 1, totalAmount: 4, requestedUnitPrice: 1 } as never;
