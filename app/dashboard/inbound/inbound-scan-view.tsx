@@ -1162,7 +1162,7 @@ export function InboundScanView({
             {scan.unit}
           </span>
 
-          {!needsProduct && scan.labeledWeight !== null && scan.weightVariance !== null && (
+          {!needsProduct && scan.status !== "VOIDED" && scan.labeledWeight !== null && scan.weightVariance !== null && (
             <span
               title={`표기 ${scan.labeledWeight}${scan.unit} → 실측 ${scan.weight}${scan.unit}`}
               style={{
@@ -1179,7 +1179,7 @@ export function InboundScanView({
             </span>
           )}
 
-          {!needsProduct && scan.purchaseAmount !== null && (
+          {!needsProduct && scan.status !== "VOIDED" && scan.purchaseAmount !== null && (
             <span style={{ fontSize: "11px", color: "#475569" }}>
               매입 {formatWon(scan.purchaseAmount)}
               {scan.purchaseSupplier ? ` · ${scan.purchaseSupplier}` : ""}
@@ -1220,7 +1220,7 @@ export function InboundScanView({
           </p>
         )}
 
-        {!scan.isSample && !needsProduct && (
+        {!scan.isSample && !needsProduct && scan.status !== "VOIDED" && (
           <div style={{ width: "100%", display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
             {scan.storageLocation && (
               <span
@@ -1277,7 +1277,7 @@ export function InboundScanView({
                   onClick={() => setLocationEditScanId(null)}
                   style={{ border: "none", background: "none", color: "#94a3b8", fontSize: "12px", cursor: "pointer" }}
                 >
-                  취소
+                  닫기
                 </button>
               </div>
             ) : (
