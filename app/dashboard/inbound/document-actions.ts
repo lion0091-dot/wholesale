@@ -14,6 +14,7 @@ import { cacheTraceRecord } from "@/lib/livestock/master-cache";
 import { autoCloseDocuments } from "@/lib/livestock/auto-close";
 import { autoLinkRecentUnlinkedScans } from "@/lib/livestock/auto-link-numberless";
 import { documentStorageName } from "@/lib/livestock/document-storage-name";
+import { legacySupplierKey, normalizeSupplierName, supplierKey } from "@/lib/livestock/supplier-name";
 
 /**
  * 공급처 원본 전표 저장 (29단계 A).
@@ -551,9 +552,9 @@ async function resolveDocumentScope() {
   return { supabase, context, wholesalerId, canManage };
 }
 
-/** 대소문자·공백 차이로 공급처 학습이 갈라지지 않게 맞춘다. */
+/** 띄어쓰기·대소문자 차이로 공급처 학습이 갈라지지 않게 맞춘다. */
 function supplierKeyOf(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, " ");
+  return supplierKey(name);
 }
 
 function toResult<T>(error: unknown): ActionResult<T> {
@@ -579,7 +580,7 @@ export async function saveInboundDocumentAction(
     }
 
     const input = JSON.parse(rawPayload) as SaveDocumentInput;
-    const supplierName = (input.supplierName ?? "").trim();
+    const supplierName = normalizeSupplierName(input.supplierName);
 
     if (!supplierName) {
       throw new RbacError("공급처 이름을 입력해주세요.");
@@ -630,16 +631,18 @@ export async function saveInboundDocumentAction(
     const documentNo = input.documentNo?.trim() || null;
 
     if (documentNo) {
-      const { data: duplicates } = await supabase
+      // 공급처 이름은 띄어쓰기·대소문자 차이를 무시하고 비교한다("대성 축산" = "대성축산").
+      const { data: sameNumber } = await supabase
         .from("inbound_documents")
-        .select("id")
+        .select("id, supplier_name")
         .eq("wholesaler_id", wholesalerId)
-        .eq("supplier_name", supplierName)
         .eq("document_no", documentNo)
-        .neq("status", "DISCARDED")
-        .limit(1);
+        .neq("status", "DISCARDED");
+      const duplicates = ((sameNumber ?? []) as Array<{ id: string; supplier_name: string | null }>).filter(
+        (row) => supplierKey(row.supplier_name) === supplierKey(supplierName)
+      );
 
-      if ((duplicates ?? []).length > 0) {
+      if (duplicates.length > 0) {
         throw new RbacError(
           `${supplierName}의 전표 ${documentNo}번은 이미 올라와 있습니다. 아래 "올린 전표" 목록에서 그 전표를 확인하세요. 잘못 올린 것이면 그 전표를 '취소 처리'한 뒤 다시 올릴 수 있습니다.`
         );
@@ -891,12 +894,13 @@ export async function loadSupplierFormatAction(
       return { success: true, data: null };
     }
 
-    const { data } = await supabase
+    // 새 열쇠(모든 공백 제거)를 먼저 찾고, 없으면 예전 열쇠로 저장된 기억을 찾는다.
+    const { data: rows } = await supabase
       .from("supplier_document_formats")
-      .select("supplier_name, column_map")
+      .select("supplier_key, supplier_name, column_map")
       .eq("wholesaler_id", wholesalerId)
-      .eq("supplier_key", key)
-      .maybeSingle();
+      .in("supplier_key", [key, legacySupplierKey(supplierName)]);
+    const data = (rows ?? []).find((row) => row.supplier_key === key) ?? (rows ?? [])[0] ?? null;
 
     if (!data) {
       return { success: true, data: null };

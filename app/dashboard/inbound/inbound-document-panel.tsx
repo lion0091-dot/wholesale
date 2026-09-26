@@ -39,6 +39,7 @@ import {
 import type { ScanProductOption } from "./inbound-scan-view";
 import { decodeDocumentFileText } from "@/lib/livestock/document-file-text";
 import { extractDocumentNo } from "@/lib/livestock/document-header-info";
+import { normalizeSupplierName, supplierKey } from "@/lib/livestock/supplier-name";
 import { isMultiCellPaste, pasteIntoLines } from "@/lib/livestock/statement-grid";
 
 /**
@@ -380,7 +381,7 @@ export function InboundDocumentPanel({
   const duplicateOf =
     error && error.includes("이미 올라와 있습니다") && documentNo.trim()
       ? documents.find(
-          (doc) => doc.status !== "DISCARDED" && (doc.supplierName ?? "").trim() === supplierName.trim() && (doc.documentNo ?? "").trim() === documentNo.trim()
+          (doc) => doc.status !== "DISCARDED" && supplierKey(doc.supplierName) === supplierKey(supplierName) && (doc.documentNo ?? "").trim() === documentNo.trim()
         ) ?? null
       : null;
 
@@ -555,9 +556,9 @@ export function InboundDocumentPanel({
     const names: string[] = [];
 
     documents.forEach((document) => {
-      const name = document.supplierName?.trim();
+      const name = normalizeSupplierName(document.supplierName);
 
-      if (name && document.status !== "DISCARDED" && !names.includes(name)) names.push(name);
+      if (name && document.status !== "DISCARDED" && !names.some((known) => supplierKey(known) === supplierKey(name))) names.push(name);
     });
 
     return names.slice(0, 5);

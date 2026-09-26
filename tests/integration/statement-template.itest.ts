@@ -205,4 +205,25 @@ describe("같은 전표 중복 업로드 막기", () => {
       expect(result.error).toContain("전표 번호");
     }
   });
+
+  it("띄어쓰기·대소문자·앞뒤 공백만 다른 공급처 이름도 같은 공급처로 봐서 중복을 막고, 저장된 이름은 공백이 정리된다", async () => {
+    await actAs(world.users.ownerA);
+
+    const first = await saveWith(`  대성   축산-${world.runId} `, "SP-1");
+
+    expect(first.success).toBe(true);
+
+    const { data: doc } = await adminClient().from("inbound_documents").select("supplier_name").eq("id", (first.data as { documentId: string }).documentId).single();
+
+    expect(doc?.supplier_name).toBe(`대성 축산-${world.runId}`);
+
+    for (const variant of [`대성축산-${world.runId}`, `대성 축산-${world.runId}`, `  대성　축산-${world.runId}  `]) {
+      const again = await saveWith(variant, "SP-1");
+
+      expect(again.success).toBe(false);
+      expect(again.error).toContain("이미 올라와 있습니다");
+    }
+
+    expect((await saveWith(`대성축산물-${world.runId}`, "SP-1")).success).toBe(true);
+  });
 });
