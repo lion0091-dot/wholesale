@@ -493,7 +493,7 @@ export default async function InboundPage() {
 
       <InboundNextStepCard step={nextStep} />
 
-      <div id="inbound-documents" style={{ scrollMarginTop: "12px" }}>
+      <div id="inbound-documents" className="dash-desktop-only" style={{ scrollMarginTop: "12px" }}>
         <InboundDocumentPanel products={products} documents={documents} canManageDocuments={canManage} />
       </div>
 

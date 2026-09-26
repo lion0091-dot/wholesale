@@ -65,6 +65,14 @@ export function documentReconcileHref(documentId: string): string {
   return `/dashboard/inbound/documents/${documentId}`;
 }
 
+/**
+ * 명세서 옮겨 적기·대조는 사무실 PC에서만 한다(사장님 2026-09-26). 폰에서는 이 목적지로 가는
+ * 버튼·링크를 숨긴다 — 명세서 칸(올리기·양식·직접 입력)과 대조 화면이 여기 해당한다.
+ */
+export function isOfficeOnlyTarget(href: string): boolean {
+  return href === INBOUND_ANCHORS.documents || href.startsWith("/dashboard/inbound/documents/");
+}
+
 /** 대조가 필요한 명세서로 안내한다 — 줄이 다 맞은 명세서가 아니라 안 온 박스가 남은 쪽이어야 사무실이 바로 처리한다. */
 function pickAttentionDocument(docs: InboundNextStepInput["pendingDocuments"]) {
   return docs.find((doc) => doc.completeLines < doc.totalLines) ?? docs[0];

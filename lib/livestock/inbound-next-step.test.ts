@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickInboundNextStep, type InboundNextStepInput } from "./inbound-next-step";
+import { INBOUND_ANCHORS, isOfficeOnlyTarget, pickInboundNextStep, type InboundNextStepInput } from "./inbound-next-step";
 
 const base: InboundNextStepInput = {
   pendingDocuments: [],
@@ -184,5 +184,18 @@ describe("pickInboundNextStep", () => {
 
     expect(step.href).toBe("#scan-s1");
     expect(step.secondaries[0].href).toBe("/dashboard/inbound/documents/dirty");
+  });
+});
+
+describe("isOfficeOnlyTarget — 폰에서 숨길 명세서 작업 목적지", () => {
+  it("명세서 칸과 대조 화면은 사무실 전용이다", () => {
+    expect(isOfficeOnlyTarget(INBOUND_ANCHORS.documents)).toBe(true);
+    expect(isOfficeOnlyTarget("/dashboard/inbound/documents/abc")).toBe(true);
+  });
+
+  it("스캔 화면·박스 이동·이력은 폰에서도 쓴다", () => {
+    expect(isOfficeOnlyTarget(INBOUND_ANCHORS.scanForm)).toBe(false);
+    expect(isOfficeOnlyTarget(INBOUND_ANCHORS.history)).toBe(false);
+    expect(isOfficeOnlyTarget("#scan-s1")).toBe(false);
   });
 });
