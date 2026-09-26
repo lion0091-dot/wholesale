@@ -32,6 +32,13 @@ export interface InboundNextStepInput {
   needsCheckScanCount: number;
   /** 그 중 가장 최근 박스 — 카드 버튼이 내역 맨 위가 아니라 이 박스로 바로 이동한다. */
   firstNeedsCheckScanId?: string | null;
+  /** 마감된 전표에 뒤늦게 온 박스 — 어느 줄에도 안 이어져 있고, 전표를 다시 열어야 이을 수 있다. */
+  lateBoxes?: Array<{ scanId: string; documentId: string }>;
+  /**
+   * 대기 전표의 줄과 번호가 맞는데 자동으로 안 이어진 박스(같은 번호가 대기 전표 두 장에 있는 경우 등).
+   * 박스는 이미 왔으니 "스캔 중이니 기다리세요"가 아니라 사무실이 대조 화면에서 이어야 한다.
+   */
+  unlinkedOpenBoxes?: Array<{ scanId: string; documentId: string }>;
 }
 
 export type InboundNextStepKey =
@@ -125,9 +132,43 @@ function pickAttentionDocument(docs: InboundNextStepInput["pendingDocuments"]) {
   return docs.find((doc) => doc.completeLines < doc.totalLines) ?? docs[0];
 }
 
+/** 사무실 카드: 다음 할 일 하나에, 마감된 전표 뒤에 온 박스가 있으면 그 전표로 가는 링크를 작은 링크로 덧붙인다. */
 export function pickInboundNextStep(input: InboundNextStepInput): InboundNextStep {
+  const step = pickOfficeStep(input);
+  const late = input.lateBoxes ?? [];
+
+  if (late.length === 0) return step;
+
+  return {
+    ...step,
+    secondaries: [
+      ...step.secondaries,
+      {
+        label: `마감된 전표 뒤에 온 박스 ${late.length}개 — 전표를 다시 열어 이어 주세요`,
+        href: documentReconcileHref(late[0].documentId),
+      },
+    ],
+  };
+}
+
+function pickOfficeStep(input: InboundNextStepInput): InboundNextStep {
   const { pendingDocuments, remainingBoxCount, needsCheckScanCount, firstNeedsCheckScanId } = input;
   const remainingText = describeRemaining(remainingBoxCount, input.remainingWeightLines);
+
+  const unlinkedOpen = input.unlinkedOpenBoxes ?? [];
+
+  if (pendingDocuments.length > 0 && unlinkedOpen.length > 0) {
+    return {
+      key: "reconcile",
+      who: "사무실",
+      title: "이미 온 박스가 전표에 이어지지 않았습니다",
+      detail: `박스 ${unlinkedOpen.length}개가 어느 줄에도 안 이어졌습니다(같은 번호가 전표 여러 장에 있을 수 있습니다). 맞춰 보기에서 알맞은 줄에 이어 주세요.`,
+      waitNote: { who: "현장", text: "사무실이 박스를 전표에 이어 주는 중입니다. 스캔은 계속하셔도 됩니다." },
+      buttonLabel: "맞춰 보기",
+      href: documentReconcileHref(unlinkedOpen[0].documentId),
+      secondaries: [],
+    };
+  }
 
   if (pendingDocuments.length > 0) {
     if (remainingBoxCount > 0 && pendingDocuments.every((doc) => doc.scanFinished)) {

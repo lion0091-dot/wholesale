@@ -15,6 +15,49 @@ describe("pickInboundNextStep", () => {
     expect(step.secondaries.map((link) => link.href)).toEqual(["/dashboard/inbound#inbound-scan-form"]);
   });
 
+  it("마감된 전표 뒤에 온 박스가 있으면 어떤 단계에서든 그 전표를 다시 열러 가는 링크를 덧붙인다", () => {
+    const lateBoxes = [{ scanId: "s1", documentId: "closed-doc" }];
+    const upload = pickInboundNextStep({ ...base, lateBoxes });
+    const scanning = pickInboundNextStep({
+      ...base,
+      lateBoxes,
+      pendingDocuments: [{ id: "d1", completeLines: 0, totalLines: 3 }],
+      remainingBoxCount: 4,
+    });
+
+    for (const step of [upload, scanning]) {
+      const link = step.secondaries.at(-1);
+
+      expect(link?.href).toBe("/dashboard/inbound/documents/closed-doc");
+      expect(link?.label).toContain("마감된 전표 뒤에 온 박스 1개");
+    }
+
+    expect(upload.key).toBe("upload");
+    expect(scanning.key).toBe("scan");
+  });
+
+  it("박스는 이미 왔는데 대기 전표에 자동으로 안 이어졌으면 '스캔 중, 기다리세요'가 아니라 대조 화면으로 보낸다", () => {
+    const step = pickInboundNextStep({
+      ...base,
+      pendingDocuments: [{ id: "d1", completeLines: 0, totalLines: 2 }],
+      remainingBoxCount: 3,
+      unlinkedOpenBoxes: [{ scanId: "s1", documentId: "d2" }],
+    });
+
+    expect(step.key).toBe("reconcile");
+    expect(step.buttonDisabled).toBeUndefined();
+    expect(step.href).toBe("/dashboard/inbound/documents/d2");
+    expect(step.detail).toContain("1개");
+  });
+
+  it("대기 전표가 없으면 안 이어진 박스가 있어도 전표 올리기 카드 그대로다(이어 붙일 전표가 없다)", () => {
+    expect(pickInboundNextStep({ ...base, unlinkedOpenBoxes: [{ scanId: "s1", documentId: "d2" }] }).key).toBe("upload");
+  });
+
+  it("뒤늦게 온 박스가 없으면 링크를 덧붙이지 않는다", () => {
+    expect(pickInboundNextStep({ ...base, lateBoxes: [] }).secondaries).toHaveLength(1);
+  });
+
   it("대기 전표에 안 들어온 품목이 있으면 스캔을 안내한다", () => {
     const step = pickInboundNextStep({
       ...base,

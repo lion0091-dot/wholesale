@@ -772,6 +772,32 @@ describe("SC-더 많이 옴 — 표기 무게·수량이 없는 개체번호 줄
     expect(await linkedLineIds(second.scanId)).toEqual([]);
   });
 
+  it("뒤에 온 박스는 사무실 조회(종 배지·카드)에도 잡히고, 다시 열어 이으면 사라지며, 다른 업체에는 안 보인다", async () => {
+    const { line, second, third } = await threeBoxesOfOneAnimal("갈비");
+    const listLate = async () => {
+      const { data } = await getActorClient().rpc("list_unlinked_boxes_for_documents", { p_wholesaler_id: world.wholesalerA });
+
+      return ((data ?? []) as Array<{ scan_id: string; document_id: string; document_status: string }>).filter((row) => row.document_status === "CLOSED");
+    };
+
+    const late = await listLate();
+
+    expect(late.filter((row) => row.document_id === line.documentId).map((row) => row.scan_id).sort()).toEqual(
+      [second.scanId, third.scanId].sort()
+    );
+
+    await reopenInboundDocumentAction(line.documentId);
+    await linkScanToDocumentLineAction(second.scanId, line.lineId);
+    await linkScanToDocumentLineAction(third.scanId, line.lineId);
+
+    expect((await listLate()).filter((row) => row.document_id === line.documentId)).toEqual([]);
+
+    await actAs(world.users.ownerB);
+    const stranger = await getActorClient().rpc("list_unlinked_boxes_for_documents", { p_wholesaler_id: world.wholesalerA });
+
+    expect(stranger.data ?? []).toEqual([]);
+  });
+
   it("다시 열어 뒤 박스를 이으면 '더 많이 옴'이 되어 사유 없이는 마감되지 않고, 사유를 적으면 마감된다", async () => {
     const { line, second, third } = await threeBoxesOfOneAnimal("설도");
 

@@ -38,6 +38,7 @@ import {
 } from "./document-actions";
 import type { ScanProductOption } from "./inbound-scan-view";
 import { decodeDocumentFileText } from "@/lib/livestock/document-file-text";
+import { extractDocumentNo } from "@/lib/livestock/document-header-info";
 import { isMultiCellPaste, pasteIntoLines } from "@/lib/livestock/statement-grid";
 
 /**
@@ -375,6 +376,14 @@ export function InboundDocumentPanel({
     }
   };
 
+  // "이미 올라와 있습니다" 오류는 글자 안내로 끝내지 않고 그 전표로 바로 갈 수 있게 한다.
+  const duplicateOf =
+    error && error.includes("이미 올라와 있습니다") && documentNo.trim()
+      ? documents.find(
+          (doc) => doc.status !== "DISCARDED" && (doc.supplierName ?? "").trim() === supplierName.trim() && (doc.documentNo ?? "").trim() === documentNo.trim()
+        ) ?? null
+      : null;
+
   const reset = () => {
     setMode("idle");
     setEntryMethod("AUTO");
@@ -412,6 +421,9 @@ export function InboundDocumentPanel({
     setGrid(parsed);
     setColumnMap(parsed.columnMap);
     setLines(built.map((line) => ({ ...line, productId: null })));
+    // 전표 머리글에 번호가 적혀 있으면 미리 채운다 — 틀리면 사람이 고친다. 번호가 있어야 같은 전표 중복 업로드가 막힌다.
+    const readNo = extractDocumentNo(parsed.cells, parsed.headerRowIndex);
+    if (readNo) setDocumentNo(readNo);
     setFile(sourceFile);
     setEntryMethod("AUTO");
     setMode("review");
@@ -953,6 +965,14 @@ export function InboundDocumentPanel({
               }}
             >
               {error}
+              {duplicateOf ? (
+                <>
+                  {" "}
+                  <Link href={`/dashboard/inbound/documents/${duplicateOf.id}`} style={{ fontWeight: 700, color: "#1d4ed8" }}>
+                    이미 올라온 그 전표 열기
+                  </Link>
+                </>
+              ) : null}
             </p>
           ) : null}
 
@@ -1313,6 +1333,7 @@ export function InboundDocumentPanel({
                   <input
                     value={documentNo}
                     onChange={(event) => setDocumentNo(event.target.value)}
+                    placeholder="적으면 중복 방지"
                     style={inputStyle}
                   />
                 </div>
@@ -1359,6 +1380,7 @@ export function InboundDocumentPanel({
                   <input
                     value={documentNo}
                     onChange={(event) => setDocumentNo(event.target.value)}
+                    placeholder="적으면 중복 방지"
                     style={inputStyle}
                   />
                 </div>

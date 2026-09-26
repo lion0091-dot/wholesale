@@ -61,6 +61,7 @@ describe("종 배지 집계", () => {
       cancelRequests: before!.cancelRequests + 1,
       needsCheckBoxes: before!.needsCheckBoxes + 1,
       openDocuments: before!.openDocuments + 1,
+      lateBoxes: before!.lateBoxes,
     });
 
     await admin.from("inbound_scans").delete().eq("trace_no", scanTrace);
