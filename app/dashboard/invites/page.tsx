@@ -20,6 +20,8 @@ import { getPgSettingsAction } from "@/app/actions/pg-settings";
 import { NegotiationSettingsForm } from "./negotiation-settings-form";
 import { getNegotiationSettingsAction } from "@/app/actions/negotiation-settings";
 import { MinOrderAmountForm } from "./min-order-amount-form";
+import { WeightToleranceForm } from "./weight-tolerance-form";
+import { getWeightToleranceSettingsAction } from "@/app/actions/weight-tolerance-settings";
 import { getOrderPolicySettingsAction } from "@/app/actions/order-policy-settings";
 import { SettingsHeader } from "../settings-tabs";
 
@@ -136,6 +138,10 @@ export default async function DashboardInvitesPage() {
     orderPolicySettingsResult?.success && orderPolicySettingsResult.data
       ? orderPolicySettingsResult.data
       : null;
+
+  const weightToleranceResult = account.wholesalerId ? await getWeightToleranceSettingsAction() : null;
+  const weightToleranceSettings =
+    weightToleranceResult?.success && weightToleranceResult.data ? weightToleranceResult.data : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -314,6 +320,15 @@ export default async function DashboardInvitesPage() {
             발주 정책 설정
           </div>
           <MinOrderAmountForm initial={orderPolicySettings} />
+        </section>
+      )}
+
+      {account.wholesalerId && weightToleranceSettings && (
+        <section style={cardStyle}>
+          <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>
+            입고 전표 설정
+          </div>
+          <WeightToleranceForm initial={weightToleranceSettings} />
         </section>
       )}
 

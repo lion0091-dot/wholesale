@@ -26,6 +26,11 @@ export interface ScanResultInput {
   productConflict: { gtinProductId: string; documentProductId: string } | null;
   /** 이 박스로 전표의 모든 물건이 채워져 전표가 저절로 마감됐다. */
   autoClosedDocument?: boolean;
+  /**
+   * 이 번호가 이미 마감된 전표의 줄에 있는데 박스는 어느 줄에도 안 이어졌다 — 마감된 전표에는 이을 수 없어서다.
+   * 한 마리가 여러 박스로 오는데 전표에 무게·수량이 없으면 첫 박스에서 "다 왔다"고 마감되고 뒤 박스가 이렇게 남는다.
+   */
+  matchedClosedDocument?: boolean;
 }
 
 export interface ScanResultOptions {
@@ -99,6 +104,17 @@ export function buildScanResultCard(data: ScanResultInput, options: ScanResultOp
       tone: "green",
       title: "전표를 저절로 마감했습니다",
       detail: "전표의 모든 물건이 도착해서 사무실이 따로 마감할 필요가 없습니다.",
+    });
+  }
+
+  if (data.matchedClosedDocument) {
+    if (card.tone === "green") card.tone = "yellow";
+
+    card.extras.push({
+      tone: "yellow",
+      title: "이미 마감된 전표에 있는 번호입니다",
+      detail:
+        "입고는 기록됐지만 마감된 전표에는 이어지지 않았습니다. 같은 번호의 박스가 더 온 것이면 사무실에서 그 전표를 '다시 열기' 하고 이 박스를 이은 뒤, 더 온 이유를 적고 마감하세요.",
     });
   }
 

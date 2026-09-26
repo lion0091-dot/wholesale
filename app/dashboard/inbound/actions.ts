@@ -57,6 +57,8 @@ export interface ScanResult {
   autoCreated: { productName: string; needsPrice: boolean } | null;
   /** 이 박스로 전표가 모두 채워져 저절로 마감됐다. */
   autoClosedDocument: boolean;
+  /** 이 번호가 이미 마감된 전표에 있어서 박스가 이어지지 못했다(사무실이 다시 열어야 함). */
+  matchedClosedDocument: boolean;
   /**
    * status가 EXCEPTION일 때만 의미 있다. "API_ERROR"(조회 자체를 못 함 — 인증키
    * 미설정 등)와 "NOT_FOUND"(조회는 됐지만 그 번호가 없음)는 화면에서 완전히
@@ -209,6 +211,7 @@ interface FinishedScan {
   productId: string | null;
   autoCreated: { productName: string; needsPrice: boolean } | null;
   autoClosedDocument: boolean;
+  matchedClosedDocument: boolean;
 }
 
 /**
@@ -277,7 +280,26 @@ async function finishRecordedScan(
   // 이 박스로 전표의 모든 줄이 채워졌고 문제 박스도 없으면 사람이 할 일이 없으니 마감해 둔다.
   const autoClosedDocument = (await autoCloseDocumentsForScan(supabase, input.scanId)).length > 0;
 
-  return { status, productId, autoCreated, autoClosedDocument };
+  // 어느 줄에도 안 이어졌는데 그 번호가 이미 마감된 전표에 있으면 사무실이 알아야 한다(뒤에 온 박스가 조용히 남지 않게).
+  let matchedClosedDocument = false;
+
+  if (!autoClosedDocument) {
+    const { data: scanRow } = await supabase.from("inbound_scans").select("trace_no").eq("id", input.scanId).maybeSingle();
+    const { data: linkRow } = await supabase.from("inbound_document_line_scans").select("line_id").eq("scan_id", input.scanId).maybeSingle();
+
+    if (scanRow && !linkRow) {
+      const { data: closedMatch } = await supabase
+        .from("inbound_document_lines")
+        .select("id, inbound_documents!inner(status)")
+        .eq("inbound_documents.status", "CLOSED")
+        .or(`trace_no.eq.${scanRow.trace_no},lot_no.eq.${scanRow.trace_no}`)
+        .limit(1);
+
+      matchedClosedDocument = (closedMatch ?? []).length > 0;
+    }
+  }
+
+  return { status, productId, autoCreated, autoClosedDocument, matchedClosedDocument };
 }
 
 /**
@@ -415,13 +437,14 @@ export async function recordScanAction(input: {
     // 전표 줄 붙이기·상품 코드 기록·상품 자동 생성·자동 마감을 한 묶음으로 처리한다.
     const finished = row.scan_id
       ? await finishRecordedScan(supabase, { scanId: String(row.scan_id), status: String(row.status), gtin })
-      : { status: String(row.status), productId: null, autoCreated: null, autoClosedDocument: false };
+      : { status: String(row.status), productId: null, autoCreated: null, autoClosedDocument: false, matchedClosedDocument: false };
 
     row.status = finished.status;
     if (finished.productId) row.product_id = finished.productId;
 
     const autoCreated = finished.autoCreated;
     const autoClosedDocument = finished.autoClosedDocument;
+    const matchedClosedDocument = finished.matchedClosedDocument;
 
     revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/products");
@@ -450,6 +473,7 @@ export async function recordScanAction(input: {
         purchaseSupplier: (row.purchase_supplier as string | null) ?? null,
         autoCreated,
         autoClosedDocument,
+        matchedClosedDocument,
         // record_inbound_scan의 JSONB 반환값에는 안 실려 있다 — 위에서 API 호출
         // 직후 이미 계산해둔 로컬 값을 그대로 돌려준다(DB 왕복 불필요).
         failReason: row.status === "EXCEPTION" ? failReason : null,

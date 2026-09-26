@@ -9,12 +9,14 @@ import { recordScanAction, voidScanAction, type ScanResult } from "@/app/dashboa
 import {
   closeInboundDocumentAction,
   discardInboundDocumentAction,
+  linkScanToDocumentLineAction,
   extractDocumentTableAction,
   reopenInboundDocumentAction,
   restoreInboundDocumentAction,
   saveInboundDocumentAction,
   setDocumentLineCountModeAction,
   setDocumentsScanFinishedAction,
+  updateDocumentLineAction,
 } from "@/app/dashboard/inbound/document-actions";
 import { decodeDocumentFileText } from "@/lib/livestock/document-file-text";
 import { applyColumnMap, parseDocumentText } from "@/lib/livestock/document-parser";
@@ -746,5 +748,60 @@ describe("SC-정정 — 전표 내용이 틀려 취소 처리하고 다시 올�
 
     expect(restored.success).toBe(true);
     expect(await linkedScanIdsOfDoc(documentId)).toEqual([box.scanId]);
+  });
+});
+
+describe("SC-더 많이 옴 — 표기 무게·수량이 없는 개체번호 줄에 여러 박스가 오면 알려 주고 사유를 적어야 마감된다", () => {
+  async function threeBoxesOfOneAnimal(part: string) {
+    const individual = world.newTraceNo();
+    const line = await world.createDocumentLine({ traceNo: individual, itemName: `한우 ${part}`, partName: part });
+    const first = await scanPart(individual, part, 3);
+    const second = await scanPart(individual, part, 3.1);
+    const third = await scanPart(individual, part, 4);
+
+    return { line, first, second, third };
+  }
+
+  it("첫 박스에서 전표가 마감되고, 뒤에 온 박스는 '이미 마감된 전표에 있는 번호'라고 알려 준다", async () => {
+    const { line, first, second, third } = await threeBoxesOfOneAnimal("목심");
+
+    expect(first.autoClosedDocument).toBe(true);
+    expect(await docStatus(line.documentId)).toBe("CLOSED");
+    expect(second.matchedClosedDocument).toBe(true);
+    expect(third.matchedClosedDocument).toBe(true);
+    expect(await linkedLineIds(second.scanId)).toEqual([]);
+  });
+
+  it("다시 열어 뒤 박스를 이으면 '더 많이 옴'이 되어 사유 없이는 마감되지 않고, 사유를 적으면 마감된다", async () => {
+    const { line, second, third } = await threeBoxesOfOneAnimal("설도");
+
+    expect((await reopenInboundDocumentAction(line.documentId)).success).toBe(true);
+    expect((await linkScanToDocumentLineAction(second.scanId, line.lineId)).success).toBe(true);
+    expect((await linkScanToDocumentLineAction(third.scanId, line.lineId)).success).toBe(true);
+
+    const noReason = await closeInboundDocumentAction(line.documentId, null);
+
+    expect(noReason.success).toBe(false);
+    expect(noReason.error).toContain("사유");
+
+    const withReason = await closeInboundDocumentAction(line.documentId, "한 마리가 세 박스로 옴");
+
+    expect(withReason.success).toBe(true);
+    expect(await docStatus(line.documentId)).toBe("CLOSED");
+  });
+
+  it("줄에 표기 무게를 넣으면 무게 기준으로 바뀌어 사유 없이도 마감할 수 있다(줄 내용 고치기)", async () => {
+    const { line, second, third } = await threeBoxesOfOneAnimal("우둔");
+
+    await reopenInboundDocumentAction(line.documentId);
+    await linkScanToDocumentLineAction(second.scanId, line.lineId);
+    await linkScanToDocumentLineAction(third.scanId, line.lineId);
+
+    expect((await closeInboundDocumentAction(line.documentId, null)).success).toBe(false);
+
+    const edited = await updateDocumentLineAction(line.lineId, { labeledWeight: 10 }, "표기 무게 추가");
+
+    expect(edited.success).toBe(true);
+    expect((await closeInboundDocumentAction(line.documentId, null)).success).toBe(true);
   });
 });

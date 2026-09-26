@@ -294,3 +294,30 @@ describe("pickAutoLinkLine", () => {
     expect(pickAutoLinkLine([{ lineId: "line-1", speciesConfirmed: false, partConfirmed: true }])).toBeNull();
   });
 });
+
+describe("lineArrival — 업체가 정한 허용 오차", () => {
+  const line = { quantity: null, labeledWeight: 10, traceNo: "002191840078" } as const;
+
+  it("오차를 5%로 넓히면 10.4kg도 다 온 것, 기본 2%에서는 넘침", () => {
+    expect(lineArrival(line, [10.4]).status).toBe("OVER");
+    expect(lineArrival(line, [10.4], 0.05).status).toBe("COMPLETE");
+    expect(lineArrival(line, [9.6], 0.05).status).toBe("COMPLETE");
+    expect(lineArrival(line, [9.4], 0.05).status).toBe("PARTIAL");
+  });
+
+  it("박스 수 기준 줄에는 오차가 영향을 주지 않는다", () => {
+    const boxLine = { quantity: 3, labeledWeight: 30, traceNo: "L20260901000001" } as const;
+
+    expect(lineArrival(boxLine, [10, 10], 0.2).status).toBe("PARTIAL");
+    expect(lineArrival(boxLine, [10, 10, 10], 0.001).status).toBe("COMPLETE");
+  });
+
+  it("무게 기준 줄 후보는 업체 오차만큼 남은 무게를 넘는 박스도 받는다", () => {
+    const lines = [{ lineId: "w", itemText: "한우 등심", expectedUnitWeight: null, remainingWeight: 10 }];
+
+    expect(suggestDocumentLinesForScan({ weight: 10.4, speciesGroup: "소" }, lines)).toEqual([]);
+    expect(suggestDocumentLinesForScan({ weight: 10.4, speciesGroup: "소", weightTolerance: 0.05 }, lines)).toEqual([
+      { lineId: "w", speciesConfirmed: true },
+    ]);
+  });
+});

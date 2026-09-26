@@ -611,7 +611,7 @@ describe("updateDocumentLineAction — 대조 중 전표의 줄 내용 고치기
 
     const result = await updateDocumentLineAction(lineId, { quantity: 1 }, "수량 오타");
 
-    expect(result).toEqual({ success: true, data: { changed: true, changedFields: ["quantity"] } });
+    expect(result).toEqual({ success: true, data: { changed: true, changedFields: ["quantity"], warning: null } });
     expect(Number((await lineOf(lineId)).quantity)).toBe(1);
 
     const after = (await getActorClient().rpc("document_line_match_status", { p_line_id: lineId })).data as Array<{ status: string }>;
@@ -657,7 +657,7 @@ describe("updateDocumentLineAction — 대조 중 전표의 줄 내용 고치기
     const { lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 3 });
     const result = await updateDocumentLineAction(lineId, { quantity: 3 });
 
-    expect(result).toEqual({ success: true, data: { changed: false, changedFields: [] } });
+    expect(result).toEqual({ success: true, data: { changed: false, changedFields: [], warning: null } });
     expect(await editsOf(lineId)).toHaveLength(0);
   });
 
@@ -755,5 +755,63 @@ describe("updateDocumentLineAction — 대조 중 전표의 줄 내용 고치기
     await updateDocumentLineAction(lineId, { quantity: 4, labeledWeight: 40, productId: product.id });
 
     expect(Number((await adminClient().from("products").select("stock_quantity").eq("id", product.id).single()).data!.stock_quantity)).toBe(stockBefore);
+  });
+});
+
+describe("전표 무게 허용 오차 — 업체가 정한다(마이그레이션 127)", () => {
+  async function statusOf(lineId: string) {
+    return ((await getActorClient().rpc("document_line_match_status", { p_line_id: lineId })).data as Array<{ status: string }>)[0].status;
+  }
+
+  it("기본은 ±2%이고, 사장이 5%로 바꾸면 그 업체의 판정이 바로 넓어진다", async () => {
+    const traceNo = world.newTraceNo();
+    const { lineId } = await world.createDocumentLine({ traceNo, quantity: null, labeledWeight: 10 });
+    const scan = await seedScan({ trace_no: traceNo, weight: 10.4 });
+
+    await getActorClient().rpc("link_scan_to_document_line", { p_scan_id: scan.scanId, p_line_id: lineId, p_how: "MANUAL" });
+
+    const current = await getActorClient().rpc("get_weight_tolerance", { p_wholesaler_id: world.wholesalerA });
+
+    expect(Number(current.data)).toBeCloseTo(0.02, 5);
+    expect(await statusOf(lineId)).toBe("OVER");
+
+    const set = await getActorClient().rpc("set_weight_tolerance_percent", { p_wholesaler_id: world.wholesalerA, p_percent: 5 });
+
+    expect(Number(set.data)).toBe(5);
+    expect(await statusOf(lineId)).toBe("COMPLETE");
+
+    // TS 계산도 같은 값으로 일치한다.
+    const tolerance = Number((await getActorClient().rpc("get_weight_tolerance", { p_wholesaler_id: world.wholesalerA })).data);
+
+    expect(lineArrival({ quantity: null, labeledWeight: 10, traceNo }, [10.4], tolerance).status).toBe("COMPLETE");
+
+    await getActorClient().rpc("set_weight_tolerance_percent", { p_wholesaler_id: world.wholesalerA, p_percent: 2 });
+    expect(await statusOf(lineId)).toBe("OVER");
+  });
+
+  it("범위 밖 값은 거부하고, 직원(staff)·고객·다른 업체는 바꿀 수 없다", async () => {
+    const tooLow = await getActorClient().rpc("set_weight_tolerance_percent", { p_wholesaler_id: world.wholesalerA, p_percent: 0.1 });
+    const tooHigh = await getActorClient().rpc("set_weight_tolerance_percent", { p_wholesaler_id: world.wholesalerA, p_percent: 50 });
+
+    expect(tooLow.error?.message).toContain("INVALID_TOLERANCE");
+    expect(tooHigh.error?.message).toContain("INVALID_TOLERANCE");
+
+    for (const actor of [world.users.staffA, world.users.retailerR, world.users.ownerB]) {
+      await actAs(actor);
+      const denied = await getActorClient().rpc("set_weight_tolerance_percent", { p_wholesaler_id: world.wholesalerA, p_percent: 9 });
+
+      expect(denied.error?.message).toContain("FORBIDDEN");
+    }
+
+    await actAs(world.users.managerA);
+    expect((await getActorClient().rpc("set_weight_tolerance_percent", { p_wholesaler_id: world.wholesalerA, p_percent: 2 })).error).toBeNull();
+  });
+
+  it("직원은 읽을 수 있고, 다른 업체는 읽을 수 없다(NULL)", async () => {
+    await actAs(world.users.staffA);
+    expect(Number((await getActorClient().rpc("get_weight_tolerance", { p_wholesaler_id: world.wholesalerA })).data)).toBeGreaterThan(0);
+
+    await actAs(world.users.ownerB);
+    expect((await getActorClient().rpc("get_weight_tolerance", { p_wholesaler_id: world.wholesalerA })).data).toBeNull();
   });
 });

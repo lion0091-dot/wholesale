@@ -7,6 +7,7 @@ import {
   type CountMode,
 } from "./document-reconciliation";
 import { speciesGroupFromTraceNumber } from "./trace-number";
+import { loadWeightTolerance } from "./weight-tolerance";
 
 /**
  * 번호로 한 줄이 안 정해진 박스를 부위로 마저 이어 준다(재고는 만들지 않는다 — 연결은 확인용).
@@ -33,7 +34,7 @@ interface LineRow {
   }> | null;
 }
 
-function arrivalOf(line: LineRow) {
+function arrivalOf(line: LineRow, tolerance?: number) {
   const weights = (line.inbound_document_line_scans ?? [])
     .map((link) => (Array.isArray(link.inbound_scans) ? link.inbound_scans[0] : link.inbound_scans))
     .filter((scan): scan is { status: string; weight: number | string } => Boolean(scan) && scan?.status !== "VOIDED")
@@ -47,7 +48,8 @@ function arrivalOf(line: LineRow) {
       traceNo: line.trace_no,
       rawText: line.raw_text,
     },
-    weights
+    weights,
+    tolerance
   );
 }
 
@@ -139,7 +141,8 @@ export async function autoLinkNumberlessScan(supabase: Client, scanId: string): 
       .eq("inbound_documents.status", "PENDING")
       .eq("inbound_documents.wholesaler_id", scan.wholesaler_id);
 
-    const openLines = ((lineRows ?? []) as unknown as LineRow[]).filter((line) => arrivalOf(line).roomLeft);
+    const tolerance = await loadWeightTolerance(supabase, scan.wholesaler_id);
+    const openLines = ((lineRows ?? []) as unknown as LineRow[]).filter((line) => arrivalOf(line, tolerance).roomLeft);
     const matches = (numberMatches ?? []) as Array<{ trace_no: string | null; lot_no: string | null }>;
 
     let lineId: string | null = null;
@@ -164,9 +167,10 @@ export async function autoLinkNumberlessScan(supabase: Client, scanId: string): 
             weight: Number(scan.weight),
             speciesGroup: (master?.species_group as string | null | undefined) ?? speciesGroupFromTraceNumber(scan.trace_no),
             partName,
+            weightTolerance: tolerance,
           },
           numberless.map((line) => {
-            const arrival = arrivalOf(line);
+            const arrival = arrivalOf(line, tolerance);
             const labeledWeight = line.labeled_weight === null ? null : Number(line.labeled_weight);
 
             return {

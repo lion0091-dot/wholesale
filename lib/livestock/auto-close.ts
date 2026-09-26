@@ -1,5 +1,6 @@
 import type { createClient } from "@/lib/supabase/server";
 import { lineArrival, type CountMode } from "./document-reconciliation";
+import { loadWeightTolerance } from "./weight-tolerance";
 
 /**
  * 전표 자동 마감 — 모든 줄이 예정대로 도착했고 상품이 안 정해진 박스도 없으면 사람이 할 일이 없으므로
@@ -35,7 +36,7 @@ function scanOf(link: ScanRef): ScanInfo | undefined {
 }
 
 /** 줄이 하나 이상이고, 모든 줄이 정확히 다 도착했고, 이어진 박스 중 상품 미지정·이력 미확인이 없을 때만 참. */
-export function isDocumentReadyToAutoClose(lines: AutoCloseLine[]): boolean {
+export function isDocumentReadyToAutoClose(lines: AutoCloseLine[], tolerance?: number): boolean {
   if (lines.length === 0) return false;
 
   return lines.every((line) => {
@@ -58,7 +59,8 @@ export function isDocumentReadyToAutoClose(lines: AutoCloseLine[]): boolean {
         traceNo: line.trace_no ?? null,
         rawText: line.raw_text ?? null,
       },
-      weights
+      weights,
+      tolerance
     );
 
     return arrival.status === "COMPLETE";
@@ -75,15 +77,21 @@ export async function autoCloseDocuments(supabase: Client, documentIds: string[]
     const { data } = await supabase
       .from("inbound_documents")
       .select(
-        "id, status, inbound_document_lines(quantity, labeled_weight, trace_no, raw_text, count_mode, inbound_document_line_scans(inbound_scans(status, weight)))"
+        "id, status, wholesaler_id, inbound_document_lines(quantity, labeled_weight, trace_no, raw_text, count_mode, inbound_document_line_scans(inbound_scans(status, weight)))"
       )
       .in("id", ids)
       .eq("status", "PENDING");
 
     const closed: string[] = [];
 
-    for (const row of (data ?? []) as Array<{ id: string; inbound_document_lines: AutoCloseLine[] | null }>) {
-      if (!isDocumentReadyToAutoClose(row.inbound_document_lines ?? [])) continue;
+    const toleranceByWholesaler = new Map<string, number>();
+
+    for (const row of (data ?? []) as Array<{ id: string; wholesaler_id: string; inbound_document_lines: AutoCloseLine[] | null }>) {
+      if (!toleranceByWholesaler.has(row.wholesaler_id)) {
+        toleranceByWholesaler.set(row.wholesaler_id, await loadWeightTolerance(supabase, row.wholesaler_id));
+      }
+
+      if (!isDocumentReadyToAutoClose(row.inbound_document_lines ?? [], toleranceByWholesaler.get(row.wholesaler_id))) continue;
 
       const { error } = await supabase.rpc("close_inbound_document", { p_document_id: row.id, p_note: null });
 

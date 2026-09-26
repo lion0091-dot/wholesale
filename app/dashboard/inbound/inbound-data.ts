@@ -13,6 +13,7 @@ import {
   type ScanRequirementReport,
 } from "@/lib/livestock/inbound-requirements";
 import { lineArrival, type CountMode } from "@/lib/livestock/document-reconciliation";
+import { loadWeightTolerance } from "@/lib/livestock/weight-tolerance";
 import type { InboundNextStepInput } from "@/lib/livestock/inbound-next-step";
 
 type SupplierScope = Awaited<ReturnType<typeof getSupplierScope>>;
@@ -68,6 +69,7 @@ export async function loadInboundData(
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
+    const weightTolerance = await loadWeightTolerance(supabase, scope.wholesalerId);
 
     // 입고 내역은 계속 쌓이기만 하므로 최근 100건만 불러온다. 현장에서 보는 건
     // "방금 찍은 것들"이고, 과거 조회는 이력관리 메뉴가 따로 담당한다.
@@ -136,7 +138,8 @@ export async function loadInboundData(
               traceNo: (row.trace_no as string | null) ?? null,
               rawText: (row.raw_text as string | null) ?? null,
             },
-            []
+            [],
+            weightTolerance
           );
 
           awaitingBoxCount += arrival.remainingBoxes;
@@ -250,7 +253,8 @@ export async function loadInboundData(
             traceNo: line.trace_no,
             rawText: line.raw_text,
           },
-          weights
+          weights,
+          weightTolerance
         );
 
         summary.totalLines += 1;

@@ -81,7 +81,7 @@ export interface LineArrival {
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
 
 /** 줄의 도착 상태. DB의 document_line_match_status()와 같은 계산 — 취소된 박스는 빼고 무게 목록을 넘긴다. */
-export function lineArrival(line: LineCountInput, linkedWeights: number[]): LineArrival {
+export function lineArrival(line: LineCountInput, linkedWeights: number[], tolerance: number = INBOUND_WEIGHT_TOLERANCE): LineArrival {
   const mode = effectiveCountMode(line);
   const linkedBoxes = linkedWeights.length;
   const linkedWeight = round3(linkedWeights.reduce((sum, weight) => sum + weight, 0));
@@ -91,8 +91,8 @@ export function lineArrival(line: LineCountInput, linkedWeights: number[]): Line
     let status: DocumentLineMatchStatus;
 
     if (linkedBoxes === 0) status = "AWAITING";
-    else if (linkedWeight < round3(target * (1 - INBOUND_WEIGHT_TOLERANCE))) status = "PARTIAL";
-    else if (linkedWeight <= round3(target * (1 + INBOUND_WEIGHT_TOLERANCE))) status = "COMPLETE";
+    else if (linkedWeight < round3(target * (1 - tolerance))) status = "PARTIAL";
+    else if (linkedWeight <= round3(target * (1 + tolerance))) status = "COMPLETE";
     else status = "OVER";
 
     return {
@@ -163,6 +163,8 @@ export interface SuggestionCandidateScan {
   speciesGroup: string | null;
   /** 박스의 부위 — 이력조회의 부위, 없으면 상품의 부위. 모르면 null(부위로는 못 거른다). */
   partName?: string | null;
+  /** 무게 기준 줄의 허용 오차(비율). 없으면 기본 ±2%. */
+  weightTolerance?: number;
 }
 
 export interface LineSuggestion {
@@ -203,7 +205,7 @@ export function suggestDocumentLinesForScan(
   for (const line of lines) {
     if (line.remainingWeight !== undefined && line.remainingWeight !== null) {
       // 무게 기준 줄 — 남은 무게가 있고, 이 박스가 그것을 크게 넘지 않아야 한다.
-      if (line.remainingWeight <= 0 || scan.weight > line.remainingWeight * (1 + INBOUND_WEIGHT_TOLERANCE)) {
+      if (line.remainingWeight <= 0 || scan.weight > line.remainingWeight * (1 + (scan.weightTolerance ?? INBOUND_WEIGHT_TOLERANCE))) {
         continue;
       }
     } else {

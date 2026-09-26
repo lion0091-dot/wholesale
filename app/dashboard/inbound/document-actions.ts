@@ -1152,7 +1152,7 @@ export async function updateDocumentLineAction(
   lineId: string,
   patch: DocumentLinePatch,
   reason?: string | null
-): Promise<ActionResult<{ changed: boolean; changedFields: string[] }>> {
+): Promise<ActionResult<{ changed: boolean; changedFields: string[]; warning: string | null }>> {
   try {
     const { supabase, wholesalerId } = await resolveDocumentScope();
 
@@ -1203,6 +1203,7 @@ export async function updateDocumentLineAction(
 
     const row = (data ?? {}) as Record<string, unknown>;
     const changed = Boolean(row.changed);
+    let warning: string | null = null;
 
     if (changed && row.number_changed) {
       const { data: lineDocument } = await supabase.from("inbound_document_lines").select("document_id").eq("id", lineId).maybeSingle();
@@ -1214,13 +1215,24 @@ export async function updateDocumentLineAction(
       if (lineDocument?.document_id) {
         await processDocumentPrelookupChunkAction(String(lineDocument.document_id));
       }
+
+      // 새 번호가 이력조회에서 확인되지 않았으면 조용히 넘기지 않고 알린다(공급처에 등록을 요청해야 한다).
+      const { data: checked } = await supabase
+        .from("inbound_document_lines")
+        .select("prelookup_status")
+        .eq("id", lineId)
+        .maybeSingle();
+
+      if (checked?.prelookup_status === "FAILED") {
+        warning = "새 번호를 이력조회에서 찾지 못했습니다. 번호가 맞는지 확인하고, 맞다면 공급처에 이력 등록을 요청하세요.";
+      }
     }
 
     revalidatePath(REVALIDATE_PATH, "layout");
 
     return {
       success: true,
-      data: { changed, changedFields: Array.isArray(row.changed_fields) ? (row.changed_fields as string[]) : [] },
+      data: { changed, changedFields: Array.isArray(row.changed_fields) ? (row.changed_fields as string[]) : [], warning },
     };
   } catch (error) {
     return toResult(error);

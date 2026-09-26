@@ -190,6 +190,20 @@ describe("buildScanResultCard — 자동 마감·부위 미지정 안내", () =>
     expect(buildScanResultCard(ok, options).extras).toEqual([]);
   });
 
+  it("이미 마감된 전표에 있는 번호의 박스는 노랑 카드로, 사무실이 다시 열어 이으라고 알린다", () => {
+    const card = buildScanResultCard({ ...ok, matchedClosedDocument: true }, options);
+
+    expect(card.tone).toBe("yellow");
+    expect(card.extras.map((extra) => extra.title)).toContain("이미 마감된 전표에 있는 번호입니다");
+    expect(card.extras.find((extra) => extra.title.includes("이미 마감"))?.detail).toContain("다시 열기");
+  });
+
+  it("빨강 카드는 마감된 전표 안내가 붙어도 빨강 그대로다", () => {
+    const card = buildScanResultCard({ ...ok, status: "EXCEPTION", failReason: "NOT_FOUND", matchedClosedDocument: true }, options);
+
+    expect(card.tone).toBe("red");
+  });
+
   it("부위를 몰라 만든 상품은 부위를 채우라고 안내한다", () => {
     const card = buildScanResultCard(
       { ...ok, autoCreated: { productName: "소 (부위 미지정)", needsPrice: true } },

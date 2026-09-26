@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/reconcile-pg-payments",
       "schedule": "30 4 * * *"
+    },
+    {
+      "path": "/api/cron/retry-trace-lookups",
+      "schedule": "0 5 * * *"
     }
   ]
 }

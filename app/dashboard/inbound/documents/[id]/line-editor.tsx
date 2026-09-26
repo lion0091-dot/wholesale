@@ -82,6 +82,7 @@ export function LineEditor({ line, products, canEdit }: { line: ReconciliationLi
 
     setOpen(false);
     setReason("");
+    setNotice(result.data?.warning ?? null);
     router.refresh();
   };
 
@@ -104,7 +105,7 @@ export function LineEditor({ line, products, canEdit }: { line: ReconciliationLi
           <button type="button" onClick={() => setOpen(true)} style={linkStyle}>
             줄 내용 고치기
           </button>
-          {notice ? <span style={{ fontSize: "12px", color: "#64748b" }}>{notice}</span> : null}
+          {notice ? <span style={{ fontSize: "12px", color: "#92400e" }}>{notice}</span> : null}
         </div>
       ) : (
         <div style={{ border: "1px solid #bfdbfe", backgroundColor: "#f8fbff", borderRadius: "8px", padding: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>

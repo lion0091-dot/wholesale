@@ -8,6 +8,7 @@ import {
   type CountMode,
 } from "@/lib/livestock/document-reconciliation";
 import { speciesGroupFromTraceNumber } from "@/lib/livestock/trace-number";
+import { loadWeightTolerance } from "@/lib/livestock/weight-tolerance";
 import {
   DocumentReconciliationView,
   type LineEdit,
@@ -82,6 +83,7 @@ export default async function DocumentReconciliationPage({ params, searchParams 
   }
 
   const supabase = await createClient();
+  const weightTolerance = await loadWeightTolerance(supabase, scope.wholesalerId);
 
   const { data: docRow } = await supabase
     .from("inbound_documents")
@@ -250,7 +252,8 @@ export default async function DocumentReconciliationPage({ params, searchParams 
         traceNo: (row.trace_no as string | null) ?? null,
         rawText: (row.raw_text as string | null) ?? null,
       },
-      weights
+      weights,
+      weightTolerance
     );
   }
 
@@ -399,6 +402,7 @@ export default async function DocumentReconciliationPage({ params, searchParams 
           weight: Number(row.weight),
           speciesGroup: species,
           partName: masterPartByTraceNo.get(traceNo) ?? productSubcategory,
+          weightTolerance,
         },
         suggestionLines
       );

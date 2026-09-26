@@ -597,7 +597,8 @@ export function DocumentReconciliationView({
         {isPending && overLines.length > 0 && (
           <p style={{ margin: "8px 0 0", fontSize: "13px", color: "#991b1b", lineHeight: 1.7 }}>
             <strong>"더 많이 옴" 줄</strong>은 다른 줄의 박스를 잘못 이은 걸 수 있습니다. 박스 옆 <strong>다른 줄로 옮기기</strong>로
-            바로잡으세요. 진짜 더 온 거면 사유를 적고 마감하세요.
+            바로잡으세요. 전표에 무게가 적혀 있는데 박스 수로 세고 있다면 그 줄의 <strong>줄 내용 고치기</strong>에서 중량을 넣거나 세는 기준을 &quot;무게&quot;로 바꾸세요.
+            진짜 더 온 거면 <strong>사유를 적고 마감</strong>해야 합니다(사유 없이는 마감되지 않습니다).
             {overLines[0] && (
               <button
                 type="button"
@@ -1074,7 +1075,11 @@ export function DocumentReconciliationView({
                   value={closeNote}
                   onChange={(event) => setCloseNote(event.target.value)}
                   rows={3}
-                  placeholder="예: 공급처 결품 통보, 나머지는 다음 입고 예정"
+                  placeholder={
+                    overLines.length > 0 && shortLines.length === 0
+                      ? "예: 한 마리가 여러 박스로 옴, 공급처가 수량을 잘못 적음"
+                      : "예: 공급처 결품 통보, 나머지는 다음 입고 예정"
+                  }
                   style={{ ...inputStyle, width: "100%", resize: "vertical" }}
                 />
               </>
