@@ -111,6 +111,23 @@ describe("toCartLines", () => {
     expect(lines[0].quantity).toBe(2);
   });
 
+  it("별칭이 있으면 장바구니 줄 이름이 별칭, 없거나 공백이면 조합된 상품명이다", () => {
+    const withAlias = makeProduct({ id: "p1", name: "등심 1++", display_alias: "  꽃등심 특선  ", stock_quantity: 10 });
+    const blankAlias = makeProduct({ id: "p2", name: "안심 1+", display_alias: "   ", stock_quantity: 10 });
+    const noAlias = makeProduct({ id: "p3", name: "채끝 1", display_alias: null, stock_quantity: 10 });
+    const catalog = makeCatalog({
+      items: [withAlias, blankAlias, noAlias].map((product) => resolveCatalogItem(product, undefined)),
+    });
+
+    const lines = toCartLines(catalog, [
+      { productId: "p1", quantity: 1 },
+      { productId: "p2", quantity: 1 },
+      { productId: "p3", quantity: 1 },
+    ]);
+
+    expect(lines.map((line) => line.name)).toEqual(["꽃등심 특선", "안심 1+", "채끝 1"]);
+  });
+
   it("네고가 꺼진 공급사는 희망단가를 무시한다", () => {
     const product = makeProduct({ id: "p1", stock_quantity: 10 });
     const item = resolveCatalogItem(product, undefined);

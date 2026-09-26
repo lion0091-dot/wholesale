@@ -46,6 +46,7 @@ const FIELD_LABELS: Record<AuditLogTable, Record<string, string>> = {
     unit: "단위",
     stock_quantity: "재고",
     is_active: "판매 상태",
+    display_alias: "고객에게 보이는 이름",
     hot_deal_active: "핫딜 여부",
     hot_deal_price: "핫딜 가격",
     hot_deal_quantity_limit: "핫딜 판매 한도",

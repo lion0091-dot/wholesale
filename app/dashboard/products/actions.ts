@@ -79,6 +79,8 @@ interface ProductInput {
   stock_quantity: number;
   is_active: boolean;
   description: string | null;
+  /** 고객에게 보이는 이름 — 비우면 name(조합된 이름)이 보인다. 정체성 키가 아니라 등록 후에도 바꿀 수 있다. */
+  display_alias: string | null;
   hot_deal_active: boolean;
   hot_deal_price: number | null;
   hot_deal_quantity_limit: number | null;
@@ -102,6 +104,7 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
   const basePrice = Number.parseFloat(((formData.get("base_price") as string) || "").replace(/,/g, ""));
   const stockQuantity = Number.parseFloat((formData.get("stock_quantity") as string) || "0");
   const description = ((formData.get("description") as string) || "").trim() || null;
+  const displayAlias = ((formData.get("display_alias") as string) || "").trim() || null;
   const hotDealActive = formData.get("hot_deal_active") === "on";
   // 핫딜을 꺼도 할인가 자체는 지워지지 않는다(재입고 시 다시 켜기 편하도록) — 폼도 항상 값을 실어 보낸다.
   const hotDealPriceRaw = ((formData.get("hot_deal_price") as string) || "").replace(/,/g, "");
@@ -118,6 +121,10 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
 
   if (identityName === null && name.length < 2) {
     throw new RbacError("상품명을 2자 이상 입력해주세요.");
+  }
+
+  if (displayAlias !== null && displayAlias.length > 40) {
+    throw new RbacError("고객에게 보일 이름은 40자 이내로 입력해주세요.");
   }
 
   if (!category) {
@@ -174,6 +181,7 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
     stock_quantity: stockQuantity,
     is_active: formData.get("is_active") !== "off",
     description,
+    display_alias: displayAlias,
     hot_deal_active: hotDealActive,
     hot_deal_price: hotDealPrice,
     hot_deal_quantity_limit: hotDealQuantityLimit,
@@ -353,6 +361,7 @@ export async function updateProductAction(
       // 의해 조용히 되돌아간다. 수정은 목록의 "재고 조정"(사유 기록)으로만 한다.
       is_active: input.is_active,
       description: input.description,
+      display_alias: input.display_alias,
       hot_deal_active: input.hot_deal_active,
       hot_deal_price: input.hot_deal_price,
       hot_deal_quantity_limit: input.hot_deal_quantity_limit,

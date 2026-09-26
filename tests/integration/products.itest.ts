@@ -172,6 +172,31 @@ describe("createProductAction", () => {
     expect(await row(result.data!.id)).toMatchObject({ hot_deal_active: true, hot_deal_price: 10000, hot_deal_quantity_limit: 20, hot_deal_quota_alert_threshold: 3 });
   });
 
+  it("고객 노출 별칭 — 등록 때 저장되고, 등록 후에도 바꾸거나 비울 수 있으며, 41자 이상은 거부한다(이름은 그대로)", async () => {
+    const created = await createProductAction(form({ name: "별칭 시험 상품", display_alias: "  우리집 특선  " }));
+
+    expect(created.success).toBe(true);
+
+    const id = created.data!.id;
+
+    expect(await row(id)).toMatchObject({ name: "별칭 시험 상품", display_alias: "우리집 특선" });
+
+    const renamed = await updateProductAction(id, form({ name: "별칭 시험 상품", display_alias: "새 이름" }));
+
+    expect(renamed.success).toBe(true);
+    expect(await row(id)).toMatchObject({ name: "별칭 시험 상품", display_alias: "새 이름" });
+
+    const cleared = await updateProductAction(id, form({ name: "별칭 시험 상품", display_alias: "" }));
+
+    expect(cleared.success).toBe(true);
+    expect(await row(id)).toMatchObject({ name: "별칭 시험 상품", display_alias: null });
+
+    const tooLong = await updateProductAction(id, form({ name: "별칭 시험 상품", display_alias: "가".repeat(41) }));
+
+    expect(tooLong.success).toBe(false);
+    expect(tooLong.error).toContain("40자 이내");
+  });
+
   it("이력 대상 축종(소·돼지·닭/오리)은 손으로 등록할 수 없고, 이력번호가 없는 양·가공육은 등록된다", async () => {
     const marker = `손등록차단-${world.runId}`;
 

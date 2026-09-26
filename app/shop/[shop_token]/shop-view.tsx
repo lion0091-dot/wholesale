@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { claimShopAccessAction } from "@/app/actions/buyer-auth";
 import { useShopCart } from "@/lib/shop/cart-store";
 import { cartTotals, quantityStepFor } from "@/lib/shop/order-policy";
-import { toCartLines, type ShopCatalog, type ShopCatalogItem } from "@/lib/shop/catalog-types";
+import { shopProductName, toCartLines, type ShopCatalog, type ShopCatalogItem } from "@/lib/shop/catalog-types";
 import { ShopFooter, ShopHeader, cardStyle, formatWon, shopPageStyle } from "./shop-chrome";
 
 interface ShopViewProps {
@@ -480,7 +480,7 @@ function ProductCard({ item, quantity, onStep, previewOnly = false }: ProductCar
                 {product.subcategory}
               </span>
             )}
-            <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>{product.name}</h3>
+            <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>{shopProductName(product)}</h3>
           </div>
           <p style={{ fontSize: "12px", color: "#334155", marginTop: "4px" }}>
             원산지: {product.origin}

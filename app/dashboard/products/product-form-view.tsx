@@ -526,6 +526,25 @@ export function ProductFormView({
           </div>
 
           <div>
+            <label htmlFor="display_alias" style={labelStyle}>
+              고객에게 보일 이름 (선택)
+            </label>
+            <input
+              id="display_alias"
+              name="display_alias"
+              type="text"
+              maxLength={40}
+              defaultValue={product?.display_alias ?? ""}
+              placeholder={nameToShow ? `비우면 "${nameToShow}"로 보여요` : "비우면 자동 조합된 상품명으로 보여요"}
+              autoComplete="off"
+              style={fieldStyle}
+            />
+            <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+              고객 미니샵·장바구니·거래명세서에 이 이름이 보여요. 등록 후에도 바꿀 수 있고, 재고·이력 관리는 위 상품명 기준 그대로예요.
+            </p>
+          </div>
+
+          <div>
             <label htmlFor="category" style={labelStyle}>
               축종/카테고리 *
             </label>

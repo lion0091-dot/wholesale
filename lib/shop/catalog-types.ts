@@ -9,6 +9,11 @@
 import { normalizeQuantity, type CartLine } from "@/lib/shop/order-policy";
 import type { Product, Wholesaler } from "@/types/database";
 
+/** 고객에게 보이는 상품명 — 공급사가 정한 별칭이 있으면 그것, 없으면 조합된 상품명. */
+export function shopProductName(product: Pick<Product, "name" | "display_alias">): string {
+  return product.display_alias?.trim() || product.name;
+}
+
 export interface ShopCatalogItem {
   product: Product;
   /** 핫딜(상품 전체 공개) > 켜진 맞춤 단가 > 기준 단가 순으로 결정된 실제 가격 */
@@ -138,7 +143,7 @@ export function toCartLines(catalog: ShopCatalog, entries: CartEntryInput[]): Ca
 
     lines.push({
       productId: item.product.id,
-      name: item.product.name,
+      name: shopProductName(item.product),
       category: item.product.category,
       subcategory: item.product.subcategory,
       unit: item.product.unit,
