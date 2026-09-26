@@ -98,22 +98,41 @@ export function ShopHeader({
           </p>
         </div>
 
-        <span
-          style={{
-            flexShrink: 0,
-            fontSize: "11px",
-            fontWeight: 600,
-            backgroundColor: customer.isLinked ? "#dcfce7" : "#f1f5f9",
-            color: customer.isLinked ? "#166534" : "#475569",
-            padding: "4px 8px",
-            borderRadius: "12px",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {customer.isLinked
-            ? `${customer.restaurantName ?? "인증 고객(소매)"} 접속중`
-            : "미인증 손님 모드"}
-        </span>
+        <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 600,
+              backgroundColor: customer.isLinked ? "#dcfce7" : "#f1f5f9",
+              color: customer.isLinked ? "#166534" : "#475569",
+              padding: "4px 8px",
+              borderRadius: "12px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {customer.isLinked
+              ? `${customer.restaurantName ?? "인증 고객(소매)"} 접속중`
+              : "미인증 손님 모드"}
+          </span>
+
+          {customer.isLinked && (
+            <Link
+              href="/my-shops"
+              style={{
+                fontSize: "13px",
+                fontWeight: 800,
+                color: "#ffffff",
+                backgroundColor: "#2563eb",
+                padding: "8px 14px",
+                borderRadius: "999px",
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              내 거래처
+            </Link>
+          )}
+        </div>
       </div>
 
       {children}
