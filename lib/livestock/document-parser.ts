@@ -10,6 +10,7 @@
  * 틀리게 읽은 값이 그대로 매입금액이 되면 안 되기 때문에 자동 확정은 하지 않는다.
  */
 
+import { partNameFromItemName } from "./part-name-from-item";
 import { parseBarcode } from "./barcode-parser";
 import { parseTraceNumber } from "./trace-number";
 import { detectDelimiter, splitLine } from "./import-parser";
@@ -406,8 +407,11 @@ function mapByContent(bodyRows: string[][], existing: ColumnMap): ColumnMap {
       traceHits: values.filter((v) => parseTraceCell(v).traceNos.length > 0).length,
       /** 한글/영문이 섞인 칸인지 (품목명 후보) */
       textHits: values.filter((v) => /[가-힣A-Za-z]/.test(v)).length,
-      /** 등급 표기로 읽히는 칸인지 */
-      gradeHits: values.filter((v) => GRADE_PATTERN.test(v)).length,
+      /**
+       * 등급 표기로 읽히는 칸인지. 맨 숫자 "1·2·3"은 일련번호 칸과 구별이 안 되니 "+"나 "등급"이 붙은 값만 센다
+       * (머리글이 "등급"인 칸은 머리글로 이미 잡힌다).
+       */
+      gradeHits: values.filter((v) => GRADE_PATTERN.test(v) && /\+|등급/.test(v)).length,
       /** 원산지 표기로 읽히는 칸인지 */
       originHits: values.filter((v) => looksLikeOrigin(v)).length,
       numericRatio: values.length ? numbers.length / values.length : 0,
@@ -635,7 +639,8 @@ export function applyColumnMap(
     const rawLot = pick("lotNo");
     const lotNo = lotCell.traceNos[0] ?? (rawLot || null);
     const itemName = pick("itemName") || null;
-    const partName = pick("partName") || null;
+    // 부위 칸이 없거나 비어 있으면 품목명에서 뽑는다(사전에 있는 부위가 정확히 하나일 때만).
+    const partName = pick("partName") || partNameFromItemName(itemName);
     // "1++등급" 같은 표기에서 등급만 남긴다.
     const rawGrade = pick("grade");
     const gradeMatch = rawGrade.match(GRADE_PATTERN);

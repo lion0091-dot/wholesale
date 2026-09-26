@@ -256,3 +256,35 @@ describe("applyColumnMap — 번호 여럿·부속 줄·흐트러진 표기", ()
     expect(line.traceNo).toBe("LOT-2409-01");
   });
 });
+
+describe("일련번호 칸을 등급으로 오인하지 않는다", () => {
+  it("맨 앞 '번호' 칸의 1·2·3은 등급이 아니고, '1++' 같은 값이 든 칸은 머리글이 없어도 등급이다", () => {
+    const withSerial = buildGrid([
+      ["번호", "품명", "이력번호", "중량"],
+      ["1", "한우 등심", "002191840011", "10"],
+      ["2", "한우 안심", "002191840022", "4.5"],
+      ["3", "한우 채끝", "002191840033", "8.2"],
+    ]);
+
+    expect(withSerial.columnMap.grade).toBeUndefined();
+    expect(applyColumnMap(withSerial, withSerial.columnMap).map((line) => line.grade)).toEqual([null, null, null]);
+
+    const withGrades = buildGrid([
+      ["한우 등심", "1++", "002191840011", "10"],
+      ["한우 안심", "1+", "002191840022", "4.5"],
+      ["한우 채끝", "1++", "002191840033", "8.2"],
+    ]);
+
+    expect(withGrades.columnMap.grade).toBe(1);
+  });
+
+  it("머리글이 '등급'이면 맨 숫자(1·2·3)도 등급으로 읽는다", () => {
+    const grid = buildGrid([
+      ["품명", "등급", "이력번호", "중량"],
+      ["한우 등심", "1", "002191840011", "10"],
+      ["한우 안심", "2", "002191840022", "4.5"],
+    ]);
+
+    expect(applyColumnMap(grid, grid.columnMap).map((line) => line.grade)).toEqual(["1", "2"]);
+  });
+});

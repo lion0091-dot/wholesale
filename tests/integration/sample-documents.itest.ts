@@ -165,8 +165,10 @@ describe("샘플 3 — 돈육상사(엑셀): 두 칸 서식·쉼표 숫자", () 
     expect(lines.map((line) => line.traceNo)).toEqual(["100770123456", "100770123457", "100770123458"]);
     expect(lines.map((line) => line.unitPrice)).toEqual([13000, 13000, 11000]);
 
-    // 시험표가 예고한 약점: 첫 칸 "번호"(일련번호)가 등급으로 잡히는지 — 잡혀도 저장·스캔은 되어야 한다.
-    const { lineIds } = await saveLines("돈육상사", lines.map((line) => ({ ...line, grade: null })));
+    // 첫 칸 "번호"(일련번호 1·2·3)를 등급으로 오인하지 않는다.
+    expect(lines.map((line) => line.grade)).toEqual([null, null, null]);
+
+    const { lineIds } = await saveLines("돈육상사", lines);
     const a = await scanBox("100770123456", 12.5, "삼겹살");
     const b = await scanBox("100770123457", 12.3, "삼겹살");
 
@@ -306,6 +308,38 @@ describe("같은 번호가 대기 전표 두 장에 있을 때 — 박스가 어
     const { linkScanToDocumentLineAction } = await import("@/app/dashboard/inbound/document-actions");
 
     expect((await linkScanToDocumentLineAction(box.scanId, first.lineId)).success).toBe(true);
+    expect(await list()).toEqual([]);
+  });
+});
+
+describe("번호 없는 줄 — 부위가 같은데 자동으로 안 이어진 박스는 사무실 카드가 대조 화면으로 데려간다", () => {
+  it("무게가 크게 달라 안 이어진 같은 부위 박스는 조회에 잡히고, 부위가 다른 박스는 안 잡히며, 이어 주면 사라진다", async () => {
+    const { getActorClient } = await import("./harness");
+    const line = await world.createDocumentLine({ traceNo: null, itemName: "돈육 삼겹살", partName: "삼겹살", labeledWeight: 20 });
+    const heavy = await scanBox(world.newTraceNo(), 45, "삼겹살", "돼지");
+    const other = await scanBox(world.newTraceNo(), 20, "목심", "돼지");
+
+    expect(await linkedLine(heavy.scanId)).toBeNull();
+
+    const list = async () => {
+      const { data } = await getActorClient().rpc("list_unlinked_boxes_for_documents", { p_wholesaler_id: world.wholesalerA });
+
+      return ((data ?? []) as Array<{ scan_id: string; document_id: string; document_status: string }>).filter((row) =>
+        [heavy.scanId, other.scanId].includes(row.scan_id)
+      );
+    };
+
+    const found = await list();
+
+    expect(found.map((row) => row.scan_id)).toEqual([heavy.scanId]);
+    // 같은 부위의 안 찬 번호 없는 줄이 대기 전표 여럿에 있으면 가장 오래된 전표로 안내한다(앞 테스트가 남긴 전표일 수 있다).
+    expect(found[0].document_status).toBe("PENDING");
+    expect(found[0].document_id).toBeTruthy();
+    expect(line.documentId).toBeTruthy();
+
+    const { linkScanToDocumentLineAction } = await import("@/app/dashboard/inbound/document-actions");
+
+    expect((await linkScanToDocumentLineAction(heavy.scanId, line.lineId)).success).toBe(true);
     expect(await list()).toEqual([]);
   });
 });
