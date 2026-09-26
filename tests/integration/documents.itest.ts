@@ -4,7 +4,7 @@
  * 취소 시 해제·거슬러 배정)은 tests/integration/inbound.itest.ts의
  * "전표 줄 ↔ 박스 연결" 절이 이미 검증한다. 여기서는 서버 액션 한 겹(권한 매핑·오류 문구)만 본다.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { actAs, adminClient, getActorClient, seedWorld, type World, type WorldProduct } from "./harness";
 import {
   closeInboundDocumentAction,
@@ -12,8 +12,17 @@ import {
   reopenInboundDocumentAction,
   setDocumentsScanFinishedAction,
   unlinkScanFromDocumentLineAction,
+  updateDocumentLineAction,
 } from "@/app/dashboard/inbound/document-actions";
 import { documentLineExpectedQty, documentLineMatchStatus, lineArrival } from "@/lib/livestock/document-reconciliation";
+
+
+// 줄 수정이 번호를 바꾸면 사전조회가 돈다 — 정부 API는 부르지 않는다(인증키 없는 환경처럼).
+vi.mock("@/lib/livestock/mtrace-client", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/livestock/mtrace-client")>();
+
+  return { ...original, isMtraceConfigured: () => false, fetchTraceRecord: vi.fn() };
+});
 
 let world: World;
 
@@ -397,5 +406,354 @@ describe("setDocumentsScanFinishedAction — 현장 스캔 종료 표시", () =>
     const result = await setDocumentsScanFinishedAction([documentId], true);
 
     expect(result).toEqual({ success: true, data: { changed: 0 } });
+  });
+});
+
+describe("전표·전표 줄 직접 수정 잠금 — 로그인한 직원이 API로 고칠 수 없다(마이그레이션 125)", () => {
+  async function lineOf(lineId: string) {
+    return (await adminClient().from("inbound_document_lines").select("*").eq("id", lineId).single()).data!;
+  }
+
+  async function documentOf(documentId: string) {
+    return (await adminClient().from("inbound_documents").select("*").eq("id", documentId).single()).data!;
+  }
+
+  it("줄의 수량·무게·번호·상품·품목명은 사장이든 직원이든 직접 못 바꾼다(권한 오류), 값은 그대로다", async () => {
+    const product = await newProduct();
+    const { lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), product, quantity: 2, labeledWeight: 10 });
+    const before = await lineOf(lineId);
+
+    for (const actor of [world.users.ownerA, world.users.managerA, world.users.staffA]) {
+      await actAs(actor);
+
+      for (const patch of [{ quantity: 99 }, { labeled_weight: 1 }, { trace_no: "000000000000" }, { product_id: null }, { item_name: "바꾼 이름" }, { count_mode: "BOXES" }]) {
+        const result = await getActorClient().from("inbound_document_lines").update(patch).eq("id", lineId).select("id");
+
+        expect(result.error, JSON.stringify(patch)).not.toBeNull();
+      }
+    }
+
+    expect(await lineOf(lineId)).toEqual(before);
+  });
+
+  it("사전조회 상태·오류만은 직접 바꿀 수 있다(화면이 하는 일)", async () => {
+    const { lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 1 });
+    const result = await getActorClient()
+      .from("inbound_document_lines")
+      .update({ prelookup_status: "FAILED", prelookup_error: "확인 필요 번호: 1" })
+      .eq("id", lineId)
+      .select("id");
+
+    expect(result.error).toBeNull();
+    expect(await lineOf(lineId)).toMatchObject({ prelookup_status: "FAILED", prelookup_error: "확인 필요 번호: 1" });
+  });
+
+  it("줄을 직접 지울 수 없다(0행)", async () => {
+    const { lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 1 });
+    const result = await getActorClient().from("inbound_document_lines").delete().eq("id", lineId).select("id");
+
+    expect((result.data ?? []).length).toBe(0);
+    expect(await lineOf(lineId)).toBeTruthy();
+  });
+
+  it("전표를 만든 지 오래됐거나 마감된 전표에는 줄을 새로 넣을 수 없다", async () => {
+    const { documentId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 1 });
+    const fresh = await getActorClient().from("inbound_document_lines").insert({ document_id: documentId, line_no: 2, item_name: "방금 만든 전표에 추가" });
+
+    expect(fresh.error).toBeNull();
+
+    await adminClient().from("inbound_documents").update({ created_at: new Date(Date.now() - 3_600_000).toISOString() }).eq("id", documentId);
+    const old = await getActorClient().from("inbound_document_lines").insert({ document_id: documentId, line_no: 3, item_name: "오래된 전표에 추가" });
+
+    expect(old.error).not.toBeNull();
+
+    const closed = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 1, status: "CLOSED" });
+    const intoClosed = await getActorClient().from("inbound_document_lines").insert({ document_id: closed.documentId, line_no: 2, item_name: "마감 전표에 추가" });
+
+    expect(intoClosed.error).not.toBeNull();
+  });
+
+  it("전표 상태를 직접 마감하거나 마감을 직접 되돌릴 수 없다 — 함수로만 된다", async () => {
+    const { documentId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 1 });
+    const toClosed = await getActorClient().from("inbound_documents").update({ status: "CLOSED" }).eq("id", documentId).select("id");
+
+    expect(toClosed.error?.message).toContain("DOCUMENT_STATUS_CHANGE_DENIED");
+    expect((await documentOf(documentId)).status).toBe("PENDING");
+
+    const closedDoc = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 1, status: "CLOSED" });
+    const toPending = await getActorClient().from("inbound_documents").update({ status: "PENDING" }).eq("id", closedDoc.documentId).select("id");
+
+    expect(toPending.error?.message).toContain("DOCUMENT_STATUS_CHANGE_DENIED");
+    expect((await documentOf(closedDoc.documentId)).status).toBe("CLOSED");
+
+    // 정해진 함수로는 그대로 된다.
+    expect((await reopenInboundDocumentAction(closedDoc.documentId)).success).toBe(true);
+    expect((await documentOf(closedDoc.documentId)).status).toBe("PENDING");
+  });
+
+  it("취소 처리와 되살리기는 직접 할 수 있고, 취소하면서 메모를 남길 수 있다", async () => {
+    const { documentId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 1 });
+    const discard = await getActorClient().from("inbound_documents").update({ status: "DISCARDED", note: "품목 저장 실패로 자동 취소됨" }).eq("id", documentId).select("id");
+
+    expect(discard.error).toBeNull();
+    expect(await documentOf(documentId)).toMatchObject({ status: "DISCARDED", note: "품목 저장 실패로 자동 취소됨" });
+
+    const restore = await getActorClient().from("inbound_documents").update({ status: "PENDING" }).eq("id", documentId).select("id");
+
+    expect(restore.error).toBeNull();
+    expect((await documentOf(documentId)).status).toBe("PENDING");
+  });
+
+  it("공급처·전표번호·날짜·금액·스캔 종료 표시·메모는 직접 못 바꾼다", async () => {
+    const { documentId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 1 });
+    const before = await documentOf(documentId);
+
+    for (const patch of [
+      { supplier_name: "다른 공급처" },
+      { document_no: "9999" },
+      { issued_on: "2020-01-01" },
+      { total_amount: 1 },
+      { entry_method: "MANUAL" },
+      { scan_finished_at: new Date().toISOString() },
+      { wholesaler_id: world.wholesalerB },
+      { note: "메모만 바꾸기" },
+    ]) {
+      const result = await getActorClient().from("inbound_documents").update(patch).eq("id", documentId).select("id");
+
+      expect(result.error, JSON.stringify(patch)).not.toBeNull();
+    }
+
+    const after = await documentOf(documentId);
+
+    expect({ ...after, updated_at: null }).toEqual({ ...before, updated_at: null });
+  });
+
+  it("원본 경로는 처음 올릴 때 한 번만 넣을 수 있고 다시 바꿀 수 없다", async () => {
+    const { documentId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 1 });
+    const first = await getActorClient().from("inbound_documents").update({ storage_path: `${world.wholesalerA}/${documentId}/a.pdf` }).eq("id", documentId).select("id");
+
+    expect(first.error).toBeNull();
+
+    const again = await getActorClient().from("inbound_documents").update({ storage_path: "다른/경로.pdf" }).eq("id", documentId).select("id");
+
+    expect(again.error?.message).toContain("DOCUMENT_WRITE_DENIED");
+  });
+
+  it("전표를 만들 때 처음부터 마감 상태나 스캔 종료 표시를 넣을 수 없다", async () => {
+    const closed = await getActorClient().from("inbound_documents").insert({ wholesaler_id: world.wholesalerA, supplier_name: "직접 생성", status: "CLOSED" });
+    const finished = await getActorClient()
+      .from("inbound_documents")
+      .insert({ wholesaler_id: world.wholesalerA, supplier_name: "직접 생성", status: "PENDING", scan_finished_at: new Date().toISOString() });
+    const ok = await getActorClient().from("inbound_documents").insert({ wholesaler_id: world.wholesalerA, supplier_name: "정상 생성", status: "PENDING" });
+
+    expect(closed.error?.message).toContain("DOCUMENT_WRITE_DENIED");
+    expect(finished.error?.message).toContain("DOCUMENT_WRITE_DENIED");
+    expect(ok.error).toBeNull();
+  });
+
+  it("정해진 함수(마감·다시 열기·스캔 종료·줄 기준 바꾸기)는 잠금과 상관없이 그대로 동작한다", async () => {
+    const { documentId, lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 1, labeledWeight: 10 });
+
+    expect((await setDocumentsScanFinishedAction([documentId], true)).success).toBe(true);
+    expect((await documentOf(documentId)).scan_finished_at).not.toBeNull();
+
+    const mode = await getActorClient().rpc("set_document_line_count_mode", { p_line_id: lineId, p_mode: "BOXES" });
+
+    expect(mode.error).toBeNull();
+    expect((await lineOf(lineId)).count_mode).toBe("BOXES");
+
+    expect((await closeInboundDocumentAction(documentId, "잠금 테스트")).success).toBe(true);
+    expect((await documentOf(documentId)).status).toBe("CLOSED");
+    expect((await reopenInboundDocumentAction(documentId)).success).toBe(true);
+  });
+
+  it("다른 업체·고객은 여전히 남의 전표를 못 건드린다", async () => {
+    const { documentId, lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 1 });
+
+    for (const actor of [world.users.ownerB, world.users.retailerR]) {
+      await actAs(actor);
+      const doc = await getActorClient().from("inbound_documents").update({ status: "DISCARDED" }).eq("id", documentId).select("id");
+      const line = await getActorClient().from("inbound_document_lines").update({ prelookup_status: "FAILED" }).eq("id", lineId).select("id");
+
+      expect((doc.data ?? []).length).toBe(0);
+      expect((line.data ?? []).length).toBe(0);
+    }
+
+    expect((await documentOf(documentId)).status).toBe("PENDING");
+  });
+});
+
+describe("updateDocumentLineAction — 대조 중 전표의 줄 내용 고치기(마이그레이션 126)", () => {
+  async function lineOf(lineId: string) {
+    return (await adminClient().from("inbound_document_lines").select("*").eq("id", lineId).single()).data!;
+  }
+
+  async function editsOf(lineId: string) {
+    return (await adminClient().from("inbound_document_line_edits").select("*").eq("line_id", lineId).order("edited_at")).data ?? [];
+  }
+
+  async function linkedScanIds(lineId: string): Promise<string[]> {
+    const { data } = await adminClient().from("inbound_document_line_scans").select("scan_id").eq("line_id", lineId);
+
+    return ((data ?? []) as Array<{ scan_id: string }>).map((row) => row.scan_id);
+  }
+
+  it("수량을 고치면 값이 바뀌고 도착 판정이 다시 계산되며, 누가 무엇을 바꿨는지 기록이 남는다", async () => {
+    const traceNo = world.newTraceNo();
+    const { lineId } = await world.createDocumentLine({ traceNo, quantity: 5 });
+    const scan = await seedScan({ trace_no: traceNo });
+
+    await getActorClient().rpc("link_scan_to_document_line", { p_scan_id: scan.scanId, p_line_id: lineId, p_how: "MANUAL" });
+
+    const before = (await getActorClient().rpc("document_line_match_status", { p_line_id: lineId })).data as Array<{ status: string }>;
+
+    expect(before[0].status).toBe("PARTIAL");
+
+    const result = await updateDocumentLineAction(lineId, { quantity: 1 }, "수량 오타");
+
+    expect(result).toEqual({ success: true, data: { changed: true, changedFields: ["quantity"] } });
+    expect(Number((await lineOf(lineId)).quantity)).toBe(1);
+
+    const after = (await getActorClient().rpc("document_line_match_status", { p_line_id: lineId })).data as Array<{ status: string }>;
+
+    expect(after[0].status).toBe("COMPLETE");
+
+    const edits = await editsOf(lineId);
+
+    expect(edits).toHaveLength(1);
+    expect(edits[0]).toMatchObject({ reason: "수량 오타", old_values: { quantity: 5 }, new_values: { quantity: 1 }, edited_by: world.users.ownerA.id });
+  });
+
+  it("여러 칸을 한 번에 고칠 수 있고 앞뒤 공백·빈 값·번호 소문자가 정리된다", async () => {
+    const { lineId } = await world.createDocumentLine({ traceNo: null, partName: "등심", quantity: 2, labeledWeight: 20 });
+    const result = await updateDocumentLineAction(lineId, { itemName: "  한우 채끝  ", partName: "", grade: "1++", labeledWeight: 18.5, lotNo: " l20260901000001 " });
+
+    expect(result.success).toBe(true);
+    expect(await lineOf(lineId)).toMatchObject({ item_name: "한우 채끝", part_name: null, grade: "1++", trace_no: null, lot_no: "L20260901000001" });
+    expect(Number((await lineOf(lineId)).labeled_weight)).toBe(18.5);
+    expect((result.data as { changedFields: string[] }).changedFields.sort()).toEqual(["grade", "item_name", "labeled_weight", "lot_no", "part_name"].sort());
+  });
+
+  it("번호를 바꾸면 옛 번호로 이어졌던 박스가 풀리고 사전조회가 다시 대기되며, 새 번호의 박스가 이어진다", async () => {
+    const oldNo = world.newTraceNo();
+    const newNo = world.newTraceNo();
+    const { lineId } = await world.createDocumentLine({ traceNo: oldNo, quantity: 1 });
+    const oldBox = await seedScan({ trace_no: oldNo });
+    const newBox = await seedScan({ trace_no: newNo });
+
+    await getActorClient().rpc("link_scan_to_document_line", { p_scan_id: oldBox.scanId, p_line_id: lineId, p_how: "AUTO" });
+    expect(await linkedScanIds(lineId)).toEqual([oldBox.scanId]);
+
+    const result = await updateDocumentLineAction(lineId, { traceNo: newNo });
+
+    expect(result.success).toBe(true);
+    expect((await lineOf(lineId)).trace_no).toBe(newNo);
+    // 옛 번호 박스는 풀리고, 새 번호로 이미 찍혀 있던 박스가 이 줄에 이어진다(전표를 나중에 올린 것과 같은 경로).
+    expect(await linkedScanIds(lineId)).toEqual([newBox.scanId]);
+    expect((await lineOf(lineId)).prelookup_status).not.toBe("FAILED");
+  });
+
+  it("바뀐 게 없으면 changed=false이고 기록도 남지 않는다", async () => {
+    const { lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 3 });
+    const result = await updateDocumentLineAction(lineId, { quantity: 3 });
+
+    expect(result).toEqual({ success: true, data: { changed: false, changedFields: [] } });
+    expect(await editsOf(lineId)).toHaveLength(0);
+  });
+
+  it("마감된 전표는 고칠 수 없고 다시 열면 고칠 수 있다", async () => {
+    const { documentId, lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 1, status: "CLOSED" });
+    const denied = await updateDocumentLineAction(lineId, { quantity: 9 });
+
+    expect(denied.success).toBe(false);
+    expect(denied.error).toContain("다시 열기");
+    expect(Number((await lineOf(lineId)).quantity)).toBe(1);
+
+    await reopenInboundDocumentAction(documentId);
+
+    expect((await updateDocumentLineAction(lineId, { quantity: 9 })).success).toBe(true);
+  });
+
+  it("말이 안 되는 값은 거부한다(수량·중량 0 이하, 단가·금액 음수, 다른 업체 상품)", async () => {
+    const { lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 2, labeledWeight: 10 });
+    const before = await lineOf(lineId);
+
+    expect((await updateDocumentLineAction(lineId, { quantity: 0 })).error).toContain("수량은(는) 0보다 커야");
+    expect((await updateDocumentLineAction(lineId, { labeledWeight: -1 })).error).toContain("중량은(는) 0보다 커야");
+    expect((await updateDocumentLineAction(lineId, { unitPrice: -5 })).error).toContain("0 이상");
+    expect((await updateDocumentLineAction(lineId, { amount: -5 })).error).toContain("0 이상");
+
+    const otherProduct = await world.createProduct({ stock_quantity: 0, wholesaler: "B" } as never).catch(() => null);
+
+    if (otherProduct) {
+      expect((await updateDocumentLineAction(lineId, { productId: otherProduct.id })).error).toContain("상품을 찾을 수 없");
+    }
+
+    const unknownField = await getActorClient().rpc("update_inbound_document_line", { p_line_id: lineId, p_patch: { raw_text: "몰래 바꾸기" } });
+
+    expect(unknownField.error?.message).toContain("INVALID_PATCH_FIELD");
+    expect(await lineOf(lineId)).toEqual(before);
+    expect(await editsOf(lineId)).toHaveLength(0);
+  });
+
+  it("값을 비울 수 있다(표기중량을 비우면 무게 기준이 박스 수 기준으로 돌아간다)", async () => {
+    const traceNo = world.newTraceNo();
+    const { lineId } = await world.createDocumentLine({ traceNo, labeledWeight: 10 });
+    const before = (await getActorClient().rpc("document_line_match_status", { p_line_id: lineId })).data as Array<{ mode: string }>;
+
+    expect(before[0].mode).toBe("WEIGHT");
+
+    await updateDocumentLineAction(lineId, { labeledWeight: null });
+
+    const after = (await getActorClient().rpc("document_line_match_status", { p_line_id: lineId })).data as Array<{ mode: string }>;
+
+    expect(after[0].mode).toBe("BOXES");
+    expect((await lineOf(lineId)).labeled_weight).toBeNull();
+  });
+
+  it("직원(staff)은 고칠 수 있고, 다른 업체·고객·비로그인은 못 고친다", async () => {
+    const { lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 2 });
+
+    await actAs(world.users.staffA);
+    expect((await updateDocumentLineAction(lineId, { quantity: 3 })).success).toBe(true);
+
+    for (const actor of [world.users.ownerB, world.users.retailerR, null]) {
+      await actAs(actor);
+      expect((await updateDocumentLineAction(lineId, { quantity: 99 })).success).toBe(false);
+    }
+
+    expect(Number((await lineOf(lineId)).quantity)).toBe(3);
+    expect(await editsOf(lineId)).toHaveLength(1);
+  });
+
+  it("수정 기록은 그 업체 직원만 읽을 수 있고 직접 쓰거나 지울 수 없다", async () => {
+    const { lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 2 });
+
+    await updateDocumentLineAction(lineId, { quantity: 4 });
+
+    const mine = await getActorClient().from("inbound_document_line_edits").select("id").eq("line_id", lineId);
+
+    expect((mine.data ?? []).length).toBe(1);
+
+    const write = await getActorClient().from("inbound_document_line_edits").update({ reason: "몰래" }).eq("line_id", lineId).select("id");
+    const remove = await getActorClient().from("inbound_document_line_edits").delete().eq("line_id", lineId).select("id");
+
+    expect(write.error ?? (write.data ?? []).length === 0).toBeTruthy();
+    expect(remove.error ?? (remove.data ?? []).length === 0).toBeTruthy();
+    expect(await editsOf(lineId)).toHaveLength(1);
+
+    await actAs(world.users.ownerB);
+    expect(((await getActorClient().from("inbound_document_line_edits").select("id").eq("line_id", lineId)).data ?? []).length).toBe(0);
+  });
+
+  it("줄을 고쳐도 재고는 바뀌지 않는다", async () => {
+    const product = await newProduct();
+    const traceNo = world.newTraceNo();
+    const { lineId } = await world.createDocumentLine({ traceNo, product, quantity: 1, labeledWeight: 10 });
+    const stockBefore = Number((await adminClient().from("products").select("stock_quantity").eq("id", product.id).single()).data!.stock_quantity);
+
+    await updateDocumentLineAction(lineId, { quantity: 4, labeledWeight: 40, productId: product.id });
+
+    expect(Number((await adminClient().from("products").select("stock_quantity").eq("id", product.id).single()).data!.stock_quantity)).toBe(stockBefore);
   });
 });

@@ -10,6 +10,7 @@ import {
 import { speciesGroupFromTraceNumber } from "@/lib/livestock/trace-number";
 import {
   DocumentReconciliationView,
+  type LineEdit,
   type ReconciliationLine,
   type UnlinkedBox,
   type UnlinkedBoxCandidate,
@@ -46,6 +47,27 @@ function splitIndexOf(rawText: string | null): number | null {
   return match ? Number(match[1]) : null;
 }
 
+const LINE_EDIT_LABELS: Record<string, string> = {
+  item_name: "품목",
+  part_name: "부위",
+  grade: "등급",
+  origin: "원산지",
+  trace_no: "이력번호",
+  lot_no: "묶음번호",
+  quantity: "수량",
+  labeled_weight: "중량(kg)",
+  unit_price: "단가",
+  amount: "금액",
+  product_id: "내 상품",
+};
+
+function formatEditValue(key: string, value: unknown, productNameById: Map<string, string>): string {
+  if (value === null || value === undefined || value === "") return "비움";
+  if (key === "product_id") return productNameById.get(String(value)) ?? "다른 상품";
+
+  return String(value);
+}
+
 export default async function DocumentReconciliationPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const sp = await searchParams;
@@ -79,7 +101,7 @@ export default async function DocumentReconciliationPage({ params, searchParams 
   const { data: lineRows } = await supabase
     .from("inbound_document_lines")
     .select(
-      "id, line_no, raw_text, item_name, product_id, trace_no, lot_no, part_name, grade, origin, quantity, labeled_weight, count_mode, products(name)"
+      "id, line_no, raw_text, item_name, product_id, trace_no, lot_no, part_name, grade, origin, quantity, labeled_weight, unit_price, amount, count_mode, products(name)"
     )
     .eq("document_id", documentId)
     .order("line_no", { ascending: true });
@@ -259,6 +281,39 @@ export default async function DocumentReconciliationPage({ params, searchParams 
   const productNameById = new Map(products.map((product) => [product.id, product.name]));
   const subcategoryByProductId = new Map(products.map((product) => [product.id, product.subcategory ?? null]));
 
+  // 줄 수정 기록 — 누가 언제 무엇을 바꿨는지(마이그레이션 126). 이름은 업체 직원 목록 함수로 읽는다(profiles는 본인 행만 보인다).
+  const { data: editRows } = await supabase
+    .from("inbound_document_line_edits")
+    .select("id, line_id, edited_by, edited_at, reason, old_values, new_values")
+    .eq("document_id", documentId)
+    .order("edited_at", { ascending: false });
+
+  const { data: memberNameRows } = await supabase.rpc("list_wholesaler_member_names", { p_wholesaler_id: scope.wholesalerId });
+  const memberNameById = new Map(
+    ((memberNameRows ?? []) as Array<{ user_id: string; name: string | null }>).map((member) => [member.user_id, member.name ?? "직원"])
+  );
+
+  const editsByLineId = new Map<string, LineEdit[]>();
+
+  ((editRows ?? []) as Array<Record<string, unknown>>).forEach((row) => {
+    const oldValues = (row.old_values ?? {}) as Record<string, unknown>;
+    const newValues = (row.new_values ?? {}) as Record<string, unknown>;
+    const list = editsByLineId.get(String(row.line_id)) ?? [];
+
+    list.push({
+      id: String(row.id),
+      editedAt: String(row.edited_at),
+      editedByName: row.edited_by ? memberNameById.get(String(row.edited_by)) ?? "직원" : "알 수 없음",
+      reason: (row.reason as string | null) ?? null,
+      changes: Object.keys(newValues).map((key) => ({
+        label: LINE_EDIT_LABELS[key] ?? key,
+        from: formatEditValue(key, oldValues[key], productNameById),
+        to: formatEditValue(key, newValues[key], productNameById),
+      })),
+    });
+    editsByLineId.set(String(row.line_id), list);
+  });
+
   // 줄 목록 조립
   const reconciliationLines: ReconciliationLine[] = lines.map((row) => {
     const lineId = String(row.id);
@@ -306,6 +361,10 @@ export default async function DocumentReconciliationPage({ params, searchParams 
       countMode: (row.count_mode as CountMode | null) ?? null,
       linkedWeight: arrival.linkedWeight,
       labeledWeight: row.labeled_weight === null ? null : Number(row.labeled_weight),
+      quantity: row.quantity === null ? null : Number(row.quantity),
+      unitPrice: row.unit_price === null ? null : Number(row.unit_price),
+      amount: row.amount === null ? null : Number(row.amount),
+      edits: editsByLineId.get(lineId) ?? [],
       isSplitContinuation: splitIndex !== null && splitIndex > 1,
       boxes,
     };

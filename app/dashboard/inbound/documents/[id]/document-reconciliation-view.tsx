@@ -15,6 +15,7 @@ import { resolveMappingAction } from "../../actions";
 import { TraceNoFixer } from "../../trace-no-fixer";
 import type { ScanProductOption } from "../../inbound-scan-view";
 import { InboundTabs } from "../../../section-tabs";
+import { LineEditor } from "./line-editor";
 
 /**
  * 29단계 B — 전표 ↔ 실물 박스 사무실 대조 화면.
@@ -35,6 +36,14 @@ export interface ReconciliationLineBox {
   linkedHow: "AUTO" | "MANUAL";
   linkedAt: string;
   createdAt: string;
+}
+
+export interface LineEdit {
+  id: string;
+  editedAt: string;
+  editedByName: string;
+  reason: string | null;
+  changes: Array<{ label: string; from: string; to: string }>;
 }
 
 export interface ReconciliationLine {
@@ -60,6 +69,11 @@ export interface ReconciliationLine {
   /** 이어진 박스 무게 합계(kg). */
   linkedWeight: number;
   labeledWeight: number | null;
+  quantity: number | null;
+  unitPrice: number | null;
+  amount: number | null;
+  /** 이 줄을 고친 기록(최근 것부터). */
+  edits: LineEdit[];
   /** raw_text의 "(이력번호 k/N)"에서 k>1 — 표기중량은 첫 줄 합계에 포함된 것. */
   isSplitContinuation: boolean;
   boxes: ReconciliationLineBox[];
@@ -436,6 +450,14 @@ export function DocumentReconciliationView({
           )}
         </div>
 
+        {isPending && (
+          <p style={{ margin: 0, fontSize: "12px", color: "#64748b", lineHeight: 1.6 }}>
+            전표에 적힌 수량·무게·번호가 틀렸다면 아래 줄을 펼쳐 <strong>줄 내용 고치기</strong>를 누르세요. 고친 기록이 남고, 번호를 바꾸면 박스가 새 번호로 다시 이어집니다.
+            공급처·전표번호 같은 머리글이 틀렸거나 엉뚱한 파일을 올렸다면 <Link href="/dashboard/inbound/statements" style={{ color: "#1d4ed8", fontWeight: 600 }}>전표입력</Link>에서
+            이 전표를 &apos;취소 처리&apos;하고 다시 올리세요.
+          </p>
+        )}
+
         {note && (
           <div
             style={{
@@ -675,6 +697,7 @@ export function DocumentReconciliationView({
 
                 {expanded && (
                   <div style={{ padding: "0 12px 12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {isPending || line.edits.length > 0 ? <LineEditor line={line} products={products} canEdit={isPending} /> : null}
                     {isPending && line.labeledWeight !== null && !line.isSplitContinuation && (
                       <label style={{ fontSize: "12px", color: "#475569", display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
                         다 왔는지 세는 기준

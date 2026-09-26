@@ -974,6 +974,11 @@ export async function restoreInboundDocumentAction(
 
     if (error) throw error;
 
+    // 취소하면서 풀린 박스를 다시 이어 주고, 다 찼으면 마감한다(전표를 저장할 때와 같은 뒤처리).
+    await supabase.rpc("relink_pending_scans_to_documents");
+    await autoLinkRecentUnlinkedScans(supabase, wholesalerId);
+    await autoCloseDocuments(supabase, [documentId]);
+
     // 취소 때 건너뛴 조회 대상을 다시 대기 상태로 되돌린다.
     await supabase
       .from("inbound_document_lines")
@@ -1096,6 +1101,126 @@ export async function linkScanToDocumentLineAction(
         linked: Number(row.linked ?? 0),
         status: String(row.status ?? ""),
       },
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** 화면이 보내는 줄 수정 값 — 보낸 칸만 바꾼다. 빈 문자열·null은 그 칸을 비운다. */
+export interface DocumentLinePatch {
+  itemName?: string | null;
+  partName?: string | null;
+  grade?: string | null;
+  origin?: string | null;
+  traceNo?: string | null;
+  lotNo?: string | null;
+  quantity?: number | null;
+  labeledWeight?: number | null;
+  unitPrice?: number | null;
+  amount?: number | null;
+  productId?: string | null;
+}
+
+const LINE_PATCH_COLUMNS: Record<keyof DocumentLinePatch, string> = {
+  itemName: "item_name",
+  partName: "part_name",
+  grade: "grade",
+  origin: "origin",
+  traceNo: "trace_no",
+  lotNo: "lot_no",
+  quantity: "quantity",
+  labeledWeight: "labeled_weight",
+  unitPrice: "unit_price",
+  amount: "amount",
+  productId: "product_id",
+};
+
+const LINE_FIELD_LABELS: Record<string, string> = {
+  quantity: "수량",
+  labeled_weight: "중량",
+  unit_price: "단가",
+  amount: "금액",
+};
+
+/**
+ * 대조 중인 전표의 줄 내용을 고친다(마이그레이션 126). 누가·언제·무엇을 바꿨는지 수정 기록이 남는다.
+ * 번호를 바꾸면 옛 번호로 이어졌던 박스가 풀리므로, 새 번호로 다시 이어 주고 이력조회도 다시 한다. 재고는 건드리지 않는다.
+ * 자동 마감은 하지 않는다 — 여러 줄을 잇달아 고치는 중에 끼어들어 마감하지 않게(다 찼으면 카드가 마감하기를 안내한다).
+ */
+export async function updateDocumentLineAction(
+  lineId: string,
+  patch: DocumentLinePatch,
+  reason?: string | null
+): Promise<ActionResult<{ changed: boolean; changedFields: string[] }>> {
+  try {
+    const { supabase, wholesalerId } = await resolveDocumentScope();
+
+    const rpcPatch: Record<string, unknown> = {};
+
+    (Object.keys(patch) as Array<keyof DocumentLinePatch>).forEach((key) => {
+      const column = LINE_PATCH_COLUMNS[key];
+
+      if (!column) return;
+
+      const value = patch[key];
+
+      rpcPatch[column] = typeof value === "string" ? value.trim() || null : (value ?? null);
+    });
+
+    const { data, error } = await supabase.rpc("update_inbound_document_line", {
+      p_line_id: lineId,
+      p_patch: rpcPatch,
+      p_reason: reason?.trim() || null,
+    });
+
+    if (error) {
+      const invalidNumber = error.message.match(/INVALID_NUMBER:(\w+)/);
+
+      if (invalidNumber) {
+        const label = LINE_FIELD_LABELS[invalidNumber[1]] ?? invalidNumber[1];
+
+        throw new RbacError(
+          invalidNumber[1] === "quantity" || invalidNumber[1] === "labeled_weight"
+            ? `${label}은(는) 0보다 커야 합니다. 비우려면 칸을 지우세요.`
+            : `${label}은(는) 0 이상이어야 합니다.`
+        );
+      }
+      if (error.message.includes("DOCUMENT_NOT_PENDING")) {
+        throw new RbacError("마감된 전표는 바로 고칠 수 없습니다. 먼저 '다시 열기'를 눌러 주세요.");
+      }
+      if (error.message.includes("PRODUCT_NOT_FOUND")) {
+        throw new RbacError("선택한 상품을 찾을 수 없습니다.");
+      }
+      if (error.message.includes("DOCUMENT_LINE_NOT_FOUND")) {
+        throw new RbacError("해당 전표 줄을 찾을 수 없습니다.");
+      }
+      if (error.message.includes("FORBIDDEN")) {
+        throw new RbacError("이 전표를 고칠 권한이 없습니다.");
+      }
+      throw new Error(error.message);
+    }
+
+    const row = (data ?? {}) as Record<string, unknown>;
+    const changed = Boolean(row.changed);
+
+    if (changed && row.number_changed) {
+      const { data: lineDocument } = await supabase.from("inbound_document_lines").select("document_id").eq("id", lineId).maybeSingle();
+
+      // 새 번호로 박스를 다시 이어 주고, 새 번호를 이력조회로 미리 확인한다(전표를 저장할 때와 같은 뒤처리).
+      await supabase.rpc("relink_pending_scans_to_documents");
+      await autoLinkRecentUnlinkedScans(supabase, wholesalerId);
+
+      if (lineDocument?.document_id) {
+        await processDocumentPrelookupChunkAction(String(lineDocument.document_id));
+      }
+    }
+
+    revalidatePath(REVALIDATE_PATH, "layout");
+
+    return {
+      success: true,
+      data: { changed, changedFields: Array.isArray(row.changed_fields) ? (row.changed_fields as string[]) : [] },
     };
   } catch (error) {
     return toResult(error);

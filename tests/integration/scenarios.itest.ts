@@ -8,8 +8,10 @@ import { actAs, adminClient, getActorClient, seedWorld, type World, type WorldPr
 import { recordScanAction, voidScanAction, type ScanResult } from "@/app/dashboard/inbound/actions";
 import {
   closeInboundDocumentAction,
+  discardInboundDocumentAction,
   extractDocumentTableAction,
   reopenInboundDocumentAction,
+  restoreInboundDocumentAction,
   saveInboundDocumentAction,
   setDocumentLineCountModeAction,
   setDocumentsScanFinishedAction,
@@ -684,5 +686,65 @@ describe("SC-나중에 — 박스를 먼저 찍고 전표를 나중에 올려도
 
     expect(await linkedScanIdsOf(documentId)).not.toContain(box.scanId);
     expect(await docStatus(documentId)).toBe("PENDING");
+  });
+});
+
+describe("SC-정정 — 전표 내용이 틀려 취소 처리하고 다시 올려도 박스가 새 전표에 이어진다", () => {
+  async function saveDoc(lines: Array<Record<string, unknown>>, documentNo?: string): Promise<string> {
+    const form = new FormData();
+
+    form.append("payload", JSON.stringify({ supplierName: `정정전표-${world.runId}`, documentNo: documentNo ?? null, lines: lines.map((line, index) => ({ lineNo: index + 1, ...line })) }));
+
+    const saved = await saveInboundDocumentAction(form);
+
+    expect(saved.success).toBe(true);
+
+    return (saved.data as { documentId: string }).documentId;
+  }
+
+  async function linkedScanIdsOfDoc(documentId: string): Promise<string[]> {
+    const { data: lines } = await adminClient().from("inbound_document_lines").select("id").eq("document_id", documentId);
+    const { data: links } = await adminClient()
+      .from("inbound_document_line_scans")
+      .select("scan_id")
+      .in("line_id", ((lines ?? []) as Array<{ id: string }>).map((line) => line.id));
+
+    return ((links ?? []) as Array<{ scan_id: string }>).map((link) => link.scan_id);
+  }
+
+  it("잘못 올린 전표를 취소 처리하면 박스가 풀리고, 다시 올린 전표에 저절로 이어져 마감된다", async () => {
+    const traceNo = world.newTraceNo();
+    const first = await saveDoc([{ itemName: "한우 등심", traceNo, partName: "등심", quantity: 5 }], `정정-${world.runId}`);
+    const box = await scanPart(traceNo, "등심", 5);
+
+    expect(await linkedScanIdsOfDoc(first)).toEqual([box.scanId]);
+    expect(await docStatus(first)).toBe("PENDING");
+
+    // 수량을 5로 잘못 적었다 — 줄은 못 고치니 취소 처리 후 다시 올린다.
+    const discarded = await discardInboundDocumentAction(first);
+
+    expect(discarded.success).toBe(true);
+    expect(await linkedScanIdsOfDoc(first)).toEqual([]);
+
+    const second = await saveDoc([{ itemName: "한우 등심", traceNo, partName: "등심", quantity: 1 }], `정정-${world.runId}`);
+
+    expect(await linkedScanIdsOfDoc(second)).toEqual([box.scanId]);
+    expect(await docStatus(second)).toBe("CLOSED");
+  });
+
+  it("취소 처리했던 전표를 되살리면 박스가 다시 이어진다", async () => {
+    const traceNo = world.newTraceNo();
+    const documentId = await saveDoc([{ itemName: "한우 안심", traceNo, partName: "안심", quantity: 1 }]);
+    const box = await scanPart(traceNo, "안심", 4);
+
+    expect(await docStatus(documentId)).toBe("CLOSED");
+
+    await discardInboundDocumentAction(documentId);
+    expect(await linkedScanIdsOfDoc(documentId)).toEqual([]);
+
+    const restored = await restoreInboundDocumentAction(documentId);
+
+    expect(restored.success).toBe(true);
+    expect(await linkedScanIdsOfDoc(documentId)).toEqual([box.scanId]);
   });
 });
