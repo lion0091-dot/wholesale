@@ -11,10 +11,11 @@ import {
   MtraceNotConfiguredError,
 } from "@/lib/livestock/mtrace-client";
 import { cacheTraceRecord } from "@/lib/livestock/master-cache";
+import { autoCloseDocuments } from "@/lib/livestock/auto-close";
 import { documentStorageName } from "@/lib/livestock/document-storage-name";
 
 /**
- * 공급처 원본 명세서 저장 (29단계 A).
+ * 공급처 원본 전표 저장 (29단계 A).
  *
  * 읽기·확인은 전부 브라우저에서 끝내고, 여기서는 사람이 확인한 결과만 받는다.
  * 파싱을 서버에서 하지 않는 이유는 틀리게 읽은 값이 그대로 저장되면 안 되기
@@ -85,7 +86,7 @@ export interface SavedDocument {
    */
   pendingPrelookupCount: number;
   /**
-   * 이 명세서로 거슬러 상품이 확정된, 이미 찍혀 있던 박스 수. 박스가 먼저 오고 명세서가 뒤에
+   * 이 전표로 거슬러 상품이 확정된, 이미 찍혀 있던 박스 수. 박스가 먼저 오고 전표가 뒤에
    * 올라온 경우다 — 순서를 가정하지 않는다는 원칙(마이그레이션 117).
    */
   relinkedScanCount: number;
@@ -198,7 +199,7 @@ async function ensureTraceCached(
  * 한 줄의 이력번호·묶음번호를 함께 판정한다.
  *
  * 두 칸 서식(묶음번호 열 + 개체번호 열)이면 둘 다 조회하고, 로트 조회 결과의 구성원 목록에 그 개체가
- * 있는지까지 대조한다 — 가공장이 로트 구성내역을 잘못 적거나 명세서의 두 칸이 어긋난 경우를 잡는다.
+ * 있는지까지 대조한다 — 가공장이 로트 구성내역을 잘못 적거나 전표의 두 칸이 어긋난 경우를 잡는다.
  * 한 칸만 있으면 예전과 같다.
  */
 async function checkDocumentLineNumbers(
@@ -353,7 +354,7 @@ async function loadPrelookupProgress(
 }
 
 /**
- * 대기 중인 명세서 줄을 시간 예산만큼 순차로(Promise.all 아님) 조회한다.
+ * 대기 중인 전표 줄을 시간 예산만큼 순차로(Promise.all 아님) 조회한다.
  * 브라우저가 finished가 될 때까지 반복 호출한다 — 엑셀 대량 입고의
  * processImportChunkAction과 같은 패턴(app/dashboard/inbound/actions.ts).
  *
@@ -374,7 +375,7 @@ export async function processDocumentPrelookupChunkAction(
       .maybeSingle();
 
     if (!doc || (doc.wholesaler_id as string) !== wholesalerId) {
-      throw new RbacError("명세서를 찾을 수 없습니다.");
+      throw new RbacError("전표를 찾을 수 없습니다.");
     }
 
     const { data: pendingLines } = await supabase
@@ -452,7 +453,7 @@ export async function retryDocumentPrelookupAction(
       .maybeSingle();
 
     if (!doc || (doc.wholesaler_id as string) !== wholesalerId) {
-      throw new RbacError("명세서를 찾을 수 없습니다.");
+      throw new RbacError("전표를 찾을 수 없습니다.");
     }
 
     const { data, error } = await supabase
@@ -535,7 +536,7 @@ async function resolveDocumentScope() {
   }
 
   if (!wholesalerId) {
-    throw new RbacError("공급사 업체 정보가 없어 명세서를 저장할 수 없습니다.");
+    throw new RbacError("공급사 업체 정보가 없어 전표를 저장할 수 없습니다.");
   }
 
   // 관리 행위(완전 삭제)를 할 수 있는 사람인가 — DB의 can_manage_wholesaler()와 같은 기준.
@@ -618,12 +619,33 @@ export async function saveInboundDocumentAction(
       }
     }
 
+    // 같은 공급처의 같은 전표 번호는 두 번 올릴 수 없다 — 줄이 두 배로 잡혀 재고·대조가 꼬인다.
+    // 취소 처리한 전표는 다시 올릴 수 있다. 번호를 안 적은 전표는 겹침을 알 수 없어 막지 않는다.
+    const documentNo = input.documentNo?.trim() || null;
+
+    if (documentNo) {
+      const { data: duplicates } = await supabase
+        .from("inbound_documents")
+        .select("id")
+        .eq("wholesaler_id", wholesalerId)
+        .eq("supplier_name", supplierName)
+        .eq("document_no", documentNo)
+        .neq("status", "DISCARDED")
+        .limit(1);
+
+      if ((duplicates ?? []).length > 0) {
+        throw new RbacError(
+          `${supplierName}의 전표 ${documentNo}번은 이미 올라와 있습니다. 아래 "올린 전표" 목록에서 그 전표를 확인하세요. 잘못 올린 것이면 그 전표를 '취소 처리'한 뒤 다시 올릴 수 있습니다.`
+        );
+      }
+    }
+
     const { data: created, error: insertError } = await supabase
       .from("inbound_documents")
       .insert({
         wholesaler_id: wholesalerId,
         supplier_name: supplierName,
-        document_no: input.documentNo?.trim() || null,
+        document_no: documentNo,
         issued_on: input.issuedOn || null,
         total_amount: input.totalAmount ?? null,
         note: input.note?.trim() || null,
@@ -747,7 +769,7 @@ export async function saveInboundDocumentAction(
     // processDocumentPrelookupChunkAction을 finished될 때까지 반복 호출해서 나눠 처리한다.
     const pendingPrelookupCount = lineRows.filter((line) => line.prelookup_status === "PENDING").length;
 
-    // 박스가 먼저 찍혀 "상품 확인 필요"로 남아 있던 것 중 이 명세서로 상품이 하나로 정해지는 건 지금 확정한다.
+    // 박스가 먼저 찍혀 "상품 확인 필요"로 남아 있던 것 중 이 전표로 상품이 하나로 정해지는 건 지금 확정한다.
     // 판정·확정 로직은 스캔 시점/수동 지정과 같은 DB 함수라 결과가 순서에 안 갈린다. 실패해도 저장은 살린다.
     let relinkedScanCount = 0;
 
@@ -760,6 +782,9 @@ export async function saveInboundDocumentAction(
         relinkedScanCount = Array.isArray(relinked) ? relinked.length : 0;
       }
     }
+
+    // 박스를 먼저 찍어 둔 경우, 전표를 저장하는 순간 모든 줄이 이미 채워졌을 수 있다.
+    if (lineRows.length > 0) await autoCloseDocuments(supabase, [documentId]);
 
     revalidatePath(REVALIDATE_PATH, "layout");
 
@@ -783,7 +808,7 @@ export interface ExtractedTable {
  * PDF에서 표를 복원해 돌려준다.
  *
  * 브라우저에 PDF 파서를 싣지 않으려고 서버에서만 돌린다 — 현장 화면을 무겁게
- * 만들지 않는다. 파일이 한 번 더 올라가지만 명세서 PDF는 보통 작아서 괜찮다.
+ * 만들지 않는다. 파일이 한 번 더 올라가지만 전표 PDF는 보통 작아서 괜찮다.
  */
 export async function extractDocumentTableAction(
   formData: FormData
@@ -882,7 +907,7 @@ export async function loadSupplierFormatAction(
 /**
  * 잘못 올린 서류를 목록에서 치운다 — **지우지 않고 감춘다.**
  *
- * 공급처 명세서는 매입 증빙이고, 축산물이력법상 매입에 관한 기록은 매입한 날부터
+ * 공급처 전표는 매입 증빙이고, 축산물이력법상 매입에 관한 기록은 매입한 날부터
  * 1년간 보관해야 한다(매출은 2년). 그래서 기본 동작은 삭제가 아니라 취소 처리다.
  * 기록이 있는 상품을 삭제 대신 '보관'으로 감추게 한 12단계와 같은 판단이다.
  */
@@ -931,7 +956,7 @@ export async function restoreInboundDocumentAction(
       .maybeSingle();
 
     if (!existing) {
-      throw new RbacError("해당 명세서를 찾을 수 없습니다.");
+      throw new RbacError("해당 전표를 찾을 수 없습니다.");
     }
 
     const counts = existing.inbound_document_lines as Array<{ count: number }> | null;
@@ -975,7 +1000,7 @@ export async function deleteInboundDocumentAction(
 
     // 매입 증빙(1년 보관 의무)이라 완전 삭제는 관리자만. DB DELETE 정책도 같은 기준(20260930000098).
     if (!canManage) {
-      throw new RbacError("명세서 완전 삭제는 관리자(owner/manager)만 할 수 있습니다. 취소 처리는 가능합니다.");
+      throw new RbacError("전표 완전 삭제는 관리자(owner/manager)만 할 수 있습니다. 취소 처리는 가능합니다.");
     }
 
     const { data: existing } = await supabase
@@ -986,7 +1011,7 @@ export async function deleteInboundDocumentAction(
       .maybeSingle();
 
     if (!existing) {
-      throw new RbacError("해당 명세서를 찾을 수 없습니다.");
+      throw new RbacError("해당 전표를 찾을 수 없습니다.");
     }
 
     if (String(existing.status) !== "DISCARDED") {
@@ -1038,7 +1063,7 @@ export async function linkScanToDocumentLineAction(
 
     if (error) {
       if (error.message.includes("DOCUMENT_NOT_PENDING")) {
-        throw new RbacError("마감된 명세서에는 붙일 수 없습니다. 먼저 다시 열어주세요.");
+        throw new RbacError("마감된 전표에는 붙일 수 없습니다. 먼저 다시 열어주세요.");
       }
       if (error.message.includes("SCAN_VOIDED")) {
         throw new RbacError("취소된 박스는 연결할 수 없습니다.");
@@ -1047,10 +1072,10 @@ export async function linkScanToDocumentLineAction(
         throw new RbacError("해당 박스를 찾을 수 없습니다.");
       }
       if (error.message.includes("DOCUMENT_LINE_NOT_FOUND")) {
-        throw new RbacError("해당 명세서 줄을 찾을 수 없습니다.");
+        throw new RbacError("해당 전표 줄을 찾을 수 없습니다.");
       }
       if (error.message.includes("FORBIDDEN")) {
-        throw new RbacError("이 명세서에 접근할 권한이 없습니다.");
+        throw new RbacError("이 전표에 접근할 권한이 없습니다.");
       }
       throw new Error(error.message);
     }
@@ -1081,10 +1106,10 @@ export async function unlinkScanFromDocumentLineAction(scanId: string): Promise<
 
     if (error) {
       if (error.message.includes("DOCUMENT_NOT_PENDING")) {
-        throw new RbacError("마감된 명세서에서는 뗄 수 없습니다. 먼저 다시 열어주세요.");
+        throw new RbacError("마감된 전표에서는 뗄 수 없습니다. 먼저 다시 열어주세요.");
       }
       if (error.message.includes("FORBIDDEN")) {
-        throw new RbacError("이 명세서에 접근할 권한이 없습니다.");
+        throw new RbacError("이 전표에 접근할 권한이 없습니다.");
       }
       throw new Error(error.message);
     }
@@ -1117,10 +1142,10 @@ export async function closeInboundDocumentAction(
         throw new RbacError(`미입고 ${closeNoteRequired[1]}줄이 있어 사유를 입력해야 마감할 수 있습니다.`);
       }
       if (error.message.includes("DOCUMENT_NOT_PENDING")) {
-        throw new RbacError("이미 마감됐거나 취소된 명세서입니다.");
+        throw new RbacError("이미 마감됐거나 취소된 전표입니다.");
       }
       if (error.message.includes("DOCUMENT_NOT_FOUND")) {
-        throw new RbacError("해당 명세서를 찾을 수 없습니다.");
+        throw new RbacError("해당 전표를 찾을 수 없습니다.");
       }
       throw new Error(error.message);
     }
@@ -1154,7 +1179,7 @@ export async function setDocumentsScanFinishedAction(
 
     if (error) {
       if (error.message.includes("DOCUMENT_NOT_FOUND")) {
-        throw new RbacError("해당 명세서를 찾을 수 없습니다.");
+        throw new RbacError("해당 전표를 찾을 수 없습니다.");
       }
       throw new Error(error.message);
     }
@@ -1176,10 +1201,10 @@ export async function reopenInboundDocumentAction(documentId: string): Promise<A
 
     if (error) {
       if (error.message.includes("DOCUMENT_NOT_CLOSED")) {
-        throw new RbacError("마감된 명세서만 다시 열 수 있습니다.");
+        throw new RbacError("마감된 전표만 다시 열 수 있습니다.");
       }
       if (error.message.includes("DOCUMENT_NOT_FOUND")) {
-        throw new RbacError("해당 명세서를 찾을 수 없습니다.");
+        throw new RbacError("해당 전표를 찾을 수 없습니다.");
       }
       throw new Error(error.message);
     }

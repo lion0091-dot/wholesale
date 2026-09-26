@@ -24,3 +24,15 @@ describe("종 배지 합계", () => {
     expect(keys).toEqual(Object.keys(counts()).sort());
   });
 });
+
+describe("폰 화면의 종 배지", () => {
+  it("폰에서는 사무실 전용 항목(대조 중인 전표)을 목록과 합계에서 뺀다", async () => {
+    const { visibleTodoItems } = await import("./todo-counts");
+    const all = counts({ newOrders: 1, openDocuments: 4 });
+
+    expect(visibleTodoItems(true).map((item) => item.key)).not.toContain("openDocuments");
+    expect(visibleTodoItems(false).map((item) => item.key)).toContain("openDocuments");
+    expect(totalTodo(all, true)).toBe(1);
+    expect(totalTodo(all, false)).toBe(5);
+  });
+});

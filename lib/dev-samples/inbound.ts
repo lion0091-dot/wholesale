@@ -19,7 +19,7 @@ export interface InboundSampleKind {
   note: string;
   /**
    * 체크리스트(ScanRequirementList)까지 같이 보여주고 싶을 때만 채운다 —
-   * 실제 화면은 이력조회·명세서를 서버에서 붙여 이 값을 만들지만(29단계 B),
+   * 실제 화면은 이력조회·전표를 서버에서 붙여 이 값을 만들지만(29단계 B),
    * 샘플은 서버를 안 타므로 같은 함수(buildScanRequirementReport)에 가짜
    * 사실관계를 직접 넣어 똑같은 결과물을 미리 만든다.
    */
@@ -60,12 +60,12 @@ export const INBOUND_SAMPLE_KINDS = {
     note: "고객 주문 때문에 공급자가 특별히 만들어 온 묶음 — \"주문에 바로 배정\" 기능의 대상입니다.",
   },
   GRADE_ORIGIN_MISMATCH: {
-    label: "⑤ 원산지·등급 불일치 (이력조회 vs 명세서)",
+    label: "⑤ 원산지·등급 불일치 (이력조회 vs 전표)",
     traceNo: "002199912345",
     weight: 6.4,
     status: "NORMAL",
     productName: "소고기 척아이 1+",
-    note: "이력조회 결과와 올라온 명세서의 등급·원산지가 서로 다른 경우 — 체크리스트에 충돌 경고가 뜹니다.",
+    note: "이력조회 결과와 올라온 전표의 등급·원산지가 서로 다른 경우 — 체크리스트에 충돌 경고가 뜹니다.",
     requirementFacts: {
       traceNo: "002199912345",
       productId: "sample-product",

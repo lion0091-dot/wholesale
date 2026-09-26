@@ -1,7 +1,7 @@
 /**
  * 3. 입고 — 서버 액션 한 겹(권한·입력 검증·정부 API 흐름·상품 자동 결정·중복 스캔·취소·상품 지정) + 실제 DB.
  * DB 함수 레벨은 scripts/db-test-inbound.sql 이 이미 한다. 정부 API(fetchTraceRecord)만 흉내 낸다.
- * 엑셀 대량 입고·명세서 업로드/사전조회(document-actions)는 이 파일 범위 밖.
+ * 엑셀 대량 입고·전표 업로드/사전조회(document-actions)는 이 파일 범위 밖.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { actAs, adminClient, getActorClient, seedWorld, type World, type WorldProduct } from "./harness";
@@ -290,7 +290,7 @@ describe("recordScanAction — 중복 스캔", () => {
 });
 
 describe("recordScanAction — 상품 자동 결정", () => {
-  it("명세서에 올려둔 이력번호는 상품을 고르지 않아도 그 줄의 상품으로 확정된다", async () => {
+  it("전표에 올려둔 이력번호는 상품을 고르지 않아도 그 줄의 상품으로 확정된다", async () => {
     const product = await newProduct();
     const traceNo = world.newTraceNo();
 
@@ -302,7 +302,7 @@ describe("recordScanAction — 상품 자동 결정", () => {
     expect(await stockOf(product.id)).toBe(7);
   });
 
-  it("두 칸 서식(묶음번호+개체번호) 명세서는 박스 바코드가 묶음번호로 찍혀도 그 줄의 상품으로 확정된다", async () => {
+  it("두 칸 서식(묶음번호+개체번호) 전표는 박스 바코드가 묶음번호로 찍혀도 그 줄의 상품으로 확정된다", async () => {
     const product = await newProduct();
     const memberTraceNo = world.newTraceNo();
     const lotNo = `L${String(Date.now()).padStart(14, "0").slice(-14)}`;
@@ -314,7 +314,7 @@ describe("recordScanAction — 상품 자동 결정", () => {
     expect(data).toMatchObject({ status: "NORMAL", productId: product.id });
   });
 
-  it("명세서는 묶음번호, 박스는 그 안의 개체번호 — 로트 구성원 목록으로 이어 그 줄의 상품으로 확정된다", async () => {
+  it("전표는 묶음번호, 박스는 그 안의 개체번호 — 로트 구성원 목록으로 이어 그 줄의 상품으로 확정된다", async () => {
     const product = await newProduct();
     const member = world.newTraceNo();
     const other = world.newTraceNo();
@@ -351,7 +351,7 @@ describe("recordScanAction — 상품 자동 결정", () => {
     expect(data.productId).toBeNull();
   });
 
-  it("반대 방향 — 명세서는 개체번호, 박스는 그 개체가 든 묶음번호로 찍혀도 이어진다", async () => {
+  it("반대 방향 — 전표는 개체번호, 박스는 그 개체가 든 묶음번호로 찍혀도 이어진다", async () => {
     const product = await newProduct();
     const member = world.newTraceNo();
     const lotNo = `L${String(Date.now() + 4).padStart(14, "0").slice(-14)}`;
@@ -451,7 +451,7 @@ describe("recordScanAction — 상품 자동 결정", () => {
     expect(data.productId).toBeNull();
   });
 
-  it("취소된 명세서의 줄은 무시한다", async () => {
+  it("취소된 전표의 줄은 무시한다", async () => {
     const product = await newProduct();
     const traceNo = world.newTraceNo();
 
@@ -545,7 +545,7 @@ describe("recordScanAction — 상품 자동 결정", () => {
     expect(await stockOf(product.id)).toBe(9);
   });
 
-  it("바코드 상품코드 학습과 명세서가 다른 상품을 가리키면 바코드를 따르되 충돌을 알린다", async () => {
+  it("바코드 상품코드 학습과 전표가 다른 상품을 가리키면 바코드를 따르되 충돌을 알린다", async () => {
     const learned = await newProduct();
     const documented = await newProduct();
     const gtin = "08801234500024";
@@ -589,8 +589,8 @@ describe("recordScanAction — 상품 자동 결정", () => {
   });
 });
 
-describe("relink_pending_scans_to_documents — 스캔 먼저, 명세서 나중", () => {
-  it("상품 미확정으로 남아 있던 박스가 명세서 줄의 상품으로 거슬러 확정되고 재고에 들어간다", async () => {
+describe("relink_pending_scans_to_documents — 스캔 먼저, 전표 나중", () => {
+  it("상품 미확정으로 남아 있던 박스가 전표 줄의 상품으로 거슬러 확정되고 재고에 들어간다", async () => {
     const product = await newProduct();
     const traceNo = world.newTraceNo();
 
@@ -600,7 +600,7 @@ describe("relink_pending_scans_to_documents — 스캔 먼저, 명세서 나중"
     expect(pending.status).toBe("PENDING_MAPPING");
     expect(await stockOf(product.id)).toBe(0);
 
-    // 명세서가 뒤에 올라온다 — 저장 액션이 끝에서 부르는 것과 같은 함수를 직접 부른다.
+    // 전표가 뒤에 올라온다 — 저장 액션이 끝에서 부르는 것과 같은 함수를 직접 부른다.
     await world.createDocumentLine({ traceNo, product });
     const { data: linked, error } = await getActorClient().rpc("relink_pending_scans_to_documents");
 
@@ -610,7 +610,7 @@ describe("relink_pending_scans_to_documents — 스캔 먼저, 명세서 나중"
     expect(await stockOf(product.id)).toBe(6);
   });
 
-  it("이력 조회 실패(EXCEPTION)로 남은 박스도 명세서가 상품을 지목하면 확정된다", async () => {
+  it("이력 조회 실패(EXCEPTION)로 남은 박스도 전표가 상품을 지목하면 확정된다", async () => {
     const product = await newProduct();
     const traceNo = world.newTraceNo();
 
@@ -644,7 +644,7 @@ describe("relink_pending_scans_to_documents — 스캔 먼저, 명세서 나중"
   });
 });
 
-describe("명세서 줄 ↔ 박스 연결 (118, 대조용 — 재고와 무관)", () => {
+describe("전표 줄 ↔ 박스 연결 (118, 대조용 — 재고와 무관)", () => {
   const admin = adminClient();
 
   async function linkOf(scanId: string) {
@@ -672,7 +672,7 @@ describe("명세서 줄 ↔ 박스 연결 (118, 대조용 — 재고와 무관)"
     expect(await statusOf(lineId)).toMatchObject({ expected: 1, linked: 1, status: "COMPLETE" });
   });
 
-  it("샘플 시나리오 7~9단계 — 등심1·채끝1·안심2 명세서: 카드가 남은 박스를 세며 스캔 → 전부 도착 → 마감으로 넘어간다", async () => {
+  it("샘플 시나리오 7~9단계 — 등심1·채끝1·안심2 전표: 카드가 남은 박스를 세며 스캔 → 전부 도착 → 마감으로 넘어간다", async () => {
     const actor = getActorClient();
     const loin = await newProduct();
     const tender = await newProduct();
@@ -739,9 +739,10 @@ describe("명세서 줄 ↔ 박스 연결 (118, 대조용 — 재고와 무관)"
 
     expect(done.key).toBe("close");
 
+    // 마지막 박스가 도착하는 순간 전표는 저절로 마감된다(자동 마감) — 사람이 다시 마감하려 하면 이미 끝난 것이다.
     const closed = await closeInboundDocumentAction(first.documentId, null);
 
-    expect(closed).toEqual({ success: true, data: { incompleteLines: 0 } });
+    expect(closed).toEqual({ success: false, error: "이미 마감됐거나 취소된 전표입니다." });
   });
 
   it("같은 개체 3박스 — 수량 3이면 세 번째까지 중복 확인 없이 들어가고, 네 번째는 묻는다", async () => {
@@ -751,7 +752,7 @@ describe("명세서 줄 ↔ 박스 연결 (118, 대조용 — 재고와 무관)"
     await world.seedTrace(traceNo);
     const { lineId } = await world.createDocumentLine({ traceNo, product, quantity: 3 });
 
-    // 같은 번호·같은 중량을 연달아 — 명세서가 없었다면 두 번째부터 중복 의심 창이 떴다.
+    // 같은 번호·같은 중량을 연달아 — 전표가 없었다면 두 번째부터 중복 의심 창이 떴다.
     for (let index = 0; index < 3; index += 1) {
       const result = await recordScanAction({ traceNo, weight: 8, scanType: "BARCODE_SCAN" });
 
@@ -850,7 +851,7 @@ describe("명세서 줄 ↔ 박스 연결 (118, 대조용 — 재고와 무관)"
     expect(reopened.error).toBeNull();
   });
 
-  it("명세서를 나중에 올려도(거슬러 확정) 이미 찍힌 박스가 줄에 붙는다", async () => {
+  it("전표를 나중에 올려도(거슬러 확정) 이미 찍힌 박스가 줄에 붙는다", async () => {
     const product = await newProduct();
     const traceNo = world.newTraceNo();
 
@@ -977,7 +978,7 @@ describe("resolveMappingAction", () => {
   });
 });
 
-describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산지)와 명세서 기반 등급 채움", () => {
+describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산지)와 전표 기반 등급 채움", () => {
   async function productOf(productId: string) {
     const { data } = await adminClient().from("products").select("name, category, subcategory, grade, origin").eq("id", productId).single();
 
@@ -1009,7 +1010,7 @@ describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산
     expect((await productOf(second.productId!)).origin).toBe("미국산");
   });
 
-  it("이력에 등급이 없으면 명세서 줄의 등급·부위로 채운다(기반은 명세서)", async () => {
+  it("이력에 등급이 없으면 전표 줄의 등급·부위로 채운다(기반은 전표)", async () => {
     const traceNo = world.newTraceNo();
 
     await world.seedTrace(traceNo, { part: null, grade: null });
@@ -1020,7 +1021,7 @@ describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산
     expect(await productOf(data.productId!)).toMatchObject({ name: "양지 1", subcategory: "양지", grade: "1" });
   });
 
-  it("이력이 등급을 주면 명세서 등급과 달라도 이력이 우선이다(조회는 사실, 명세서는 빈칸만 메운다)", async () => {
+  it("이력이 등급을 주면 전표 등급과 달라도 이력이 우선이다(조회는 사실, 전표는 빈칸만 메운다)", async () => {
     const traceNo = world.newTraceNo();
 
     await world.seedTrace(traceNo, { part: null, grade: "1++" });
@@ -1030,7 +1031,7 @@ describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산
     expect(await productOf(data.productId!)).toMatchObject({ name: "목심 1++", grade: "1++" });
   });
 
-  it("명세서 줄이 여러 등급을 말하면(하나로 좁혀지지 않으면) 등급을 비워두고 '(부위 미지정)' 규칙은 그대로다", async () => {
+  it("전표 줄이 여러 등급을 말하면(하나로 좁혀지지 않으면) 등급을 비워두고 '(부위 미지정)' 규칙은 그대로다", async () => {
     const traceNo = world.newTraceNo();
 
     await world.seedTrace(traceNo, { part: null, grade: null });
@@ -1042,7 +1043,7 @@ describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산
   });
 });
 
-describe("소 외 축종 자동 생성 — 정체성 키 = 이력번호 출처(파싱) + 명세서 부위", () => {
+describe("소 외 축종 자동 생성 — 정체성 키 = 이력번호 출처(파싱) + 전표 부위", () => {
   async function productOf(productId: string) {
     const { data } = await adminClient().from("products").select("name, category, subcategory, trace_key").eq("id", productId).single();
 
@@ -1061,7 +1062,7 @@ describe("소 외 축종 자동 생성 — 정체성 키 = 이력번호 출처(�
     return scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN" }));
   }
 
-  it("돼지: 같은 농장(앞 7자리) + 같은 명세서 부위면 같은 상품 — 일련번호가 달라도 새로 만들지 않는다", async () => {
+  it("돼지: 같은 농장(앞 7자리) + 같은 전표 부위면 같은 상품 — 일련번호가 달라도 새로 만들지 않는다", async () => {
     const first = await scanPork(pork("1400771"), "삼겹살");
     const second = await scanPork(pork("1400771"), "삼겹살");
 
@@ -1084,7 +1085,7 @@ describe("소 외 축종 자동 생성 — 정체성 키 = 이력번호 출처(�
     expect((await productOf(otherFarm.productId!)).trace_key).toBe("돼지:400773");
   });
 
-  it("명세서에 부위가 없으면 '(부위 미지정)' 상품이 출처별로 하나씩 만들어지고 재사용된다", async () => {
+  it("전표에 부위가 없으면 '(부위 미지정)' 상품이 출처별로 하나씩 만들어지고 재사용된다", async () => {
     const first = await scanPork(pork("1400774"), null);
     const second = await scanPork(pork("1400774"), null);
 

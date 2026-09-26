@@ -18,7 +18,7 @@ export const metadata = {
   title: "입고 스캔 | 도매업체 통합관리시스템",
 };
 
-/** 현장이 쓰는 입고 화면 — 명세서 올리기·대조·마감은 전표입력(/dashboard/inbound/statements). */
+/** 현장이 쓰는 입고 화면 — 전표 올리기·대조·마감은 전표입력(/dashboard/inbound/statements). */
 export default async function InboundPage() {
   const scope = await getSupplierScope();
 
@@ -36,8 +36,7 @@ export default async function InboundPage() {
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>입고 스캔</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>
-          바코드를 찍고 저울에 찍힌 <strong>실중량</strong>을 입력하면, 이력번호를 공공 이력제와
-          대조해 재고에 반영하고 표기중량과의 차이·매입금액까지 함께 기록합니다.
+          바코드를 찍고 저울에 잰 <strong>실중량</strong>을 넣으면 재고에 들어갑니다.
         </p>
       </header>
 

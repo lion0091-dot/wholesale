@@ -17,7 +17,7 @@ import {
 import type { ScanProductOption } from "../../inbound-scan-view";
 
 export const metadata = {
-  title: "명세서 대조 | 도매업체 통합관리시스템",
+  title: "전표 대조 | 도매업체 통합관리시스템",
 };
 
 interface PageProps {
@@ -150,7 +150,7 @@ export default async function DocumentReconciliationPage({ params, searchParams 
   const unlinkedScans = scansInRange.filter((row) => !alreadyLinkedScanIds.has(String(row.id)));
 
   // 번호 후보 — 찍힌 번호마다 해당 줄(같은 번호·두 칸·로트↔개체)을 한 번에 조회(마이그레이션 116).
-  // 함수가 이 업체 전체 명세서를 대상으로 돌려주므로, (trace_no, lot_no) 짝이 이 문서 줄의 것과
+  // 함수가 이 업체 전체 전표를 대상으로 돌려주므로, (trace_no, lot_no) 짝이 이 문서 줄의 것과
   // 같은 것만 골라 좁힌다 — line_id를 직접 안 돌려주기 때문(내부 전용 document_lines_matching_trace는
   // authenticated 권한이 없어 여기서 못 부른다).
   const scannedTraceNos = [...new Set(unlinkedScans.map((row) => String(row.trace_no)))];

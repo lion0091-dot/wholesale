@@ -9,15 +9,21 @@ export type TodoCounts = Record<TodoKey, number>;
  * 처리하면 숫자가 저절로 줄고 읽음 관리가 없다.
  * 링크는 PC·폰 공용 화면 하나로 통일했다(폰 전용 /dashboard/quick/* 로 갈라지지 않게).
  */
-export const TODO_ITEMS: Array<{ key: TodoKey; label: string; href: string }> = [
+export const TODO_ITEMS: Array<{ key: TodoKey; label: string; href: string; officeOnly?: boolean }> = [
   { key: "newOrders", label: "새 발주 (접수 대기)", href: "/dashboard/orders" },
   { key: "cancelRequests", label: "취소 요청", href: "/dashboard/orders" },
   { key: "needsCheckBoxes", label: "확인 필요 박스", href: "/dashboard/inbound" },
-  { key: "openDocuments", label: "대조 중인 명세서", href: "/dashboard/inbound/statements" },
+  // 전표 대조는 사무실 PC 일이다 — 폰(현장)에는 전표입력 화면으로 가는 길이 없으므로 폰에서는 목록·합계에서 뺀다.
+  { key: "openDocuments", label: "대조 중인 전표", href: "/dashboard/inbound/statements", officeOnly: true },
 ];
 
-export function totalTodo(counts: TodoCounts): number {
-  return TODO_ITEMS.reduce((sum, item) => sum + counts[item.key], 0);
+/** 이 화면에서 보여줄 항목 — 폰이면 사무실 전용 항목을 뺀다. */
+export function visibleTodoItems(isMobile: boolean) {
+  return TODO_ITEMS.filter((item) => !(isMobile && item.officeOnly));
+}
+
+export function totalTodo(counts: TodoCounts, isMobile = false): number {
+  return visibleTodoItems(isMobile).reduce((sum, item) => sum + counts[item.key], 0);
 }
 
 /**

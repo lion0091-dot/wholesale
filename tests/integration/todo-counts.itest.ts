@@ -25,7 +25,7 @@ async function readCounts(): Promise<TodoCounts | null> {
 }
 
 describe("종 배지 집계", () => {
-  it("발주·취소요청·확인 필요 박스·대조 중 명세서를 상태별로 센다", async () => {
+  it("발주·취소요청·확인 필요 박스·대조 중 전표를 상태별로 센다", async () => {
     await actAs(world.users.ownerA);
     const before = await readCounts();
 

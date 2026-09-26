@@ -4,7 +4,7 @@ import { buildStatementTemplate } from "@/lib/livestock/statement-template";
 
 export const runtime = "nodejs";
 
-/** 공급처 명세서 입력 양식(.xlsx) 내려받기 — 로그인한 공급사 계정만. */
+/** 공급처 전표 입력 양식(.xlsx) 내려받기 — 로그인한 공급사 계정만. */
 export async function GET() {
   const scope = await getSupplierScope();
 
@@ -14,7 +14,7 @@ export async function GET() {
 
   const file = await buildStatementTemplate();
   // 한글 파일명은 헤더에 그대로 못 쓴다 — ASCII 대체 이름과 RFC 5987 인코딩 이름을 함께 준다.
-  const koreanName = encodeURIComponent("공급처명세서_입력양식.xlsx");
+  const koreanName = encodeURIComponent("공급처전표_입력양식.xlsx");
 
   return new NextResponse(new Uint8Array(file), {
     headers: {

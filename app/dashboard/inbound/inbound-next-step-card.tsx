@@ -54,7 +54,7 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
   const closeNow = async () => {
     if (!step.closeDocumentId) return;
 
-    if (!window.confirm("마감하면 이 명세서 확인이 끝납니다. 고칠 것이 생기면 '다시 열기'로 되돌릴 수 있습니다. 마감할까요?")) {
+    if (!window.confirm("마감하면 이 전표 확인이 끝납니다. 고칠 것이 생기면 '다시 열기'로 되돌릴 수 있습니다. 마감할까요?")) {
       return;
     }
 

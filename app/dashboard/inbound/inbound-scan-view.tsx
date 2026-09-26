@@ -118,25 +118,25 @@ function hasBarcodeDetector(): boolean {
 
 interface Props {
   initialScans: InboundScanRow[];
-  /** 대기(PENDING) 명세서와 현장 스캔 종료 표시 여부. */
+  /** 대기(PENDING) 전표와 현장 스캔 종료 표시 여부. */
   scanDocuments: Array<{ id: string; scanFinished: boolean }>;
-  /** 명세서 기준으로 아직 안 들어온 박스 수(수량 반영). 단계 안내 카드에 쓴다. */
+  /** 전표 기준으로 아직 안 들어온 박스 수(수량 반영). 단계 안내 카드에 쓴다. */
   remainingBoxCount: number;
   /**
-   * 스캔 id → 필수항목 체크리스트. 서버에서 공공조회·명세서를 붙여 만든다.
+   * 스캔 id → 필수항목 체크리스트. 서버에서 공공조회·전표를 붙여 만든다.
    * 방금 찍어서 아직 서버 데이터가 없는 줄은 여기 없고, 새로고침되면 채워진다.
    */
   scanRequirements: Record<string, ScanRequirementReport>;
   products: ScanProductOption[];
   shippableOrders: ShippableOrderOption[];
   /**
-   * 대기중(PENDING) 명세서 줄에 적힌 이력번호 전체(대문자). "박스 나눠서 입고"에서
-   * 줄마다 쓴 번호가 여기 없으면 명세서와 대조되지 않는다는 경고 배너를 띄운다.
-   * 명세서 자체가 없으면(빈 배열) 대조할 게 없으니 배너를 안 띄운다.
+   * 대기중(PENDING) 전표 줄에 적힌 이력번호 전체(대문자). "박스 나눠서 입고"에서
+   * 줄마다 쓴 번호가 여기 없으면 전표와 대조되지 않는다는 경고 배너를 띄운다.
+   * 전표 자체가 없으면(빈 배열) 대조할 게 없으니 배너를 안 띄운다.
    */
   pendingDocumentTraceNos: string[];
   /**
-   * 명세서에는 있는데 아직 스캔되지 않은 줄 — "명세서 대기 품목" 목록에 띄워
+   * 전표에는 있는데 아직 스캔되지 않은 줄 — "전표 대기 품목" 목록에 띄워
    * 탭하면 이력번호 입력칸에 채워준다(2026-09-24, 사장님 지침: 바코드가 지저분하거나
    * 로트번호를 손으로 옮겨 적어야 할 때의 보조 수단 — 스캔 자체를 대체하지 않는다).
    */
@@ -163,7 +163,7 @@ const SHOW_DEV_SAMPLES = process.env.NEXT_PUBLIC_SHOW_DEV_SAMPLES === "true";
 const SOURCE_STYLE: Record<string, { label: string; bg: string; fg: string }> = {
   SCAN: { label: "스캔", bg: "#e0f2fe", fg: "#075985" },
   TRACE_API: { label: "이력조회", bg: "#dcfce7", fg: "#166534" },
-  DOCUMENT: { label: "명세서", bg: "#ede9fe", fg: "#5b21b6" },
+  DOCUMENT: { label: "전표", bg: "#ede9fe", fg: "#5b21b6" },
   PRODUCT: { label: "상품", bg: "#f1f5f9", fg: "#475569" },
 };
 
@@ -171,7 +171,7 @@ const SOURCE_STYLE: Record<string, { label: string; bg: string; fg: string }> = 
  * 입고 한 건이 플랫폼 기준을 채웠는지 항목별로 뿌린다.
  *
  * 빠진 것만 보여주지 않고 **채워진 값과 그 출처까지** 보여준다 — 공공조회와
- * 명세서 중 어느 쪽에서 온 값인지 알아야 틀렸을 때 어디를 고칠지 알 수 있고,
+ * 전표 중 어느 쪽에서 온 값인지 알아야 틀렸을 때 어디를 고칠지 알 수 있고,
  * 양쪽이 어긋나는 경우도 드러나야 하기 때문이다(사장님 요청).
  */
 function ScanRequirementList({ report }: { report: ScanRequirementReport }) {
@@ -219,7 +219,7 @@ function ScanRequirementList({ report }: { report: ScanRequirementReport }) {
         })}
 
         {!report.documentMatched ? (
-          <span style={{ fontSize: "11px", color: "#94a3b8" }}>명세서 연결 안 됨</span>
+          <span style={{ fontSize: "11px", color: "#94a3b8" }}>전표 연결 안 됨</span>
         ) : null}
       </div>
 
@@ -326,7 +326,7 @@ export function InboundScanView({
     setRows(initialScans);
   }, [initialScans]);
 
-  // 명세서의 마지막 박스를 찍어 남은 박스가 0이 되면 화면 맨 위 "지금 할 일" 카드(마감 안내)로 시선을 옮긴다.
+  // 전표의 마지막 박스를 찍어 남은 박스가 0이 되면 화면 맨 위 "지금 할 일" 카드(마감 안내)로 시선을 옮긴다.
   const previousRemainingRef = useRef(remainingBoxCount);
 
   useEffect(() => {
@@ -529,7 +529,7 @@ export function InboundScanView({
   };
 
   /**
-   * 명세서 대기 품목을 탭했을 때 — 바코드가 안 찍히거나 로트번호를 손으로
+   * 전표 대기 품목을 탭했을 때 — 바코드가 안 찍히거나 로트번호를 손으로
    * 옮겨 적어야 할 때의 보조 수단. 이력번호 입력칸만 채우고 실제 등록은
    * 여전히 사람이 실중량을 입력하고 확정해야 한다(스캔을 대신하지 않는다).
    */
@@ -908,7 +908,7 @@ export function InboundScanView({
     router.refresh();
   };
 
-  // 결과 카드에 명세서 대조를 덧붙인다 — 새로고침으로 대조 결과가 들어온 뒤에 "명세서에 없는 번호"가 뜬다.
+  // 결과 카드에 전표 대조를 덧붙인다 — 새로고침으로 대조 결과가 들어온 뒤에 "전표에 없는 번호"가 뜬다.
   const shownResultCard = resultCard
     ? resultCard.scanId
       ? withDocumentContext(resultCard.card, {
@@ -926,7 +926,7 @@ export function InboundScanView({
     if (
       finished &&
       !window.confirm(
-        `명세서에서 아직 안 들어온 박스 ${remainingBoxCount}개는 안 온 것으로 알리고 스캔을 종료합니다. 사무실이 확인 후 마감합니다.\n\n종료할까요?`
+        `전표에서 아직 안 들어온 박스 ${remainingBoxCount}개는 안 온 것으로 알리고 스캔을 종료합니다. 사무실이 확인 후 마감합니다.\n\n종료할까요?`
       )
     ) {
       return;
@@ -983,7 +983,7 @@ export function InboundScanView({
     (row) => !row.isSample && (row.status === "PENDING_MAPPING" || row.status === "EXCEPTION")
   );
 
-  // 카드가 안내하는 단계의 칸·버튼을 같은 색으로 강조한다. 명세서 박스를 다 찍은 뒤엔 강조할 칸이 없다.
+  // 카드가 안내하는 단계의 칸·버튼을 같은 색으로 강조한다. 전표 박스를 다 찍은 뒤엔 강조할 칸이 없다.
   const scanAllArrived = remainingBoxCount === 0 && pendingDocumentTraceNos.length > 0;
   const activeScanField: "trace" | "weight" | "submit" | null =
     fieldError
@@ -1004,41 +1004,38 @@ export function InboundScanView({
       ? {
           title: "스캔 종료를 알렸습니다",
           detail:
-            "사무실이 안 온 박스를 확인하고 마감합니다. 박스가 더 오면 아래 '스캔 다시 시작'을 누르고 이어서 찍으세요.",
+            "안 온 박스는 사무실이 확인합니다. 박스가 더 오면 '스캔 다시 시작'을 누르세요.",
         }
       : pending.length > 0
       ? { title: "등록 중입니다", detail: "이력번호를 조회하고 있습니다. 잠시만 기다려 주세요." }
       : !traceNo.trim()
         ? remainingBoxCount === 0 && pendingDocumentTraceNos.length > 0
           ? {
-              title: "명세서의 박스를 모두 찍었습니다",
-              detail: "스캔은 끝났습니다. 이제 사무실이 확인하고 마감합니다.",
+              title: "전표의 박스를 모두 찍었습니다",
+              detail: "다 찍었습니다. 사무실이 마감합니다.",
               link: { label: "다음 할 일 보기", href: INBOUND_ANCHORS.nextStep },
             }
           : {
               title: "1단계: 박스의 바코드를 찍으세요",
               detail:
-                "박스에 붙은 바코드를 스캐너로 찍으면 이력번호가 자동으로 채워집니다." +
-                " 잘못 찍었다면 아래 입고 내역에서 그 박스의 '취소'를 누르세요." +
+                "바코드를 찍으면 이력번호가 채워집니다. 잘못 찍었으면 아래 입고 내역에서 '취소'를 누르세요." +
                 (awaitingDocumentLines.length > 0
-                  ? " 바코드가 안 찍히면 아래 \"명세서 대기 품목\"에서 그 물건을 눌러 번호를 채우세요."
-                  : " 바코드가 안 찍히면 박스 라벨의 번호를 직접 입력하세요.") +
-                (remainingBoxCount > 0
-                  ? ` 명세서 기준으로 아직 안 들어온 박스는 ${remainingBoxCount}개입니다. 다 찍었는데 박스가 남았으면 사무실에 알려 주세요 — 사무실이 '안 온 물건'으로 마감합니다.`
-                  : ""),
+                  ? " 안 찍히면 아래 \"전표 대기 품목\"을 눌러 번호를 채우세요."
+                  : " 안 찍히면 박스 라벨의 번호를 직접 입력하세요.") +
+                (remainingBoxCount > 0 ? ` 아직 안 들어온 박스 ${remainingBoxCount}개.` : ""),
               link:
                 awaitingDocumentLines.length > 0
-                  ? { label: "명세서 대기 품목 보기", href: "#inbound-awaiting" }
-                  : undefined,
+                  ? { label: "전표 대기 품목 보기", href: "#inbound-awaiting" }
+                  : { label: "입고 내역 보기 (잘못 찍은 박스 취소)", href: INBOUND_ANCHORS.history },
             }
         : !weight.trim()
           ? {
               title: "2단계: 저울에 잰 실중량(kg)을 입력하세요",
-              detail: "표기중량과 달라도 저울에 찍힌 값이 기준입니다. 재고와 매입금액은 실중량으로 계산됩니다.",
+              detail: "표기중량과 달라도 저울 값이 기준입니다.",
             }
           : {
               title: "3단계: \"입고 등록\"을 누르세요",
-              detail: "누르기 전에는 재고가 늘어나지 않습니다.",
+              detail: "눌러야 재고가 늘어납니다.",
               action: { label: "입고 등록", onClick: () => void submitScan(traceNo, weight, "MANUAL") },
             };
 
@@ -1056,7 +1053,7 @@ export function InboundScanView({
       {shownResultCard ? <ResultCardView card={shownResultCard} onDismiss={() => setResultCard(null)} /> : null}
 
       {remainingBoxCount > 0 && scanDocuments.length > 0 ? (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div id="inbound-scan-finish" style={{ display: "flex", justifyContent: "flex-end", scrollMarginTop: "12px" }}>
           {scanAllFinished ? (
             <button type="button" disabled={finishingScan} onClick={() => void handleScanFinished(false)} style={buttonStyle}>
               {finishingScan ? "처리 중…" : "스캔 다시 시작"}
@@ -1293,7 +1290,7 @@ export function InboundScanView({
       {awaitingDocumentLines.length > 0 && (
         <section id="inbound-awaiting" style={{ ...panelStyle, scrollMarginTop: "12px" }}>
           <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>
-            명세서 대기 품목 <span style={{ color: "#94a3b8", fontWeight: 400 }}>아직 안 들어온 것</span>
+            전표 대기 품목 <span style={{ color: "#94a3b8", fontWeight: 400 }}>아직 안 들어온 것</span>
           </div>
           <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 10px" }}>
             바코드가 잘 안 찍히거나 로트번호를 옮겨 적어야 할 때, 아래에서 탭하면 이력번호 칸에
@@ -1350,7 +1347,7 @@ export function InboundScanView({
           </p>
 
           {(() => {
-            // 대기중 명세서가 있을 때만 대조한다 — 명세서 자체가 없는 공급처는 대조할
+            // 대기중 전표가 있을 때만 대조한다 — 전표 자체가 없는 공급처는 대조할
             // 대상이 없으니 경고를 안 띄운다(사장님 확정).
             if (documentTraceNoSet.size === 0) return null;
 
@@ -1380,7 +1377,7 @@ export function InboundScanView({
                   marginBottom: "10px",
                 }}
               >
-                ⚠ {unmatchedRowNumbers.join(", ")}번 줄의 이력번호가 업로드된 명세서에서 확인되지
+                ⚠ {unmatchedRowNumbers.join(", ")}번 줄의 이력번호가 업로드된 전표에서 확인되지
                 않았습니다. 실제로 맞는 번호인지 다시 확인해주세요.
               </p>
             );

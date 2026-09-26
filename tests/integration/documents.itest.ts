@@ -2,7 +2,7 @@
  * 29단계 B — 사무실 대조 화면(app/dashboard/inbound/documents/[id]) 서버 액션 4개.
  * DB 함수(link/unlink/close/reopen, 마이그레이션 118) 자체의 동작(자동 배정·중복 창 우회·
  * 취소 시 해제·거슬러 배정)은 tests/integration/inbound.itest.ts의
- * "명세서 줄 ↔ 박스 연결" 절이 이미 검증한다. 여기서는 서버 액션 한 겹(권한 매핑·오류 문구)만 본다.
+ * "전표 줄 ↔ 박스 연결" 절이 이미 검증한다. 여기서는 서버 액션 한 겹(권한 매핑·오류 문구)만 본다.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { actAs, adminClient, getActorClient, seedWorld, type World, type WorldProduct } from "./harness";
@@ -97,11 +97,11 @@ describe("linkScanToDocumentLineAction / unlinkScanFromDocumentLineAction", () =
 
     const result = await linkScanToDocumentLineAction(scan.scanId, lineId);
 
-    expect(result).toEqual({ success: false, error: "이 명세서에 접근할 권한이 없습니다." });
+    expect(result).toEqual({ success: false, error: "이 전표에 접근할 권한이 없습니다." });
     expect(await linkRow(scan.scanId)).toBeNull();
   });
 
-  it("마감된 명세서에는 붙이거나 뗄 수 없다", async () => {
+  it("마감된 전표에는 붙이거나 뗄 수 없다", async () => {
     const product = await newProduct();
     const traceNo = world.newTraceNo();
     const { lineId } = await world.createDocumentLine({ traceNo, product, status: "CLOSED" });
@@ -111,7 +111,7 @@ describe("linkScanToDocumentLineAction / unlinkScanFromDocumentLineAction", () =
 
     expect(linked).toEqual({
       success: false,
-      error: "마감된 명세서에는 붙일 수 없습니다. 먼저 다시 열어주세요.",
+      error: "마감된 전표에는 붙일 수 없습니다. 먼저 다시 열어주세요.",
     });
 
     // DB에 직접 연결해두고(RPC 우회) 뗄 때도 같은 이유로 막히는지 확인한다.
@@ -125,7 +125,7 @@ describe("linkScanToDocumentLineAction / unlinkScanFromDocumentLineAction", () =
 
     expect(unlinked).toEqual({
       success: false,
-      error: "마감된 명세서에서는 뗄 수 없습니다. 먼저 다시 열어주세요.",
+      error: "마감된 전표에서는 뗄 수 없습니다. 먼저 다시 열어주세요.",
     });
   });
 });
@@ -198,8 +198,8 @@ describe("closeInboundDocumentAction / reopenInboundDocumentAction", () => {
     const closeResult = await closeInboundDocumentAction(pendingDocId, "사유");
     const reopenResult = await reopenInboundDocumentAction(closedDocId);
 
-    expect(closeResult).toEqual({ success: false, error: "해당 명세서를 찾을 수 없습니다." });
-    expect(reopenResult).toEqual({ success: false, error: "해당 명세서를 찾을 수 없습니다." });
+    expect(closeResult).toEqual({ success: false, error: "해당 전표를 찾을 수 없습니다." });
+    expect(reopenResult).toEqual({ success: false, error: "해당 전표를 찾을 수 없습니다." });
   });
 
   it("이미 마감된 문서를 또 마감하려 하면 거부되고, 마감 안 된 문서는 다시 열 수 없다", async () => {
@@ -224,8 +224,8 @@ describe("closeInboundDocumentAction / reopenInboundDocumentAction", () => {
     const closeAgain = await closeInboundDocumentAction(closedDocId, "사유");
     const reopenPending = await reopenInboundDocumentAction(pendingDocId);
 
-    expect(closeAgain).toEqual({ success: false, error: "이미 마감됐거나 취소된 명세서입니다." });
-    expect(reopenPending).toEqual({ success: false, error: "마감된 명세서만 다시 열 수 있습니다." });
+    expect(closeAgain).toEqual({ success: false, error: "이미 마감됐거나 취소된 전표입니다." });
+    expect(reopenPending).toEqual({ success: false, error: "마감된 전표만 다시 열 수 있습니다." });
   });
 });
 
@@ -297,7 +297,7 @@ describe("setDocumentsScanFinishedAction — 현장 스캔 종료 표시", () =>
     expect((data as Array<{ status: string }>)[0].status).toBe("AWAITING");
   });
 
-  it("남의 업체 명세서는 찾을 수 없다고 거부한다", async () => {
+  it("남의 업체 전표는 찾을 수 없다고 거부한다", async () => {
     const product = await newProduct();
     const { documentId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), product });
 
@@ -321,7 +321,7 @@ describe("setDocumentsScanFinishedAction — 현장 스캔 종료 표시", () =>
     expect((await scanFinishedAt(documentId))?.scan_finished_at).toBeNull();
   });
 
-  it("마감된 명세서는 건너뛴다(변경 0건)", async () => {
+  it("마감된 전표는 건너뛴다(변경 0건)", async () => {
     const product = await newProduct();
     const { documentId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), product, status: "CLOSED" });
 

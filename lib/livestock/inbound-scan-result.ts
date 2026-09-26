@@ -24,6 +24,8 @@ export interface ScanResultInput {
   failDetail: string | null;
   failIsNotConfigured: boolean;
   productConflict: { gtinProductId: string; documentProductId: string } | null;
+  /** 이 박스로 전표의 모든 물건이 채워져 전표가 저절로 마감됐다. */
+  autoClosedDocument?: boolean;
 }
 
 export interface ScanResultOptions {
@@ -89,6 +91,20 @@ function failureIssue(data: ScanResultInput, scanId: string): ResultIssue {
 }
 
 export function buildScanResultCard(data: ScanResultInput, options: ScanResultOptions): ResultCard {
+  const card = buildCardWithoutClosedNotice(data, options);
+
+  if (data.autoClosedDocument) {
+    card.extras.push({
+      tone: "green",
+      title: "전표를 저절로 마감했습니다",
+      detail: "전표의 모든 물건이 도착해서 사무실이 따로 마감할 필요가 없습니다.",
+    });
+  }
+
+  return card;
+}
+
+function buildCardWithoutClosedNotice(data: ScanResultInput, options: ScanResultOptions): ResultCard {
   const issues: ResultIssue[] = [];
 
   if (data.status === "EXCEPTION") {
@@ -97,7 +113,7 @@ export function buildScanResultCard(data: ScanResultInput, options: ScanResultOp
     issues.push({
       tone: "red",
       title: "상품을 한 번만 지정해 주세요",
-      detail: "부위를 알 수 없어 자동으로 등록되지 않았습니다. 아래 목록에서 상품을 지정하면 그때 재고가 늘어납니다.",
+      detail: "상품을 자동으로 정하지 못했습니다. 아래 목록에서 상품을 지정하면 그때 재고가 늘어납니다.",
       action: { label: "이 박스로 이동", href: `#scan-${data.scanId}` },
     });
   }
@@ -130,10 +146,10 @@ export function buildScanResultCard(data: ScanResultInput, options: ScanResultOp
   if (data.productConflict) {
     issues.push({
       tone: "yellow",
-      title: "바코드 상품과 명세서 상품이 다릅니다",
+      title: "바코드 상품과 전표 상품이 다릅니다",
       detail:
         `바코드 상품코드는 '${options.productName(data.productConflict.gtinProductId)}', ` +
-        `명세서는 '${options.productName(data.productConflict.documentProductId)}'입니다. ` +
+        `전표는 '${options.productName(data.productConflict.documentProductId)}'입니다. ` +
         "바코드 기준으로 입고했습니다. 아래 목록에서 어느 쪽이 맞는지 확인하세요.",
     });
   }
@@ -142,7 +158,9 @@ export function buildScanResultCard(data: ScanResultInput, options: ScanResultOp
     issues.push({
       tone: "yellow",
       title: `'${data.autoCreated.productName}' 상품을 새로 만들어 입고했습니다`,
-      detail: "새 상품은 판매중지 상태입니다. 상품 관리에서 판매가를 넣고 '판매중'으로 바꿔야 고객에게 보입니다.",
+      detail: data.autoCreated.productName.includes("(부위 미지정)")
+        ? "부위를 몰라 비워 뒀습니다. 상품 관리에서 부위를 채우고, 판매가를 넣은 뒤 '판매중'으로 바꾸세요."
+        : "새 상품은 판매중지 상태입니다. 상품 관리에서 판매가를 넣고 '판매중'으로 바꿔야 고객에게 보입니다.",
       action: { label: "상품 관리로", href: "/dashboard/products" },
     });
   }
@@ -201,7 +219,7 @@ export function buildFailureCard(message: string): ResultCard {
   };
 }
 
-/** 명세서 대조 결과를 결과 카드에 덧붙인다 — 명세서에 없는 번호이거나, 명세서 없이 입고한 경우. */
+/** 전표 대조 결과를 결과 카드에 덧붙인다 — 전표에 없는 번호이거나, 전표 없이 입고한 경우. */
 export function withDocumentContext(
   card: ResultCard,
   context: { hasPendingDocument: boolean; documentMatched: boolean | null },
@@ -214,8 +232,8 @@ export function withDocumentContext(
         ...card.extras,
         {
           tone: "yellow",
-          title: "명세서에 없는 번호입니다",
-          detail: "이 박스는 대기 중인 명세서의 어느 줄과도 이어지지 않았습니다. 입고는 그대로 기록됐고, 대조 화면에서 확인할 수 있습니다.",
+          title: "전표에 없는 번호입니다",
+          detail: "이 박스는 대기 중인 전표의 어느 줄과도 이어지지 않았습니다. 입고는 그대로 기록됐고, 대조 화면에서 확인할 수 있습니다.",
         },
       ],
     };
@@ -228,8 +246,8 @@ export function withDocumentContext(
         ...card.extras,
         {
           tone: "green",
-          title: "명세서 없이 입고했습니다",
-          detail: "나중에 이 공급처의 명세서를 올리면 이 박스가 자동으로 이어집니다.",
+          title: "전표 없이 입고했습니다",
+          detail: "나중에 이 공급처의 전표를 올리면 이 박스가 자동으로 이어집니다.",
         },
       ],
     };

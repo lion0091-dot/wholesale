@@ -28,14 +28,14 @@ export interface InboundData {
   storageLocationSuggestions: string[];
   /** 안내 카드(현장용·사무실용 둘 다)가 받는 입력. */
   nextStepInput: InboundNextStepInput;
-  /** 아직 안 들어온 박스 수(명세서 기준). */
+  /** 아직 안 들어온 박스 수(전표 기준). */
   remainingBoxCount: number;
   canManage: boolean;
 }
 
 /**
  * 입고 스캔(현장)과 전표입력(사무실) 두 화면이 같이 쓰는 조회.
- * scanDetails=false면 박스마다 필수 항목을 대조하는 무거운 부분(공공 이력·명세서 줄 조회, 직원 이름)을 건너뛴다 —
+ * scanDetails=false면 박스마다 필수 항목을 대조하는 무거운 부분(공공 이력·전표 줄 조회, 직원 이름)을 건너뛴다 —
  * 전표입력 화면은 박스 목록을 그리지 않는다.
  */
 export async function loadInboundData(
@@ -48,11 +48,11 @@ export async function loadInboundData(
   let documents: InboundDocumentRow[] = [];
   let scanRequirements: Record<string, ScanRequirementReport> = {};
   // "박스 나눠서 입고"에서 줄마다 적은(또는 박스 코드를 그대로 재사용한) 이력번호가
-  // 올려둔 명세서에 실제로 있는 번호인지 대조하는 배너용 — 대기중(PENDING) 명세서
-  // 줄에 적힌 번호만 모은다. 명세서 자체가 없으면 대조할 게 없으니 조용히 넘어간다.
+  // 올려둔 전표에 실제로 있는 번호인지 대조하는 배너용 — 대기중(PENDING) 전표
+  // 줄에 적힌 번호만 모은다. 전표 자체가 없으면 대조할 게 없으니 조용히 넘어간다.
   let pendingDocumentTraceNos: string[] = [];
-  // 명세서엔 있는데 아직 스캔 안 된 줄 — "명세서 대기 품목" 목록(탭하면 이력번호
-  // 입력칸을 채워줌)에 쓴다. 최근 100건짜리 scans 배열로 대조하면 오래된 명세서
+  // 전표엔 있는데 아직 스캔 안 된 줄 — "전표 대기 품목" 목록(탭하면 이력번호
+  // 입력칸을 채워줌)에 쓴다. 최근 100건짜리 scans 배열로 대조하면 오래된 전표
   // 건이 그 창밖으로 밀려나 잘못 "아직 안 들어옴"으로 보일 수 있어, 이 줄들의
   // 이력번호만 따로 모아 inbound_scans 전체에서 존재 여부를 확인한다.
   let awaitingDocumentLines: AwaitingDocumentLine[] = [];
@@ -114,7 +114,7 @@ export async function loadInboundData(
     ];
 
     if (pendingDocumentTraceNos.length > 0) {
-      // "아직 안 만난 줄" 판정은 DB가 한다 — 같은 번호뿐 아니라 명세서는 로트·박스는 개체번호(또는 반대)인
+      // "아직 안 만난 줄" 판정은 DB가 한다 — 같은 번호뿐 아니라 전표는 로트·박스는 개체번호(또는 반대)인
       // 경우도 로트 구성원 목록(master_livestock.raw_payload)으로 이어 본다(마이그레이션 116).
       const { data: awaitingIdRows } = await supabase.rpc("list_awaiting_document_line_ids", {
         p_wholesaler_id: scope.wholesalerId,
@@ -145,14 +145,14 @@ export async function loadInboundData(
         });
     }
 
-    // 올린 명세서 목록. 저장만 되고 다시 열어볼 곳이 없으면 쓸모가 없어서 함께 내린다.
+    // 올린 전표 목록. 저장만 되고 다시 열어볼 곳이 없으면 쓸모가 없어서 함께 내린다.
     // 대조 화면(29단계 B) 진입 배지용 줄 상태 요약에 필요한 줄·연결표·박스 상태까지
-    // 명세서 아래에 중첩해 한 번에 받는다 — 명세서 ≤30건이라 행 상한에 안 걸리고, 줄 id를
+    // 전표 아래에 중첩해 한 번에 받는다 — 전표 ≤30건이라 행 상한에 안 걸리고, 줄 id를
     // 모아 .in()으로 다시 조회하지 않으므로 URL 길이 한도로 결과가 잘리는 일이 없다.
     const { data: documentRows } = await supabase
       .from("inbound_documents")
       .select(
-        "id, supplier_name, document_no, issued_on, file_name, storage_path, status, total_amount, created_at, scan_finished_at, inbound_document_lines(id, quantity, inbound_document_line_scans(scan_id, inbound_scans(status)))"
+        "id, supplier_name, document_no, issued_on, file_name, storage_path, status, total_amount, created_at, scan_finished_at, inbound_document_lines(id, quantity, trace_no, lot_no, inbound_document_line_scans(scan_id, inbound_scans(status)))"
       )
       .eq("wholesaler_id", scope.wholesalerId)
       .order("created_at", { ascending: false })
@@ -161,6 +161,8 @@ export async function loadInboundData(
     type NestedDocumentLine = {
       id: string;
       quantity: number | null;
+      trace_no: string | null;
+      lot_no: string | null;
       inbound_document_line_scans: Array<{
         scan_id: string;
         inbound_scans: { status: string } | { status: string }[] | null;
@@ -205,7 +207,7 @@ export async function loadInboundData(
 
           if (scanStatus === "VOIDED") return;
 
-          // 명세서와 이어졌어도 상품이 안 정해진 박스는 재고에 아직 안 들어간다.
+          // 전표와 이어졌어도 상품이 안 정해진 박스는 재고에 아직 안 들어간다.
           if (scanStatus === "EXCEPTION" || scanStatus === "PENDING_MAPPING") {
             summary.unresolvedBoxes += 1;
 
@@ -224,6 +226,8 @@ export async function loadInboundData(
         if (status === "COMPLETE") summary.completeLines += 1;
         // 일부만 온 줄은 모자란 박스가 더 와야 한다 — 이건 맞춰 볼 일이 아니라 찍을 일이다.
         if (status === "PARTIAL") summary.partialBoxesRemaining += expected - linked;
+        // 번호가 없는 줄은 위 "안 들어온 줄" 조회에 안 잡힌다(번호로 찾는 조회) — 예정 수량 전체가 남은 박스다.
+        if (status === "AWAITING" && !line.trace_no && !line.lot_no) summary.partialBoxesRemaining += expected;
       });
 
       matchSummaryByDocId.set(String(row.id), summary);
@@ -265,7 +269,7 @@ export async function loadInboundData(
     const productOrigins = new Map(products.map((product) => [product.id, product.origin]));
 
     // 스캔한 박스마다 "필수 항목이 다 찼는지"를 보여주려면 값이 들어오는 세 길을
-    // 다 봐야 한다 — 스캔 자체, 공공 이력조회(master_livestock), 올라온 명세서.
+    // 다 봐야 한다 — 스캔 자체, 공공 이력조회(master_livestock), 올라온 전표.
     // 화면에서 줄마다 조회하면 N+1이라 이력번호를 모아 한 번씩만 읽는다.
     const traceNos = [...new Set((scanRows ?? []).map((row) => String(row.trace_no)))];
 
@@ -291,7 +295,7 @@ export async function loadInboundData(
           .from("master_livestock")
           .select("trace_no, grade, origin_country, source, species_group")
           .in("trace_no", traceNos),
-        // 찍힌 번호마다 해당하는 명세서 줄 — 같은 번호, 두 칸 서식의 어느 칸, 로트↔개체 구성원 관계까지
+        // 찍힌 번호마다 해당하는 전표 줄 — 같은 번호, 두 칸 서식의 어느 칸, 로트↔개체 구성원 관계까지
         // DB 함수가 한 번에 본다(마이그레이션 116). 취소 서류는 함수가 제외한다.
         supabase.rpc("match_document_lines_for_traces", {
           p_wholesaler_id: scope.wholesalerId,
@@ -313,7 +317,7 @@ export async function loadInboundData(
         ])
       );
 
-      // 같은 번호가 여러 명세서에 있으면 먼저 읽은 것을 쓴다 — 어느 쪽이 맞는지는
+      // 같은 번호가 여러 전표에 있으면 먼저 읽은 것을 쓴다 — 어느 쪽이 맞는지는
       // 사람이 판단할 문제라 여기서 고르지 않는다.
       // 함수가 (찍힌 번호, 줄) 짝을 문서 생성순·줄순으로 준다 — 번호당 첫 줄만 쓴다.
       ((docLineRows ?? []) as Array<Record<string, unknown>>).forEach((row) => {
@@ -433,13 +437,14 @@ export async function loadInboundData(
       .filter((doc) => doc.status === "PENDING")
       .reduce((sum, doc) => sum + (doc.matchSummary?.partialBoxesRemaining ?? 0), 0);
 
-  // 문서 목록은 최신순이라, 대조를 안내할 때는 가장 오래 기다린 명세서부터 보도록 뒤집는다.
+  // 문서 목록은 최신순이라, 대조를 안내할 때는 가장 오래 기다린 전표부터 보도록 뒤집는다.
   const nextStepInput: InboundNextStepInput = {
     pendingDocuments: documents
       .filter((doc) => doc.status === "PENDING")
       .reverse()
       .map((doc) => ({
         id: doc.id,
+        supplierName: doc.supplierName,
         scanFinished: doc.scanFinished,
         completeLines: doc.matchSummary?.completeLines ?? 0,
         totalLines: doc.matchSummary?.totalLines ?? 0,
@@ -454,7 +459,7 @@ export async function loadInboundData(
       scans.find((scan) => scan.status === "EXCEPTION" || scan.status === "PENDING_MAPPING")?.id ?? null,
   };
 
-  // 원가(매입단가) 입력·명세서 완전 삭제 같은 관리 행위 권한 — DB의 can_manage_wholesaler()와
+  // 원가(매입단가) 입력·전표 완전 삭제 같은 관리 행위 권한 — DB의 can_manage_wholesaler()와
   // 같은 기준(owner 본인 / 조직 owner·manager / super_admin). 조직 없이 업체가 잡힌 건 owner다.
   const canManage = Boolean(
     scope &&

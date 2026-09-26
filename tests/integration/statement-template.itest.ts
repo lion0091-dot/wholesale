@@ -1,5 +1,5 @@
 /**
- * 명세서 입력 양식(.xlsx) — 내려받기 경로와 "채운 엑셀을 바로 올리기" 서버 액션.
+ * 전표 입력 양식(.xlsx) — 내려받기 경로와 "채운 엑셀을 바로 올리기" 서버 액션.
  * 양식 생성·엑셀 읽기·헤더 인식 자체는 lib/livestock/excel-statement.test.ts가 한다.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -76,7 +76,7 @@ describe("채운 양식을 바로 올리기 — 엑셀 읽기 → 저장 → 박
     const form = new FormData();
 
     form.append("payload", JSON.stringify({ supplierName: `양식축산-${world.runId}`, lines: lines.map((line) => ({ ...line, productId: null })) }));
-    form.append("file", new File([new Uint8Array(workbook)], "공급처 명세서.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    form.append("file", new File([new Uint8Array(workbook)], "공급처 전표.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
 
     const saved = await saveInboundDocumentAction(form);
 
@@ -93,7 +93,7 @@ describe("채운 양식을 바로 올리기 — 엑셀 읽기 → 저장 → 박
 
     const { data: doc } = await adminClient().from("inbound_documents").select("file_name, storage_path").eq("id", (saved.data as { documentId: string }).documentId).single();
 
-    expect(doc?.file_name).toBe("공급처 명세서.xlsx");
+    expect(doc?.file_name).toBe("공급처 전표.xlsx");
     expect(doc?.storage_path).toMatch(/\.xlsx$/);
   });
 
@@ -115,8 +115,8 @@ describe("채운 양식을 바로 올리기 — 엑셀 읽기 → 저장 → 박
   });
 });
 
-describe("화면에서 직접 입력한 줄(entryMethod MANUAL) — 사진을 보면서 옮겨 적은 종이 명세서", () => {
-  it("직접 입력한 줄이 저장되고 사진 원본이 함께 보관되며, 박스를 찍으면 명세서 줄에 자동으로 이어진다", async () => {
+describe("화면에서 직접 입력한 줄(entryMethod MANUAL) — 사진을 보면서 옮겨 적은 종이 전표", () => {
+  it("직접 입력한 줄이 저장되고 사진 원본이 함께 보관되며, 박스를 찍으면 전표 줄에 자동으로 이어진다", async () => {
     const trace = world.newTraceNo();
     const form = new FormData();
 
@@ -129,7 +129,7 @@ describe("화면에서 직접 입력한 줄(entryMethod MANUAL) — 사진을 �
         lines: [{ lineNo: 1, raw: "", itemName: "한우 양지", traceNo: trace, partName: "양지", grade: "1", quantity: 1, labeledWeight: 8.5, unitPrice: 20000, amount: 170000, productId: null }],
       })
     );
-    form.append("file", new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])], "종이 명세서 사진.JPG", { type: "image/jpeg" }));
+    form.append("file", new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])], "종이 전표 사진.JPG", { type: "image/jpeg" }));
 
     const saved = await saveInboundDocumentAction(form);
 
@@ -149,5 +149,43 @@ describe("화면에서 직접 입력한 줄(entryMethod MANUAL) — 사진을 �
     const { data: link } = await adminClient().from("inbound_document_line_scans").select("line_id").eq("scan_id", scan.scanId).maybeSingle();
 
     expect(link?.line_id).toBe(lines![0].id);
+  });
+});
+
+
+describe("같은 전표 중복 업로드 막기", () => {
+  const saveWith = async (supplierName: string, documentNo: string | null) => {
+    const form = new FormData();
+
+    form.append(
+      "payload",
+      JSON.stringify({ supplierName, documentNo, lines: [{ lineNo: 1, raw: "", itemName: "한우 안심", productId: null, traceNo: null, lotNo: null, partName: "안심", grade: null, origin: null, quantity: 1, labeledWeight: 5, unitPrice: null, amount: null }] })
+    );
+
+    return saveInboundDocumentAction(form);
+  };
+
+  it("같은 공급처·같은 번호는 두 번째 저장이 막히고, 취소 처리한 뒤에는 다시 올릴 수 있다", async () => {
+    await actAs(world.users.ownerA);
+
+    const supplier = `중복방지-${world.runId}`;
+    const first = await saveWith(supplier, "A-100");
+
+    expect(first.success).toBe(true);
+
+    const second = await saveWith(supplier, "A-100");
+
+    expect(second.success).toBe(false);
+    expect(second.error).toContain("이미 올라와 있습니다");
+
+    // 번호가 다르거나, 공급처가 다르거나, 번호를 안 적었으면 막지 않는다.
+    expect((await saveWith(supplier, "A-101")).success).toBe(true);
+    expect((await saveWith(`${supplier}-다른곳`, "A-100")).success).toBe(true);
+    expect((await saveWith(supplier, null)).success).toBe(true);
+    expect((await saveWith(supplier, null)).success).toBe(true);
+
+    await adminClient().from("inbound_documents").update({ status: "DISCARDED" }).eq("id", (first.data as { documentId: string }).documentId);
+
+    expect((await saveWith(supplier, "A-100")).success).toBe(true);
   });
 });

@@ -41,7 +41,7 @@ import { decodeDocumentFileText } from "@/lib/livestock/document-file-text";
 import { isMultiCellPaste, pasteIntoLines } from "@/lib/livestock/statement-grid";
 
 /**
- * 공급처 명세서 올리기 (29단계 A).
+ * 공급처 전표 올리기 (29단계 A).
  *
  * 서류가 들어오는 길이 여러 갈래다 — 이메일로 온 엑셀/CSV/PDF, 현장에서 받은
  * 종이를 찍은 사진. 읽히는 것(엑셀·CSV·붙여넣기·글자가 든 PDF)은 표로 보여주고,
@@ -98,7 +98,7 @@ export interface InboundDocumentRow {
   issuedOn: string | null;
   fileName: string | null;
   hasFile: boolean;
-  /** 현장이 "스캔 종료"를 표시했는가 (대기 명세서만 의미 있다). */
+  /** 현장이 "스캔 종료"를 표시했는가 (대기 전표만 의미 있다). */
   scanFinished: boolean;
   status: string;
   totalAmount: number | null;
@@ -259,7 +259,7 @@ export function InboundDocumentPanel({
     if (mode !== "idle") setJustSaved(false);
   }, [mode]);
 
-  // 입고 화면 맨 위 카드의 "명세서 올리기" 버튼이 이 칸으로 이동하면서 접혀 있으면 함께 연다.
+  // 입고 화면 맨 위 카드의 "전표 올리기" 버튼이 이 칸으로 이동하면서 접혀 있으면 함께 연다.
   useEffect(() => {
     const openPanel = () => setOpen(true);
 
@@ -418,7 +418,7 @@ export function InboundDocumentPanel({
   };
 
   // 직접 입력 — 위의 방법이 다 어려울 때 마지막으로 고르는 길(사장님 2026-09-26). 사진을 올린 뒤라면 그 사진을 보면서 옮겨 적는다.
-  // 사무실에서 종이 명세서를 옮겨 적는 용도이며, 현장 스캔 화면에는 영향이 없다.
+  // 사무실에서 종이 전표를 옮겨 적는 용도이며, 현장 스캔 화면에는 영향이 없다.
   const startManualEntry = () => {
     setGrid(null);
     setColumnMap({});
@@ -494,7 +494,7 @@ export function InboundDocumentPanel({
       }
 
       if (result.data.cells.length === 0) {
-        setError("엑셀 파일에 내용이 없습니다. '명세서' 시트에 줄을 적고 저장한 뒤 다시 올려주세요.");
+        setError("엑셀 파일에 내용이 없습니다. '전표' 시트에 줄을 적고 저장한 뒤 다시 올려주세요.");
         return;
       }
 
@@ -537,7 +537,7 @@ export function InboundDocumentPanel({
     startFromText(decodeDocumentFileText(await picked.arrayBuffer()), picked);
   };
 
-  // 이미 올린 명세서의 공급처 이름(최근 순, 취소된 것 제외) — 이름을 매번 치지 않고 고르게 한다.
+  // 이미 올린 전표의 공급처 이름(최근 순, 취소된 것 제외) — 이름을 매번 치지 않고 고르게 한다.
   const knownSuppliers = useMemo(() => {
     const names: string[] = [];
 
@@ -728,8 +728,8 @@ export function InboundDocumentPanel({
       const relinked = result.data?.relinkedScanCount ?? 0;
 
       setNotice(
-        `명세서 ${result.data?.lineCount}줄을 저장했습니다.` +
-          (relinked > 0 ? ` 먼저 찍혀 있던 박스 ${relinked}개를 이 명세서의 상품으로 확정했습니다.` : "")
+        `전표 ${result.data?.lineCount}줄을 저장했습니다.` +
+          (relinked > 0 ? ` 먼저 찍혀 있던 박스 ${relinked}개를 이 전표의 상품으로 확정했습니다.` : "")
       );
     }
 
@@ -760,25 +760,25 @@ export function InboundDocumentPanel({
   const failedCount = prelookupProgress?.failedTraceNos.length ?? 0;
   const scanLink = { label: "현장: 스캔 화면으로 이동", href: `${INBOUND_SCAN_PATH}${INBOUND_ANCHORS.scanForm}` };
   const scanHint =
-    "박스가 오면 현장에서 바코드를 찍고 저울에 잰 무게를 넣습니다. 사무실은 기다리면 됩니다. 명세서와 저절로 이어지고, 그때 재고가 늘어납니다.";
+    "박스가 오면 현장에서 바코드를 찍고 무게를 넣습니다. 그때 재고가 늘어납니다.";
   const postSaveStep: UploadStep =
     prelookupProgress && !prelookupProgress.finished
       ? {
           title: "저장했습니다. 지금 이력번호를 미리 확인하는 중입니다",
           detail:
-            "명세서에 적힌 번호를 정부 이력조회에서 하나씩 찾아보는 중입니다. 위쪽 파란 막대가 다 차면 끝나고, 창을 닫아도 이어서 처리됩니다. 끝날 때까지 잠시만 기다려 주세요.",
+            "전표의 번호를 정부 이력조회에서 확인하는 중입니다. 파란 막대가 차면 끝납니다. 창을 닫아도 이어서 처리됩니다.",
         }
       : failedCount > 0
         ? {
             title: `저장했습니다. 확인이 안 된 번호가 ${failedCount}개 있습니다`,
             detail:
-              "위쪽 빨간 글씨의 번호는 정부 이력조회에서 못 찾았습니다. 공급처가 아직 등록하지 않았거나 번호가 틀린 것입니다. \"요청 문구 복사\"를 눌러 공급처에 보내 등록을 요청하세요. 물건이 오기 전에 해 두는 것이 좋고, 답을 기다리는 동안에도 다른 박스는 찍을 수 있습니다. " +
+              "위쪽 빨간 번호는 정부 이력조회에서 못 찾았습니다. \"요청 문구 복사\"를 눌러 공급처에 등록을 요청하세요. 기다리는 동안 다른 박스는 찍을 수 있습니다. " +
               scanHint,
             link: scanLink,
           }
         : {
             title: "저장했습니다. 이력번호도 모두 확인됐습니다",
-            detail: "이제 남은 일은 현장 스캔입니다. " + scanHint,
+            detail: "위쪽 파란 카드가 다음에 할 일을 알려 줍니다. " + scanHint,
             link: scanLink,
           };
 
@@ -823,11 +823,10 @@ export function InboundDocumentPanel({
       >
         <span>
           <span style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a" }}>
-            공급처 명세서 올리기
+            공급처 전표 올리기
           </span>
           <span style={{ display: "block", fontSize: "12px", color: "#64748b", marginTop: "3px" }}>
-            이메일로 받은 파일이나 현장에서 받은 종이를 찍어 올리면, 플랫폼 기준에 맞춰 넣고
-            빠진 항목을 알려드립니다. 재고는 박스를 찍어야 잡힙니다.
+            전표 파일이나 종이 사진을 올리면 항목을 정리해 줍니다. 재고는 박스를 찍어야 잡힙니다.
           </span>
         </span>
         <span style={{ fontSize: "13px", color: "#64748b", flexShrink: 0 }}>
@@ -965,18 +964,18 @@ export function InboundDocumentPanel({
                   ? justSaved || prelookupProgress
                     ? postSaveStep
                     : {
-                        title: "1단계: 명세서 파일을 고르세요",
-                        detail: "입력 양식(엑셀)·파일 고르기·표 붙여넣기 중 하나로 시작합니다. 다 어려우면 맨 아래 '화면에서 직접 입력하기'를 누르세요.",
+                        title: "1단계: 전표 파일을 고르세요",
+                        detail: "아래 버튼 중 하나를 누르세요. 어려우면 맨 아래 '화면에서 직접 입력하기'를 누르세요.",
                       }
                   : !supplierName.trim()
                     ? {
                         title: "2단계: 공급처 이름을 적으세요",
-                        detail: "아래 \"공급처 이름\" 칸이 비어 있으면 저장되지 않습니다. (예: 대성축산)",
+                        detail: "\"공급처 이름\" 칸을 채우세요. (예: 대성축산)",
                       }
                     : {
-                        title: "3단계: \"명세서 저장\"을 누르세요",
-                        detail: "누르기 전에는 아무것도 저장되지 않습니다. 저장해야 다음 단계(박스 찍기)로 넘어갑니다.",
-                        action: { label: "명세서 저장", onClick: () => void handleSave() },
+                        title: "3단계: \"전표 저장\"을 누르세요",
+                        detail: "저장해야 다음 단계(박스 찍기)로 넘어갑니다.",
+                        action: { label: "전표 저장", onClick: () => void handleSave() },
                       }
             }
           />
@@ -1004,8 +1003,7 @@ export function InboundDocumentPanel({
               </div>
 
               <p style={{ margin: 0, fontSize: "12px", color: "#64748b", lineHeight: 1.6 }}>
-                종이로 받은 명세서는 <strong>입력 양식</strong>을 내려받아 엑셀에 옮겨 적고, 저장한 파일(.xlsx)을 그대로 올리세요.
-                헤더가 이미 들어 있어 칸이 저절로 잡힙니다.
+                종이 전표는 <strong>입력 양식</strong>을 받아 엑셀에 적고, 그 파일을 올리세요.
               </p>
 
               {extracting ? (
@@ -1061,10 +1059,10 @@ export function InboundDocumentPanel({
               </div>
 
               <div>
-                <label style={labelStyle}>올린 명세서</label>
+                <label style={labelStyle}>올린 전표</label>
                 {documents.length === 0 ? (
                   <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                    아직 올린 명세서가 없습니다.
+                    아직 올린 전표가 없습니다.
                   </p>
                 ) : (
                   <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
@@ -1114,6 +1112,15 @@ export function InboundDocumentPanel({
                             ? `품목 ${document.lineCount}줄`
                             : "원본만 보관 (내용 없음)"}
                         </span>
+                        {document.status === "DRAFT" ? (
+                          <span style={{ fontSize: "12px", color: "#92400e" }}>
+                            자동 대조 안 됨. 대조하려면 '취소 처리' 후{" "}
+                            <button type="button" onClick={startManualEntry} style={linkButton}>
+                              직접 입력하기
+                            </button>
+                            . 보관만 하려면 그대로 두세요.
+                          </span>
+                        ) : null}
                         {document.matchSummary ? (
                           <span
                             style={{
@@ -1178,7 +1185,7 @@ export function InboundDocumentPanel({
                                   void runOnDocument(
                                     document.id,
                                     restoreInboundDocumentAction,
-                                    "명세서를 되살렸습니다.",
+                                    "전표를 되살렸습니다.",
                                   )
                                 }
                                 style={linkButton}
@@ -1192,7 +1199,7 @@ export function InboundDocumentPanel({
                                   onClick={() => {
                                     if (
                                       !window.confirm(
-                                        "원본까지 완전히 지웁니다. 되돌릴 수 없습니다.\n\n매입 명세서는 축산물이력법상 1년간 보관해야 합니다. 애초에 잘못 올린 서류만 지워주세요.",
+                                        "원본까지 완전히 지웁니다. 되돌릴 수 없습니다.\n\n매입 전표는 축산물이력법상 1년간 보관해야 합니다. 애초에 잘못 올린 서류만 지워주세요.",
                                       )
                                     ) {
                                       return;
@@ -1201,7 +1208,7 @@ export function InboundDocumentPanel({
                                     void runOnDocument(
                                       document.id,
                                       deleteInboundDocumentAction,
-                                      "명세서를 완전히 지웠습니다.",
+                                      "전표를 완전히 지웠습니다.",
                                     );
                                   }}
                                   style={{ ...linkButton, color: "#b91c1c" }}
@@ -1251,7 +1258,7 @@ export function InboundDocumentPanel({
                   color: "#1e40af",
                 }}
               >
-                {storeOnlyReason} 원본은 그대로 남으니 필요할 때 열어보시면 됩니다. 명세서와 박스를 자동으로 맞춰 보려면 아래
+                {storeOnlyReason} 원본은 그대로 남으니 필요할 때 열어보시면 됩니다. 전표와 박스를 자동으로 맞춰 보려면 아래
                 버튼으로 이 서류를 보면서 줄을 직접 입력할 수 있습니다.
                 <div style={{ marginTop: "8px" }}>
                   <button type="button" onClick={startManualEntry} style={secondaryButton}>
@@ -1264,7 +1271,7 @@ export function InboundDocumentPanel({
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={previewUrl}
-                  alt="올린 명세서 원본"
+                  alt="올린 전표 원본"
                   style={{
                     width: "100%",
                     maxHeight: "320px",
@@ -1301,7 +1308,7 @@ export function InboundDocumentPanel({
                   />
                 </div>
                 <div style={{ flex: "0 1 150px" }}>
-                  <label style={labelStyle}>명세서 번호</label>
+                  <label style={labelStyle}>전표 번호</label>
                   <input
                     value={documentNo}
                     onChange={(event) => setDocumentNo(event.target.value)}
@@ -1347,7 +1354,7 @@ export function InboundDocumentPanel({
                   />
                 </div>
                 <div style={{ flex: "0 1 150px" }}>
-                  <label style={labelStyle}>명세서 번호</label>
+                  <label style={labelStyle}>전표 번호</label>
                   <input
                     value={documentNo}
                     onChange={(event) => setDocumentNo(event.target.value)}
@@ -1379,7 +1386,7 @@ export function InboundDocumentPanel({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={previewUrl}
-                    alt="올린 명세서 원본"
+                    alt="올린 전표 원본"
                     style={{
                       width: "100%",
                       maxHeight: "360px",
@@ -1427,8 +1434,7 @@ export function InboundDocumentPanel({
               ) : null}
 
               <p style={{ margin: "0 0 6px", fontSize: "12px", color: "#64748b", lineHeight: 1.6 }}>
-                엑셀처럼 쓰세요 — <strong>Enter</strong>나 ↓는 아래 칸, <strong>Shift+Enter</strong>나 ↑는 위 칸으로 옮겨 가고,
-                맨 아래에서 Enter를 누르면 새 줄이 생깁니다. 엑셀·구글 시트에서 복사한 여러 칸은 첫 칸을 눌러 붙여넣으면 한 번에 채워집니다.
+                엑셀처럼 쓰세요. <strong>Enter</strong>는 아래 칸, 맨 아래에서 Enter를 누르면 새 줄이 생깁니다. 여러 칸 붙여넣기도 됩니다.
               </p>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
@@ -1684,7 +1690,7 @@ export function InboundDocumentPanel({
                     type="button"
                     onClick={() =>
                       void navigator.clipboard.writeText(
-                        `[${supplierName || "공급처"}] 명세서 확인 요청\n${supplierRequests
+                        `[${supplierName || "공급처"}] 전표 확인 요청\n${supplierRequests
                           .map((text) => `- ${text}`)
                           .join("\n")}`,
                       )
@@ -1700,7 +1706,7 @@ export function InboundDocumentPanel({
                 <button type="button" onClick={handleSave}
                   disabled={saving}
                   style={{ ...primaryButton, ...(activeUploadField === "save" ? HIGHLIGHT_BUTTON : {}) }}>
-                  {saving ? "저장 중…" : "명세서 저장"}
+                  {saving ? "저장 중…" : "전표 저장"}
                 </button>
                 <button type="button" onClick={reset} disabled={saving} style={secondaryButton}>
                   취소

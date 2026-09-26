@@ -8,7 +8,7 @@ export interface PillTab {
   href: string;
   /** true면 정확히 이 경로일 때만 활성(예: 개요 탭 "/dashboard"가 하위 경로까지 잡지 않게). */
   exact?: boolean;
-  /** 이 경로들 아래에서도 이 탭을 활성으로 본다(예: 전표입력 탭이 명세서 대조 화면에서도 켜지게). */
+  /** 이 경로들 아래에서도 이 탭을 활성으로 본다(예: 전표입력 탭이 전표 대조 화면에서도 켜지게). */
   alsoActiveFor?: readonly string[];
   /** true면 폰 화면(900px 이하)에서 탭을 숨긴다 — 사무실 PC 전용 화면. */
   desktopOnly?: boolean;

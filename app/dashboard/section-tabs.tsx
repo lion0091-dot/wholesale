@@ -28,7 +28,7 @@ const STOCK_TABS = [
 ] as const;
 
 // 입고는 현장(입고 스캔)과 사무실(전표입력) 두 화면이다. 입고 스캔은 하위 경로(전표입력·대조 화면)까지
-// 잡지 않도록 exact, 전표입력은 명세서 대조 화면(/documents/<id>)에서도 활성이다. 폰에는 전표입력 탭이 없다.
+// 잡지 않도록 exact, 전표입력은 전표 대조 화면(/documents/<id>)에서도 활성이다. 폰에는 전표입력 탭이 없다.
 const INBOUND_TABS = [
   { label: "입고 스캔", href: "/dashboard/inbound", exact: true },
   {

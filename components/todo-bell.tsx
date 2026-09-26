@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { TODO_ITEMS, totalTodo, type TodoCounts } from "@/lib/supplier/todo-counts";
+import { totalTodo, visibleTodoItems, type TodoCounts } from "@/lib/supplier/todo-counts";
 
 const REFRESH_MS = 30_000;
 
@@ -14,6 +14,8 @@ const REFRESH_MS = 30_000;
 export function TodoBell({ initialCounts }: { initialCounts: TodoCounts }) {
   const [counts, setCounts] = useState(initialCounts);
   const [open, setOpen] = useState(false);
+  // 서버 렌더는 PC 기준으로 시작하고, 폰이면 브라우저에서 바로잡는다(사이드바와 같은 900px 기준).
+  const [isMobile, setIsMobile] = useState(false);
   const [panelPosition, setPanelPosition] = useState({ top: 0, left: 12, width: 280 });
   const rootRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
@@ -63,7 +65,17 @@ export function TodoBell({ initialCounts }: { initialCounts: TodoCounts }) {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
-  const total = totalTodo(counts);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 900px)");
+    const update = () => setIsMobile(media.matches);
+
+    update();
+    media.addEventListener("change", update);
+
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  const total = totalTodo(counts, isMobile);
 
   // 패널은 화면 기준(fixed)으로 놓고 좌우 12px 안쪽에 가둔다 — 종 아이콘이 왼쪽에 붙은 좁은 폰 헤더에서
   // 아이콘 기준 오른쪽 정렬을 하면 패널이 화면 밖으로 밀려 항목 이름이 잘린다.
@@ -145,7 +157,7 @@ export function TodoBell({ initialCounts }: { initialCounts: TodoCounts }) {
           {total === 0 ? (
             <div style={{ padding: "10px", fontSize: "13px", color: "#475569" }}>지금 처리할 일이 없습니다.</div>
           ) : (
-            TODO_ITEMS.filter((item) => counts[item.key] > 0).map((item) => (
+            visibleTodoItems(isMobile).filter((item) => counts[item.key] > 0).map((item) => (
               <Link
                 key={item.key}
                 href={item.href}

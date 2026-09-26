@@ -133,7 +133,7 @@ export interface World {
       rawPayload?: unknown;
     }
   ): Promise<void>;
-  /** 공급사 A의 명세서 한 장에 줄 하나(이력번호→상품)를 만든다. */
+  /** 공급사 A의 전표 한 장에 줄 하나(이력번호→상품)를 만든다. */
   createDocumentLine(options: {
     traceNo: string | null;
     /** 두 칸 서식(묶음번호+개체번호)의 묶음번호 칸 */
@@ -442,7 +442,7 @@ async function buildWorld(tracker: Tracker): Promise<World> {
           id: lineId,
           document_id: docId,
           line_no: (count ?? 0) + 1,
-          item_name: product?.name ?? partName ?? "명세서 품목",
+          item_name: product?.name ?? partName ?? "전표 품목",
           product_id: product?.id ?? null,
           part_name: partName ?? null,
           grade: grade ?? null,

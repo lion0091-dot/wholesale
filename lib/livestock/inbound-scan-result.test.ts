@@ -83,7 +83,7 @@ describe("buildScanResultCard", () => {
     expect(soon.tone).toBe("yellow");
   });
 
-  it("7. 바코드 상품과 명세서 상품 충돌 — 두 상품 이름을 보여준다", () => {
+  it("7. 바코드 상품과 전표 상품 충돌 — 두 상품 이름을 보여준다", () => {
     const card = buildScanResultCard(
       { ...ok, productConflict: { gtinProductId: "a", documentProductId: "b" } },
       options,
@@ -151,29 +151,52 @@ describe("입력 누락·실패 카드", () => {
 });
 
 describe("withDocumentContext", () => {
-  it("13. 대기 명세서가 있는데 어느 줄과도 안 이어졌으면 초록을 노랑으로 올리고 안내를 덧붙인다", () => {
+  it("13. 대기 전표가 있는데 어느 줄과도 안 이어졌으면 초록을 노랑으로 올리고 안내를 덧붙인다", () => {
     const card = withDocumentContext(buildScanResultCard(ok, options), { hasPendingDocument: true, documentMatched: false });
 
     expect(card.tone).toBe("yellow");
-    expect(card.extras.at(-1)?.title).toContain("명세서에 없는 번호");
+    expect(card.extras.at(-1)?.title).toContain("전표에 없는 번호");
   });
 
-  it("명세서와 이어졌으면 그대로 둔다", () => {
+  it("전표와 이어졌으면 그대로 둔다", () => {
     const base = buildScanResultCard(ok, options);
 
     expect(withDocumentContext(base, { hasPendingDocument: true, documentMatched: true })).toEqual(base);
   });
 
-  it("14. 대기 명세서가 없으면 초록 카드에 '명세서 없이 입고' 안내를 덧붙인다", () => {
+  it("14. 대기 전표가 없으면 초록 카드에 '전표 없이 입고' 안내를 덧붙인다", () => {
     const card = withDocumentContext(buildScanResultCard(ok, options), { hasPendingDocument: false, documentMatched: null });
 
     expect(card.tone).toBe("green");
-    expect(card.extras.at(-1)?.title).toContain("명세서 없이");
+    expect(card.extras.at(-1)?.title).toContain("전표 없이");
   });
 
-  it("빨강 카드에는 명세서 없음 안내를 덧붙이지 않는다", () => {
+  it("빨강 카드에는 전표 없음 안내를 덧붙이지 않는다", () => {
     const red = buildScanResultCard({ ...ok, status: "PENDING_MAPPING" }, options);
 
     expect(withDocumentContext(red, { hasPendingDocument: false, documentMatched: null })).toEqual(red);
+  });
+});
+
+describe("buildScanResultCard — 자동 마감·부위 미지정 안내", () => {
+  it("이 박스로 전표가 자동 마감되면 결과 카드가 그 사실을 함께 알린다", () => {
+    const card = buildScanResultCard({ ...ok, autoClosedDocument: true }, options);
+
+    expect(card.tone).toBe("green");
+    expect(card.extras.map((extra) => extra.title)).toContain("전표를 저절로 마감했습니다");
+  });
+
+  it("자동 마감이 아니면 그 안내는 없다", () => {
+    expect(buildScanResultCard(ok, options).extras).toEqual([]);
+  });
+
+  it("부위를 몰라 만든 상품은 부위를 채우라고 안내한다", () => {
+    const card = buildScanResultCard(
+      { ...ok, autoCreated: { productName: "소 (부위 미지정)", needsPrice: true } },
+      options
+    );
+
+    expect(card.detail).toContain("부위를 몰라 비워 뒀습니다");
+    expect(card.action?.href).toBe("/dashboard/products");
   });
 });

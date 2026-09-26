@@ -10,6 +10,7 @@ import {
   MtraceNotConfiguredError,
 } from "@/lib/livestock/mtrace-client";
 import { cacheTraceRecord } from "@/lib/livestock/master-cache";
+import { autoCloseDocumentsForScan } from "@/lib/livestock/auto-close";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -53,6 +54,8 @@ export interface ScanResult {
   purchaseSupplier: string | null;
   /** 이력 정보로 상품을 새로 만든 경우 — 화면에서 "가격을 넣어달라"고 안내한다. */
   autoCreated: { productName: string; needsPrice: boolean } | null;
+  /** 이 박스로 전표가 모두 채워져 저절로 마감됐다. */
+  autoClosedDocument: boolean;
   /**
    * status가 EXCEPTION일 때만 의미 있다. "API_ERROR"(조회 자체를 못 함 — 인증키
    * 미설정 등)와 "NOT_FOUND"(조회는 됐지만 그 번호가 없음)는 화면에서 완전히
@@ -63,9 +66,9 @@ export interface ScanResult {
   /** true면 인증키 미설정이 원인 — 재시도해도 절대 통과하지 않는다. */
   failIsNotConfigured: boolean;
   /**
-   * 바코드 상품코드(GTIN) 학습과 명세서 줄이 서로 다른 상품을 가리켰다. 입고는 GTIN 쪽으로
+   * 바코드 상품코드(GTIN) 학습과 전표 줄이 서로 다른 상품을 가리켰다. 입고는 GTIN 쪽으로
    * 했다(품목 자체에 붙은 코드라 더 구체적) — 하지만 조용히 넘기지 않고 화면이 알린다.
-   * 명세서를 잘못 골랐거나 GTIN 학습이 옛 상품에 묶여 있는 것 중 하나다.
+   * 전표를 잘못 골랐거나 GTIN 학습이 옛 상품에 묶여 있는 것 중 하나다.
    */
   productConflict: { gtinProductId: string; documentProductId: string } | null;
 }
@@ -245,9 +248,9 @@ export async function recordScanAction(input: {
 
     // 3) 상품을 자동으로 정할 수 있는지 본다. 사람이 직접 고른 값이 없을 때만.
     //
-    //    순서: 바코드 상품코드 → 명세서 줄.
+    //    순서: 바코드 상품코드 → 전표 줄.
     //    상품코드(GTIN)가 더 정확하다 — 품목 자체에 붙은 코드라 같은 소에서 나온
-    //    등심과 안심을 구분한다. 명세서는 이력번호 단위라, 한 마리가 여러 부위로
+    //    등심과 안심을 구분한다. 전표는 이력번호 단위라, 한 마리가 여러 부위로
     //    쪼개져 여러 줄에 걸쳐 있으면 어느 줄인지 알 수 없다(그 경우 DB 함수가
     //    NULL을 돌려줘 되묻는다).
     let autoProductId: string | null = null;
@@ -262,8 +265,8 @@ export async function recordScanAction(input: {
         fromGtin = (mapped as string | null) ?? null;
       }
 
-      // 명세서를 먼저 올려둔 물건은 여기서 확정된다 — 찍기만 하면 끝난다.
-      // GTIN이 있어도 명세서를 같이 본다 — 둘이 다른 상품이면 GTIN을 따르되 그 사실을 알린다.
+      // 전표를 먼저 올려둔 물건은 여기서 확정된다 — 찍기만 하면 끝난다.
+      // GTIN이 있어도 전표를 같이 본다 — 둘이 다른 상품이면 GTIN을 따르되 그 사실을 알린다.
       const { data: fromDocument } = await supabase.rpc("lookup_product_by_document_trace", {
         p_trace_no: traceNo,
       });
@@ -315,7 +318,7 @@ export async function recordScanAction(input: {
 
     const row = data as Record<string, unknown>;
 
-    // 명세서 줄에 박스를 붙인다(대조용, 재고와 무관 — 118). 해당 줄이 하나로 정해질 때만 붙고,
+    // 전표 줄에 박스를 붙인다(대조용, 재고와 무관 — 118). 해당 줄이 하나로 정해질 때만 붙고,
     // 애매하면 사무실 대조 화면 몫으로 남는다. 실패해도 입고는 이미 끝났으므로 막지 않는다.
     if (row.scan_id) {
       const { error: linkError } = await supabase.rpc("auto_link_scan_to_document_line", {
@@ -323,7 +326,7 @@ export async function recordScanAction(input: {
       });
 
       if (linkError) {
-        console.error("[inbound] 명세서 줄 자동 배정 실패:", linkError.message);
+        console.error("[inbound] 전표 줄 자동 배정 실패:", linkError.message);
       }
     }
 
@@ -365,6 +368,11 @@ export async function recordScanAction(input: {
       }
     }
 
+    // 이 박스로 전표의 모든 줄이 채워졌고 문제 박스도 없으면 사람이 할 일이 없으니 마감해 둔다.
+    const autoClosedDocument = row.scan_id
+      ? (await autoCloseDocumentsForScan(supabase, String(row.scan_id))).length > 0
+      : false;
+
     revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/products");
 
@@ -391,6 +399,7 @@ export async function recordScanAction(input: {
         purchaseAmount: toNumberOrNull(row.purchase_amount),
         purchaseSupplier: (row.purchase_supplier as string | null) ?? null,
         autoCreated,
+        autoClosedDocument,
         // record_inbound_scan의 JSONB 반환값에는 안 실려 있다 — 위에서 API 호출
         // 직후 이미 계산해둔 로컬 값을 그대로 돌려준다(DB 왕복 불필요).
         failReason: row.status === "EXCEPTION" ? failReason : null,
@@ -450,6 +459,8 @@ export async function resolveMappingAction(
         console.error("[inbound] 상품코드 학습 실패:", learnError.message);
       }
     }
+
+    await autoCloseDocumentsForScan(supabase, scanId);
 
     revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/products");
@@ -569,6 +580,8 @@ export async function voidScanAction(scanId: string, reason?: string): Promise<A
 
       throw new Error(error.message);
     }
+
+    await autoCloseDocumentsForScan(supabase, scanId);
 
     revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/products");
@@ -761,7 +774,7 @@ export async function processImportChunkAction(
       }
 
       // 아래 갱신은 전부 PENDING일 때만 — 같은 행을 두 창이 겹쳐 처리해도
-      // 먼저 쓴 DONE을 나중 FAILED가 덮어쓰지 않는다(명세서 사전조회와 같은 방식).
+      // 먼저 쓴 DONE을 나중 FAILED가 덮어쓰지 않는다(전표 사전조회와 같은 방식).
       if (scanned) {
         await supabase
           .from("inbound_import_rows")
@@ -846,7 +859,7 @@ export async function getInboundConfigAction(): Promise<ActionResult<{ traceLook
   }
 }
 
-/** 위치 사진 한 장 한도 — 참고용이라 명세서 파일보다 훨씬 작게 잡는다. */
+/** 위치 사진 한 장 한도 — 참고용이라 전표 파일보다 훨씬 작게 잡는다. */
 const MAX_LOCATION_PHOTO_BYTES = 4 * 1024 * 1024;
 
 /**

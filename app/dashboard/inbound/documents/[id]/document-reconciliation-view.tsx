@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -15,7 +15,7 @@ import type { ScanProductOption } from "../../inbound-scan-view";
 import { InboundTabs } from "../../../section-tabs";
 
 /**
- * 29단계 B — 명세서 ↔ 실물 박스 사무실 대조 화면.
+ * 29단계 B — 전표 ↔ 실물 박스 사무실 대조 화면.
  *
  * 잠긴 결정(docs/inbound-document-reconciliation-spec.md §1): 재고는 스캔이 만든다 — 여기서
  * 하는 붙이기/떼기는 대조·집계용이고 재고 원장과 무관하다. 애매한 배정은 전부 여기서, 자동은
@@ -131,7 +131,7 @@ export function DocumentReconciliationView({
   const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [closeNote, setCloseNote] = useState("");
   const [closing, setClosing] = useState(false);
-  // 평소엔 볼 일이 없다 — 명세서와 맞아 보이는 박스가 있을 때만 처음부터 펼친다.
+  // 평소엔 볼 일이 없다 — 전표와 맞아 보이는 박스가 있을 때만 처음부터 펼친다.
   const [showUnlinked, setShowUnlinked] = useState(unlinkedBoxes.some((box) => box.candidates.length > 0));
 
   const isPending = status === "PENDING";
@@ -156,6 +156,57 @@ export function DocumentReconciliationView({
   }, [lines]);
 
   const incompleteLines = lines.filter((line) => line.status !== "COMPLETE");
+  // "안 온 줄"과 "더 많이 온 줄"은 할 일이 다르다 — 섞어서 안내하면 더 온 줄에 "기다리세요"가 나온다.
+  const shortLines = lines.filter((line) => line.status === "AWAITING" || line.status === "PARTIAL");
+  const overLines = lines.filter((line) => line.status === "OVER");
+  // 전표에는 이어졌지만 상품이 안 정해져 재고에 아직 안 들어간 박스.
+  const unresolvedLinkedCount = lines.reduce(
+    (sum, line) => sum + line.boxes.filter((box) => box.status === "EXCEPTION" || box.status === "PENDING_MAPPING").length,
+    0
+  );
+
+  // 안내문이 가리키는 자리(줄·박스)를 펼치고 화면 가운데로 데려간다.
+  const jumpTo = (lineId: string, targetId: string) => {
+    setExpandedLineId(lineId);
+    window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+  };
+
+  const firstException = lines
+    .flatMap((line) => line.boxes.filter((box) => box.status === "EXCEPTION"))[0];
+  const exceptionLinkedCount = lines.reduce(
+    (sum, line) => sum + line.boxes.filter((box) => box.status === "EXCEPTION").length,
+    0
+  );
+
+  const firstUnresolved = lines
+    .flatMap((line) =>
+      line.boxes
+        .filter((box) => box.status === "EXCEPTION" || box.status === "PENDING_MAPPING")
+        .map((box) => ({ lineId: line.id, scanId: box.scanId }))
+    )[0];
+
+  // 다른 화면의 안내 버튼이 "#box-<박스>"(그 박스로 가기)나 "#close"(마감 창 열기)를 달고 넘어온다.
+  useEffect(() => {
+    const hash = window.location.hash;
+
+    // 새로고침할 때 마감 창이 또 뜨지 않게 주소의 해시는 한 번 쓰고 지운다.
+    if (hash) window.history.replaceState(null, "", window.location.pathname + window.location.search);
+
+    if (hash === "#close") {
+      if (isPending) setCloseModalOpen(true);
+      return;
+    }
+
+    if (hash.startsWith("#box-")) {
+      const scanId = hash.slice("#box-".length);
+      const owner = lines.find((line) => line.boxes.some((box) => box.scanId === scanId));
+
+      if (owner) jumpTo(owner.id, `box-${scanId}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const matchableUnlinkedCount = unlinkedBoxes.filter((box) => box.candidates.length > 0).length;
 
   const runAction = async (key: string, run: () => Promise<{ success: boolean; error?: string }>) => {
@@ -184,12 +235,67 @@ export function DocumentReconciliationView({
 
     const line = lineById.get(lineId);
 
-    // 박스는 상품 미확정인데 그 줄엔 상품이 지정돼 있으면, 그 줄 상품으로 확정할지 물어본다(스펙 3.3-5).
-    if (line?.productId && box.productId === null) {
-      if (window.confirm(`이 박스를 "${line.productName ?? line.itemName}" 상품으로 지정할까요?`)) {
-        await runAction(`resolve-${scanId}`, async () => resolveMappingAction(scanId, line.productId!, true));
+    // 박스는 상품 미확정인데 그 줄엔 상품이 지정돼 있으면 그 줄 상품으로 바로 확정한다(고를 것이 없다).
+    // 이력을 못 찾은 박스(EXCEPTION)는 번호부터 봐야 하므로 자동 지정하지 않고, 지정해도 바코드 상품으로 학습하지 않는다
+    // (전표 줄의 상품이 틀렸을 때 잘못된 기억이 남지 않게).
+    if (line?.productId && box.productId === null && box.status === "PENDING_MAPPING") {
+      await runAction(`resolve-${scanId}`, async () => resolveMappingAction(scanId, line.productId!, false));
+    }
+  };
+
+  // 후보가 하나뿐이고 축종까지 맞는 박스는 고를 것이 없다 — 한 번에 이어 준다.
+  const sureUnlinked = unlinkedBoxes.filter(
+    (box) => box.candidates.length === 1 && box.candidates[0].basis !== "SUGGESTED_UNCONFIRMED"
+  );
+  // 이미 이어졌고 줄에 상품이 지정돼 있는데 박스 상품만 비어 있는 것 — 줄 상품으로 정하면 된다.
+  const resolvableLinked = lines.flatMap((line) =>
+    line.productId
+      ? line.boxes
+          .filter((box) => box.status === "PENDING_MAPPING")
+          .map((box) => ({ scanId: box.scanId, productId: line.productId! }))
+      : []
+  );
+
+  const linkAllSure = async () => {
+    setBusyKey("batch-link");
+    setError(null);
+
+    for (const box of sureUnlinked) {
+      const lineId = box.candidates[0].lineId;
+      const result = await linkScanToDocumentLineAction(box.scanId, lineId);
+
+      // 마지막 박스로 전표가 채워져 저절로 마감되면 남은 박스는 이을 곳이 없다 — 오류가 아니다.
+      if (!result.success) {
+        if (!result.error?.includes("마감")) setError(result.error ?? "처리하지 못했습니다.");
+        break;
+      }
+
+      const line = lineById.get(lineId);
+
+      if (line?.productId && box.productId === null && box.status === "PENDING_MAPPING") {
+        await resolveMappingAction(box.scanId, line.productId, false);
       }
     }
+
+    setBusyKey(null);
+    router.refresh();
+  };
+
+  const resolveAllFromLines = async () => {
+    setBusyKey("batch-resolve");
+    setError(null);
+
+    for (const item of resolvableLinked) {
+      const result = await resolveMappingAction(item.scanId, item.productId, false);
+
+      if (!result.success) {
+        setError(result.error ?? "처리하지 못했습니다.");
+        break;
+      }
+    }
+
+    setBusyKey(null);
+    router.refresh();
   };
 
   const handleUnlink = async (scanId: string) => {
@@ -247,8 +353,8 @@ export function DocumentReconciliationView({
 
   const copySupplierRequest = () => {
     const text =
-      `[${supplierName ?? "공급처"}] 명세서 대조 — 미입고 확인 요청\n` +
-      incompleteLines
+      `[${supplierName ?? "공급처"}] 전표 대조 — 미입고 확인 요청\n` +
+      shortLines
         .map((line) => `- ${lineLabel(line)} (예정 ${line.expected} / 입고 ${line.linked})`)
         .join("\n");
 
@@ -358,10 +464,14 @@ export function DocumentReconciliationView({
       <section style={{ ...panelStyle, backgroundColor: "#f8fafc" }}>
         <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#0f172a", lineHeight: 1.6 }}>
           {!isPending
-            ? "마감된 명세서입니다. 고칠 것이 있으면 위의 '다시 열기'를 누르세요."
+            ? "마감된 전표입니다. 고칠 것이 있으면 위의 '다시 열기'를 누르세요."
             : incompleteLines.length === 0
-              ? "명세서에 적힌 물건이 모두 도착했습니다. 위의 '마감'을 누르면 끝납니다."
-              : `명세서 ${lines.length}줄 중 ${summary.counts.COMPLETE}줄이 도착했습니다. 안 온 물건 ${incompleteLines.length}줄은 아래 둘 중 하나로 하면 됩니다.`}
+              ? unresolvedLinkedCount === 0
+                ? "물건이 모두 도착했습니다. 위의 '마감'을 누르면 끝납니다."
+                : "물건은 모두 도착했습니다. 아래 안내대로 상품 정하기를 먼저 하세요."
+              : `${lines.length}줄 중 ${summary.counts.COMPLETE}줄 도착.` +
+                (shortLines.length > 0 ? ` 안 온 물건 ${shortLines.length}줄` : "") +
+                (overLines.length > 0 ? ` · 더 온 줄 ${overLines.length}줄` : "")}
         </p>
 
         {isPending && lines.length > 0 && incompleteLines.length === 0 && (
@@ -370,43 +480,113 @@ export function DocumentReconciliationView({
               마감하기
             </button>
             <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#64748b" }}>
-              마감하면 이 명세서 확인이 끝났다고 기록되고, 박스를 이어 주거나 풀 수 없게 잠깁니다. 고칠 것이 생기면 "다시 열기"로 되돌릴 수 있습니다.
+              마감하면 박스 연결이 잠깁니다. 고칠 게 생기면 "다시 열기"를 누르세요.
             </p>
           </div>
         )}
 
         {isPending && matchableUnlinkedCount > 0 && (
           <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#92400e" }}>
-            명세서와 맞아 보이는 박스가 {matchableUnlinkedCount}개 있습니다. 아래에서 확인해 주세요.
+            전표와 맞아 보이는 박스가 {matchableUnlinkedCount}개 있습니다.
+            {sureUnlinked.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void linkAllSure()}
+                disabled={busyKey === "batch-link"}
+                style={{ ...primaryButton, marginLeft: "8px" }}
+              >
+                {busyKey === "batch-link" ? "잇는 중…" : `확실한 ${sureUnlinked.length}개 한꺼번에 이어 주기`}
+              </button>
+            )}
+            {matchableUnlinkedCount > sureUnlinked.length && " 나머지는 아래에서 골라 주세요."}
           </p>
         )}
 
         <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#64748b" }}>
-          명세서 무게 합계 {summary.labeledTotal.toFixed(1)}kg · 지금까지 잰 무게 {summary.actualTotal.toFixed(1)}kg
+          전표 무게 합계 {summary.labeledTotal.toFixed(1)}kg · 지금까지 잰 무게 {summary.actualTotal.toFixed(1)}kg
         </p>
 
-        {isPending && incompleteLines.length > 0 && (
+        {isPending && unresolvedLinkedCount > 0 && (
+          <p style={{ margin: "8px 0 0", fontSize: "13px", color: "#92400e", lineHeight: 1.7 }}>
+            <strong>상품이 안 정해진 박스 {unresolvedLinkedCount}개</strong>는 재고에 아직 안 들어갔습니다.
+            {resolvableLinked.length > 0
+              ? `${resolvableLinked.length}개는 전표 줄의 상품으로 바로 지정할 수 있습니다.`
+              : "버튼을 누르면 그 박스로 이동합니다."}
+            {resolvableLinked.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void resolveAllFromLines()}
+                disabled={busyKey === "batch-resolve"}
+                style={{ ...primaryButton, marginLeft: "8px" }}
+              >
+                {busyKey === "batch-resolve" ? "지정 중…" : `${resolvableLinked.length}개 한꺼번에 지정`}
+              </button>
+            )}
+            {firstUnresolved && resolvableLinked.length < unresolvedLinkedCount && (
+              <button
+                type="button"
+                onClick={() => jumpTo(firstUnresolved.lineId, `box-${firstUnresolved.scanId}`)}
+                style={{ ...secondaryButton, marginLeft: "8px" }}
+              >
+                상품 지정하러 가기
+              </button>
+            )}
+          </p>
+        )}
+
+        {isPending && exceptionLinkedCount > 0 && firstException && (
+          <p style={{ margin: "8px 0 0", fontSize: "13px", color: "#991b1b", lineHeight: 1.7 }}>
+            <strong>이력을 못 찾은 박스 {exceptionLinkedCount}개</strong> — 번호부터 확인하세요. 번호가 틀렸으면 입고 스캔 화면에서
+            그 박스를 취소하고 다시 찍으세요. 번호가 맞으면 박스 옆에서 상품을 지정하세요.
+            <Link
+              href={`/dashboard/inbound#scan-${firstException.scanId}`}
+              style={{ ...secondaryButton, marginLeft: "8px", textDecoration: "none", display: "inline-block" }}
+            >
+              스캔 화면에서 확인하기
+            </Link>
+          </p>
+        )}
+
+        {isPending && overLines.length > 0 && (
+          <p style={{ margin: "8px 0 0", fontSize: "13px", color: "#991b1b", lineHeight: 1.7 }}>
+            <strong>"더 많이 옴" 줄</strong>은 다른 줄의 박스를 잘못 이은 걸 수 있습니다. 박스 옆 <strong>다른 줄로 옮기기</strong>로
+            바로잡으세요. 진짜 더 온 거면 사유를 적고 마감하세요.
+            {overLines[0] && (
+              <button
+                type="button"
+                onClick={() => jumpTo(overLines[0].id, `line-${overLines[0].id}`)}
+                style={{ ...secondaryButton, marginLeft: "8px" }}
+              >
+                그 줄 열기
+              </button>
+            )}
+          </p>
+        )}
+
+        {isPending && shortLines.length > 0 && (
           <ol style={{ margin: "8px 0 0", paddingLeft: "20px", fontSize: "13px", color: "#334155", lineHeight: 1.7 }}>
             <li>
-              <strong>물건이 아직 오는 중이면</strong> — 기다리세요. 현장에서 박스를 찍으면 이 화면에 저절로 채워집니다.
+              <strong>오는 중이면</strong> — 기다리세요. 박스를 찍으면 저절로 채워집니다.
             </li>
             <li>
-              <strong>공급처가 끝내 안 보낸 물건이면</strong> — 위쪽 <strong>마감</strong> 버튼을 누르고 사유(예: 공급처 결품)를 적으면
-              마감됩니다. 아래 버튼으로 공급처에 보낼 문구를 복사할 수 있습니다.
+              <strong>끝내 안 오면</strong> — 사유(예: 결품)를 적고 마감하세요.{" "}
+              <button type="button" onClick={() => setCloseModalOpen(true)} style={secondaryButton}>
+                안 온 채로 마감하기
+              </button>
             </li>
           </ol>
         )}
 
-        {incompleteLines.length > 0 && (
+        {shortLines.length > 0 && (
           <button type="button" onClick={copySupplierRequest} style={{ ...secondaryButton, marginTop: "10px" }}>
-            안 온 물건 {incompleteLines.length}줄, 공급처에 보낼 문구 복사
+            안 온 물건 {shortLines.length}줄, 공급처에 보낼 문구 복사
           </button>
         )}
       </section>
 
       {/* 줄 표 */}
       <section style={panelStyle}>
-        <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "10px" }}>명세서에 적힌 물건</div>
+        <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "10px" }}>전표에 적힌 물건</div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           {lines.map((line) => {
@@ -414,7 +594,7 @@ export function DocumentReconciliationView({
             const expanded = expandedLineId === line.id;
 
             return (
-              <div key={line.id} style={{ border: "1px solid #e2e8f0", borderRadius: "8px" }}>
+              <div key={line.id} id={`line-${line.id}`} style={{ border: "1px solid #e2e8f0", borderRadius: "8px" }}>
                 <button
                   type="button"
                   onClick={() => setExpandedLineId(expanded ? null : line.id)}
@@ -450,7 +630,7 @@ export function DocumentReconciliationView({
                   </span>
                   {line.labeledWeight !== null && (
                     <span style={{ fontSize: "12px", color: "#64748b" }}>
-                      {line.isSplitContinuation ? "첫 줄 합계에 포함" : `명세서 ${line.labeledWeight}kg`}
+                      {line.isSplitContinuation ? "첫 줄 합계에 포함" : `전표 ${line.labeledWeight}kg`}
                     </span>
                   )}
                   <span
@@ -479,6 +659,7 @@ export function DocumentReconciliationView({
                         return (
                           <div
                             key={box.scanId}
+                            id={`box-${box.scanId}`}
                             style={{
                               display: "flex",
                               flexWrap: "wrap",
@@ -517,6 +698,49 @@ export function DocumentReconciliationView({
                             <span style={{ color: "#94a3b8" }}>
                               {box.linkedHow === "AUTO" ? "자동" : "수동"}
                             </span>
+                            {isPending && (box.status === "PENDING_MAPPING" || box.status === "EXCEPTION") && (
+                              <select
+                                defaultValue=""
+                                onChange={(event) => void handleResolveProduct(box.scanId, event.target.value)}
+                                disabled={busyKey === `resolve-${box.scanId}`}
+                                aria-label="상품 지정"
+                                style={{ ...inputStyle, width: "auto", padding: "4px 6px", fontSize: "12px" }}
+                              >
+                                <option value="">상품 지정</option>
+                                {products.map((product) => (
+                                  <option key={product.id} value={product.id}>
+                                    {product.name}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            {isPending && lines.length > 1 && (
+                              <select
+                                defaultValue=""
+                                aria-label="다른 줄로 옮기기"
+                                disabled={busyKey === `move-${box.scanId}`}
+                                onChange={(event) => {
+                                  const targetLineId = event.target.value;
+
+                                  event.target.value = "";
+                                  if (targetLineId) {
+                                    void runAction(`move-${box.scanId}`, () =>
+                                      linkScanToDocumentLineAction(box.scanId, targetLineId)
+                                    );
+                                  }
+                                }}
+                                style={{ ...inputStyle, width: "auto", padding: "4px 6px", fontSize: "12px" }}
+                              >
+                                <option value="">다른 줄로 옮기기</option>
+                                {lines
+                                  .filter((other) => other.id !== line.id)
+                                  .map((other) => (
+                                    <option key={other.id} value={other.id}>
+                                      {other.lineNo}. {lineLabel(other)}
+                                    </option>
+                                  ))}
+                              </select>
+                            )}
                             {isPending && (
                               <button
                                 type="button"
@@ -539,7 +763,7 @@ export function DocumentReconciliationView({
         </div>
       </section>
 
-      {/* 명세서와 연결 안 된 박스 — 평소엔 접어 둔다 */}
+      {/* 전표와 연결 안 된 박스 — 평소엔 접어 둔다 */}
       <section style={panelStyle}>
         <button
           type="button"
@@ -558,7 +782,7 @@ export function DocumentReconciliationView({
           }}
         >
           <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>
-            명세서와 연결 안 된 박스 ({unlinkedBoxes.length}개)
+            전표와 연결 안 된 박스 ({unlinkedBoxes.length}개)
           </span>
           <span style={{ fontSize: "12px", color: "#64748b" }}>{showUnlinked ? "접기" : "펼치기"}</span>
         </button>
@@ -566,9 +790,17 @@ export function DocumentReconciliationView({
         {showUnlinked && (
           <>
             <p style={{ margin: "8px 0 10px", fontSize: "12px", color: "#64748b", lineHeight: 1.6 }}>
-              현장에서 찍었지만 이 명세서의 어느 물건과도 자동으로 이어지지 않은 박스입니다. 명세서에 있는 물건이면
-              해당하는 줄을 눌러 이어 주세요. 명세서에 없는 물건이면 그대로 두셔도 됩니다.
+              현장에서 찍었지만 이 전표의 어느 물건과도 자동으로 이어지지 않은 박스입니다. 전표에 있는 물건이면
+              해당하는 줄을 눌러 이어 주세요. 전표에 없는 물건이면 그대로 두셔도 됩니다.
             </p>
+            {!isPending && (
+              <p style={{ margin: "0 0 10px", fontSize: "12px", color: "#92400e" }}>
+                마감 상태에서는 이을 수 없습니다.{" "}
+                <button type="button" onClick={handleReopen} disabled={busyKey === "reopen"} style={secondaryButton}>
+                  다시 열기
+                </button>
+              </p>
+            )}
             <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", marginBottom: "10px" }}>
               <span style={{ fontSize: "12px", color: "#64748b" }}>찍은 날짜 범위</span>
               <input
@@ -703,7 +935,7 @@ export function DocumentReconciliationView({
 
                       {numberCandidates.length === 0 && suggested.length === 0 && (
                         <span style={{ fontSize: "12px", color: "#94a3b8" }}>
-                          맞는 줄이 안 보입니다 — 명세서에 없는 물건일 수 있습니다.
+                          맞는 줄이 안 보입니다 — 전표에 없는 물건일 수 있습니다.
                         </span>
                       )}
 
@@ -747,12 +979,18 @@ export function DocumentReconciliationView({
           }}
         >
           <div style={{ backgroundColor: "#fff", borderRadius: "12px", padding: "20px", maxWidth: "420px", width: "100%" }}>
-            <div style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a", marginBottom: "8px" }}>명세서 마감</div>
+            <div style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a", marginBottom: "8px" }}>전표 마감</div>
 
             {incompleteLines.length > 0 ? (
               <>
                 <p style={{ fontSize: "13px", color: "#475569", marginBottom: "8px" }}>
-                  미입고 {incompleteLines.length}줄이 있습니다. 마감하려면 사유를 적어주세요.
+                  {[
+                    shortLines.length > 0 ? `안 온 물건 ${shortLines.length}줄` : null,
+                    overLines.length > 0 ? `더 많이 온 줄 ${overLines.length}줄` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
+                  이 있습니다. 마감하려면 사유를 적어주세요.
                 </p>
                 <textarea
                   value={closeNote}
@@ -765,6 +1003,8 @@ export function DocumentReconciliationView({
             ) : (
               <p style={{ fontSize: "13px", color: "#475569", marginBottom: "8px" }}>
                 모든 줄이 완료됐습니다. 마감하시겠습니까?
+                {unresolvedLinkedCount > 0 &&
+                  ` (상품 미지정 박스 ${unresolvedLinkedCount}개는 재고에 아직 안 들어갑니다.)`}
               </p>
             )}
 

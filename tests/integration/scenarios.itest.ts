@@ -1,5 +1,5 @@
 /**
- * 시나리오 테스트 — 2026-09-25 입고 자동화(명세서 대조·지금 할 일 카드·스캔 종료)부터 상품 중복 제어(소 유니크·손 등록 차단)까지
+ * 시나리오 테스트 — 2026-09-25 입고 자동화(전표 대조·지금 할 일 카드·스캔 종료)부터 상품 중복 제어(소 유니크·손 등록 차단)까지
  * 사용자가 실제로 밟는 순서대로 여러 기능을 이어 붙여 본다. 기능별 세부 케이스는 inbound/documents/products/outbound.itest.ts가 이미 한다.
  * 시나리오 목록·기대 결과는 docs/inbound-scenario-tests.md.
  */
@@ -89,8 +89,8 @@ async function cardStep(documentId: string, scanFinished: boolean) {
   }).key;
 }
 
-describe("SC-1 정상 하루 — 명세서 올리기 → 현장 스캔이 명세서와 저절로 이어짐 → 전부 도착 → 카드에서 마감", () => {
-  it("명세서 2줄 → 박스 2개 → 재고는 스캔이 만들고, 마감은 재고를 안 바꾼다", async () => {
+describe("SC-1 정상 하루 — 전표 올리기 → 현장 스캔이 전표와 저절로 이어짐 → 전부 도착 → 카드에서 마감", () => {
+  it("전표 2줄 → 박스 2개 → 재고는 스캔이 만들고, 마감은 재고를 안 바꾼다", async () => {
     const product = await newProduct();
     const traceA = world.newTraceNo();
     const traceB = world.newTraceNo();
@@ -98,11 +98,11 @@ describe("SC-1 정상 하루 — 명세서 올리기 → 현장 스캔이 명세
 
     await world.createDocumentLine({ traceNo: traceB, product, quantity: 1, documentId: first.documentId });
 
-    // 스캔 전: 카드는 "현장에서 스캔 중" 단계이고 명세서를 올렸어도 재고는 0이다
+    // 스캔 전: 카드는 "현장에서 스캔 중" 단계이고 전표를 올렸어도 재고는 0이다
     expect(await cardStep(first.documentId, false)).toBe("scan");
     expect(await stockOf(product.id)).toBe(0);
 
-    // 현장: 상품을 고르지 않고 바코드만 찍는다 — 명세서 줄이 상품을 정해 준다
+    // 현장: 상품을 고르지 않고 바코드만 찍는다 — 전표 줄이 상품을 정해 준다
     const a = await scan(traceA, 12.5);
 
     expect(a.status).toBe("NORMAL");
@@ -121,8 +121,7 @@ describe("SC-1 정상 하루 — 명세서 올리기 → 현장 스캔이 명세
     // 전부 도착 → 카드는 "전부 입고 완료 → 마감하기"
     expect(await cardStep(first.documentId, false)).toBe("close");
 
-    // 카드에서 바로 마감 — 사유 없이 되고, 재고는 그대로다
-    expect(await closeInboundDocumentAction(first.documentId, null)).toEqual({ success: true, data: { incompleteLines: 0 } });
+    // 마지막 박스가 도착하는 순간 사람이 누르지 않아도 저절로 마감된다 — 재고는 그대로다
     expect(await docStatus(first.documentId)).toBe("CLOSED");
     expect(await stockOf(product.id)).toBeCloseTo(22.3);
   });
@@ -142,6 +141,8 @@ describe("SC-2 결품 — 박스가 끝내 다 안 옴 → 현장 스캔 종료 
 
     // 3줄 중 1줄이 안 옴 — 현장이 아직 종료를 안 눌렀으면 사무실 카드는 대기
     expect(await cardStep(first.documentId, false)).toBe("scan");
+    // 덜 왔으면 자동 마감하지 않는다
+    expect(await docStatus(first.documentId)).toBe("PENDING");
 
     // 현장: "스캔 종료" → 사무실 카드가 "확인·마감하기"로 바뀐다. 재고는 그대로.
     expect(await setDocumentsScanFinishedAction([first.documentId], true)).toEqual({ success: true, data: { changed: 1 } });
@@ -165,7 +166,8 @@ describe("SC-2 결품 — 박스가 끝내 다 안 옴 → 현장 스캔 종료 
     expect(late.productId).toBe(product.id);
     expect(await stockOf(product.id)).toBeCloseTo(25);
     expect(await cardStep(first.documentId, true)).toBe("close");
-    expect(await closeInboundDocumentAction(first.documentId, null)).toEqual({ success: true, data: { incompleteLines: 0 } });
+    // 늦게 온 박스로 모든 줄이 채워지면 다시 저절로 마감된다
+    expect(await docStatus(first.documentId)).toBe("CLOSED");
   });
 
   it("잘못 찍은 박스를 취소하면 그 줄은 다시 '안 온' 것으로 돌아가 카드가 되돌아간다", async () => {
@@ -320,7 +322,7 @@ describe("SC-4 주문 → 출고 → 고객이 받는 거래명세서 이력번�
   });
 });
 
-describe("SC-5 이메일로 받은 명세서를 폰 파일함에서 골라 올린다 — 파일 종류별 (CSV·CP949·PDF·사진·이상한 파일)", () => {
+describe("SC-5 이메일로 받은 전표를 폰 파일함에서 골라 올린다 — 파일 종류별 (CSV·CP949·PDF·사진·이상한 파일)", () => {
   /** 한글 완성형(KS X 1001) 영역만 만든 테스트용 CP949 인코더 — 한국 엑셀 "CSV(쉼표로 분리)"가 이 인코딩이다. */
   function eucKrEncode(text: string): Uint8Array {
     const decoder = new TextDecoder("euc-kr");
@@ -395,20 +397,20 @@ describe("SC-5 이메일로 받은 명세서를 폰 파일함에서 골라 올�
     const form = new FormData();
 
     form.append("payload", JSON.stringify({ supplierName: `파일함축산-${world.runId}`, lines: lines.map((line) => ({ ...line, productId: null })) }));
-    form.append("file", new File([eucKrEncode(csv) as BlobPart], "명세서.CSV", { type: "" }));
+    form.append("file", new File([eucKrEncode(csv) as BlobPart], "전표.CSV", { type: "" }));
 
     const saved = await saveInboundDocumentAction(form);
 
     expect(saved.success).toBe(true);
 
-    // 한글 파일명("명세서.CSV")이어도 원본이 보관된다 — Storage 키는 ASCII만 받아 예전엔 InvalidKey로 실패했다
+    // 한글 파일명("전표.CSV")이어도 원본이 보관된다 — Storage 키는 ASCII만 받아 예전엔 InvalidKey로 실패했다
     const { data: savedDoc } = await adminClient().from("inbound_documents").select("file_name, storage_path").eq("id", (saved.data as { documentId: string }).documentId).single();
 
-    expect(savedDoc?.file_name).toBe("명세서.CSV");
+    expect(savedDoc?.file_name).toBe("전표.CSV");
     expect(savedDoc?.storage_path).toBeTruthy();
     expect(savedDoc?.storage_path).toMatch(/^[A-Za-z0-9\/._-]+$/);
 
-    // 현장: 박스를 찍는다 — 상품은 명세서 부위로 자동 생성된다
+    // 현장: 박스를 찍는다 — 상품은 전표 부위로 자동 생성된다
     await world.seedTrace(traceA, { part: null, grade: null });
     await world.seedTrace(traceB, { part: null, grade: null });
 
