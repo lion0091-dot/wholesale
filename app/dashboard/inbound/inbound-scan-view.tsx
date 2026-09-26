@@ -1010,7 +1010,7 @@ export function InboundScanView({
       ? {
           title: "스캔 종료를 알렸습니다",
           detail:
-            "안 온 박스는 사무실이 확인합니다. 박스가 더 오면 '스캔 다시 시작'을 누르세요.",
+            "안 온 박스는 사무실이 확인합니다. 박스가 더 오면 그냥 찍으세요 — 저절로 다시 시작됩니다.",
         }
       : pending.length > 0
       ? { title: "등록 중입니다", detail: "이력번호를 조회하고 있습니다. 잠시만 기다려 주세요." }
@@ -1501,7 +1501,7 @@ export function InboundScanView({
 
       <section id="inbound-history" style={{ ...panelStyle, scrollMarginTop: "12px" }}>
         <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "10px" }}>
-          입고 내역<span style={{ color: "#94a3b8", fontWeight: 400 }}>최근 100건</span>
+          입고 내역<span style={{ color: "#94a3b8", fontWeight: 400 }}>최근 100건 + 확인이 필요한 박스</span>
         </div>
 
         {pending.length === 0 && rows.length === 0 ? (

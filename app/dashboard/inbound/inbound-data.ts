@@ -83,7 +83,7 @@ export async function loadInboundData(
     // 주문 목록은 출고 스캔 화면(app/dashboard/outbound/page.tsx)과 같은 기준
     // (확정·배송중만)이다 — "이 박스 특정 주문으로 바로 보내기"가 결국 출고 스캔을
     // 대신 호출하므로 같은 상태만 배정 대상이어야 한다.
-    const [{ data: scanRows }, { data: productRows }, { data: orderRows }, { data: pendingDocLineRows }] =
+    const [{ data: recentScanRows }, { data: openScanRows }, { data: productRows }, { data: orderRows }, { data: pendingDocLineRows }] =
       await Promise.all([
         supabase
           .from("inbound_scans")
@@ -93,6 +93,17 @@ export async function loadInboundData(
           .eq("wholesaler_id", scope.wholesalerId)
           .order("created_at", { ascending: false })
           .limit(100),
+        // 확인이 필요한 박스(이력 못 찾음·상품 미확정)는 최근 100건 밖으로 밀려나도 화면에 남겨야 한다 —
+        // 종 배지는 전부 세는데 여기서만 빠지면 "확인 필요 1"인데 찾을 수 없는 박스가 된다.
+        supabase
+          .from("inbound_scans")
+          .select(
+            "id, trace_no, product_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_unit_price, purchase_amount, purchase_supplier, scanned_by, storage_location, storage_location_photo_path"
+          )
+          .eq("wholesaler_id", scope.wholesalerId)
+          .in("status", ["EXCEPTION", "PENDING_MAPPING"])
+          .order("created_at", { ascending: false })
+          .limit(200),
         supabase
           .from("products")
           .select("id, name, category, subcategory, grade, origin, unit")
@@ -210,6 +221,12 @@ export async function loadInboundData(
     };
 
     // 카드 버튼이 #scan-<id>로 이동하므로, 화면에 실제로 그려진(최근 100건) 박스만 후보로 삼는다.
+    const scanRows = [
+      ...new Map(
+        [...((recentScanRows ?? []) as Array<Record<string, unknown>>), ...((openScanRows ?? []) as Array<Record<string, unknown>>)].map((row) => [String(row.id), row])
+      ).values(),
+    ].sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)));
+
     const visibleScanIds = new Set(((scanRows ?? []) as Array<{ id: string }>).map((row) => String(row.id)));
 
     const matchSummaryByDocId = new Map<
