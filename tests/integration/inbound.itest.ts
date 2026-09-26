@@ -880,7 +880,7 @@ describe("voidScanAction", () => {
 
     expect(await stockOf(product.id)).toBe(6);
 
-    expect(await voidScanAction(data.scanId, " 오입력 ")).toEqual({ success: true });
+    expect(await voidScanAction(data.scanId, " 오입력 ")).toEqual({ success: true, data: { reopenedDocument: false } });
     expect(await stockOf(product.id)).toBe(0);
     expect((await scanRow(traceNo))[0].status).toBe("VOIDED");
 

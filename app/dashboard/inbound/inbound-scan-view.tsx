@@ -18,6 +18,7 @@ import {
   recordScanAction,
   resolveMappingAction,
   resolveMappingToOrderAction,
+  recordSplitScansAction,
   voidScanAction,
   setScanStorageLocationAction,
   getScanLocationPhotoUrlAction,
@@ -847,29 +848,26 @@ export function InboundScanView({
     setSplitSubmitting(true);
     setError(null);
 
-    for (const row of validRows) {
-      // 줄에 이력번호를 따로 찍었으면 그걸 쓰고, 비웠으면 박스 코드를 쓴다
-      // (같은 소에서 나온 부위들이면 박스 코드가 곧 이력번호다).
-      const rowParsed = parseBarcode(row.traceNo ?? "");
-      const rowTrace = (rowParsed.traceNo ?? (row.traceNo ?? "").trim()) || boxCode;
+    const result = await recordSplitScansAction({
+      boxCode,
+      rows: validRows.map((row) => {
+        // 줄에 이력번호를 따로 찍었으면 그걸 쓰고, 비웠으면 박스 코드를 쓴다
+        // (같은 소에서 나온 부위들이면 박스 코드가 곧 이력번호다).
+        const rowParsed = parseBarcode(row.traceNo ?? "");
 
-      const result = await recordScanAction({
-        traceNo: rowTrace,
-        weight: Number.parseFloat(row.weight),
-        scanType: "MANUAL",
-        productId: row.productId,
-        confirmDuplicate: true,
-        memo: rowTrace === boxCode ? "박스 나눠서 입고" : `박스 나눠서 입고 (박스 ${boxCode})`,
-        gtin: rowParsed.gtin ?? parsed.gtin ?? null,
-      });
+        return {
+          productId: row.productId,
+          weight: Number.parseFloat(row.weight),
+          traceNo: rowParsed.traceNo ?? (row.traceNo ?? "").trim(),
+          gtin: rowParsed.gtin ?? parsed.gtin ?? null,
+        };
+      }),
+    });
 
-      if (!result.success) {
-        const productName =
-          products.find((product) => product.id === row.productId)?.name ?? "상품";
-        setError(`${productName} 처리 중 실패했습니다: ${result.error}`);
-        setSplitSubmitting(false);
-        return;
-      }
+    if (!result.success) {
+      setError(result.error ?? "박스 나눠서 입고에 실패했습니다.");
+      setSplitSubmitting(false);
+      return;
     }
 
     setSplitSubmitting(false);
@@ -907,6 +905,10 @@ export function InboundScanView({
     if (!result.success) {
       setError(result.error ?? "취소에 실패했습니다.");
       return;
+    }
+
+    if (result.data?.reopenedDocument) {
+      setNotice("취소했습니다. 마감돼 있던 전표에서 이 박스가 빠져 전표를 다시 열었습니다 — 같은 박스를 다시 찍으면 그 줄에 다시 이어집니다.");
     }
 
     router.refresh();

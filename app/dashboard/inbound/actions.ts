@@ -10,7 +10,7 @@ import {
   MtraceNotConfiguredError,
 } from "@/lib/livestock/mtrace-client";
 import { cacheTraceRecord } from "@/lib/livestock/master-cache";
-import { autoCloseDocumentsForScan } from "@/lib/livestock/auto-close";
+import { autoCloseDocuments, autoCloseDocumentsForScan } from "@/lib/livestock/auto-close";
 import { autoLinkNumberlessScan } from "@/lib/livestock/auto-link-numberless";
 
 export interface ActionResult<T = undefined> {
@@ -20,6 +20,9 @@ export interface ActionResult<T = undefined> {
 }
 
 const REVALIDATE_PATH = "/dashboard/inbound";
+
+/** inbound_scans.weight가 numeric(10,3)이라 이보다 크면 DB가 못 담는다 — 오류 문구가 그대로 새지 않게 먼저 막는다. */
+const MAX_SCAN_WEIGHT = 9_999_999;
 
 /** 입고는 현장 작업이라 staff까지 허용한다 (상품 마스터 수정은 manager 이상). */
 const INBOUND_ROLES: OrgRole[] = ["owner", "manager", "staff"];
@@ -206,6 +209,30 @@ async function lookupTrace(supabase: Client, traceNo: string): Promise<TraceLook
   return { failReason, failDetail, failIsNotConfigured };
 }
 
+/**
+ * 현장이 "스캔 종료"를 눌렀어도 그 전표의 박스가 또 찍혔으면 아직 찍는 중이다 — 종료 표시를 저절로 푼다
+ * (사람이 '스캔 다시 시작'을 누르지 않아도 사무실 카드가 '찍는 중'으로 돌아간다). 마감된 전표는 건드리지 않는다.
+ */
+async function resumeScanIfFinished(supabase: Client, scanId: string): Promise<void> {
+  try {
+    const { data: link } = await supabase.from("inbound_document_line_scans").select("line_id").eq("scan_id", scanId).maybeSingle();
+
+    if (!link) return;
+
+    const { data: line } = await supabase.from("inbound_document_lines").select("document_id").eq("id", link.line_id).maybeSingle();
+
+    if (!line) return;
+
+    const { data: doc } = await supabase.from("inbound_documents").select("id, status, scan_finished_at").eq("id", line.document_id).maybeSingle();
+
+    if (doc && doc.status === "PENDING" && doc.scan_finished_at) {
+      await supabase.rpc("set_documents_scan_finished", { p_document_ids: [doc.id], p_finished: false });
+    }
+  } catch (error) {
+    console.error("[inbound] 스캔 종료 표시 해제 실패:", error instanceof Error ? error.message : error);
+  }
+}
+
 interface FinishedScan {
   status: string;
   productId: string | null;
@@ -276,6 +303,8 @@ async function finishRecordedScan(
   if (!linkedLineId) {
     await autoLinkNumberlessScan(supabase, input.scanId);
   }
+
+  await resumeScanIfFinished(supabase, input.scanId);
 
   // 이 박스로 전표의 모든 줄이 채워졌고 문제 박스도 없으면 사람이 할 일이 없으니 마감해 둔다.
   const autoClosedDocument = (await autoCloseDocumentsForScan(supabase, input.scanId)).length > 0;
@@ -359,6 +388,16 @@ export async function recordScanAction(input: {
       throw new RbacError("중량을 입력해주세요.");
     }
 
+    if (input.weight > MAX_SCAN_WEIGHT) {
+      throw new RbacError("중량이 너무 큽니다. 단위(kg)와 소수점을 확인해 주세요.");
+    }
+
+    // 바코드에서 0이나 터무니없는 표기중량이 읽혀 와도 입고를 막지 않는다 — 그 값만 없는 것으로 본다.
+    const labeledWeight =
+      input.labeledWeight && Number.isFinite(input.labeledWeight) && input.labeledWeight > 0 && input.labeledWeight <= MAX_SCAN_WEIGHT
+        ? input.labeledWeight
+        : null;
+
     // 1~2) 이력 조회 — 마스터 캐시를 먼저 보고, 없을 때만 공공 API를 부른다.
     const { failReason, failDetail, failIsNotConfigured } = await lookupTrace(supabase, traceNo);
 
@@ -407,7 +446,7 @@ export async function recordScanAction(input: {
       p_memo: input.memo ?? null,
       p_confirm_duplicate: input.confirmDuplicate ?? false,
       p_best_before: input.bestBefore ?? null,
-      p_labeled_weight: input.labeledWeight ?? null,
+      p_labeled_weight: labeledWeight,
       p_purchase_unit_price: input.purchaseUnitPrice ?? null,
       p_purchase_supplier: input.purchaseSupplier ?? null,
     });
@@ -482,6 +521,86 @@ export async function recordScanAction(input: {
         productConflict,
       },
     };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export interface SplitScanRow {
+  productId: string;
+  weight: number;
+  /** 줄마다 따로 찍은 이력번호. 비우면 박스 코드를 쓴다. */
+  traceNo?: string | null;
+  gtin?: string | null;
+}
+
+/**
+ * 박스 하나를 상품 여러 개로 나눠 입고한다. 전부 들어가거나 하나도 안 들어간다 —
+ * 입력은 기록 전에 미리 다 검사하고, 그래도 중간에 실패하면 이미 넣은 줄을 취소한다(반쪽 입고가 재고에 남지 않게).
+ * 같은 번호가 여러 줄에 걸치는 게 의도라 중복 확인은 건너뛴다.
+ */
+export async function recordSplitScansAction(input: {
+  boxCode: string;
+  rows: SplitScanRow[];
+}): Promise<ActionResult<{ scanIds: string[] }>> {
+  try {
+    const { supabase, wholesalerId } = await resolveInboundScope();
+    const boxCode = input.boxCode.trim().toUpperCase();
+    const rows = input.rows.filter((row) => row.productId && Number.isFinite(row.weight) && row.weight > 0);
+
+    if (rows.length < 2) {
+      throw new RbacError("상품을 2개 이상 고르고 무게를 입력해주세요.");
+    }
+
+    const traces = rows.map((row) => (row.traceNo ?? "").trim().toUpperCase() || boxCode);
+
+    for (const trace of traces) {
+      if (!isPlausibleTraceNo(trace)) {
+        throw new RbacError(`이력번호 형식이 올바르지 않습니다: ${trace || "(비어 있음)"}`);
+      }
+    }
+
+    if (rows.some((row) => row.weight > MAX_SCAN_WEIGHT)) {
+      throw new RbacError("중량이 너무 큽니다. 단위(kg)와 소수점을 확인해 주세요.");
+    }
+
+    const productIds = [...new Set(rows.map((row) => row.productId))];
+    const { data: owned } = await supabase.from("products").select("id").eq("wholesaler_id", wholesalerId).in("id", productIds);
+
+    if ((owned ?? []).length !== productIds.length) {
+      throw new RbacError("선택한 상품을 찾을 수 없습니다. 화면을 새로고침한 뒤 다시 골라 주세요.");
+    }
+
+    const recorded: string[] = [];
+
+    for (const [index, row] of rows.entries()) {
+      const traceNo = traces[index];
+      const result = await recordScanAction({
+        traceNo,
+        weight: row.weight,
+        scanType: "MANUAL",
+        productId: row.productId,
+        confirmDuplicate: true,
+        memo: traceNo === boxCode ? "박스 나눠서 입고" : `박스 나눠서 입고 (박스 ${boxCode})`,
+        gtin: row.gtin ?? null,
+      });
+      const data = result.data as { scanId?: string } | undefined;
+
+      if (!result.success || !data?.scanId) {
+        for (const scanId of recorded) {
+          await voidScanAction(scanId, "박스 나눠서 입고 중 실패로 취소");
+        }
+
+        throw new RbacError(
+          `${index + 1}번째 줄 처리 중 실패했습니다: ${result.error ?? "알 수 없는 오류"}` +
+            (recorded.length > 0 ? ` 앞서 넣은 ${recorded.length}건은 취소했으니 처음부터 다시 입력하세요.` : "")
+        );
+      }
+
+      recorded.push(data.scanId);
+    }
+
+    return { success: true, data: { scanIds: recorded } };
   } catch (error) {
     return toResult(error);
   }
@@ -823,10 +942,35 @@ export async function resolveMappingToOrderAction(
   }
 }
 
-/** 오스캔 취소 — 삭제가 아니라 역분개로 처리된다. */
-export async function voidScanAction(scanId: string, reason?: string): Promise<ActionResult> {
+export interface VoidScanResult {
+  /** 이 박스가 이어져 있던 전표가 이미 마감돼 있어서 다시 열었다(안 온 줄이 생겨 사무실이 알아야 한다). 다시 열자마자 저절로 재마감되면 false. */
+  reopenedDocument: boolean;
+}
+
+/** 박스가 이어진 전표가 마감 상태면 그 전표 id. 취소하면 이어짐이 풀리므로 취소 전에 미리 봐 둔다. */
+async function closedDocumentOfScan(supabase: Client, scanId: string): Promise<string | null> {
+  const { data: link } = await supabase.from("inbound_document_line_scans").select("line_id").eq("scan_id", scanId).maybeSingle();
+
+  if (!link) return null;
+
+  const { data: line } = await supabase.from("inbound_document_lines").select("document_id").eq("id", link.line_id).maybeSingle();
+
+  if (!line) return null;
+
+  const { data: doc } = await supabase.from("inbound_documents").select("id, status").eq("id", line.document_id).maybeSingle();
+
+  return doc?.status === "CLOSED" ? String(doc.id) : null;
+}
+
+/**
+ * 오스캔 취소 — 삭제가 아니라 역분개로 처리된다.
+ * 마감된 전표의 박스를 취소하면 그 줄이 "안 온 것"이 되는데 전표는 마감 그대로라 아무도 모르게 어긋난다 —
+ * 그래서 전표를 저절로 다시 열고, 그래도 다 채워진 상태(더 온 박스를 취소한 경우)면 곧바로 다시 마감한다.
+ */
+export async function voidScanAction(scanId: string, reason?: string): Promise<ActionResult<VoidScanResult>> {
   try {
     const { supabase } = await resolveInboundScope();
+    const closedDocumentId = await closedDocumentOfScan(supabase, scanId);
 
     const { error } = await supabase.rpc("void_inbound_scan", {
       p_scan_id: scanId,
@@ -844,12 +988,24 @@ export async function voidScanAction(scanId: string, reason?: string): Promise<A
       throw new Error(error.message);
     }
 
+    let reopenedDocument = false;
+
+    if (closedDocumentId) {
+      const { error: reopenError } = await supabase.rpc("reopen_inbound_document", { p_document_id: closedDocumentId });
+
+      if (reopenError) {
+        console.error("[inbound] 취소 뒤 전표 다시 열기 실패:", reopenError.message);
+      } else {
+        reopenedDocument = (await autoCloseDocuments(supabase, [closedDocumentId])).length === 0;
+      }
+    }
+
     await autoCloseDocumentsForScan(supabase, scanId);
 
     revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/products");
 
-    return { success: true };
+    return { success: true, data: { reopenedDocument } };
   } catch (error) {
     return toResult(error);
   }
