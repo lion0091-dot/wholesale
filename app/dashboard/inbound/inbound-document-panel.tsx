@@ -109,6 +109,7 @@ export interface InboundDocumentRow {
     completeLines: number;
     totalLines: number;
     partialBoxesRemaining: number;
+    partialWeightLines: number;
     unresolvedBoxes: number;
     firstUnresolvedScanId: string | null;
   } | null;

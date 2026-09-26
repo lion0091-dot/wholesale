@@ -3,9 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import {
-  documentLineExpectedQty,
-  documentLineMatchStatus,
+  lineArrival,
   suggestDocumentLinesForScan,
+  type CountMode,
 } from "@/lib/livestock/document-reconciliation";
 import { speciesGroupFromTraceNumber } from "@/lib/livestock/trace-number";
 import {
@@ -79,7 +79,7 @@ export default async function DocumentReconciliationPage({ params, searchParams 
   const { data: lineRows } = await supabase
     .from("inbound_document_lines")
     .select(
-      "id, line_no, raw_text, item_name, product_id, trace_no, lot_no, part_name, grade, origin, quantity, labeled_weight, products(name)"
+      "id, line_no, raw_text, item_name, product_id, trace_no, lot_no, part_name, grade, origin, quantity, labeled_weight, count_mode, products(name)"
     )
     .eq("document_id", documentId)
     .order("line_no", { ascending: true });
@@ -199,30 +199,51 @@ export default async function DocumentReconciliationPage({ params, searchParams 
   const scanTraceNosForSpecies = [...new Set(unlinkedScans.map((row) => String(row.trace_no)))];
 
   let speciesByTraceNo = new Map<string, string | null>();
+  let masterPartByTraceNo = new Map<string, string | null>();
 
   if (scanTraceNosForSpecies.length > 0) {
     const { data: masterRows } = await supabase
       .from("master_livestock")
-      .select("trace_no, species_group")
+      .select("trace_no, species_group, part_name")
       .in("trace_no", scanTraceNosForSpecies);
 
-    speciesByTraceNo = new Map(
-      ((masterRows ?? []) as Array<Record<string, unknown>>).map((row) => [
-        String(row.trace_no),
-        (row.species_group as string | null) ?? null,
-      ])
+    const masters = (masterRows ?? []) as Array<Record<string, unknown>>;
+
+    speciesByTraceNo = new Map(masters.map((row) => [String(row.trace_no), (row.species_group as string | null) ?? null]));
+    masterPartByTraceNo = new Map(masters.map((row) => [String(row.trace_no), (row.part_name as string | null) ?? null]));
+  }
+
+  // 줄의 도착 상태(박스 수/무게 기준) — 이어진(취소 제외) 박스의 무게로 계산한다.
+  function arrivalOfRow(row: Record<string, unknown>) {
+    const weights = (linksByLineId.get(String(row.id)) ?? [])
+      .map((link) => linkedScanById.get(String(link.scan_id)))
+      .filter((scan): scan is Record<string, unknown> => Boolean(scan) && scan?.status !== "VOIDED")
+      .map((scan) => Number(scan.weight));
+
+    return lineArrival(
+      {
+        countMode: (row.count_mode as CountMode | null) ?? null,
+        quantity: row.quantity === null ? null : Number(row.quantity),
+        labeledWeight: row.labeled_weight === null ? null : Number(row.labeled_weight),
+        traceNo: (row.trace_no as string | null) ?? null,
+        rawText: (row.raw_text as string | null) ?? null,
+      },
+      weights
     );
   }
 
   const suggestionLines = numberlessLines.map((row) => {
-    const quantity = row.quantity === null ? null : Number(row.quantity);
-    const expected = documentLineExpectedQty(quantity);
+    const arrival = arrivalOfRow(row);
     const labeledWeight = row.labeled_weight === null ? null : Number(row.labeled_weight);
 
     return {
       lineId: String(row.id),
       itemText: [row.item_name, row.part_name].filter(Boolean).join(" "),
-      expectedUnitWeight: labeledWeight === null ? null : labeledWeight / expected,
+      expectedUnitWeight: labeledWeight === null ? null : labeledWeight / arrival.expected,
+      remainingWeight:
+        arrival.mode === "WEIGHT" && arrival.expectedWeight !== null
+          ? Math.max(0, arrival.expectedWeight - arrival.linkedWeight)
+          : null,
     };
   });
 
@@ -236,12 +257,11 @@ export default async function DocumentReconciliationPage({ params, searchParams 
 
   const products = (productRows ?? []) as ScanProductOption[];
   const productNameById = new Map(products.map((product) => [product.id, product.name]));
+  const subcategoryByProductId = new Map(products.map((product) => [product.id, product.subcategory ?? null]));
 
   // 줄 목록 조립
   const reconciliationLines: ReconciliationLine[] = lines.map((row) => {
     const lineId = String(row.id);
-    const quantity = row.quantity === null ? null : Number(row.quantity);
-    const expected = documentLineExpectedQty(quantity);
     const lineLinks = linksByLineId.get(lineId) ?? [];
 
     const boxes = lineLinks
@@ -263,7 +283,7 @@ export default async function DocumentReconciliationPage({ params, searchParams 
       .filter((box): box is NonNullable<typeof box> => box !== null && box.status !== "VOIDED")
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-    const linked = boxes.length;
+    const arrival = arrivalOfRow(row);
     const productRow = row.products as { name: string } | { name: string }[] | null;
     const productName = Array.isArray(productRow) ? productRow[0]?.name ?? null : productRow?.name ?? null;
     const splitIndex = splitIndexOf((row.raw_text as string | null) ?? null);
@@ -279,9 +299,12 @@ export default async function DocumentReconciliationPage({ params, searchParams 
       origin: (row.origin as string | null) ?? null,
       traceNo: (row.trace_no as string | null) ?? null,
       lotNo: (row.lot_no as string | null) ?? null,
-      expected,
-      linked,
-      status: documentLineMatchStatus(expected, linked),
+      expected: arrival.expected,
+      linked: arrival.linkedBoxes,
+      status: arrival.status,
+      mode: arrival.mode,
+      countMode: (row.count_mode as CountMode | null) ?? null,
+      linkedWeight: arrival.linkedWeight,
       labeledWeight: row.labeled_weight === null ? null : Number(row.labeled_weight),
       isSplitContinuation: splitIndex !== null && splitIndex > 1,
       boxes,
@@ -311,14 +334,20 @@ export default async function DocumentReconciliationPage({ params, searchParams 
       }));
     } else {
       const species = speciesByTraceNo.get(traceNo) ?? speciesGroupFromTraceNumber(traceNo);
+      const productSubcategory = row.product_id ? subcategoryByProductId.get(String(row.product_id)) ?? null : null;
       const suggestions = suggestDocumentLinesForScan(
-        { weight: Number(row.weight), speciesGroup: species },
+        {
+          weight: Number(row.weight),
+          speciesGroup: species,
+          partName: masterPartByTraceNo.get(traceNo) ?? productSubcategory,
+        },
         suggestionLines
       );
 
       candidates = suggestions.map((suggestion) => ({
         lineId: suggestion.lineId,
         basis: suggestion.speciesConfirmed ? "SUGGESTED" : "SUGGESTED_UNCONFIRMED",
+        ...(suggestion.partConfirmed ? { partConfirmed: true as const } : {}),
       }));
     }
 

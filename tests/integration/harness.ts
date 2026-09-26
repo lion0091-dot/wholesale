@@ -146,6 +146,10 @@ export interface World {
     quantity?: number | null;
     /** 같은 문서에 줄을 더 넣고 싶을 때 — 앞 호출이 돌려준 문서 id */
     documentId?: string;
+    /** 전표 품목명(축종 단어 판단 재료). 없으면 상품명·부위·"전표 품목" 순. */
+    itemName?: string;
+    /** 표기중량 합계(kg). 번호 없는 줄의 무게 후보 계산에 쓴다. */
+    labeledWeight?: number | null;
   }): Promise<{ documentId: string; lineId: string }>;
   cleanup(): Promise<void>;
 }
@@ -424,7 +428,7 @@ async function buildWorld(tracker: Tracker): Promise<World> {
       }
     },
 
-    async createDocumentLine({ traceNo, lotNo = null, product, partName, grade, status = "PENDING", quantity = null, documentId }) {
+    async createDocumentLine({ traceNo, lotNo = null, product, partName, grade, status = "PENDING", quantity = null, documentId, itemName, labeledWeight = null }) {
       const docId = documentId ?? randomUUID();
       const lineId = randomUUID();
 
@@ -442,7 +446,8 @@ async function buildWorld(tracker: Tracker): Promise<World> {
           id: lineId,
           document_id: docId,
           line_no: (count ?? 0) + 1,
-          item_name: product?.name ?? partName ?? "전표 품목",
+          item_name: itemName ?? product?.name ?? partName ?? "전표 품목",
+          labeled_weight: labeledWeight,
           product_id: product?.id ?? null,
           part_name: partName ?? null,
           grade: grade ?? null,

@@ -11,6 +11,7 @@ import {
 } from "@/lib/livestock/mtrace-client";
 import { cacheTraceRecord } from "@/lib/livestock/master-cache";
 import { autoCloseDocumentsForScan } from "@/lib/livestock/auto-close";
+import { autoLinkNumberlessScan } from "@/lib/livestock/auto-link-numberless";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -320,10 +321,14 @@ export async function recordScanAction(input: {
 
     // 전표 줄에 박스를 붙인다(대조용, 재고와 무관 — 118). 해당 줄이 하나로 정해질 때만 붙고,
     // 애매하면 사무실 대조 화면 몫으로 남는다. 실패해도 입고는 이미 끝났으므로 막지 않는다.
+    let linkedLineId: string | null = null;
+
     if (row.scan_id) {
-      const { error: linkError } = await supabase.rpc("auto_link_scan_to_document_line", {
+      const { data: linkedLine, error: linkError } = await supabase.rpc("auto_link_scan_to_document_line", {
         p_scan_id: String(row.scan_id),
       });
+
+      linkedLineId = (linkedLine as string | null) ?? null;
 
       if (linkError) {
         console.error("[inbound] 전표 줄 자동 배정 실패:", linkError.message);
@@ -366,6 +371,12 @@ export async function recordScanAction(input: {
           };
         }
       }
+    }
+
+    // 번호만으로 줄이 안 정해졌으면 부위로 마저 붙인다(쪼갠 전표의 줄 고르기, 번호 없는 줄의 무게·축종·부위 대조).
+    // 상품 자동 생성 뒤에 해야 상품의 부위까지 쓸 수 있다.
+    if (row.scan_id && !linkedLineId) {
+      await autoLinkNumberlessScan(supabase, String(row.scan_id));
     }
 
     // 이 박스로 전표의 모든 줄이 채워졌고 문제 박스도 없으면 사람이 할 일이 없으니 마감해 둔다.

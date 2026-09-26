@@ -12,7 +12,7 @@ import {
   resolveTraceOrigin,
   type ScanRequirementReport,
 } from "@/lib/livestock/inbound-requirements";
-import { documentLineExpectedQty, documentLineMatchStatus } from "@/lib/livestock/document-reconciliation";
+import { lineArrival, type CountMode } from "@/lib/livestock/document-reconciliation";
 import type { InboundNextStepInput } from "@/lib/livestock/inbound-next-step";
 
 type SupplierScope = Awaited<ReturnType<typeof getSupplierScope>>;
@@ -28,8 +28,10 @@ export interface InboundData {
   storageLocationSuggestions: string[];
   /** 안내 카드(현장용·사무실용 둘 다)가 받는 입력. */
   nextStepInput: InboundNextStepInput;
-  /** 아직 안 들어온 박스 수(전표 기준). */
+  /** 아직 안 들어온 박스 수(전표 기준). 무게 기준 줄은 덜 온 줄마다 1로 센다. */
   remainingBoxCount: number;
+  /** 위 수 중 무게 기준 줄의 몫 — 안내 문구가 "박스 N개"와 "무게가 덜 찬 줄 M줄"을 나눠 말하는 데 쓴다. */
+  remainingWeightLines: number;
   canManage: boolean;
 }
 
@@ -58,6 +60,7 @@ export async function loadInboundData(
   let awaitingDocumentLines: AwaitingDocumentLine[] = [];
   // 위 줄들이 기다리는 박스 수(수량 반영) — "지금 할 일" 카드용.
   let awaitingBoxCount = 0;
+  let awaitingWeightLines = 0;
   // 창고 구조가 업체마다 달라(플랫폼) 고정 위치 목록 대신, 이 업체가 그동안
   // 직접 입력한 위치 이름을 제안 목록으로 쓴다.
   let storageLocationSuggestions: string[] = [];
@@ -97,7 +100,7 @@ export async function loadInboundData(
         supabase
           .from("inbound_document_lines")
           .select(
-            "id, trace_no, lot_no, item_name, labeled_weight, unit_price, quantity, inbound_documents!inner(status, supplier_name)"
+            "id, trace_no, lot_no, item_name, labeled_weight, unit_price, quantity, raw_text, count_mode, inbound_documents!inner(status, supplier_name)"
           )
           .eq("inbound_documents.status", "PENDING")
           .or("trace_no.not.is.null,lot_no.not.is.null")
@@ -121,9 +124,24 @@ export async function loadInboundData(
       });
       const awaitingIds = new Set(((awaitingIdRows ?? []) as string[]).map(String));
 
-      awaitingBoxCount = ((pendingDocLineRows ?? []) as Array<{ id: string; quantity: number | null }>)
+      // 아직 한 박스도 안 만난 줄 — 박스 기준이면 예정 박스 수 전체, 무게 기준이면 1(적어도 한 박스)이다.
+      ((pendingDocLineRows ?? []) as Array<Record<string, unknown>>)
         .filter((row) => awaitingIds.has(String(row.id)))
-        .reduce((sum, row) => sum + documentLineExpectedQty(row.quantity === null ? null : Number(row.quantity)), 0);
+        .forEach((row) => {
+          const arrival = lineArrival(
+            {
+              countMode: (row.count_mode as CountMode | null) ?? null,
+              quantity: row.quantity === null ? null : Number(row.quantity),
+              labeledWeight: row.labeled_weight === null ? null : Number(row.labeled_weight),
+              traceNo: (row.trace_no as string | null) ?? null,
+              rawText: (row.raw_text as string | null) ?? null,
+            },
+            []
+          );
+
+          awaitingBoxCount += arrival.remainingBoxes;
+          if (arrival.mode === "WEIGHT") awaitingWeightLines += 1;
+        });
 
       awaitingDocumentLines = ((pendingDocLineRows ?? []) as Array<Record<string, unknown>>)
         .filter((row) => awaitingIds.has(String(row.id)))
@@ -152,7 +170,7 @@ export async function loadInboundData(
     const { data: documentRows } = await supabase
       .from("inbound_documents")
       .select(
-        "id, supplier_name, document_no, issued_on, file_name, storage_path, status, total_amount, created_at, scan_finished_at, inbound_document_lines(id, quantity, trace_no, lot_no, inbound_document_line_scans(scan_id, inbound_scans(status)))"
+        "id, supplier_name, document_no, issued_on, file_name, storage_path, status, total_amount, created_at, scan_finished_at, inbound_document_lines(id, quantity, labeled_weight, trace_no, lot_no, raw_text, count_mode, inbound_document_line_scans(scan_id, inbound_scans(status, weight)))"
       )
       .eq("wholesaler_id", scope.wholesalerId)
       .order("created_at", { ascending: false })
@@ -161,11 +179,14 @@ export async function loadInboundData(
     type NestedDocumentLine = {
       id: string;
       quantity: number | null;
+      labeled_weight: number | null;
       trace_no: string | null;
       lot_no: string | null;
+      raw_text: string | null;
+      count_mode: CountMode | null;
       inbound_document_line_scans: Array<{
         scan_id: string;
-        inbound_scans: { status: string } | { status: string }[] | null;
+        inbound_scans: { status: string; weight: number | string } | { status: string; weight: number | string }[] | null;
       }> | null;
     };
 
@@ -178,6 +199,7 @@ export async function loadInboundData(
         completeLines: number;
         totalLines: number;
         partialBoxesRemaining: number;
+        partialWeightLines: number;
         unresolvedBoxes: number;
         firstUnresolvedScanId: string | null;
       }
@@ -194,12 +216,13 @@ export async function loadInboundData(
         completeLines: 0,
         totalLines: 0,
         partialBoxesRemaining: 0,
+        partialWeightLines: 0,
         unresolvedBoxes: 0,
         firstUnresolvedScanId: null as string | null,
       };
 
       lines.forEach((line) => {
-        let linked = 0;
+        const weights: number[] = [];
 
         (line.inbound_document_line_scans ?? []).forEach((link) => {
           const scan = Array.isArray(link.inbound_scans) ? link.inbound_scans[0] : link.inbound_scans;
@@ -216,18 +239,32 @@ export async function loadInboundData(
             }
           }
 
-          linked += 1;
+          weights.push(Number(scan?.weight ?? 0));
         });
 
-        const expected = documentLineExpectedQty(line.quantity === null ? null : Number(line.quantity));
-        const status = documentLineMatchStatus(expected, linked);
+        const arrival = lineArrival(
+          {
+            countMode: line.count_mode,
+            quantity: line.quantity === null ? null : Number(line.quantity),
+            labeledWeight: line.labeled_weight === null ? null : Number(line.labeled_weight),
+            traceNo: line.trace_no,
+            rawText: line.raw_text,
+          },
+          weights
+        );
 
         summary.totalLines += 1;
-        if (status === "COMPLETE") summary.completeLines += 1;
+        if (arrival.status === "COMPLETE") summary.completeLines += 1;
         // 일부만 온 줄은 모자란 박스가 더 와야 한다 — 이건 맞춰 볼 일이 아니라 찍을 일이다.
-        if (status === "PARTIAL") summary.partialBoxesRemaining += expected - linked;
+        // (무게 기준 줄은 덜 찬 줄마다 "적어도 한 박스"로 센다.)
         // 번호가 없는 줄은 위 "안 들어온 줄" 조회에 안 잡힌다(번호로 찾는 조회) — 예정 수량 전체가 남은 박스다.
-        if (status === "AWAITING" && !line.trace_no && !line.lot_no) summary.partialBoxesRemaining += expected;
+        const stillNeeds =
+          arrival.status === "PARTIAL" || (arrival.status === "AWAITING" && !line.trace_no && !line.lot_no);
+
+        if (stillNeeds) {
+          summary.partialBoxesRemaining += arrival.remainingBoxes;
+          if (arrival.mode === "WEIGHT") summary.partialWeightLines += 1;
+        }
       });
 
       matchSummaryByDocId.set(String(row.id), summary);
@@ -431,6 +468,10 @@ export async function loadInboundData(
     ].sort((a, b) => a.localeCompare(b, "ko"));
   }
 
+  const pendingDocuments = documents.filter((doc) => doc.status === "PENDING");
+  const nextStepRemainingWeightLines =
+    awaitingWeightLines + pendingDocuments.reduce((sum, doc) => sum + (doc.matchSummary?.partialWeightLines ?? 0), 0);
+
   const nextStepRemainingBoxCount =
     awaitingBoxCount +
     documents
@@ -452,6 +493,7 @@ export async function loadInboundData(
         firstUnresolvedScanId: doc.matchSummary?.firstUnresolvedScanId ?? null,
       })),
     remainingBoxCount: nextStepRemainingBoxCount,
+    remainingWeightLines: nextStepRemainingWeightLines,
     needsCheckScanCount: scans.filter(
       (scan) => scan.status === "EXCEPTION" || scan.status === "PENDING_MAPPING"
     ).length,
@@ -480,6 +522,7 @@ export async function loadInboundData(
     storageLocationSuggestions,
     nextStepInput,
     remainingBoxCount: nextStepRemainingBoxCount,
+    remainingWeightLines: nextStepRemainingWeightLines,
     canManage,
   };
 }

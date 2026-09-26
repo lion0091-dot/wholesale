@@ -65,6 +65,7 @@ export default async function InboundPage() {
       <InboundScanView
         initialScans={data.scans}
         remainingBoxCount={data.remainingBoxCount}
+        remainingWeightLines={data.remainingWeightLines}
         scanDocuments={data.documents
           .filter((doc) => doc.status === "PENDING")
           .map((doc) => ({ id: doc.id, scanFinished: doc.scanFinished }))}

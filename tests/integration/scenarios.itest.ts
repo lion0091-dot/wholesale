@@ -11,6 +11,7 @@ import {
   extractDocumentTableAction,
   reopenInboundDocumentAction,
   saveInboundDocumentAction,
+  setDocumentLineCountModeAction,
   setDocumentsScanFinishedAction,
 } from "@/app/dashboard/inbound/document-actions";
 import { decodeDocumentFileText } from "@/lib/livestock/document-file-text";
@@ -472,5 +473,153 @@ describe("SC-5 이메일로 받은 전표를 폰 파일함에서 골라 올린�
 
     expect(doc!.storage_path).toBeTruthy();
     expect(count).toBe(0);
+  });
+});
+
+async function linkedLineIds(scanId: string): Promise<string[]> {
+  const { data } = await adminClient().from("inbound_document_line_scans").select("line_id").eq("scan_id", scanId);
+
+  return ((data ?? []) as Array<{ line_id: string }>).map((row) => row.line_id);
+}
+
+async function scanPart(traceNo: string, part: string, weight: number) {
+  await world.seedTrace(traceNo, { part });
+
+  const result = await recordScanAction({ traceNo, weight, scanType: "BARCODE_SCAN" });
+
+  expect(result.success).toBe(true);
+
+  return result.data as ScanResult;
+}
+
+describe("SC-부위 — 이력번호가 없거나 여러 줄에 걸친 전표를 부위로 마저 이음", () => {
+  it("번호 없는 줄: 무게·축종·부위가 맞는 줄이 하나면 자동으로 이어진다", async () => {
+    const sirloin = await world.createDocumentLine({ traceNo: null, itemName: "한우 등심", partName: "등심", labeledWeight: 10 });
+    const tenderloin = await world.createDocumentLine({ traceNo: null, itemName: "한우 안심", partName: "안심", labeledWeight: 10, documentId: sirloin.documentId });
+
+    const result = await scanPart(world.newTraceNo(), "등심", 10.1);
+
+    expect(await linkedLineIds(result.scanId)).toEqual([sirloin.lineId]);
+    expect(await linkedLineIds(result.scanId)).not.toContain(tenderloin.lineId);
+  });
+
+  it("번호 없는 줄: 같은 부위 줄이 둘이면 자동으로 잇지 않고 사무실에 남긴다", async () => {
+    const first = await world.createDocumentLine({ traceNo: null, itemName: "한우 채끝", partName: "채끝", labeledWeight: 10 });
+
+    await world.createDocumentLine({ traceNo: null, itemName: "한우 채끝", partName: "채끝", labeledWeight: 10, documentId: first.documentId });
+
+    const result = await scanPart(world.newTraceNo(), "채끝", 10);
+
+    expect(await linkedLineIds(result.scanId)).toEqual([]);
+  });
+
+  it("번호 없는 줄: 부위가 안 맞으면 무게가 맞아도 자동으로 잇지 않는다", async () => {
+    await world.createDocumentLine({ traceNo: null, itemName: "한우 양지", partName: "양지", labeledWeight: 20 });
+
+    const result = await scanPart(world.newTraceNo(), "우둔", 20);
+
+    expect(await linkedLineIds(result.scanId)).toEqual([]);
+  });
+
+  it("번호 없는 줄: 무게가 ±10%를 벗어나면 잇지 않는다", async () => {
+    await world.createDocumentLine({ traceNo: null, itemName: "한우 사태", partName: "사태", labeledWeight: 10 });
+
+    const result = await scanPart(world.newTraceNo(), "사태", 12);
+
+    expect(await linkedLineIds(result.scanId)).toEqual([]);
+  });
+
+  it("번호 없는 줄에 이미 자리가 다 찼으면 더 잇지 않는다", async () => {
+    const line = await world.createDocumentLine({ traceNo: null, itemName: "한우 앞다리", partName: "앞다리", labeledWeight: 10, quantity: 1 });
+    const first = await scanPart(world.newTraceNo(), "앞다리", 10);
+    const second = await scanPart(world.newTraceNo(), "앞다리", 10);
+
+    expect(await linkedLineIds(first.scanId)).toEqual([line.lineId]);
+    expect(await linkedLineIds(second.scanId)).toEqual([]);
+  });
+
+  it("한 마리를 쪼갠 전표(같은 번호가 두 줄): 박스 부위가 적힌 줄로 이어진다", async () => {
+    const traceNo = world.newTraceNo();
+    const sirloin = await world.createDocumentLine({ traceNo, itemName: "한우 등심", partName: "등심", quantity: 1 });
+    const tenderloin = await world.createDocumentLine({ traceNo, itemName: "한우 안심", partName: "안심", quantity: 1, documentId: sirloin.documentId });
+
+    const result = await scanPart(traceNo, "안심", 5);
+
+    expect(await linkedLineIds(result.scanId)).toEqual([tenderloin.lineId]);
+  });
+
+  it("한 마리를 쪼갠 전표: 박스 부위가 어느 줄에도 없으면 잇지 않는다", async () => {
+    const traceNo = world.newTraceNo();
+    const sirloin = await world.createDocumentLine({ traceNo, itemName: "한우 등심", partName: "등심", quantity: 1 });
+
+    await world.createDocumentLine({ traceNo, itemName: "한우 안심", partName: "안심", quantity: 1, documentId: sirloin.documentId });
+
+    const result = await scanPart(traceNo, "양지", 5);
+
+    expect(await linkedLineIds(result.scanId)).toEqual([]);
+  });
+});
+
+describe("SC-기준 — 줄마다 박스 수/무게로 세서 한 전표가 저절로 끝난다", () => {
+  function newLotNo(): string {
+    const lot = `L${String(Math.floor(Math.random() * 1e14)).padStart(14, "0")}`;
+
+    return lot;
+  }
+
+  it("개체번호 10kg 줄 + 로트번호 3박스 줄이 한 전표에 있어도, 각각의 기준으로 다 오면 저절로 마감된다", async () => {
+    const individual = world.newTraceNo();
+    const lot = newLotNo();
+    const first = await world.createDocumentLine({ traceNo: individual, itemName: "한우 등심", partName: "등심", labeledWeight: 10 });
+
+    await world.createDocumentLine({ traceNo: lot, itemName: "한우 갈비", partName: "갈비", quantity: 3, labeledWeight: 30, documentId: first.documentId });
+
+    // 개체번호는 한 마리가 세 박스로 나뉘어 와도(무게 합 9.9kg ≈ 10kg) 다 온 것.
+    await scanPart(individual, "등심", 3.4);
+    await scanPart(individual, "등심", 3.3);
+    expect(await docStatus(first.documentId)).toBe("PENDING");
+    await scanPart(individual, "등심", 3.2);
+    expect(await docStatus(first.documentId)).toBe("PENDING");
+
+    // 로트번호는 박스 3개가 다 와야 한다(무게가 같아도 같은 번호가 연달아 찍히는 게 정상).
+    await scanPart(lot, "갈비", 10);
+    await scanPart(lot, "갈비", 10);
+    expect(await docStatus(first.documentId)).toBe("PENDING");
+    await scanPart(lot, "갈비", 10);
+    expect(await docStatus(first.documentId)).toBe("CLOSED");
+  });
+
+  it("개체번호 줄은 박스 수가 아니라 무게가 모자라면 마감되지 않는다", async () => {
+    const individual = world.newTraceNo();
+    const line = await world.createDocumentLine({ traceNo: individual, itemName: "한우 안심", partName: "안심", labeledWeight: 10 });
+
+    await scanPart(individual, "안심", 6);
+    expect(await docStatus(line.documentId)).toBe("PENDING");
+  });
+
+  it("사무실이 줄 기준을 박스 수로 바꾸면 그 순간 다 찬 전표는 저절로 마감된다", async () => {
+    const individual = world.newTraceNo();
+    const line = await world.createDocumentLine({ traceNo: individual, itemName: "한우 우둔", partName: "우둔", labeledWeight: 10 });
+
+    await scanPart(individual, "우둔", 6);
+    expect(await docStatus(line.documentId)).toBe("PENDING");
+
+    const changed = await setDocumentLineCountModeAction(line.lineId, "BOXES");
+
+    expect(changed).toMatchObject({ success: true, data: { effectiveMode: "BOXES" } });
+    expect(await docStatus(line.documentId)).toBe("CLOSED");
+  });
+
+  it("무게로 세는 줄이 모자란 채 스캔 종료되면 카드는 '무게가 덜 찬 줄'로 안내한다", () => {
+    const step = pickInboundNextStep({
+      pendingDocuments: [{ id: "d", scanFinished: false, completeLines: 0, totalLines: 1 }],
+      remainingBoxCount: 1,
+      remainingWeightLines: 1,
+      needsCheckScanCount: 0,
+    });
+
+    expect(step.key).toBe("scan");
+    expect(step.detail).toContain("무게가 덜 찬 줄 1줄");
+    expect(step.detail).not.toContain("박스 1개");
   });
 });

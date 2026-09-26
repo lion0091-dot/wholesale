@@ -13,7 +13,7 @@ import {
   setDocumentsScanFinishedAction,
   unlinkScanFromDocumentLineAction,
 } from "@/app/dashboard/inbound/document-actions";
-import { documentLineExpectedQty, documentLineMatchStatus } from "@/lib/livestock/document-reconciliation";
+import { documentLineExpectedQty, documentLineMatchStatus, lineArrival } from "@/lib/livestock/document-reconciliation";
 
 let world: World;
 
@@ -249,8 +249,77 @@ describe("줄 상태 집계 — 서버 계산이 document_line_match_status RPC�
     const linked = 1;
     const status = documentLineMatchStatus(expected, linked);
 
-    expect(rpcRow).toEqual({ expected, linked, status });
+    expect(rpcRow).toMatchObject({ expected, linked, status, mode: "BOXES" });
     expect(status).toBe("PARTIAL");
+  });
+
+  it("무게 기준 줄: 서버 계산(lineArrival)과 RPC가 무게 합계·상태·자리 여부까지 같다", async () => {
+    // 개체번호 줄 + 표기 10kg → 자동으로 무게 기준. 세 박스로 나뉘어 와도 합이 표기 ±2% 안이면 다 옴.
+    const cases: Array<{ weights: number[]; status: string }> = [
+      { weights: [], status: "AWAITING" },
+      { weights: [6], status: "PARTIAL" },
+      { weights: [3.4, 3.3, 3.2], status: "COMPLETE" },
+      { weights: [10.2], status: "COMPLETE" },
+      { weights: [10.21], status: "OVER" },
+    ];
+
+    for (const { weights, status } of cases) {
+      const traceNo = world.newTraceNo();
+      const { lineId } = await world.createDocumentLine({ traceNo, quantity: null, labeledWeight: 10 });
+
+      for (const weight of weights) {
+        const scan = await seedScan({ trace_no: traceNo, weight });
+
+        await getActorClient().rpc("link_scan_to_document_line", { p_scan_id: scan.scanId, p_line_id: lineId, p_how: "MANUAL" });
+      }
+
+      const { data: rpcRows } = await getActorClient().rpc("document_line_match_status", { p_line_id: lineId });
+      const rpcRow = (rpcRows as Array<Record<string, unknown>>)[0];
+      const arrival = lineArrival({ quantity: null, labeledWeight: 10, traceNo }, weights);
+
+      expect(rpcRow).toMatchObject({ mode: "WEIGHT", status, linked_boxes: weights.length });
+      expect(arrival.status).toBe(status);
+      expect(Number(rpcRow.linked_weight)).toBeCloseTo(arrival.linkedWeight, 3);
+      // SQL의 "자리가 남았나(linked < expected)"가 TS roomLeft와 같아야 자동 배정·중복 창이 어긋나지 않는다.
+      expect(Number(rpcRow.linked) < Number(rpcRow.expected)).toBe(arrival.roomLeft);
+    }
+  });
+
+  it("사무실이 줄 기준을 박스 수로 고정하면 무게가 아니라 박스 수로 판정한다", async () => {
+    const traceNo = world.newTraceNo();
+    const { lineId } = await world.createDocumentLine({ traceNo, quantity: null, labeledWeight: 10 });
+    const scan = await seedScan({ trace_no: traceNo, weight: 3 });
+
+    await getActorClient().rpc("link_scan_to_document_line", { p_scan_id: scan.scanId, p_line_id: lineId, p_how: "MANUAL" });
+
+    const before = (await getActorClient().rpc("document_line_match_status", { p_line_id: lineId })).data as Array<Record<string, unknown>>;
+
+    expect(before[0]).toMatchObject({ mode: "WEIGHT", status: "PARTIAL" });
+
+    const set = await getActorClient().rpc("set_document_line_count_mode", { p_line_id: lineId, p_mode: "BOXES" });
+
+    expect(set.data).toBe("BOXES");
+
+    const after = (await getActorClient().rpc("document_line_match_status", { p_line_id: lineId })).data as Array<Record<string, unknown>>;
+
+    expect(after[0]).toMatchObject({ mode: "BOXES", status: "COMPLETE" });
+  });
+
+  it("무게가 적히지 않은 줄은 무게 기준으로 못 바꾼다", async () => {
+    const { lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 2 });
+    const set = await getActorClient().rpc("set_document_line_count_mode", { p_line_id: lineId, p_mode: "WEIGHT" });
+
+    expect(set.error?.message).toContain("NO_LABELED_WEIGHT");
+  });
+
+  it("고객·다른 업체는 줄 기준을 바꿀 수 없다", async () => {
+    const { lineId } = await world.createDocumentLine({ traceNo: world.newTraceNo(), quantity: 2, labeledWeight: 10 });
+
+    await actAs(world.users.retailerR);
+
+    const set = await getActorClient().rpc("set_document_line_count_mode", { p_line_id: lineId, p_mode: "BOXES" });
+
+    expect(set.error?.message).toContain("FORBIDDEN");
   });
 });
 

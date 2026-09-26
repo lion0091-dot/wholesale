@@ -1,6 +1,6 @@
 "use client";
 
-import { INBOUND_ANCHORS } from "@/lib/livestock/inbound-next-step";
+import { INBOUND_ANCHORS, describeRemaining } from "@/lib/livestock/inbound-next-step";
 import { setDocumentsScanFinishedAction } from "./document-actions";
 import { HIGHLIGHT_BUTTON, HIGHLIGHT_FIELD, ResultCardView, StepCard, type StepCardStep } from "./step-card";
 import {
@@ -122,6 +122,8 @@ interface Props {
   scanDocuments: Array<{ id: string; scanFinished: boolean }>;
   /** 전표 기준으로 아직 안 들어온 박스 수(수량 반영). 단계 안내 카드에 쓴다. */
   remainingBoxCount: number;
+  /** 위 수 중 무게 기준 줄의 몫 — 문구가 박스와 무게 줄을 나눠 말한다. */
+  remainingWeightLines?: number;
   /**
    * 스캔 id → 필수항목 체크리스트. 서버에서 공공조회·전표를 붙여 만든다.
    * 방금 찍어서 아직 서버 데이터가 없는 줄은 여기 없고, 새로고침되면 채워진다.
@@ -252,6 +254,7 @@ export function InboundScanView({
   initialScans,
   scanDocuments,
   remainingBoxCount,
+  remainingWeightLines = 0,
   products,
   shippableOrders,
   scanRequirements,
@@ -926,7 +929,7 @@ export function InboundScanView({
     if (
       finished &&
       !window.confirm(
-        `전표에서 아직 안 들어온 박스 ${remainingBoxCount}개는 안 온 것으로 알리고 스캔을 종료합니다. 사무실이 확인 후 마감합니다.\n\n종료할까요?`
+        `전표에서 아직 안 들어온 것(${describeRemaining(remainingBoxCount, remainingWeightLines)})은 안 온 것으로 알리고 스캔을 종료합니다. 사무실이 확인 후 마감합니다.\n\n종료할까요?`
       )
     ) {
       return;
@@ -1022,7 +1025,7 @@ export function InboundScanView({
                 (awaitingDocumentLines.length > 0
                   ? " 안 찍히면 아래 \"전표 대기 품목\"을 눌러 번호를 채우세요."
                   : " 안 찍히면 박스 라벨의 번호를 직접 입력하세요.") +
-                (remainingBoxCount > 0 ? ` 아직 안 들어온 박스 ${remainingBoxCount}개.` : ""),
+                (remainingBoxCount > 0 ? ` 아직 안 들어온 것: ${describeRemaining(remainingBoxCount, remainingWeightLines)}.` : ""),
               link:
                 awaitingDocumentLines.length > 0
                   ? { label: "전표 대기 품목 보기", href: "#inbound-awaiting" }
@@ -1060,7 +1063,7 @@ export function InboundScanView({
             </button>
           ) : (
             <button type="button" disabled={finishingScan} onClick={() => void handleScanFinished(true)} style={buttonStyle}>
-              {finishingScan ? "처리 중…" : `스캔 종료 (남은 박스 ${remainingBoxCount}개는 안 옴)`}
+              {finishingScan ? "처리 중…" : `스캔 종료 (안 온 것: ${describeRemaining(remainingBoxCount, remainingWeightLines)})`}
             </button>
           )}
         </div>

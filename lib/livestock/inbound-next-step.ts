@@ -26,6 +26,8 @@ export interface InboundNextStepInput {
    * 모자란 만큼 센다(수량 2인 줄에 1박스만 왔으면 1개가 남는다).
    */
   remainingBoxCount: number;
+  /** 위 수 중 무게 기준 줄의 몫(덜 찬 줄마다 1). 문구가 "박스 N개"와 "무게가 덜 찬 줄 M줄"을 나눠 말한다. */
+  remainingWeightLines?: number;
   /** 이력 확인 필요·상품 확인 필요 상태로 남은 박스 수. */
   needsCheckScanCount: number;
   /** 그 중 가장 최근 박스 — 카드 버튼이 내역 맨 위가 아니라 이 박스로 바로 이동한다. */
@@ -59,6 +61,20 @@ export interface InboundNextStep {
   waitNote: { who: "사무실" | "현장"; text: string } | null;
   /** 큰 버튼 아래 작은 링크들 — 전표 없이 바로 스캔하는 길, 확인이 필요한 박스 보기. */
   secondaries: Array<{ label: string; href: string }>;
+}
+
+/**
+ * 아직 안 온 것을 말하는 문구 조각. 박스 수 기준 줄은 "박스 N개", 무게 기준 줄(개체번호 줄 등)은
+ * 몇 박스로 나뉘어 올지 몰라 "무게가 덜 찬 줄 M줄"로 말한다.
+ */
+export function describeRemaining(remainingBoxCount: number, remainingWeightLines = 0): string {
+  const weightLines = Math.min(remainingWeightLines, remainingBoxCount);
+  const boxes = remainingBoxCount - weightLines;
+
+  if (weightLines === 0) return `박스 ${remainingBoxCount}개`;
+  if (boxes === 0) return `무게가 덜 찬 줄 ${weightLines}줄`;
+
+  return `박스 ${boxes}개와 무게가 덜 찬 줄 ${weightLines}줄`;
 }
 
 export const INBOUND_ANCHORS = {
@@ -111,6 +127,7 @@ function pickAttentionDocument(docs: InboundNextStepInput["pendingDocuments"]) {
 
 export function pickInboundNextStep(input: InboundNextStepInput): InboundNextStep {
   const { pendingDocuments, remainingBoxCount, needsCheckScanCount, firstNeedsCheckScanId } = input;
+  const remainingText = describeRemaining(remainingBoxCount, input.remainingWeightLines);
 
   if (pendingDocuments.length > 0) {
     if (remainingBoxCount > 0 && pendingDocuments.every((doc) => doc.scanFinished)) {
@@ -119,7 +136,7 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
         key: "scan-finished",
         who: "사무실",
         title: "현장 스캔이 종료됐습니다",
-        detail: withSupplier(`안 온 박스 ${remainingBoxCount}개. 사유를 적고 마감하세요.`, pickAttentionDocument(pendingDocuments), pendingDocuments.length),
+        detail: withSupplier(`안 온 것: ${remainingText}. 사유를 적고 마감하세요.`, pickAttentionDocument(pendingDocuments), pendingDocuments.length),
         waitNote: { who: "현장", text: "스캔 종료를 알렸습니다. 박스가 더 오면 '스캔 다시 시작'을 누르세요." },
         buttonLabel: "확인·마감하기",
         href: documentCloseHref(pickAttentionDocument(pendingDocuments).id),
@@ -132,7 +149,7 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
         key: "scan",
         who: "사무실",
         title: "현장에서 스캔 중입니다",
-        detail: `안 들어온 박스 ${remainingBoxCount}개. 오는 중이면 기다려 주세요. 끝내 안 오는 물건이면 아래 "확인·마감하기"를 누르세요.`,
+        detail: `아직 안 들어온 것: ${remainingText}. 오는 중이면 기다려 주세요. 끝내 안 오는 물건이면 아래 "확인·마감하기"를 누르세요.`,
         waitNote: null,
         buttonLabel: "스캔 중 대기",
         buttonDisabled: true,
@@ -224,6 +241,7 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
  */
 export function pickFieldNextStep(input: InboundNextStepInput): InboundNextStep {
   const { pendingDocuments, remainingBoxCount, needsCheckScanCount, firstNeedsCheckScanId } = input;
+  const remainingText = describeRemaining(remainingBoxCount, input.remainingWeightLines);
 
   const needsCheckLinks =
     needsCheckScanCount > 0
@@ -241,7 +259,7 @@ export function pickFieldNextStep(input: InboundNextStepInput): InboundNextStep 
         key: "field-done",
         who: "현장",
         title: "스캔 종료를 알렸습니다",
-        detail: `안 온 박스 ${remainingBoxCount}개는 사무실이 확인합니다. 박스가 더 오면 '스캔 다시 시작'을 누르세요.`,
+        detail: `안 온 것(${remainingText})은 사무실이 확인합니다. 박스가 더 오면 '스캔 다시 시작'을 누르세요.`,
         buttonLabel: "스캔 화면으로",
         href: INBOUND_ANCHORS.scanForm,
         waitNote: { who: "사무실", text: "사무실이 안 온 물건을 확인하는 중입니다." },
@@ -252,7 +270,7 @@ export function pickFieldNextStep(input: InboundNextStepInput): InboundNextStep 
     return {
       key: "field-scan",
       who: "현장",
-      title: `박스 ${remainingBoxCount}개를 더 찍어 주세요`,
+      title: (input.remainingWeightLines ?? 0) > 0 ? `더 찍어 주세요 — ${remainingText}` : `박스 ${remainingBoxCount}개를 더 찍어 주세요`,
       detail: "다 찍었는데 남았으면 '스캔 종료'를 누르세요. 사무실이 안 온 물건을 처리합니다.",
       buttonLabel: "박스 스캔하기",
       href: INBOUND_ANCHORS.scanForm,

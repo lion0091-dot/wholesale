@@ -1097,6 +1097,47 @@ export async function linkScanToDocumentLineAction(
   }
 }
 
+/** 줄의 "다 왔는지" 판정 기준을 바꾼다 — 박스 수/무게/자동. 재고와 무관한 대조용 설정이다(마이그레이션 123). */
+export async function setDocumentLineCountModeAction(
+  lineId: string,
+  mode: "AUTO" | "BOXES" | "WEIGHT"
+): Promise<ActionResult<{ effectiveMode: "BOXES" | "WEIGHT" }>> {
+  try {
+    const { supabase } = await resolveDocumentScope();
+
+    const { data, error } = await supabase.rpc("set_document_line_count_mode", { p_line_id: lineId, p_mode: mode });
+
+    if (error) {
+      if (error.message.includes("DOCUMENT_NOT_PENDING")) {
+        throw new RbacError("마감된 전표는 바꿀 수 없습니다. 먼저 다시 열어주세요.");
+      }
+      if (error.message.includes("NO_LABELED_WEIGHT")) {
+        throw new RbacError("전표에 적힌 무게가 없는 줄은 무게로 셀 수 없습니다.");
+      }
+      if (error.message.includes("DOCUMENT_LINE_NOT_FOUND")) {
+        throw new RbacError("해당 전표 줄을 찾을 수 없습니다.");
+      }
+      if (error.message.includes("FORBIDDEN")) {
+        throw new RbacError("이 전표에 접근할 권한이 없습니다.");
+      }
+      throw new Error(error.message);
+    }
+
+    // 기준이 바뀌면 이미 다 찬 전표는 저절로 마감돼야 한다 — 찍거나 이을 때와 같은 검사를 한다.
+    const lineDocument = await supabase.from("inbound_document_lines").select("document_id").eq("id", lineId).maybeSingle();
+
+    if (lineDocument.data?.document_id) {
+      await autoCloseDocuments(supabase, [String(lineDocument.data.document_id)]);
+    }
+
+    revalidatePath(REVALIDATE_PATH, "layout");
+
+    return { success: true, data: { effectiveMode: data === "WEIGHT" ? "WEIGHT" : "BOXES" } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
 /** 붙은 박스를 뗀다 — 재고에는 영향 없음. */
 export async function unlinkScanFromDocumentLineAction(scanId: string): Promise<ActionResult> {
   try {

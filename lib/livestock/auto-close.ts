@@ -1,5 +1,5 @@
 import type { createClient } from "@/lib/supabase/server";
-import { documentLineExpectedQty, documentLineMatchStatus } from "./document-reconciliation";
+import { lineArrival, type CountMode } from "./document-reconciliation";
 
 /**
  * 전표 자동 마감 — 모든 줄이 예정대로 도착했고 상품이 안 정해진 박스도 없으면 사람이 할 일이 없으므로
@@ -11,19 +11,27 @@ import { documentLineExpectedQty, documentLineMatchStatus } from "./document-rec
 
 type Client = Awaited<ReturnType<typeof createClient>>;
 
+interface ScanInfo {
+  status: string;
+  weight?: number | string | null;
+}
+
 interface ScanRef {
-  inbound_scans: { status: string } | { status: string }[] | null;
+  inbound_scans: ScanInfo | ScanInfo[] | null;
 }
 
 export interface AutoCloseLine {
   quantity: number | null;
+  /** 도착 판정 기준(박스 수/무게)을 정하는 값들 — lineArrival과 같은 입력. */
+  labeled_weight?: number | string | null;
+  trace_no?: string | null;
+  raw_text?: string | null;
+  count_mode?: CountMode | null;
   inbound_document_line_scans: ScanRef[] | null;
 }
 
-function scanStatusOf(link: ScanRef): string | undefined {
-  const scan = Array.isArray(link.inbound_scans) ? link.inbound_scans[0] : link.inbound_scans;
-
-  return scan?.status;
+function scanOf(link: ScanRef): ScanInfo | undefined {
+  return Array.isArray(link.inbound_scans) ? link.inbound_scans[0] : (link.inbound_scans ?? undefined);
 }
 
 /** 줄이 하나 이상이고, 모든 줄이 정확히 다 도착했고, 이어진 박스 중 상품 미지정·이력 미확인이 없을 때만 참. */
@@ -31,20 +39,29 @@ export function isDocumentReadyToAutoClose(lines: AutoCloseLine[]): boolean {
   if (lines.length === 0) return false;
 
   return lines.every((line) => {
-    let linked = 0;
+    const weights: number[] = [];
 
     for (const link of line.inbound_document_line_scans ?? []) {
-      const status = scanStatusOf(link);
+      const scan = scanOf(link);
 
-      if (status === "VOIDED") continue;
-      if (status === "EXCEPTION" || status === "PENDING_MAPPING") return false;
+      if (scan?.status === "VOIDED") continue;
+      if (scan?.status === "EXCEPTION" || scan?.status === "PENDING_MAPPING") return false;
 
-      linked += 1;
+      weights.push(Number(scan?.weight ?? 0));
     }
 
-    const expected = documentLineExpectedQty(line.quantity === null ? null : Number(line.quantity));
+    const arrival = lineArrival(
+      {
+        countMode: line.count_mode ?? null,
+        quantity: line.quantity === null ? null : Number(line.quantity),
+        labeledWeight: line.labeled_weight === null || line.labeled_weight === undefined ? null : Number(line.labeled_weight),
+        traceNo: line.trace_no ?? null,
+        rawText: line.raw_text ?? null,
+      },
+      weights
+    );
 
-    return documentLineMatchStatus(expected, linked) === "COMPLETE";
+    return arrival.status === "COMPLETE";
   });
 }
 
@@ -57,7 +74,9 @@ export async function autoCloseDocuments(supabase: Client, documentIds: string[]
   try {
     const { data } = await supabase
       .from("inbound_documents")
-      .select("id, status, inbound_document_lines(quantity, inbound_document_line_scans(inbound_scans(status)))")
+      .select(
+        "id, status, inbound_document_lines(quantity, labeled_weight, trace_no, raw_text, count_mode, inbound_document_line_scans(inbound_scans(status, weight)))"
+      )
       .in("id", ids)
       .eq("status", "PENDING");
 

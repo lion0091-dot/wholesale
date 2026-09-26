@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickFieldNextStep, pickInboundNextStep, type InboundNextStepInput } from "./inbound-next-step";
+import { describeRemaining, pickFieldNextStep, pickInboundNextStep, type InboundNextStepInput } from "./inbound-next-step";
 
 const base: InboundNextStepInput = {
   pendingDocuments: [],
@@ -310,5 +310,37 @@ describe("여러 장 전표·현장 종료 안내", () => {
     });
 
     expect(step.secondaries.map((link) => link.href)).toContain("#inbound-scan-finish");
+  });
+});
+
+describe("describeRemaining — 안 온 것을 박스와 무게 줄로 나눠 말한다", () => {
+  it("무게 줄이 없으면 박스 수만 말한다", () => {
+    expect(describeRemaining(3)).toBe("박스 3개");
+    expect(describeRemaining(3, 0)).toBe("박스 3개");
+  });
+
+  it("전부 무게 줄이면 무게가 덜 찬 줄만 말한다", () => {
+    expect(describeRemaining(2, 2)).toBe("무게가 덜 찬 줄 2줄");
+  });
+
+  it("섞여 있으면 둘 다 말한다", () => {
+    expect(describeRemaining(5, 2)).toBe("박스 3개와 무게가 덜 찬 줄 2줄");
+  });
+
+  it("현장 카드 제목도 무게 줄이 있으면 박스 수로만 말하지 않는다", () => {
+    const withWeight = pickFieldNextStep({
+      ...base,
+      pendingDocuments: [{ id: "d", completeLines: 0, totalLines: 1 }],
+      remainingBoxCount: 2,
+      remainingWeightLines: 2,
+    });
+    const boxesOnly = pickFieldNextStep({
+      ...base,
+      pendingDocuments: [{ id: "d", completeLines: 0, totalLines: 1 }],
+      remainingBoxCount: 2,
+    });
+
+    expect(withWeight.title).toBe("더 찍어 주세요 — 무게가 덜 찬 줄 2줄");
+    expect(boxesOnly.title).toBe("박스 2개를 더 찍어 주세요");
   });
 });

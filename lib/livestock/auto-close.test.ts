@@ -35,4 +35,30 @@ describe("isDocumentReadyToAutoClose", () => {
     expect(isDocumentReadyToAutoClose([line(1, "VOIDED", "NORMAL")])).toBe(true);
     expect(isDocumentReadyToAutoClose([line(1, "VOIDED")])).toBe(false);
   });
+
+  it("개체번호 줄은 무게로 판정한다 — 세 박스로 나뉘어 와도 표기 무게 ±2% 안이면 마감 대상", () => {
+    const weighed = (weights: number[]): AutoCloseLine => ({
+      quantity: null,
+      labeled_weight: 10,
+      trace_no: "002191840078",
+      inbound_document_line_scans: weights.map((weight) => ({ inbound_scans: { status: "NORMAL", weight } })),
+    });
+
+    expect(isDocumentReadyToAutoClose([weighed([3.4, 3.3, 3.2])])).toBe(true);
+    expect(isDocumentReadyToAutoClose([weighed([3.4, 3.3])])).toBe(false);
+    expect(isDocumentReadyToAutoClose([weighed([6, 5])])).toBe(false);
+  });
+
+  it("무게 기준이어도 상품 미지정 박스가 있으면 대상이 아니다", () => {
+    expect(
+      isDocumentReadyToAutoClose([
+        {
+          quantity: null,
+          labeled_weight: 10,
+          trace_no: "002191840078",
+          inbound_document_line_scans: [{ inbound_scans: { status: "PENDING_MAPPING", weight: 10 } }],
+        },
+      ])
+    ).toBe(false);
+  });
 });

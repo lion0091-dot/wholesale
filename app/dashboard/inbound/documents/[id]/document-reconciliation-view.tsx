@@ -8,6 +8,7 @@ import {
   getDocumentFileUrlAction,
   linkScanToDocumentLineAction,
   reopenInboundDocumentAction,
+  setDocumentLineCountModeAction,
   unlinkScanFromDocumentLineAction,
 } from "../../document-actions";
 import { resolveMappingAction } from "../../actions";
@@ -46,9 +47,17 @@ export interface ReconciliationLine {
   origin: string | null;
   traceNo: string | null;
   lotNo: string | null;
+  /** 박스 기준이면 예정 박스 수, 무게 기준이면 1(환산값 — 화면은 무게로 말한다). */
   expected: number;
+  /** 이어진(취소 제외) 실제 박스 수. */
   linked: number;
   status: LineMatchStatus;
+  /** 지금 이 줄이 무엇으로 세는지(자동 규칙 또는 사무실이 고정한 값의 결과). */
+  mode: "BOXES" | "WEIGHT";
+  /** 사무실이 고정한 기준. null이면 자동. */
+  countMode: "BOXES" | "WEIGHT" | null;
+  /** 이어진 박스 무게 합계(kg). */
+  linkedWeight: number;
   labeledWeight: number | null;
   /** raw_text의 "(이력번호 k/N)"에서 k>1 — 표기중량은 첫 줄 합계에 포함된 것. */
   isSplitContinuation: boolean;
@@ -59,6 +68,8 @@ export interface UnlinkedBoxCandidate {
   lineId: string;
   /** NUMBER: 번호로 확정된 후보. SUGGESTED: 축종+중량 제안. SUGGESTED_UNCONFIRMED: 중량만(축종 모름). */
   basis: "NUMBER" | "SUGGESTED" | "SUGGESTED_UNCONFIRMED";
+  /** 박스 부위가 이 줄의 품목명·부위에 적혀 있다. */
+  partConfirmed?: boolean;
 }
 
 export interface UnlinkedBox {
@@ -105,6 +116,15 @@ function formatWeight(weight: number): string {
 
 function lineLabel(line: ReconciliationLine): string {
   return line.itemName || line.productName || `${line.lineNo}번 줄`;
+}
+
+/** 줄의 도착 현황 문구 — 박스 기준은 "도착 2 / 예정 3", 무게 기준은 "도착 8.2kg / 표기 10kg". */
+function arrivalText(line: ReconciliationLine): string {
+  if (line.mode === "WEIGHT") {
+    return `도착 ${line.linkedWeight}kg / 표기 ${line.labeledWeight}kg (박스 ${line.linked}개)`;
+  }
+
+  return `도착 ${line.linked} / 예정 ${line.expected}`;
 }
 
 export function DocumentReconciliationView({
@@ -355,7 +375,11 @@ export function DocumentReconciliationView({
     const text =
       `[${supplierName ?? "공급처"}] 전표 대조 — 미입고 확인 요청\n` +
       shortLines
-        .map((line) => `- ${lineLabel(line)} (예정 ${line.expected} / 입고 ${line.linked})`)
+        .map((line) =>
+          line.mode === "WEIGHT"
+            ? `- ${lineLabel(line)} (표기 ${line.labeledWeight}kg / 입고 ${line.linkedWeight}kg)`
+            : `- ${lineLabel(line)} (예정 ${line.expected} / 입고 ${line.linked})`
+        )
         .join("\n");
 
     void navigator.clipboard.writeText(text);
@@ -626,7 +650,7 @@ export function DocumentReconciliationView({
                     {line.traceNo ?? line.lotNo ?? "번호 없음"}
                   </span>
                   <span style={{ fontSize: "12px", color: "#334155" }}>
-                    도착 {line.linked} / 예정 {line.expected}
+                    {arrivalText(line)}
                   </span>
                   {line.labeledWeight !== null && (
                     <span style={{ fontSize: "12px", color: "#64748b" }}>
@@ -650,6 +674,30 @@ export function DocumentReconciliationView({
 
                 {expanded && (
                   <div style={{ padding: "0 12px 12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {isPending && line.labeledWeight !== null && !line.isSplitContinuation && (
+                      <label style={{ fontSize: "12px", color: "#475569", display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+                        다 왔는지 세는 기준
+                        <select
+                          value={line.countMode ?? "AUTO"}
+                          disabled={busyKey === `mode-${line.id}`}
+                          onChange={(event) =>
+                            void runAction(`mode-${line.id}`, () =>
+                              setDocumentLineCountModeAction(line.id, event.target.value as "AUTO" | "BOXES" | "WEIGHT")
+                            )
+                          }
+                          style={{ ...inputStyle, width: "auto", padding: "4px 6px", fontSize: "12px" }}
+                        >
+                          <option value="AUTO">자동 (지금은 {line.mode === "WEIGHT" ? "무게" : "박스 수"})</option>
+                          <option value="BOXES">박스 수</option>
+                          <option value="WEIGHT">무게</option>
+                        </select>
+                        <span style={{ color: "#94a3b8" }}>
+                          {line.mode === "WEIGHT"
+                            ? "몇 박스로 나뉘어 와도 무게가 표기와 ±2% 안이면 다 온 것으로 봅니다."
+                            : "박스 수가 예정과 같으면 다 온 것으로 봅니다."}
+                        </span>
+                      </label>
+                    )}
                     {line.boxes.length === 0 ? (
                       <p style={{ margin: 0, fontSize: "12px", color: "#94a3b8" }}>아직 도착한 박스가 없습니다.</p>
                     ) : (
@@ -924,11 +972,14 @@ export function DocumentReconciliationView({
                               title={
                                 candidate.basis === "SUGGESTED_UNCONFIRMED"
                                   ? "축종은 모르지만 무게가 비슷합니다"
-                                  : "축종과 무게가 비슷합니다"
+                                  : candidate.partConfirmed
+                                    ? "축종·부위·무게가 비슷합니다"
+                                    : "축종과 무게가 비슷합니다"
                               }
                             >
                               {lineLabel(line)} (비슷해 보임
-                              {candidate.basis === "SUGGESTED_UNCONFIRMED" ? " · 무게만 비슷" : ""})
+                              {candidate.basis === "SUGGESTED_UNCONFIRMED" ? " · 무게만 비슷" : ""}
+                              {candidate.partConfirmed ? " · 부위 같음" : ""})
                             </button>
                           );
                         })}

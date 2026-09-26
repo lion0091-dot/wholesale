@@ -1109,3 +1109,26 @@ SECURITY DEFINER RPC 여러 개가 아래 두 패턴으로 검사했다.
 - 두 화면의 조회는 `app/dashboard/inbound/inbound-data.ts`(`loadInboundData`) 공용. 전표입력은 `scanDetails:false`로 박스별 필수항목 대조를 건너뛴다.
 - 사이드바 메뉴 이름은 PC "입고"(하위 경로에서도 활성), 폰 "입고 스캔". 서버 액션의 `revalidatePath`는 `"layout"` 옵션으로 하위 화면까지 갱신. 종 배지 "대조 중인 명세서"는 전표입력으로 이동.
 - 재고·DB 변경 없음. 미검증: 실계정 화면 클릭(폰 탭 숨김, 카드 링크 이동), 매뉴얼 "명세서" 표기 갱신 미반영.
+
+### 부위로 전표 줄 자동 잇기 (2026-09-26)
+
+사장님 결정: "시스템이 할 수 있는 건 해준다." 전표 줄과 박스의 연결(확인용, 재고 무관)을 번호만으로 못 정할 때 **박스 부위**를 마저 쓴다.
+
+- 번호 없는 줄: 박스 실중량이 줄의 1박스당 기대 무게 ±10% 안 + 축종 일치 + 박스 부위가 줄 품목명·부위에 적힘 + 자리가 남은 줄이 **정확히 하나**일 때만 자동으로 잇는다(`pickAutoLinkLine`). 무게만 비슷하거나 후보가 여럿이면 지금처럼 사무실 대조 화면 몫. 부위가 적힌 줄이 있으면 후보를 그 줄들로 좁히고 화면에 "부위 같음"이 붙는다(없으면 표기 차이일 수 있어 좁히지 않는다). 이전 잠긴 결정 "번호 없는 줄은 절대 자동으로 붙이지 않는다"를 이 조건으로 바꿨다.
+- 같은 번호가 여러 줄에 걸린 전표(한 마리를 여러 부위로 쪼갬): 자리 남은 줄이 여럿이면 DB(`auto_link_scan_to_document_line`)는 NULL이었다. 이제 박스 부위가 적힌 줄이 하나면 그 줄로 잇는다(`pickLineByPart`).
+- 구현: `lib/livestock/auto-link-numberless.ts`(스캔 기록 직후 `recordScanAction`이 상품 자동 생성 뒤에 호출), 계산은 `document-reconciliation.ts`. DB 변경 없음. 박스 부위 = 이력조회 부위, 없으면 상품 부위 — 이력조회가 실패한 박스(EXCEPTION)는 부위를 몰라 자동으로 안 이어진다.
+- 안 한 것: 전표를 **나중에** 올렸을 때(`relink_pending_scans_to_documents`)의 부위 기준 배정, EXCEPTION 박스의 이력번호 바꾸기·자동 재조회(제안만 함, 미착수).
+- 출고 확인(2026-09-26): 출고·거래명세서의 번호는 나간 박스의 번호(`inbound_scans.trace_no`)다. 로트번호로 들어온 박스는 여러 주문으로 쪼개 나가도 주문마다 로트번호와 나간 중량이 찍힌다.
+- 검증: 단위 295건, 통합 192건(신규 7건: 번호 없는 줄 자동 잇기·후보 둘·부위 불일치·무게 초과·자리 없음, 쪼갠 전표 부위 선택·부위 없음), tsc 통과. 실계정 화면 미확인.
+
+### 전표 줄 판정 기준 — 박스 수 / 무게 (마이그레이션 123, 2026-09-26)
+
+사장님 결정: 전표는 줄마다 단위가 다르다(개체번호 "10kg", 로트번호 "3박스"). 판정은 **전표 줄이 한다** — 스캔은 박스를 기록하고 잇기만 한다. 재고는 여전히 스캔이 만든다.
+
+- `inbound_document_lines.count_mode` NULL=자동 / `BOXES` / `WEIGHT`. 자동 규칙(SQL `document_line_effective_count_mode` = TS `effectiveCountMode`, 둘이 같아야 함): 표기중량 없음→박스 수 · "(이력번호 k/N)" 나눈 줄→박스 수 · 개체번호(12자리)→무게 · 그 밖에는 수량이 없을 때만 무게, 수량이 있으면 박스 수.
+- 무게 기준: 이어진(취소 제외) 박스 무게 합이 표기중량 ±2%(`inbound_weight_tolerance()`/`INBOUND_WEIGHT_TOLERANCE`) 안이면 다 옴, 모자라면 일부만 옴, 넘으면 더 많이 옴. 한 마리가 몇 박스로 나뉘어 와도 된다.
+- 계산은 한 곳: DB `document_line_match_status`(열이 mode·expected_weight·linked_weight·linked_boxes로 늘어 DROP 후 재생성)와 TS `lineArrival`. 무게 기준 줄의 `expected`/`linked`는 "자리 남았나(linked < expected)"를 그대로 쓰는 호출자(자동 배정·중복 창)를 위해 expected=1, linked=0/1/2(모자람·오차 안·넘침)로 환산한다. **이 함수를 고치면 TS와 통합테스트 `documents.itest.ts`(RPC↔TS 일치)를 같이 고칠 것.**
+- 소비처: 대조 화면(`documents/[id]/page.tsx`, "도착 8.2kg / 표기 10kg (박스 3개)"와 줄별 "다 왔는지 세는 기준" 선택), 자동 마감(`auto-close.ts`), 안내 카드 남은 수(`inbound-data.ts` → `remainingWeightLines`, 문구 `describeRemaining`: "박스 N개"·"무게가 덜 찬 줄 M줄"), 부위 자동 잇기(`auto-link-numberless.ts`, 무게 줄은 남은 무게를 안 넘는 박스만 후보).
+- 사무실이 줄 기준을 바꾸는 RPC `set_document_line_count_mode`(대조 중 전표만, 무게 고정은 표기중량 필요), 액션 `setDocumentLineCountModeAction`은 바꾼 직후 다 찬 전표를 자동 마감한다.
+- 남는 빈틈(사람이 봄): 표기중량 없는 개체번호 줄(박스 1개로 봄), 공급처 표기와 저울이 ±2% 넘게 다른 줄(사유 적고 마감), 사진만 있는 전표·바코드 없는 박스.
+- 검증: 단위 313 · 통합 200(신규: DB↔TS 일치 5구간, 기준 고정·권한, 개체 10kg+로트 3박스 한 전표 자동 마감, 무게 미달, 기준 변경 즉시 마감, 카드 문구) · tsc · build 통과. **로컬 Docker에만 적용, 라이브 DB 미적용(123)**, 실계정 화면 미확인.
