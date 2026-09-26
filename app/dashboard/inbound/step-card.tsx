@@ -110,7 +110,7 @@ const TONE_STYLE: Record<ResultTone, { border: string; bg: string; fg: string; l
 };
 
 /** 박스 하나를 등록한 직후의 결과 카드 — 초록(끝) / 노랑(입고됐지만 확인) / 빨강(사람이 처리해야 재고가 잡힘). */
-export function ResultCardView({ card, onDismiss }: { card: ResultCard; onDismiss: () => void }) {
+export function ResultCardView({ card, onDismiss, onUndo }: { card: ResultCard; onDismiss: () => void; onUndo?: () => void }) {
   const tone = TONE_STYLE[card.tone];
 
   return (
@@ -173,6 +173,25 @@ export function ResultCardView({ card, onDismiss }: { card: ResultCard; onDismis
         >
           {card.action.label}
         </Link>
+      ) : null}
+      {onUndo ? (
+        <button
+          type="button"
+          onClick={onUndo}
+          style={{
+            alignSelf: "flex-start",
+            border: "1px solid #cbd5e1",
+            backgroundColor: "#ffffff",
+            color: "#475569",
+            fontSize: "12px",
+            fontWeight: 700,
+            padding: "6px 10px",
+            borderRadius: "8px",
+            cursor: "pointer",
+          }}
+        >
+          방금 찍은 박스 취소
+        </button>
       ) : null}
     </div>
   );

@@ -325,6 +325,23 @@ export function InboundScanView({
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // 입고 내역은 접어 두고 필요할 때만 연다. "입고 내역" 앵커 링크(#inbound-history)를 누르거나 주소에 그 앵커가 있으면 저절로 펼친다.
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  useEffect(() => {
+    if (window.location.hash === INBOUND_ANCHORS.history) setHistoryOpen(true);
+
+    const onClick = (event: MouseEvent) => {
+      const link = (event.target as Element | null)?.closest?.(`a[href="${INBOUND_ANCHORS.history}"]`);
+
+      if (link) setHistoryOpen(true);
+    };
+
+    document.addEventListener("click", onClick);
+
+    return () => document.removeEventListener("click", onClick);
+  }, []);
+
   useEffect(() => {
     setCameraSupported(hasBarcodeDetector());
     traceInputRef.current?.focus();
@@ -898,6 +915,26 @@ export function InboundScanView({
     setRows((prev) => prev.filter((row) => !row.isSample));
   };
 
+  // 잘못 찍은 직후의 취소 — 입고 내역을 열지 않고 결과 카드에서 바로 한다.
+  const undoLastScan = async (scanId: string) => {
+    if (!window.confirm("방금 찍은 박스 입고를 취소하시겠습니까?")) return;
+
+    const result = await voidScanAction(scanId, "오스캔 취소");
+
+    if (!result.success) {
+      setError(result.error ?? "취소에 실패했습니다.");
+      return;
+    }
+
+    setResultCard(null);
+    setNotice(
+      result.data?.reopenedDocument
+        ? "취소했습니다. 마감돼 있던 전표에서 이 박스가 빠져 전표를 다시 열었습니다 — 같은 박스를 다시 찍으면 그 줄에 다시 이어집니다."
+        : "방금 찍은 박스를 취소했습니다."
+    );
+    router.refresh();
+  };
+
   const handleVoid = async (scan: InboundScanRow) => {
     if (!window.confirm(`${scan.traceNo} (${scan.weight}${scan.unit}) 입고를 취소하시겠습니까?`)) {
       return;
@@ -1030,7 +1067,7 @@ export function InboundScanView({
           : {
               title: "박스 등록 1단계: 박스의 바코드를 찍으세요",
               detail:
-                "바코드를 찍으면 이력번호가 채워집니다. 잘못 찍었으면 아래 입고 내역에서 '취소'를 누르세요." +
+                "바코드를 찍으면 이력번호가 채워집니다. 방금 잘못 찍었으면 결과 카드의 '방금 찍은 박스 취소'를 누르세요." +
                 (awaitingDocumentLines.length > 0
                   ? " 안 찍히면 아래 \"전표 대기 품목\"을 눌러 번호를 채우세요."
                   : " 안 찍히면 박스 라벨의 번호를 직접 입력하세요.") +
@@ -1038,7 +1075,7 @@ export function InboundScanView({
               link:
                 awaitingDocumentLines.length > 0
                   ? { label: "전표 대기 품목 보기", href: "#inbound-awaiting" }
-                  : { label: "입고 내역 보기 (잘못 찍은 박스 취소)", href: INBOUND_ANCHORS.history },
+                  : { label: "입고 내역 열기 (지난 박스 취소)", href: INBOUND_ANCHORS.history },
             }
         : !weight.trim()
           ? {
@@ -1068,11 +1105,322 @@ export function InboundScanView({
   );
   const liveAmount = calcPurchaseAmount(Number.parseFloat(weight), Number.parseFloat(unitPrice));
 
+  // 확인이 필요한 박스는 위 '확인이 필요한 박스' 자리에 따로 두고, 입고 내역에는 나머지만 둔다(같은 박스가 두 자리에 겹쳐 그려지지 않게).
+  const historyRows = rows.filter((row) => !unresolvedRows.includes(row));
+
+  // 박스 한 줄 — '확인이 필요한 박스'와 '입고 내역' 두 자리에서 같은 모양으로 쓴다.
+  const renderScanRow = (scan: InboundScanRow) => {
+    const badge = STATUS_BADGE[scan.status];
+    const needsProduct =
+      !scan.isSample && (scan.status === "PENDING_MAPPING" || scan.status === "EXCEPTION");
+
+    return (
+      <div key={scan.id} id={`scan-${scan.id}`} style={{ ...rowStyle, scrollMarginTop: "12px" }}>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "11px", color: "#94a3b8" }}>{formatTime(scan.createdAt)}</span>
+          {scan.scannedByName && (
+            <span style={{ fontSize: "11px", color: "#475569", fontWeight: 600 }}>
+              {scan.scannedByName}
+            </span>
+          )}
+          <span style={{ fontFamily: "monospace", fontSize: "13px" }}>{scan.traceNo}</span>
+          <span style={{ fontWeight: 600 }}>{scan.productName ?? "상품 미지정"}</span>
+          <span style={{ fontWeight: 600 }}>
+            {scan.weight}
+            {scan.unit}
+          </span>
+
+          {scan.labeledWeight !== null && scan.weightVariance !== null && (
+            <span
+              title={`표기 ${scan.labeledWeight}${scan.unit} → 실측 ${scan.weight}${scan.unit}`}
+              style={{
+                fontSize: "11px",
+                fontWeight: 700,
+                borderRadius: "4px",
+                padding: "3px 6px",
+                ...(evaluateWeightVariance(scan.labeledWeight, scan.weight)?.exceeded
+                  ? { backgroundColor: "#fef3c7", color: "#92400e" }
+                  : { backgroundColor: "#f1f5f9", color: "#64748b" }),
+              }}
+            >
+              표기 {scan.labeledWeight} / {formatVarianceWeight(scan.weightVariance)}
+            </span>
+          )}
+
+          {scan.purchaseAmount !== null && (
+            <span style={{ fontSize: "11px", color: "#475569" }}>
+              매입 {formatWon(scan.purchaseAmount)}
+              {scan.purchaseSupplier ? ` · ${scan.purchaseSupplier}` : ""}
+            </span>
+          )}
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              backgroundColor: badge.bg,
+              color: badge.color,
+              borderRadius: "4px",
+              padding: "3px 7px",
+            }}
+          >
+            {badge.label}
+          </span>
+
+          {scan.isSample && (
+            <span
+              style={{
+                fontSize: "11px",
+                fontWeight: 700,
+                backgroundColor: "#e0e7ff",
+                color: "#3730a3",
+                borderRadius: "4px",
+                padding: "3px 7px",
+              }}
+            >
+              샘플
+            </span>
+          )}
+        </div>
+
+        {scan.isSample && scan.sampleNote && (
+          <p style={{ fontSize: "11px", color: "#64748b", margin: "2px 0 0", width: "100%" }}>
+            {scan.sampleNote}
+          </p>
+        )}
+
+        {!scan.isSample && (
+          <div style={{ width: "100%", display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+            {scan.storageLocation && (
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  backgroundColor: "#f1f5f9",
+                  color: "#334155",
+                  borderRadius: "4px",
+                  padding: "3px 7px",
+                }}
+              >
+                📍 {scan.storageLocation}
+              </span>
+            )}
+
+            {scan.storageLocationPhotoPath && (
+              <button
+                type="button"
+                onClick={() => void handleViewLocationPhoto(scan.storageLocationPhotoPath!)}
+                style={{ ...buttonStyle, padding: "3px 8px", fontSize: "11px" }}
+              >
+                위치 사진 보기
+              </button>
+            )}
+
+            {locationEditScanId === scan.id ? (
+              <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  list="storage-location-suggestions"
+                  value={locationDraft}
+                  onChange={(event) => setLocationDraft(event.target.value)}
+                  placeholder="예: 냉장고1-상단"
+                  style={{ ...inputStyle, width: "auto", padding: "5px 8px", fontSize: "12px" }}
+                />
+                <input
+                  ref={locationPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(event) => setLocationPhotoFile(event.target.files?.[0] ?? null)}
+                  style={{ fontSize: "11px", width: "150px" }}
+                />
+                <button
+                  type="button"
+                  disabled={savingLocation}
+                  onClick={() => void handleSaveLocation(scan.id)}
+                  style={{ ...buttonStyle, padding: "5px 10px", fontSize: "12px" }}
+                >
+                  {savingLocation ? "저장 중…" : "저장"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLocationEditScanId(null)}
+                  style={{ border: "none", background: "none", color: "#94a3b8", fontSize: "12px", cursor: "pointer" }}
+                >
+                  취소
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openLocationEditor(scan)}
+                style={{ border: "none", background: "none", color: "#2563eb", fontSize: "11px", cursor: "pointer" }}
+              >
+                {scan.storageLocation ? "위치 수정" : "위치 지정(선택)"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {(() => {
+          const report = scan.isSample
+            ? scan.sampleRequirementReport
+            : scanRequirements[scan.id];
+
+          return report ? <ScanRequirementList report={report} /> : null;
+        })()}
+
+        {needsProduct && declinedSplitTraceNos.has(scan.traceNo) && (
+          <p style={{ fontSize: "11px", color: "#92400e", margin: "2px 0 0", width: "100%" }}>
+            ⚠ 쪼개기 안 함으로 확인됨 — 아래에서 상품을 하나로 지정하면 이 무게 전체가 그
+            상품 재고로 들어갑니다. 실제로 여러 상품이 섞인 박스라면 취소하고 "박스 나눠서
+            입고"로 다시 입력하세요.
+          </p>
+        )}
+
+        <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+          {scan.status === "EXCEPTION" && !scan.isSample && (
+            <TraceNoFixer scanId={scan.id} traceNo={scan.traceNo} compact />
+          )}
+
+          {needsProduct && products.length === 0 && (
+            <Link
+              href="/dashboard/products"
+              style={{ fontSize: "12px", fontWeight: 700, color: "#1d4ed8", textDecoration: "underline" }}
+            >
+              지정할 상품이 없습니다 — 상품 관리에서 먼저 상품을 등록하세요
+            </Link>
+          )}
+
+          {needsProduct && products.length > 0 && (
+            <select
+              defaultValue=""
+              onChange={(event) => void handleResolve(scan.id, event.target.value)}
+              aria-label="상품 지정"
+              style={{ ...inputStyle, ...HIGHLIGHT_FIELD, width: "auto", padding: "6px 8px", fontSize: "12px" }}
+            >
+              <option value="">상품 선택…</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {composeProductDisplayName(product.category, product.name)}
+                  {product.grade ? ` (${product.grade})` : ""}
+                  {product.is_active === false ? " · 판매중지" : ""}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {needsProduct && shippableOrders.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                // 다른 행에서 골라둔 상품/주문 선택값이 남아있으면 이 행에
+                // 그대로 미리 채워진 것처럼 보여 잘못 배정될 수 있다(code-review 지적).
+                setOrderTargetProductId("");
+                setOrderTargetOrderId("");
+                setOrderTargetScanId(orderTargetScanId === scan.id ? null : scan.id);
+              }}
+              style={{ ...buttonStyle, padding: "6px 10px", fontSize: "12px" }}
+            >
+              {orderTargetScanId === scan.id ? "취소" : "주문에 바로 배정"}
+            </button>
+          )}
+
+          {scan.isSample ? (
+            <button
+              type="button"
+              onClick={() => removeSampleRow(scan.id)}
+              style={{ ...buttonStyle, padding: "6px 10px", fontSize: "12px" }}
+            >
+              삭제
+            </button>
+          ) : (
+            scan.status !== "VOIDED" && (
+              <button
+                type="button"
+                onClick={() => void handleVoid(scan)}
+                style={{ ...buttonStyle, padding: "6px 10px", fontSize: "12px" }}
+              >
+                취소
+              </button>
+            )
+          )}
+        </div>
+
+        {orderTargetScanId === scan.id && (
+          <div
+            style={{
+              display: "flex",
+              gap: "6px",
+              alignItems: "center",
+              flexWrap: "wrap",
+              width: "100%",
+              marginTop: "6px",
+              padding: "8px",
+              backgroundColor: "#f8fafc",
+              borderRadius: "8px",
+            }}
+          >
+            <span style={{ fontSize: "12px", color: "#475569" }}>
+              고객이 요청해서 들어온 박스를 바로 그 주문으로 보냅니다 —
+            </span>
+            <select
+              value={orderTargetProductId}
+              onChange={(event) => setOrderTargetProductId(event.target.value)}
+              aria-label="배정할 상품"
+              style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: "12px" }}
+            >
+              <option value="">상품 선택…</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {composeProductDisplayName(product.category, product.name)}
+                  {product.grade ? ` (${product.grade})` : ""}
+                  {product.is_active === false ? " · 판매중지" : ""}
+                </option>
+              ))}
+            </select>
+            <select
+              value={orderTargetOrderId}
+              onChange={(event) => setOrderTargetOrderId(event.target.value)}
+              aria-label="배정할 주문"
+              style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: "12px" }}
+            >
+              <option value="">주문 선택…</option>
+              {shippableOrders.map((order) => (
+                <option key={order.id} value={order.id}>
+                  {order.orderNumber} · {order.retailerName}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={resolvingToOrder}
+              onClick={() => void handleResolveToOrder(scan.id)}
+              style={{
+                ...buttonStyle,
+                padding: "6px 10px",
+                fontSize: "12px",
+                fontWeight: 700,
+                opacity: resolvingToOrder ? 0.6 : 1,
+              }}
+            >
+              {resolvingToOrder ? "배정 중…" : "배정 확정"}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <StepCard who="현장" step={scanStep} />
 
-      {shownResultCard ? <ResultCardView card={shownResultCard} onDismiss={() => setResultCard(null)} /> : null}
+      {shownResultCard ? (
+        <ResultCardView
+          card={shownResultCard}
+          onDismiss={() => setResultCard(null)}
+          onUndo={resultCard?.scanId ? () => void undoLastScan(resultCard.scanId as string) : undefined}
+        />
+      ) : null}
 
       {remainingBoxCount > 0 && scanDocuments.length > 0 ? (
         <div id="inbound-scan-finish" style={{ display: "flex", justifyContent: "flex-end", scrollMarginTop: "12px" }}>
@@ -1502,28 +1850,9 @@ export function InboundScanView({
         </section>
       )}
 
-      {unresolvedRows.length > 0 && pending.length === 0 ? (
-        <StepCard
-          who="현장·사무실"
-          step={{
-            title: `상품을 지정하세요 (박스 ${unresolvedRows.length}개)`,
-            detail:
-              "상품이 정해져야 재고에 들어갑니다. 아래 입고 내역에서 '상품 확인 필요'나 '이력 확인 필요'가 붙은 박스를 찾아, " +
-              "그 박스의 파란 '상품 선택…' 칸에서 실제 물건과 같은 상품을 고르세요. 고르는 즉시 지정되고 재고가 늘어납니다. " +
-              "무슨 물건인지 모르겠으면 현장 직원에게 물어보세요. 다 지정하면 맨 위 카드가 바뀝니다.",
-            link: { label: "첫 박스로 이동", href: `#scan-${unresolvedRows[0].id}` },
-          }}
-        />
-      ) : null}
-
-      <section id="inbound-history" style={{ ...panelStyle, scrollMarginTop: "12px" }}>
-        <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "10px" }}>
-          입고 내역<span style={{ color: "#94a3b8", fontWeight: 400 }}>최근 100건 + 확인이 필요한 박스</span>
-        </div>
-
-        {pending.length === 0 && rows.length === 0 ? (
-          <p style={{ fontSize: "13px", color: "#94a3b8", margin: 0 }}>아직 입고 기록이 없습니다.</p>
-        ) : (
+      {pending.length > 0 && (
+        <section style={panelStyle}>
+          <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "8px" }}>등록 중</div>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {pending.map((item) => (
               <div key={item.key} style={{ ...rowStyle, opacity: 0.6 }}>
@@ -1532,307 +1861,40 @@ export function InboundScanView({
                 <span style={{ fontSize: "12px", color: "#64748b" }}>검증 중…</span>
               </div>
             ))}
+          </div>
+        </section>
+      )}
 
-            {rows.map((scan) => {
-              const badge = STATUS_BADGE[scan.status];
-              const needsProduct =
-                !scan.isSample && (scan.status === "PENDING_MAPPING" || scan.status === "EXCEPTION");
+      {unresolvedRows.length > 0 && (
+        <section id="inbound-unresolved" style={{ ...panelStyle, border: "2px solid #fca5a5", backgroundColor: "#fff7f7", scrollMarginTop: "12px" }}>
+          <div style={{ fontSize: "14px", fontWeight: 800, color: "#991b1b" }}>확인이 필요한 박스 {unresolvedRows.length}개</div>
+          <p style={{ fontSize: "12px", color: "#475569", margin: "4px 0 10px", lineHeight: 1.5 }}>
+            재고에 아직 안 들어간 박스입니다. 박스 옆에서 상품을 지정하면 재고가 늘고, 이력을 못 찾은 박스는 번호를 바로잡거나 다시 조회하세요.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>{unresolvedRows.map(renderScanRow)}</div>
+        </section>
+      )}
 
-              return (
-                <div key={scan.id} id={`scan-${scan.id}`} style={{ ...rowStyle, scrollMarginTop: "12px" }}>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                    <span style={{ fontSize: "11px", color: "#94a3b8" }}>{formatTime(scan.createdAt)}</span>
-                    {scan.scannedByName && (
-                      <span style={{ fontSize: "11px", color: "#475569", fontWeight: 600 }}>
-                        {scan.scannedByName}
-                      </span>
-                    )}
-                    <span style={{ fontFamily: "monospace", fontSize: "13px" }}>{scan.traceNo}</span>
-                    <span style={{ fontWeight: 600 }}>{scan.productName ?? "상품 미지정"}</span>
-                    <span style={{ fontWeight: 600 }}>
-                      {scan.weight}
-                      {scan.unit}
-                    </span>
+      <section id="inbound-history" style={{ ...panelStyle, scrollMarginTop: "12px" }}>
+        <button
+          type="button"
+          onClick={() => setHistoryOpen((open) => !open)}
+          aria-expanded={historyOpen}
+          style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "transparent", border: "none", padding: 0, cursor: "pointer", fontSize: "13px", fontWeight: 700, color: "#0f172a" }}
+        >
+          <span>
+            입고 내역 <span style={{ color: "#94a3b8", fontWeight: 400 }}>지금까지 찍은 박스 {historyRows.length}건 · 지난 박스 취소·보관 위치</span>
+          </span>
+          <span style={{ color: "#64748b" }}>{historyOpen ? "접기 ▲" : "열기 ▼"}</span>
+        </button>
 
-                    {scan.labeledWeight !== null && scan.weightVariance !== null && (
-                      <span
-                        title={`표기 ${scan.labeledWeight}${scan.unit} → 실측 ${scan.weight}${scan.unit}`}
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          borderRadius: "4px",
-                          padding: "3px 6px",
-                          ...(evaluateWeightVariance(scan.labeledWeight, scan.weight)?.exceeded
-                            ? { backgroundColor: "#fef3c7", color: "#92400e" }
-                            : { backgroundColor: "#f1f5f9", color: "#64748b" }),
-                        }}
-                      >
-                        표기 {scan.labeledWeight} / {formatVarianceWeight(scan.weightVariance)}
-                      </span>
-                    )}
-
-                    {scan.purchaseAmount !== null && (
-                      <span style={{ fontSize: "11px", color: "#475569" }}>
-                        매입 {formatWon(scan.purchaseAmount)}
-                        {scan.purchaseSupplier ? ` · ${scan.purchaseSupplier}` : ""}
-                      </span>
-                    )}
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        backgroundColor: badge.bg,
-                        color: badge.color,
-                        borderRadius: "4px",
-                        padding: "3px 7px",
-                      }}
-                    >
-                      {badge.label}
-                    </span>
-
-                    {scan.isSample && (
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          backgroundColor: "#e0e7ff",
-                          color: "#3730a3",
-                          borderRadius: "4px",
-                          padding: "3px 7px",
-                        }}
-                      >
-                        샘플
-                      </span>
-                    )}
-                  </div>
-
-                  {scan.isSample && scan.sampleNote && (
-                    <p style={{ fontSize: "11px", color: "#64748b", margin: "2px 0 0", width: "100%" }}>
-                      {scan.sampleNote}
-                    </p>
-                  )}
-
-                  {!scan.isSample && (
-                    <div style={{ width: "100%", display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
-                      {scan.storageLocation && (
-                        <span
-                          style={{
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            backgroundColor: "#f1f5f9",
-                            color: "#334155",
-                            borderRadius: "4px",
-                            padding: "3px 7px",
-                          }}
-                        >
-                          📍 {scan.storageLocation}
-                        </span>
-                      )}
-
-                      {scan.storageLocationPhotoPath && (
-                        <button
-                          type="button"
-                          onClick={() => void handleViewLocationPhoto(scan.storageLocationPhotoPath!)}
-                          style={{ ...buttonStyle, padding: "3px 8px", fontSize: "11px" }}
-                        >
-                          위치 사진 보기
-                        </button>
-                      )}
-
-                      {locationEditScanId === scan.id ? (
-                        <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
-                          <input
-                            list="storage-location-suggestions"
-                            value={locationDraft}
-                            onChange={(event) => setLocationDraft(event.target.value)}
-                            placeholder="예: 냉장고1-상단"
-                            style={{ ...inputStyle, width: "auto", padding: "5px 8px", fontSize: "12px" }}
-                          />
-                          <input
-                            ref={locationPhotoInputRef}
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            onChange={(event) => setLocationPhotoFile(event.target.files?.[0] ?? null)}
-                            style={{ fontSize: "11px", width: "150px" }}
-                          />
-                          <button
-                            type="button"
-                            disabled={savingLocation}
-                            onClick={() => void handleSaveLocation(scan.id)}
-                            style={{ ...buttonStyle, padding: "5px 10px", fontSize: "12px" }}
-                          >
-                            {savingLocation ? "저장 중…" : "저장"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setLocationEditScanId(null)}
-                            style={{ border: "none", background: "none", color: "#94a3b8", fontSize: "12px", cursor: "pointer" }}
-                          >
-                            취소
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => openLocationEditor(scan)}
-                          style={{ border: "none", background: "none", color: "#2563eb", fontSize: "11px", cursor: "pointer" }}
-                        >
-                          {scan.storageLocation ? "위치 수정" : "위치 지정(선택)"}
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {(() => {
-                    const report = scan.isSample
-                      ? scan.sampleRequirementReport
-                      : scanRequirements[scan.id];
-
-                    return report ? <ScanRequirementList report={report} /> : null;
-                  })()}
-
-                  {needsProduct && declinedSplitTraceNos.has(scan.traceNo) && (
-                    <p style={{ fontSize: "11px", color: "#92400e", margin: "2px 0 0", width: "100%" }}>
-                      ⚠ 쪼개기 안 함으로 확인됨 — 아래에서 상품을 하나로 지정하면 이 무게 전체가 그
-                      상품 재고로 들어갑니다. 실제로 여러 상품이 섞인 박스라면 취소하고 "박스 나눠서
-                      입고"로 다시 입력하세요.
-                    </p>
-                  )}
-
-                  <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
-                    {scan.status === "EXCEPTION" && !scan.isSample && (
-                      <TraceNoFixer scanId={scan.id} traceNo={scan.traceNo} compact />
-                    )}
-
-                    {needsProduct && products.length === 0 && (
-                      <Link
-                        href="/dashboard/products"
-                        style={{ fontSize: "12px", fontWeight: 700, color: "#1d4ed8", textDecoration: "underline" }}
-                      >
-                        지정할 상품이 없습니다 — 상품 관리에서 먼저 상품을 등록하세요
-                      </Link>
-                    )}
-
-                    {needsProduct && products.length > 0 && (
-                      <select
-                        defaultValue=""
-                        onChange={(event) => void handleResolve(scan.id, event.target.value)}
-                        aria-label="상품 지정"
-                        style={{ ...inputStyle, ...HIGHLIGHT_FIELD, width: "auto", padding: "6px 8px", fontSize: "12px" }}
-                      >
-                        <option value="">상품 선택…</option>
-                        {products.map((product) => (
-                          <option key={product.id} value={product.id}>
-                            {composeProductDisplayName(product.category, product.name)}
-                            {product.grade ? ` (${product.grade})` : ""}
-                            {product.is_active === false ? " · 판매중지" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-
-                    {needsProduct && shippableOrders.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // 다른 행에서 골라둔 상품/주문 선택값이 남아있으면 이 행에
-                          // 그대로 미리 채워진 것처럼 보여 잘못 배정될 수 있다(code-review 지적).
-                          setOrderTargetProductId("");
-                          setOrderTargetOrderId("");
-                          setOrderTargetScanId(orderTargetScanId === scan.id ? null : scan.id);
-                        }}
-                        style={{ ...buttonStyle, padding: "6px 10px", fontSize: "12px" }}
-                      >
-                        {orderTargetScanId === scan.id ? "취소" : "주문에 바로 배정"}
-                      </button>
-                    )}
-
-                    {scan.isSample ? (
-                      <button
-                        type="button"
-                        onClick={() => removeSampleRow(scan.id)}
-                        style={{ ...buttonStyle, padding: "6px 10px", fontSize: "12px" }}
-                      >
-                        삭제
-                      </button>
-                    ) : (
-                      scan.status !== "VOIDED" && (
-                        <button
-                          type="button"
-                          onClick={() => void handleVoid(scan)}
-                          style={{ ...buttonStyle, padding: "6px 10px", fontSize: "12px" }}
-                        >
-                          취소
-                        </button>
-                      )
-                    )}
-                  </div>
-
-                  {orderTargetScanId === scan.id && (
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "6px",
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                        width: "100%",
-                        marginTop: "6px",
-                        padding: "8px",
-                        backgroundColor: "#f8fafc",
-                        borderRadius: "8px",
-                      }}
-                    >
-                      <span style={{ fontSize: "12px", color: "#475569" }}>
-                        고객이 요청해서 들어온 박스를 바로 그 주문으로 보냅니다 —
-                      </span>
-                      <select
-                        value={orderTargetProductId}
-                        onChange={(event) => setOrderTargetProductId(event.target.value)}
-                        aria-label="배정할 상품"
-                        style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: "12px" }}
-                      >
-                        <option value="">상품 선택…</option>
-                        {products.map((product) => (
-                          <option key={product.id} value={product.id}>
-                            {composeProductDisplayName(product.category, product.name)}
-                            {product.grade ? ` (${product.grade})` : ""}
-                            {product.is_active === false ? " · 판매중지" : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        value={orderTargetOrderId}
-                        onChange={(event) => setOrderTargetOrderId(event.target.value)}
-                        aria-label="배정할 주문"
-                        style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: "12px" }}
-                      >
-                        <option value="">주문 선택…</option>
-                        {shippableOrders.map((order) => (
-                          <option key={order.id} value={order.id}>
-                            {order.orderNumber} · {order.retailerName}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        disabled={resolvingToOrder}
-                        onClick={() => void handleResolveToOrder(scan.id)}
-                        style={{
-                          ...buttonStyle,
-                          padding: "6px 10px",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          opacity: resolvingToOrder ? 0.6 : 1,
-                        }}
-                      >
-                        {resolvingToOrder ? "배정 중…" : "배정 확정"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+        {historyOpen && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "10px" }}>
+            {historyRows.length === 0 ? (
+              <p style={{ fontSize: "13px", color: "#94a3b8", margin: 0 }}>아직 입고 기록이 없습니다.</p>
+            ) : (
+              historyRows.map(renderScanRow)
+            )}
           </div>
         )}
       </section>

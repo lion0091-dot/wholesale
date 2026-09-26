@@ -100,6 +100,8 @@ export const INBOUND_ANCHORS = {
   documents: "#inbound-documents",
   scanForm: "#inbound-scan-form",
   history: "#inbound-history",
+  /** 입고 스캔 화면의 "확인이 필요한 박스" 목록(처리 안 끝난 박스만). */
+  unresolved: "#inbound-unresolved",
   scanFinish: "#inbound-scan-finish",
 } as const;
 
@@ -319,9 +321,9 @@ export function pickFieldNextStep(input: InboundNextStepInput): InboundNextStep 
       who: "현장",
       title: `확인이 필요한 박스 ${needsCheckScanCount}개를 먼저 처리하세요`,
       detail:
-        "이 박스들은 아직 재고에 안 들어갔습니다. 입고 내역의 그 박스 옆에서 '상품 지정'을 하세요(이력 못 찾음이면 '번호 바꾸기'). 다 처리하면 이 안내가 다음 할 일로 바뀝니다. 새 박스는 그다음에 찍으세요.",
+        "이 박스들은 아직 재고에 안 들어갔습니다. 아래 '확인이 필요한 박스'에서 그 박스 옆의 '상품 지정'을 하세요(이력 못 찾음이면 '번호 바꾸기'). 다 처리하면 이 안내가 다음 할 일로 바뀝니다. 새 박스는 그다음에 찍으세요.",
       buttonLabel: "확인 필요 박스로 가기",
-      href: firstNeedsCheckScanId ? `#scan-${firstNeedsCheckScanId}` : INBOUND_ANCHORS.history,
+      href: firstNeedsCheckScanId ? `#scan-${firstNeedsCheckScanId}` : INBOUND_ANCHORS.unresolved,
       waitNote: null,
       secondaries: [{ label: "처리 전에 새 박스를 먼저 찍기", href: INBOUND_ANCHORS.scanForm }],
     };

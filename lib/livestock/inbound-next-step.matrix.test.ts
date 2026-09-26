@@ -180,11 +180,11 @@ describe("현장 카드 — 확인 필요 박스가 있으면 '지금 할 일'�
     }
   });
 
-  it("처리할 박스의 위치를 모르면 입고 내역으로 보낸다(빈 링크가 없다)", () => {
+  it("처리할 박스의 위치를 모르면 '확인이 필요한 박스' 목록으로 보낸다(빈 링크가 없다)", () => {
     const step = pickFieldNextStep({ pendingDocuments: [], remainingBoxCount: 0, needsCheckScanCount: 2, firstNeedsCheckScanId: null });
 
     expect(step.key).toBe("field-check");
-    expect(step.href).toBe(INBOUND_ANCHORS.history);
+    expect(step.href).toBe(INBOUND_ANCHORS.unresolved);
   });
 });
 
