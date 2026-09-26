@@ -14,6 +14,7 @@ const REFRESH_MS = 30_000;
 export function TodoBell({ initialCounts }: { initialCounts: TodoCounts }) {
   const [counts, setCounts] = useState(initialCounts);
   const [open, setOpen] = useState(false);
+  const [panelPosition, setPanelPosition] = useState({ top: 0, left: 12, width: 280 });
   const rootRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
 
@@ -64,11 +65,25 @@ export function TodoBell({ initialCounts }: { initialCounts: TodoCounts }) {
 
   const total = totalTodo(counts);
 
+  // 패널은 화면 기준(fixed)으로 놓고 좌우 12px 안쪽에 가둔다 — 종 아이콘이 왼쪽에 붙은 좁은 폰 헤더에서
+  // 아이콘 기준 오른쪽 정렬을 하면 패널이 화면 밖으로 밀려 항목 이름이 잘린다.
+  const togglePanel = () => {
+    if (!open && rootRef.current) {
+      const rect = rootRef.current.getBoundingClientRect();
+      const width = Math.min(300, window.innerWidth - 24);
+      const left = Math.min(Math.max(rect.right - width, 12), window.innerWidth - width - 12);
+
+      setPanelPosition({ top: rect.bottom + 8, left, width });
+    }
+
+    setOpen((value) => !value);
+  };
+
   return (
     <div ref={rootRef} style={{ position: "relative" }}>
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={togglePanel}
         aria-label={total > 0 ? `지금 할 일 ${total}건` : "지금 할 일 없음"}
         aria-expanded={open}
         style={{
@@ -111,11 +126,11 @@ export function TodoBell({ initialCounts }: { initialCounts: TodoCounts }) {
         <div
           role="menu"
           style={{
-            position: "absolute",
-            right: 0,
-            top: "calc(100% + 8px)",
+            position: "fixed",
+            top: panelPosition.top,
+            left: panelPosition.left,
+            width: panelPosition.width,
             zIndex: 50,
-            width: "min(280px, calc(100vw - 32px))",
             backgroundColor: "#ffffff",
             border: "1px solid #e2e8f0",
             borderRadius: "10px",
