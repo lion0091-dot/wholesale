@@ -296,7 +296,8 @@ describe("pickFieldNextStep — 입고 스캔(현장) 화면 카드", () => {
       firstNeedsCheckScanId: "s7",
     });
 
-    expect(step.buttonLabel).toBe("상품 지정하러 가기");
+    expect(step.key).toBe("field-check");
+    expect(step.buttonLabel).toBe("확인 필요 박스로 가기");
     expect(step.href).toBe("#scan-s7");
   });
 
@@ -366,12 +367,12 @@ describe("describeRemaining — 안 온 것을 박스와 무게 줄로 나눠 �
     expect(describeRemaining(3, 0)).toBe("박스 3개");
   });
 
-  it("전부 무게 줄이면 무게가 덜 찬 줄만 말한다", () => {
-    expect(describeRemaining(2, 2)).toBe("무게가 덜 찬 줄 2줄");
+  it("전부 무게 줄이면 전표무게보다 작은무게인 명세내역만 말한다", () => {
+    expect(describeRemaining(2, 2)).toBe("전표무게보다 작은무게인 명세내역 2개");
   });
 
   it("섞여 있으면 둘 다 말한다", () => {
-    expect(describeRemaining(5, 2)).toBe("박스 3개와 무게가 덜 찬 줄 2줄");
+    expect(describeRemaining(5, 2)).toBe("박스 3개와 전표무게보다 작은무게인 명세내역 2개");
   });
 
   it("현장 카드 제목도 무게 줄이 있으면 박스 수로만 말하지 않는다", () => {
@@ -387,7 +388,7 @@ describe("describeRemaining — 안 온 것을 박스와 무게 줄로 나눠 �
       remainingBoxCount: 2,
     });
 
-    expect(withWeight.title).toBe("더 찍어 주세요 — 무게가 덜 찬 줄 2줄");
+    expect(withWeight.title).toBe("더 찍어 주세요 — 전표무게보다 작은무게인 명세내역 2개");
     expect(boxesOnly.title).toBe("박스 2개를 더 찍어 주세요");
   });
 });

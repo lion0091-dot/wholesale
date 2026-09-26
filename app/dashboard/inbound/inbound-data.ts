@@ -31,7 +31,7 @@ export interface InboundData {
   nextStepInput: InboundNextStepInput;
   /** 아직 안 들어온 박스 수(전표 기준). 무게 기준 줄은 덜 온 줄마다 1로 센다. */
   remainingBoxCount: number;
-  /** 위 수 중 무게 기준 줄의 몫 — 안내 문구가 "박스 N개"와 "무게가 덜 찬 줄 M줄"을 나눠 말하는 데 쓴다. */
+  /** 위 수 중 무게 기준 줄의 몫 — 안내 문구가 "박스 N개"와 "전표무게보다 작은무게인 명세내역 M개"를 나눠 말하는 데 쓴다. */
   remainingWeightLines: number;
   canManage: boolean;
 }

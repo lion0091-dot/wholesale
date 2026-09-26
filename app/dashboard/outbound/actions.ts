@@ -71,6 +71,53 @@ const SCAN_ERRORS: Record<string, string> = {
   ALREADY_FINALIZED: "이미 마감(금액 확정)된 발주서입니다. 추가로 나가는 물건은 별도로 처리해주세요.",
 };
 
+type Client = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * 박스를 못 찾았다(BOX_NOT_AVAILABLE)는 하나의 코드 뒤에는 원인이 여럿이라, 현장이 다음에 무엇을 해야 하는지가 다르다.
+ * 같은 박스를 이 주문에 이미 찍었나 / 입고는 됐는데 상품이 안 정해졌나 / 다른 주문으로 다 나갔나 / 취소됐나를 가려 알려 준다.
+ */
+async function explainBoxNotAvailable(supabase: Client, wholesalerId: string, orderId: string, traceNo: string): Promise<string> {
+  const fallback = SCAN_ERRORS.BOX_NOT_AVAILABLE;
+  const trace = traceNo.trim().toUpperCase();
+
+  if (!trace) return fallback;
+
+  const { data: boxes } = await supabase
+    .from("inbound_scans")
+    .select("id, status, remaining_weight")
+    .eq("wholesaler_id", wholesalerId)
+    .eq("trace_no", trace)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  const rows = (boxes ?? []) as Array<{ id: string; status: string; remaining_weight: number | string }>;
+
+  if (rows.length === 0) return fallback;
+
+  const { data: assigned } = await supabase
+    .from("stock_ledger")
+    .select("id")
+    .eq("source_type", "order")
+    .eq("source_id", orderId)
+    .eq("event_type", "OUTBOUND_ASSIGN")
+    .in("inbound_scan_id", rows.map((row) => row.id))
+    .limit(1);
+
+  if ((assigned ?? []).length > 0) {
+    return "이 박스는 이미 이 주문에 찍었습니다. 같은 박스를 또 찍은 것이면 다음 박스를 찍으세요.";
+  }
+
+  if (rows.some((row) => row.status === "PENDING_MAPPING" || row.status === "EXCEPTION")) {
+    return "이 박스는 입고는 됐지만 상품이 아직 정해지지 않아 재고에 없습니다. '입고 스캔'에서 이 박스의 상품을 지정한 뒤 다시 찍어주세요.";
+  }
+
+  if (rows.some((row) => row.status === "NORMAL")) {
+    return "이 박스는 이미 다 나갔습니다(다른 주문에 배정됨). 다른 박스를 찍어주세요.";
+  }
+
+  return "취소된 입고 박스입니다. '입고 스캔'에서 다시 입고했는지 확인해주세요.";
+}
+
 async function resolveOutboundScope() {
   const context = await requireOrgRole(OUTBOUND_ROLES);
   const supabase = await createClient();
@@ -127,7 +174,7 @@ export async function recordOutboundScanAction(
   weight?: number | null
 ): Promise<ActionResult<OutboundScanResult>> {
   try {
-    const { supabase } = await resolveOutboundScope();
+    const { supabase, wholesalerId } = await resolveOutboundScope();
 
     const { data, error } = await supabase.rpc("record_outbound_scan", {
       p_order_id: orderId,
@@ -136,6 +183,10 @@ export async function recordOutboundScanAction(
     });
 
     if (error) {
+      if (error.message.includes("BOX_NOT_AVAILABLE")) {
+        throw new RbacError(await explainBoxNotAvailable(supabase, wholesalerId, orderId, traceNo));
+      }
+
       const matched = Object.keys(SCAN_ERRORS).find((code) => error.message.includes(code));
 
       if (matched) {
@@ -334,6 +385,10 @@ export async function finalizeShipmentAction(
 
       if (error.message.includes("ALREADY_FINALIZED")) {
         throw new RbacError("이미 마감된 발주서입니다.");
+      }
+
+      if (error.message.includes("ORDER_NOT_SHIPPABLE:awaiting_stock")) {
+        throw new RbacError("재고 확보 대기 중인 발주서는 마감할 수 없습니다. 재고가 채워져 발주서가 '확정'된 뒤에 마감하세요.");
       }
 
       if (error.message.includes("ORDER_NOT_SHIPPABLE")) {

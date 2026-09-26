@@ -172,9 +172,9 @@ describe("따라가기 2 — 확인이 필요한 박스는 최근 100건 밖으�
     expect(step.data.nextStepInput.needsCheckScanCount).toBeGreaterThanOrEqual(1);
     expect(step.data.scans.map((row) => row.id)).toContain(stuckId);
 
-    const link = [step.field.href, ...step.field.secondaries.map((item) => item.href)].find((href) => href === `#scan-${stuckId}`);
-
-    expect(link).toBeDefined();
+    // "지금 할 일"은 그 박스 처리 하나이고, 버튼이 화면 목록에 실제로 있는 그 박스 행으로 간다.
+    expect(step.field.key).toBe("field-check");
+    expect(step.field.href).toBe(`#scan-${stuckId}`);
 
     // 상품을 지정하면 재고에 들어가고 확인 필요가 사라진다.
     expect((await resolveMappingAction(stuckId, product.id, false)).success).toBe(true);

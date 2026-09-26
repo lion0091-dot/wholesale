@@ -1004,8 +1004,11 @@ export function InboundScanView({
           ? "weight"
           : "submit";
 
+  // 종 배지의 "확인 필요 박스"가 이 카드로 온다 — 그 박스가 어디 있고 무엇을 하면 되는지 카드가 말해 줘야 끊기지 않는다.
+  const needsCheckRows = rows.filter((row) => !row.isSample && (row.status === "PENDING_MAPPING" || row.status === "EXCEPTION"));
+
   // 지금 할 단계 안내 — 바코드 → 실중량 → 등록 순서를 카드가 말해 준다.
-  const scanStep: StepCardStep =
+  const baseScanStep: StepCardStep =
     remainingBoxCount > 0 && scanAllFinished
       ? {
           title: "스캔 종료를 알렸습니다",
@@ -1022,7 +1025,7 @@ export function InboundScanView({
               link: { label: "다음 할 일 보기", href: INBOUND_ANCHORS.nextStep },
             }
           : {
-              title: "1단계: 박스의 바코드를 찍으세요",
+              title: "박스 등록 1단계: 박스의 바코드를 찍으세요",
               detail:
                 "바코드를 찍으면 이력번호가 채워집니다. 잘못 찍었으면 아래 입고 내역에서 '취소'를 누르세요." +
                 (awaitingDocumentLines.length > 0
@@ -1036,14 +1039,24 @@ export function InboundScanView({
             }
         : !weight.trim()
           ? {
-              title: "2단계: 저울에 잰 실중량(kg)을 입력하세요",
+              title: "박스 등록 2단계: 저울에 잰 실중량(kg)을 입력하세요",
               detail: "표기중량과 달라도 저울 값이 기준입니다.",
             }
           : {
-              title: "3단계: \"입고 등록\"을 누르세요",
+              title: "박스 등록 3단계: \"입고 등록\"을 누르세요",
               detail: "눌러야 재고가 늘어납니다.",
               action: { label: "입고 등록", onClick: () => void submitScan(traceNo, weight, "MANUAL") },
             };
+
+  // 확인이 필요한 박스가 있으면 맨 위 "지금 할 일" 카드가 그것을 먼저 하라고 말한다 — 이 카드는 그 뒤에 새 박스를 등록하는 순서만 말한다.
+  const scanIdle = !traceNo.trim() && pending.length === 0 && !(remainingBoxCount > 0 && scanAllFinished);
+  const scanStep: StepCardStep =
+    scanIdle && needsCheckRows.length > 0
+      ? {
+          title: baseScanStep.title,
+          detail: `먼저 위 "지금 할 일"의 확인이 필요한 박스 ${needsCheckRows.length}개를 처리하세요. 그다음 새 박스를 등록합니다.`,
+        }
+      : baseScanStep;
 
   // 저장 전에 화면에서 미리 보여준다 — DB와 같은 규칙(lib/livestock/weight-variance.ts).
   const liveVariance = evaluateWeightVariance(

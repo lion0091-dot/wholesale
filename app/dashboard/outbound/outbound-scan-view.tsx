@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { parseBarcode } from "@/lib/livestock/barcode-parser";
+import { pickOutboundGuide } from "@/lib/livestock/outbound-next-step";
 import {
   recordOutboundScanAction,
   getOutboundProgressAction,
@@ -20,6 +21,8 @@ export interface ShippableOrder {
   orderNumber: string;
   status: string;
   orderedAt: string;
+  /** 출고 마감(금액 확정)이 끝났나 — 마감된 발주서에는 더 찍을 수 없다. */
+  finalized: boolean;
   retailerName: string;
 }
 
@@ -34,7 +37,8 @@ function formatDate(iso: string): string {
 export function OutboundScanView({ orders }: Props) {
   const router = useRouter();
 
-  const [orderId, setOrderId] = useState(orders[0]?.id ?? "");
+  // 아직 마감 안 된 발주서부터 — 마감된 발주서가 기본 선택이면 첫 스캔이 "이미 마감됨"으로 거부된다.
+  const [orderId, setOrderId] = useState((orders.find((order) => !order.finalized) ?? orders[0])?.id ?? "");
   const [traceNo, setTraceNo] = useState("");
   const [progress, setProgress] = useState<OutboundProgressRow[]>([]);
   const [picking, setPicking] = useState<PickingRow[]>([]);
@@ -163,21 +167,87 @@ export function OutboundScanView({ orders }: Props) {
 
     setFinalizing(false);
     setConfirming(null);
-    setMessage(
-      result.data?.wasShort
-        ? `출고 마감. 실제 중량 기준 ${result.data.totalAmount.toLocaleString()}원으로 확정했습니다.`
-        : "출고 마감했습니다."
-    );
 
-    await loadProgress(orderId);
+    // 마감한 발주서는 더 찍을 수 없다 — 다음 발주서를 저절로 골라 준다(없으면 고른 채로 두고 안내 카드가 알려 준다).
+    const nextOrder = orders.find((order) => !order.finalized && order.id !== orderId) ?? null;
+    const doneText = result.data?.wasShort
+      ? `출고 마감. 실제 중량 기준 ${result.data.totalAmount.toLocaleString()}원으로 확정했습니다.`
+      : "출고 마감했습니다.";
+
+    setMessage(nextOrder ? `${doneText} 다음 발주서: ${nextOrder.orderNumber} · ${nextOrder.retailerName}` : doneText);
+
+    if (nextOrder) {
+      setOrderId(nextOrder.id);
+    } else {
+      await loadProgress(orderId);
+    }
+
     router.refresh();
   };
 
   const allDone =
     progress.length > 0 && progress.every((row) => row.scannedQty >= row.orderedQty);
 
+  const selectedOrder = orders.find((order) => order.id === orderId) ?? null;
+  const guide = pickOutboundGuide({
+    orderCount: orders.length,
+    openOrderCount: orders.filter((order) => !order.finalized).length,
+    selected: selectedOrder ? { status: selectedOrder.status, finalized: selectedOrder.finalized } : null,
+    progress,
+  });
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      <section
+        id="outbound-guide"
+        style={{
+          ...panelStyle,
+          borderColor: guide.tone === "warn" ? "#fcd34d" : guide.tone === "done" ? "#86efac" : "#bfdbfe",
+          backgroundColor: guide.tone === "warn" ? "#fffbeb" : guide.tone === "done" ? "#f0fdf4" : "#eff6ff",
+        }}
+      >
+        <div style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>{guide.title}</div>
+        <div style={{ fontSize: "12px", color: "#475569", marginTop: "4px", lineHeight: 1.5 }}>{guide.detail}</div>
+        {guide.action?.kind === "finalize" && (
+          <button
+            type="button"
+            onClick={() => void finalize(false)}
+            disabled={finalizing}
+            style={{
+              marginTop: "10px",
+              padding: "9px 14px",
+              fontSize: "13px",
+              fontWeight: 700,
+              borderRadius: "6px",
+              border: "none",
+              backgroundColor: finalizing ? "#94a3b8" : "#0f172a",
+              color: "#fff",
+              cursor: finalizing ? "default" : "pointer",
+            }}
+          >
+            {finalizing ? "처리 중…" : guide.action.label}
+          </button>
+        )}
+        {guide.action?.kind === "link" && guide.action.href && (
+          <Link
+            href={guide.action.href}
+            style={{
+              display: "inline-block",
+              marginTop: "10px",
+              padding: "9px 14px",
+              fontSize: "13px",
+              fontWeight: 700,
+              borderRadius: "6px",
+              backgroundColor: "#0f172a",
+              color: "#fff",
+              textDecoration: "none",
+            }}
+          >
+            {guide.action.label}
+          </Link>
+        )}
+      </section>
+
       <section style={panelStyle}>
         <label htmlFor="order" style={labelStyle}>
           발주서
@@ -196,16 +266,10 @@ export function OutboundScanView({ orders }: Props) {
           {orders.map((order) => (
             <option key={order.id} value={order.id}>
               {order.orderNumber} · {order.retailerName} · {formatDate(order.orderedAt)}
-              {order.status === "shipping" ? " (배송중)" : ""}
+              {order.finalized ? " (마감됨)" : order.status === "awaiting_stock" ? " (재고 확보 대기)" : ""}
             </option>
           ))}
         </select>
-
-        {orders.length === 0 && (
-          <p style={{ fontSize: "13px", color: "#94a3b8", margin: "8px 0 0" }}>
-            출고할 발주서가 없습니다. 발주 관리에서 먼저 확정해주세요.
-          </p>
-        )}
 
         <div style={{ marginTop: "12px" }}>
           <label htmlFor="trace" style={labelStyle}>
@@ -222,7 +286,7 @@ export function OutboundScanView({ orders }: Props) {
                 void submit(traceNo);
               }
             }}
-            disabled={!orderId}
+            disabled={!orderId || Boolean(selectedOrder?.finalized)}
             autoComplete="off"
             placeholder="스캐너로 찍거나 직접 입력 후 Enter"
             style={inputStyle}
@@ -256,6 +320,12 @@ export function OutboundScanView({ orders }: Props) {
             이대로 마감하면 <strong>실제 나간 중량 기준으로 금액이 확정</strong>됩니다.
             거래명세서에도 실제 중량이 찍힙니다.
           </div>
+
+          {confirming.every((row) => row.shippedQty <= 0) && (
+            <div style={{ fontSize: "12px", fontWeight: 700, color: "#991b1b", marginBottom: "10px" }}>
+              나갈 박스가 하나도 없습니다(찍은 박스도, 자동 배정된 박스도 없음). 이대로 마감하면 금액이 0원이 됩니다. 박스를 찍으려면 "더 스캔하기"를 누르세요.
+            </div>
+          )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {confirming.map((row) => {

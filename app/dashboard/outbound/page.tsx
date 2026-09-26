@@ -1,7 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
-import { OutboundScanView, type ShippableOrder } from "./outbound-scan-view";
+import { OutboundScanView } from "./outbound-scan-view";
+import { loadOutboundOrders } from "./outbound-data";
 
 export const metadata = {
   title: "출고 스캔 | 도매업체 통합관리시스템",
@@ -14,34 +14,7 @@ export default async function OutboundPage() {
     return <AdminScopeNotice />;
   }
 
-  let orders: ShippableOrder[] = [];
-
-  if (scope?.wholesalerId) {
-    const supabase = await createClient();
-
-    // 확정·배송중인 발주서만 출고 대상이다. 접수대기는 아직 확정 전이고,
-    // 완료·취소는 끝난 건이다.
-    const { data } = await supabase
-      .from("orders")
-      .select("id, order_number, status, ordered_at, retailers ( restaurant_name )")
-      .eq("wholesaler_id", scope.wholesalerId)
-      .in("status", ["awaiting_stock", "confirmed", "shipping"])
-      .order("ordered_at", { ascending: true })
-      .limit(50);
-
-    orders = ((data ?? []) as Array<Record<string, unknown>>).map((row) => {
-      const retailer = Array.isArray(row.retailers) ? row.retailers[0] : row.retailers;
-
-      return {
-        id: String(row.id),
-        orderNumber: String(row.order_number),
-        status: String(row.status),
-        orderedAt: String(row.ordered_at),
-        retailerName:
-          ((retailer as Record<string, unknown> | null)?.restaurant_name as string | null) ?? "거래처",
-      };
-    });
-  }
+  const orders = await loadOutboundOrders(scope);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>

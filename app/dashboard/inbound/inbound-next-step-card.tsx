@@ -8,6 +8,7 @@ import { WhoBadge } from "./step-card";
 import {
   INBOUND_ANCHORS,
   OPEN_DOCUMENT_PANEL_EVENT,
+  needsAttention,
   type InboundNextStep,
 } from "@/lib/livestock/inbound-next-step";
 
@@ -73,6 +74,17 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
     router.refresh();
   };
 
+  const attention = needsAttention(step);
+  // 강조 카드는 어두운 바탕에 노란 버튼(반전), 평소 카드는 작고 옅게 — 진짜 할 일만 눈에 띄게 한다.
+  const mainButtonStyle = {
+    backgroundColor: attention ? "#facc15" : "#2563eb",
+    color: attention ? "#0f172a" : "#ffffff",
+    fontSize: attention ? "16px" : "14px",
+    fontWeight: 800,
+    padding: attention ? "12px 16px" : "9px 14px",
+    borderRadius: "10px",
+  } as const;
+
   const mainAction = step.buttonDisabled ? (
     <div
       aria-disabled="true"
@@ -80,9 +92,9 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
         textAlign: "center",
         backgroundColor: "#e2e8f0",
         color: "#64748b",
-        fontSize: "16px",
+        fontSize: "13px",
         fontWeight: 800,
-        padding: "14px 16px",
+        padding: "8px 14px",
         borderRadius: "10px",
       }}
     >
@@ -95,12 +107,7 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
       disabled={closing}
       style={{
         width: "100%",
-        backgroundColor: "#2563eb",
-        color: "#ffffff",
-        fontSize: "16px",
-        fontWeight: 800,
-        padding: "14px 16px",
-        borderRadius: "10px",
+        ...mainButtonStyle,
         border: "none",
         cursor: closing ? "default" : "pointer",
       }}
@@ -114,12 +121,7 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
       style={{
         display: "block",
         textAlign: "center",
-        backgroundColor: "#2563eb",
-        color: "#ffffff",
-        fontSize: "16px",
-        fontWeight: 800,
-        padding: "14px 16px",
-        borderRadius: "10px",
+        ...mainButtonStyle,
         textDecoration: "none",
       }}
     >
@@ -131,25 +133,40 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
     <section
       id="inbound-next-step"
       aria-label="지금 할 일"
+      className={attention ? "inbound-attention" : undefined}
       style={{
         scrollMarginTop: "12px",
-        border: "2px solid #2563eb",
-        backgroundColor: "#eff6ff",
-        borderRadius: "14px",
-        padding: "16px",
+        border: attention ? "3px solid #facc15" : "1px solid #93c5fd",
+        backgroundColor: attention ? "#0f172a" : "#eff6ff",
+        borderRadius: "12px",
+        padding: attention ? "14px 16px" : "10px 12px",
         display: "flex",
         flexDirection: "column",
-        gap: "10px",
+        gap: attention ? "10px" : "6px",
       }}
     >
+      {attention ? (
+        <style>{`
+          @keyframes inbound-attention-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.75); }
+            50% { box-shadow: 0 0 0 10px rgba(250, 204, 21, 0); }
+          }
+          .inbound-attention { animation: inbound-attention-pulse 1.6s ease-in-out infinite; }
+          @media (prefers-reduced-motion: reduce) { .inbound-attention { animation: none; } }
+        `}</style>
+      ) : null}
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        <span style={{ fontSize: "12px", fontWeight: 700, color: "#1d4ed8" }}>지금 할 일</span>
+        {attention ? (
+          <span style={{ fontSize: "13px", fontWeight: 900, color: "#facc15" }}>▶ 여기를 보세요 · 지금 할 일</span>
+        ) : (
+          <span style={{ fontSize: "12px", fontWeight: 700, color: "#1d4ed8" }}>지금 할 일</span>
+        )}
         <WhoBadge who={step.who} />
       </div>
       <div>
-        <div style={{ fontSize: "18px", fontWeight: 800, color: "#0f172a" }}>{step.title}</div>
+        <div style={{ fontSize: attention ? "19px" : "15px", fontWeight: 800, color: attention ? "#ffffff" : "#0f172a" }}>{step.title}</div>
         {step.detail ? (
-          <div style={{ fontSize: "13px", color: "#475569", marginTop: "4px" }}>{step.detail}</div>
+          <div style={{ fontSize: "12px", color: attention ? "#e2e8f0" : "#475569", marginTop: "3px", lineHeight: 1.5 }}>{step.detail}</div>
         ) : null}
       </div>
       {step.waitNote ? (
@@ -180,7 +197,7 @@ export function InboundNextStepCard({ step }: { step: InboundNextStep }) {
           key={link.label}
           href={link.href}
           onClick={() => openDocumentPanelIfTargeted(link.href)}
-          style={{ fontSize: "13px", color: "#1d4ed8", textAlign: "center", textDecoration: "underline" }}
+          style={{ fontSize: "12px", color: attention ? "#fde68a" : "#1d4ed8", textAlign: "center", textDecoration: "underline" }}
         >
           {link.label}
         </Link>

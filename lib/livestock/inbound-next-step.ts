@@ -26,7 +26,7 @@ export interface InboundNextStepInput {
    * 모자란 만큼 센다(수량 2인 줄에 1박스만 왔으면 1개가 남는다).
    */
   remainingBoxCount: number;
-  /** 위 수 중 무게 기준 줄의 몫(덜 찬 줄마다 1). 문구가 "박스 N개"와 "무게가 덜 찬 줄 M줄"을 나눠 말한다. */
+  /** 위 수 중 무게 기준 줄의 몫(덜 찬 줄마다 1). 문구가 "박스 N개"와 "전표무게보다 작은무게인 명세내역 M개"를 나눠 말한다. */
   remainingWeightLines?: number;
   /** 이력 확인 필요·상품 확인 필요 상태로 남은 박스 수. */
   needsCheckScanCount: number;
@@ -47,6 +47,7 @@ export type InboundNextStepKey =
   | "reconcile"
   | "close"
   | "upload"
+  | "field-check"
   | "field-scan"
   | "field-done"
   | "field-start";
@@ -72,16 +73,26 @@ export interface InboundNextStep {
 
 /**
  * 아직 안 온 것을 말하는 문구 조각. 박스 수 기준 줄은 "박스 N개", 무게 기준 줄(개체번호 줄 등)은
- * 몇 박스로 나뉘어 올지 몰라 "무게가 덜 찬 줄 M줄"로 말한다.
+ * 몇 박스로 나뉘어 올지 몰라 "전표무게보다 작은무게인 명세내역 M개"로 말한다.
  */
 export function describeRemaining(remainingBoxCount: number, remainingWeightLines = 0): string {
   const weightLines = Math.min(remainingWeightLines, remainingBoxCount);
   const boxes = remainingBoxCount - weightLines;
 
   if (weightLines === 0) return `박스 ${remainingBoxCount}개`;
-  if (boxes === 0) return `무게가 덜 찬 줄 ${weightLines}줄`;
+  if (boxes === 0) return `전표무게보다 작은무게인 명세내역 ${weightLines}개`;
 
-  return `박스 ${boxes}개와 무게가 덜 찬 줄 ${weightLines}줄`;
+  return `박스 ${boxes}개와 전표무게보다 작은무게인 명세내역 ${weightLines}개`;
+}
+
+/**
+ * "여기를 보세요"로 강조할 카드 — 사람이 지금 손을 대야 진행되는 일(확인 필요 박스 처리·전표 대조·마감)만.
+ * 처음 시작 상태(전표 올리기·스캔 시작)·기다림·"전부 찍었습니다" 같은 안내는 강조하지 않는다 — 다 강조하면 강조가 아니다.
+ */
+const ATTENTION_STEP_KEYS: ReadonlySet<InboundNextStepKey> = new Set<InboundNextStepKey>(["field-check", "reconcile", "close", "scan-finished"]);
+
+export function needsAttention(step: Pick<InboundNextStep, "key" | "buttonDisabled">): boolean {
+  return ATTENTION_STEP_KEYS.has(step.key) && !step.buttonDisabled;
 }
 
 export const INBOUND_ANCHORS = {
@@ -299,6 +310,22 @@ function pickOfficeStep(input: InboundNextStepInput): InboundNextStep {
 export function pickFieldNextStep(input: InboundNextStepInput): InboundNextStep {
   const { pendingDocuments, remainingBoxCount, needsCheckScanCount, firstNeedsCheckScanId } = input;
   const remainingText = describeRemaining(remainingBoxCount, input.remainingWeightLines);
+
+  // 확인이 필요한 박스(이력 못 찾음·상품 미확정)는 재고에 안 들어가 있고 전표 마감도 막는다 — 이 화면에서 가장 먼저 할 일이다.
+  // 카드 하나만 "지금 할 일"을 말해야 사용자가 어느 안내를 따를지 고민하지 않는다.
+  if (needsCheckScanCount > 0) {
+    return {
+      key: "field-check",
+      who: "현장",
+      title: `확인이 필요한 박스 ${needsCheckScanCount}개를 먼저 처리하세요`,
+      detail:
+        "이 박스들은 아직 재고에 안 들어갔습니다. 입고 내역의 그 박스 옆에서 '상품 지정'을 하세요(이력 못 찾음이면 '번호 바꾸기'). 다 처리하면 이 안내가 다음 할 일로 바뀝니다. 새 박스는 그다음에 찍으세요.",
+      buttonLabel: "확인 필요 박스로 가기",
+      href: firstNeedsCheckScanId ? `#scan-${firstNeedsCheckScanId}` : INBOUND_ANCHORS.history,
+      waitNote: null,
+      secondaries: [{ label: "처리 전에 새 박스를 먼저 찍기", href: INBOUND_ANCHORS.scanForm }],
+    };
+  }
 
   const needsCheckLinks =
     needsCheckScanCount > 0

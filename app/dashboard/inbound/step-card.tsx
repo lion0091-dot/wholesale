@@ -51,18 +51,18 @@ export function StepCard({ step, who }: { step: StepCardStep; who?: Who }) {
   return (
     <div
       style={{
-        border: "2px solid #2563eb",
+        border: "1px solid #93c5fd",
         backgroundColor: "#eff6ff",
-        borderRadius: "12px",
-        padding: "12px 14px",
+        borderRadius: "10px",
+        padding: "8px 12px",
         display: "flex",
         flexDirection: "column",
-        gap: "8px",
+        gap: "5px",
       }}
     >
       {who ? <WhoBadge who={who} /> : null}
-      <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>{step.title}</div>
-      <div style={{ fontSize: "13px", color: "#475569" }}>{step.detail}</div>
+      <div style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>{step.title}</div>
+      <div style={{ fontSize: "12px", color: "#475569", lineHeight: 1.5 }}>{step.detail}</div>
       {step.action ? (
         <button
           type="button"
@@ -70,9 +70,9 @@ export function StepCard({ step, who }: { step: StepCardStep; who?: Who }) {
           style={{
             backgroundColor: "#2563eb",
             color: "#ffffff",
-            fontSize: "15px",
+            fontSize: "14px",
             fontWeight: 800,
-            padding: "12px 14px",
+            padding: "9px 12px",
             borderRadius: "10px",
             border: "none",
             cursor: "pointer",
@@ -89,9 +89,9 @@ export function StepCard({ step, who }: { step: StepCardStep; who?: Who }) {
             textAlign: "center",
             backgroundColor: "#2563eb",
             color: "#ffffff",
-            fontSize: "15px",
+            fontSize: "14px",
             fontWeight: 800,
-            padding: "12px 14px",
+            padding: "9px 12px",
             borderRadius: "10px",
             textDecoration: "none",
           }}

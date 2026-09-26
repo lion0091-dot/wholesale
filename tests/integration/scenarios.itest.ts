@@ -620,7 +620,7 @@ describe("SC-기준 — 줄마다 박스 수/무게로 세서 한 전표가 저�
     expect(await docStatus(line.documentId)).toBe("CLOSED");
   });
 
-  it("무게로 세는 줄이 모자란 채 스캔 종료되면 카드는 '무게가 덜 찬 줄'로 안내한다", () => {
+  it("무게로 세는 줄이 모자란 채 스캔 종료되면 카드는 '전표무게보다 작은무게인 명세내역'으로 안내한다", () => {
     const step = pickInboundNextStep({
       pendingDocuments: [{ id: "d", scanFinished: false, completeLines: 0, totalLines: 1 }],
       remainingBoxCount: 1,
@@ -629,7 +629,7 @@ describe("SC-기준 — 줄마다 박스 수/무게로 세서 한 전표가 저�
     });
 
     expect(step.key).toBe("scan");
-    expect(step.detail).toContain("무게가 덜 찬 줄 1줄");
+    expect(step.detail).toContain("전표무게보다 작은무게인 명세내역 1개");
     expect(step.detail).not.toContain("박스 1개");
   });
 });

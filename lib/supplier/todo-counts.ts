@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { INBOUND_ANCHORS } from "@/lib/livestock/inbound-next-step";
 
 export type TodoKey = "newOrders" | "cancelRequests" | "needsCheckBoxes" | "openDocuments" | "lateBoxes";
 
@@ -12,7 +13,7 @@ export type TodoCounts = Record<TodoKey, number>;
 export const TODO_ITEMS: Array<{ key: TodoKey; label: string; href: string; officeOnly?: boolean }> = [
   { key: "newOrders", label: "새 발주 (접수 대기)", href: "/dashboard/orders" },
   { key: "cancelRequests", label: "취소 요청", href: "/dashboard/orders" },
-  { key: "needsCheckBoxes", label: "확인 필요 박스", href: "/dashboard/inbound" },
+  { key: "needsCheckBoxes", label: "확인 필요 박스", href: `/dashboard/inbound${INBOUND_ANCHORS.nextStep}` },
   // 전표 대조는 사무실 PC 일이다 — 폰(현장)에는 전표입력 화면으로 가는 길이 없으므로 폰에서는 목록·합계에서 뺀다.
   { key: "openDocuments", label: "대조 중인 전표", href: "/dashboard/inbound/statements", officeOnly: true },
   // 마감된 전표에는 박스를 이을 수 없어 뒤늦게 온 박스가 조용히 남는다 — 사무실이 전표를 다시 열어 이어야 한다.

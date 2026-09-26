@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   INBOUND_ANCHORS,
+  needsAttention,
   pickFieldNextStep,
   pickInboundNextStep,
   type InboundNextStep,
@@ -155,5 +156,63 @@ describe("현장 카드 — 사무실 일을 시키지 않고, 모든 링크가 
 
   it("현장 카드는 누를 수 없는 버튼을 쓰지 않는다(현장이 막히지 않게)", () => {
     for (const { name, input } of cases) expect(pickFieldNextStep(input).buttonDisabled, name).toBeUndefined();
+  });
+});
+
+describe("현장 카드 — 확인 필요 박스가 있으면 '지금 할 일'은 그것 하나다(두 카드가 서로 다른 말을 하지 않는다)", () => {
+  const cases = allInputs();
+
+  it("확인 필요 박스가 있는 모든 상태에서 첫 번째 할 일은 그 박스 처리이고, 버튼은 그 박스 자리로 간다", () => {
+    for (const { name, input } of cases.filter((item) => item.input.needsCheckScanCount > 0)) {
+      const step = pickFieldNextStep(input);
+
+      expect(step.key, name).toBe("field-check");
+      expect(step.title, name).toContain(String(input.needsCheckScanCount));
+      expect(step.href, name).toBe(`#scan-${input.firstNeedsCheckScanId}`);
+      // 새 박스를 먼저 찍고 싶을 때의 길은 작은 링크로 남겨 둔다(막지는 않는다).
+      expect(step.secondaries.map((link) => link.href), name).toContain(INBOUND_ANCHORS.scanForm);
+    }
+  });
+
+  it("확인 필요 박스가 없으면 그 카드는 절대 나오지 않는다", () => {
+    for (const { name, input } of cases.filter((item) => item.input.needsCheckScanCount === 0)) {
+      expect(pickFieldNextStep(input).key, name).not.toBe("field-check");
+    }
+  });
+
+  it("처리할 박스의 위치를 모르면 입고 내역으로 보낸다(빈 링크가 없다)", () => {
+    const step = pickFieldNextStep({ pendingDocuments: [], remainingBoxCount: 0, needsCheckScanCount: 2, firstNeedsCheckScanId: null });
+
+    expect(step.key).toBe("field-check");
+    expect(step.href).toBe(INBOUND_ANCHORS.history);
+  });
+});
+
+describe("강조('여기를 보세요') 규칙 — 모든 상태에서 강조가 남발되지 않고 눌러서 할 일이 있는 카드에만 붙는다", () => {
+  const cases = allInputs();
+
+  it("강조 카드는 항상 눌러서 갈 곳이 있는 진짜 할 일이고, 한 화면(현장·사무실 각각)에서 강조는 카드 하나뿐이다", () => {
+    let attentionCount = 0;
+
+    for (const { name, input } of cases) {
+      for (const step of [pickFieldNextStep(input), pickInboundNextStep(input)]) {
+        if (!needsAttention(step)) continue;
+
+        attentionCount += 1;
+        expect(step.buttonDisabled ?? false, name).toBe(false);
+        expect(step.buttonLabel.length, name).toBeGreaterThan(0);
+        expect(validHref(step.href), `${name} → ${step.href}`).toBe(true);
+      }
+    }
+
+    // 강조가 하나도 안 나오는 표(무의미)나 전부 강조인 표(남발)가 아니다.
+    expect(attentionCount).toBeGreaterThan(0);
+    expect(attentionCount).toBeLessThan(cases.length * 2 * 0.7);
+  });
+
+  it("확인 필요 박스가 있으면 현장 카드는 항상 강조, 없으면 현장 카드는 강조하지 않는다", () => {
+    for (const { name, input } of cases) {
+      expect(needsAttention(pickFieldNextStep(input)), name).toBe(input.needsCheckScanCount > 0);
+    }
   });
 });
