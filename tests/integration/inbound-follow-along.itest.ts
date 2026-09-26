@@ -202,3 +202,36 @@ describe("따라가기 3 — 카드 버튼이 가리키는 자리는 화면에 �
     }
   });
 });
+
+describe("따라가기 4 — 상품 지정 목록에는 판매중지 상품(입고 때 자동으로 만든 상품)도 나온다", () => {
+  it("판매중지 상품은 목록에 있고, 보관한(감춘) 상품만 빠진다", async () => {
+    const inactive = await world.createProduct({ stock_quantity: 0, category: "소", subcategory: "판매중지부위", is_active: false });
+    const archived = await world.createProduct({ stock_quantity: 0, category: "소", subcategory: "보관부위", archived_at: new Date().toISOString() });
+    const active = await world.createProduct({ stock_quantity: 0, category: "소", subcategory: "판매중부위", is_active: true });
+
+    await actAs(world.users.ownerA);
+
+    const ids = (await loadInboundData(scope, { scanDetails: false })).products.map((product) => product.id);
+
+    expect(ids).toContain(inactive.id);
+    expect(ids).toContain(active.id);
+    expect(ids).not.toContain(archived.id);
+  });
+
+  it("판매중지 상품으로도 확인 필요 박스를 지정하면 재고에 들어간다(입고에는 판매 여부가 필요 없다)", async () => {
+    const inactive = await world.createProduct({ stock_quantity: 0, category: "소", subcategory: "판매중지부위2", is_active: false });
+    const trace = world.newTraceNo();
+    const { data: box } = await adminClient()
+      .from("inbound_scans")
+      .insert({ wholesaler_id: world.wholesalerA, trace_no: trace, weight: 5, unit: "kg", scan_type: "BARCODE_SCAN", status: "PENDING_MAPPING", remaining_weight: 0 })
+      .select("id")
+      .single();
+
+    expect((await resolveMappingAction(String(box?.id), inactive.id, false)).success).toBe(true);
+
+    const { data } = await adminClient().from("products").select("stock_quantity").eq("id", inactive.id).single();
+
+    expect(Number(data?.stock_quantity)).toBeCloseTo(5);
+  });
+});
+

@@ -106,9 +106,11 @@ export async function loadInboundData(
           .limit(200),
         supabase
           .from("products")
-          .select("id, name, category, subcategory, grade, origin, unit")
+          .select("id, name, category, subcategory, grade, origin, unit, is_active")
           .eq("wholesaler_id", scope.wholesalerId)
-          .eq("is_active", true)
+          // 판매중지 상품도 넣는다 — 입고 때 자동으로 만들어지는 상품은 항상 판매중지라, 빼면 상품 지정 목록에서 영영 안 보인다.
+          // 보관(감춘) 상품만 뺀다.
+          .is("archived_at", null)
           .order("name", { ascending: true }),
         supabase
           .from("orders")

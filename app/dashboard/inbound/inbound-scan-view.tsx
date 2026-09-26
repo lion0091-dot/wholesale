@@ -12,6 +12,7 @@ import {
   type ResultCard,
 } from "@/lib/livestock/inbound-scan-result";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { composeProductDisplayName } from "@/lib/products/display-name";
 import {
@@ -44,6 +45,8 @@ export interface ScanProductOption {
   grade: string | null;
   origin: string | null;
   unit: string;
+  /** false면 판매중지(자동으로 만든 상품 등) — 입고에는 쓸 수 있고 고객에게만 안 보인다. */
+  is_active?: boolean;
 }
 
 /** 확정·배송중 발주서 — "이 박스 특정 주문으로 바로 보내기"의 배정 대상 후보. */
@@ -1428,6 +1431,7 @@ export function InboundScanView({
                     <option key={product.id} value={product.id}>
                       {composeProductDisplayName(product.category, product.name)}
                       {product.grade ? ` (${product.grade})` : ""}
+                            {product.is_active === false ? " · 판매중지" : ""}
                     </option>
                   ))}
                 </select>
@@ -1701,7 +1705,16 @@ export function InboundScanView({
                       <TraceNoFixer scanId={scan.id} traceNo={scan.traceNo} compact />
                     )}
 
-                    {needsProduct && (
+                    {needsProduct && products.length === 0 && (
+                      <Link
+                        href="/dashboard/products"
+                        style={{ fontSize: "12px", fontWeight: 700, color: "#1d4ed8", textDecoration: "underline" }}
+                      >
+                        지정할 상품이 없습니다 — 상품 관리에서 먼저 상품을 등록하세요
+                      </Link>
+                    )}
+
+                    {needsProduct && products.length > 0 && (
                       <select
                         defaultValue=""
                         onChange={(event) => void handleResolve(scan.id, event.target.value)}
@@ -1713,6 +1726,7 @@ export function InboundScanView({
                           <option key={product.id} value={product.id}>
                             {composeProductDisplayName(product.category, product.name)}
                             {product.grade ? ` (${product.grade})` : ""}
+                            {product.is_active === false ? " · 판매중지" : ""}
                           </option>
                         ))}
                       </select>
@@ -1783,6 +1797,7 @@ export function InboundScanView({
                           <option key={product.id} value={product.id}>
                             {composeProductDisplayName(product.category, product.name)}
                             {product.grade ? ` (${product.grade})` : ""}
+                            {product.is_active === false ? " · 판매중지" : ""}
                           </option>
                         ))}
                       </select>
