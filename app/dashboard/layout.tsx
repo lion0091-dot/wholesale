@@ -44,7 +44,7 @@ const NAV_GROUPS: DashboardNavItem[][] = [
       href: "/dashboard/products",
       icon: "🥩",
       ready: true,
-      alsoActiveFor: ["/dashboard/market-prices"],
+      alsoActiveFor: ["/dashboard/market-prices", "/dashboard/purchase-orders"],
     },
   ],
   [{ label: "발주 관리", href: "/dashboard/orders", icon: "🧾", ready: true }],

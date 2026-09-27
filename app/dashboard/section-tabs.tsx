@@ -19,6 +19,7 @@ const CUSTOMER_TABS = [
 
 const PRODUCT_TABS = [
   { label: "상품 관리", href: "/dashboard/products" },
+  { label: "공급처 발주서", href: "/dashboard/purchase-orders", desktopOnly: true },
   { label: "공공 시세", href: "/dashboard/market-prices" },
 ] as const;
 
