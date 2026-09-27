@@ -1,6 +1,7 @@
 const fs = require("fs");
+const path = require("path");
 const d = require("docx");
-const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, ShadingType, AlignmentType, HeadingLevel, LevelFormat, BorderStyle, Footer, PageNumber } = d;
+const { Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell, WidthType, ShadingType, AlignmentType, HeadingLevel, LevelFormat, BorderStyle, Footer, PageNumber } = d;
 
 const FONT = "Malgun Gothic";
 const W = 9638; // content width (A4, 2cm margins)
@@ -66,6 +67,33 @@ function box(title, lines, fill = "FEF3C7") {
 
 const why = (lines) => box("왜 이 단계가 필요할까요?", lines, "DBEAFE");
 const gap = () => new Paragraph({ spacing: { after: 100 }, children: [] });
+
+/** PNG의 IHDR 청크에서 가로·세로 픽셀 값을 읽는다(라이브러리 없이 실제 비율대로 넣기 위함). */
+function pngSize(filePath) {
+  const buf = fs.readFileSync(filePath);
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20), data: buf };
+}
+
+/** 화면 캡처 한 장 + 설명 캡션. 문서 본문 폭(W)을 안 넘게 자동으로 줄인다. */
+function figure(filePath, caption, maxWidthPx = 620) {
+  const { width, height, data } = pngSize(filePath);
+  const w = Math.min(maxWidthPx, width);
+  const h = Math.round((w / width) * height);
+
+  return [
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 80, after: 40 },
+      border: { top: border, bottom: border, left: border, right: border },
+      children: [new ImageRun({ type: "png", data, transformation: { width: w, height: h } })],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 160 },
+      children: [run(caption, { size: 18, color: "64748B", italics: true })],
+    }),
+  ];
+}
 
 const c = [];
 
@@ -439,6 +467,7 @@ c.push(B("공급처가 전표 양식을 바꿨을 때 (칸 배치를 다시 확�
 
 c.push(H1("4. 발주 관리"));
 c.push(P("발주서는 우리가 공급처에 \"이만큼 주문합니다\"라고 보내는 문서입니다. 위 1~3장의 전표(공급처가 보내는 서류)와는 방향이 반대입니다. 위치는 왼쪽 메뉴 \"발주 관리\"(입고·전표입력과는 다른 메뉴)입니다. 작성·수정은 사장님·매니저만 할 수 있고, 직원은 조회만 됩니다."));
+c.push(...figure(path.join(__dirname, "1.png"), "실제 화면 — 발주 관리. 왼쪽 메뉴에서 \"발주 관리\"를 누르면 이 화면이 나옵니다. \"진행 중\" 배지, 줄마다 \"받음 · 남음\" 표시, \"카톡용 문구 복사\"·\"발주강제종결\"·\"취소\" 버튼이 보입니다."));
 c.push(
   box("발주서와 재고의 관계 — 3장과 같은 원칙", [
     "발주서는 \"얼마나 받았나\"를 세는 장부일 뿐입니다. 재고를 늘리는 것은 여전히 입고 스캔뿐입니다.",
@@ -449,6 +478,7 @@ c.push(gap());
 
 c.push(H2("4-1. 새 발주서 작성"));
 c.push(P([run("\"+ 새 발주서 작성\" 버튼을 누르면 입력 칸이 펼쳐집니다.")]));
+c.push(...figure(path.join(__dirname, "2.png"), "실제 화면 — 새 발주서 작성 칸. 공급처·발주일·엑셀 올리기, \"축종부터 차례로 골라주세요\" 품목 선택, \"+ 줄 추가\"·\"발주서 저장\" 버튼이 보입니다."));
 c.push(N("공급처를 고릅니다(필수). 목록에 없으면 \"+ 목록에 없는 거래처 추가\"로 아래 \"거래처 관리\"(4-2)가 펼쳐집니다."));
 c.push(N("발주일(필수, 오늘 날짜가 기본)과 도착 예정일(선택)을 적습니다."));
 c.push(N([run("품목 줄을 채웁니다. 두 가지 방법이 있습니다 — "), bold("① 화면에서 직접"), run(": 줄마다 \"축종부터 차례로 골라주세요\"를 따라 축종 → (소는 품종도) → 부위 → 등급 → 원산지를 차례로 고르고 \"이 조합으로 선택\"을 누릅니다. 이미 등록된 상품이면 그대로 연결되고, 없으면 판매중지·0원으로 새로 등록됩니다(상품 관리에 나타납니다 — 5장 참고). "), bold("② 엑셀로"), run(": \"엑셀 양식 내려받기\"로 받은 파일을 채워 \"엑셀 올리기\"로 올리면 여러 줄이 한 번에 채워집니다.")]));
@@ -678,7 +708,7 @@ c.push(
 
 c.push(H1("9. 이 초안에서 확인이 필요한 부분"));
 c.push(P("아래는 초안을 쓰면서 아직 실제 화면과 대조하지 못했거나 사장님 확인이 필요한 곳입니다."));
-c.push(B("화면 캡처 사진을 넣지 못했습니다. 실제 화면 캡처를 넣으면 훨씬 쉬워집니다."));
+c.push(B("화면 캡처는 4장(발주 관리)에 2장만 들어가 있습니다. 다른 장(1~3, 5장)에도 실제 화면 캡처를 넣으면 훨씬 쉬워집니다."));
 c.push(B("이 초안은 화면 문구를 코드에서 읽어 적은 것이라, 실제 계정으로 화면을 눌러 본 확인은 아직 안 됐습니다. 특히 \"전표입력\" 탭, 저절로 마감, 세는 기준(박스 수/무게), \"번호 바꾸기\"·\"다시 조회\", 저절로 이어지는 것은 새로 만든 기능입니다. 문구가 어색하거나 실제와 다르면 알려 주세요."));
 c.push(B("자동 재조회는 입고 화면이 열려 있는 동안 5분마다 돌고, 밤 사이에는 서버가 하루 한 번 새벽에 이력조회 결과를 미리 받아 둡니다. 다만 박스를 정상으로 바꾸는 일(상품 생성, 재고 반영, 전표 연결)은 아침에 입고 화면을 여는 순간 이어집니다."));
 c.push(B("무게 허용 오차는 업체 설정(기본 ±2%)입니다. 설정 화면 위치와 문구는 실제 화면과 맞는지 확인이 필요합니다."));
