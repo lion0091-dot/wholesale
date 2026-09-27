@@ -66,7 +66,7 @@ interface Props {
 
 const STATUS_LABEL: Record<PurchaseOrderRow["status"], { text: string; bg: string; color: string }> = {
   OPEN: { text: "진행 중", bg: "#dbeafe", color: "#1d4ed8" },
-  CLOSED: { text: "마감", bg: "#dcfce7", color: "#166534" },
+  CLOSED: { text: "강제종결", bg: "#dcfce7", color: "#166534" },
   CANCELLED: { text: "취소", bg: "#f1f5f9", color: "#64748b" },
 };
 
@@ -74,10 +74,10 @@ function formatKg(value: number): string {
   return value.toLocaleString("ko-KR", { maximumFractionDigits: 3 });
 }
 
-/** 발주서 상태 표시 — 입고로 받은 양이 있으면 "입고 중", 입고로 다 받아 닫혔으면 "다 받음", 사람이 닫았으면 "마감". */
+/** 발주서 상태 표시 — 입고로 받은 양이 있으면 "입고 중", 입고로 다 받아 닫혔으면 "발주종결", 사람이 손으로 닫았으면 "강제종결". */
 function orderStatusBadge(order: PurchaseOrderRow, receivedTotal: number): { text: string; bg: string; color: string } {
   if (order.status === "CLOSED" && order.auto_closed_at) {
-    return { text: "다 받음", bg: "#dcfce7", color: "#166534" };
+    return { text: "발주종결", bg: "#dcfce7", color: "#166534" };
   }
 
   if (order.status === "OPEN" && receivedTotal > 0) {
@@ -540,7 +540,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
                   {canManage &&
                     (order.status === "OPEN" ? (
                       <>
-                        <button type="button" style={buttonStyle} disabled={busy} onClick={() => void handleStatus(order, "close")}>마감(다 받음)</button>
+                        <button type="button" style={buttonStyle} disabled={busy} onClick={() => void handleStatus(order, "close")}>발주강제종결</button>
                         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void handleStatus(order, "cancel")}>취소</button>
                       </>
                     ) : (

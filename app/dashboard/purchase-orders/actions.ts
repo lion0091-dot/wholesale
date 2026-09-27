@@ -440,7 +440,7 @@ export async function createPurchaseOrderProductAction(
 
 const NEXT_STATUS = { close: "CLOSED", cancel: "CANCELLED", reopen: "OPEN" } as const;
 
-/** 발주서 상태 — 마감(다 받음)·취소·다시 열기. 물건을 받은 기록은 지우지 않는다(상태만 바뀐다). */
+/** 발주서 상태 — 발주강제종결(사람이 손으로 닫음)·취소·다시 열기. 물건을 받은 기록은 지우지 않는다(상태만 바뀐다). */
 export async function setPurchaseOrderStatusAction(
   purchaseOrderId: string,
   action: keyof typeof NEXT_STATUS
