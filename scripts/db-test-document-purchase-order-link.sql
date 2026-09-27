@@ -117,6 +117,8 @@ select pg_temp.expect_error(format('select public.create_purchase_order_from_unl
 
 select public.create_purchase_order_from_unlisted_scan(:'t2_scan_id') as r2 \gset
 select pg_temp.expect('T2 등록: 초과분 5kg만 새 발주서로', ((:'r2'::jsonb) ->> 'amount')::numeric = 5);
+select pg_temp.expect('146: T2 등록 후 po_state=ASSIGNED로 바뀌면 옛 OVER_HELD 수치(po_detail)도 같이 비워진다',
+    (select po_state = 'ASSIGNED' and po_detail is null from public.inbound_scans where id = :'t2_scan_id'));
 
 select pg_temp.expect_error(format('select public.create_purchase_order_from_unlisted_scan(%L)', :'t3_scan_id'), 'SCAN_HAS_NO_SUPPLIER', '거래처 없는 스캔 → SCAN_HAS_NO_SUPPLIER');
 

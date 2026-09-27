@@ -351,6 +351,14 @@ select pg_temp.expect('OVER_HELD 판정 수치는 po_detail에 저장돼 나중�
     (select po_detail = jsonb_build_object('ordered', 10, 'received', 10, 'remaining', 0, 'tolerance', 0, 'excess', 5)
      from public.inbound_scans where trace_no = '009800000034'));
 
+-- 146: 이미 판정된 OVER_HELD 박스를 같은 함수로 다시 조회(멱등 경로)해도 방금 저장한 실제 수치가 유지돼야 한다
+-- (purchase_order_scan_progress가 뒤에서 0/0/0으로 덮어쓰던 버그, 145 배포 직후 발견).
+select public.judge_scan_purchase_order((select id from public.inbound_scans where trace_no = '009800000034')) as r \gset
+select pg_temp.expect('146: OVER_HELD 박스 재조회(멱등)해도 ordered/received/excess가 0으로 덮이지 않는다',
+    ((:'r'::jsonb) ->> 'result') = 'OVER_HELD'
+    and ((:'r'::jsonb) ->> 'ordered')::numeric = 10 and ((:'r'::jsonb) ->> 'received')::numeric = 10
+    and ((:'r'::jsonb) ->> 'excess')::numeric = 5);
+
 select public.void_inbound_scan((select id from public.inbound_scans where trace_no = '009800000033' and status = 'NORMAL' limit 1), '테스트 취소3');
 select pg_temp.expect('OVER_HELD 박스 취소 → 채움이 사라지고 자동 마감됐던 발주서 다시 OPEN',
     (select status = 'OPEN' and auto_closed_at is null from public.purchase_orders where id = 'd2d2d2d2-0000-0000-0000-000000000b06'));
