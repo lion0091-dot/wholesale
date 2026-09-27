@@ -24,3 +24,18 @@ export function normalizeImportedOrigin(country: string | null | undefined): str
 
   return hit ? `${hit}산` : OTHER_IMPORT_ORIGIN;
 }
+
+/**
+ * 원산지 비교 — 한쪽이 다른 쪽을 포함하면 같은 원산지로 본다(사장님 결정 "원산지는 like로").
+ * 둘 중 하나만 비어 있으면 다르다(빈 문자열은 모든 것에 포함되므로). DB의 origin_matches()(마이그레이션 137)와 같은 규칙이다.
+ */
+export function originMatches(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = (a ?? "").trim();
+  const right = (b ?? "").trim();
+
+  if (!left || !right) {
+    return !left && !right;
+  }
+
+  return left.includes(right) || right.includes(left);
+}

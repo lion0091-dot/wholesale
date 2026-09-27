@@ -18,6 +18,8 @@ export interface PurchaseOrderLineInput {
   origin: string;
   quantity: string;
   unitPrice: string;
+  /** 고른 상품 ID — 비어 있으면 연결된 상품이 없는 줄(스펙만). */
+  productId?: string;
 }
 
 export interface ValidatedLine {
@@ -47,7 +49,9 @@ export function parseAmount(value: string): number | null {
 export function validatePurchaseOrderLine(
   input: PurchaseOrderLineInput,
   categories: readonly string[],
-  subcategoriesByCategory: Readonly<Record<string, readonly string[]>> = {}
+  subcategoriesByCategory: Readonly<Record<string, readonly string[]>> = {},
+  /** 등록된 상품에서 온 스펙이면 목록 검사를 건너뛴다 — 상품 값은 이미 등록 때 검사했고 예전에 등록된 값은 목록 밖일 수 있다. */
+  options: { trustSpec?: boolean } = {}
 ): LineValidation {
   const category = input.category.trim();
   const origin = input.origin.trim();
@@ -66,7 +70,7 @@ export function validatePurchaseOrderLine(
     return { ok: false, error: "원산지를 입력해주세요." };
   }
 
-  const rule = specListRuleFor(category);
+  const rule = options.trustSpec ? specListRuleFor(null) : specListRuleFor(category);
   const parts = subcategoriesByCategory[category] ?? [];
 
   if (rule.partFromList && subcategory && parts.length > 0 && !parts.includes(subcategory)) {
@@ -179,9 +183,10 @@ export function parsePurchaseOrderCells(
       origin: pick("origin"),
       quantity: pick("quantity"),
       unitPrice: pick("unitPrice"),
+      productId: "",
     };
 
-    if (Object.values(input).every((value) => value === "")) {
+    if (Object.values(input).every((value) => !value)) {
       return;
     }
 

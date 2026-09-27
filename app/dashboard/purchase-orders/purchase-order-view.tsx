@@ -1,11 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PurchaseOrderLineInput } from "@/lib/purchase-orders/lines";
 import { PURCHASE_ORDER_MAX_LINES } from "@/lib/purchase-orders/lines";
 import { buildPurchaseOrderMessage } from "@/lib/purchase-orders/message";
-import { CATTLE_GRADES, ORIGIN_OPTIONS, specListRuleFor } from "@/lib/purchase-orders/spec-options";
+import { specFromProduct, productSpecLabel, type ProductOption } from "@/lib/purchase-orders/product-match";
+import { NewProductPanel } from "./new-product-panel";
+import { ProductPicker } from "./product-picker";
 import {
   createPurchaseOrderAction,
   createSupplierAction,
@@ -34,6 +36,7 @@ export interface PurchaseOrderRow {
   status: "OPEN" | "CLOSED" | "CANCELLED";
   purchase_order_lines: Array<{
     line_no: number;
+    product_id?: string | null;
     category: string;
     subcategory: string | null;
     grade: string | null;
@@ -50,6 +53,9 @@ interface Props {
   subcategoriesByCategory: Record<string, string[]>;
   suppliers: SupplierRow[];
   orders: PurchaseOrderRow[];
+  products: ProductOption[];
+  /** 최근 발주서에 쓴 상품 ID(가장 최근이 앞) — 품목 목록 맨 위에 보여준다. */
+  recentProductIds: string[];
 }
 
 const STATUS_LABEL: Record<PurchaseOrderRow["status"], { text: string; bg: string; color: string }> = {
@@ -97,20 +103,23 @@ async function copyText(text: string) {
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
-const emptyLine = (category = ""): PurchaseOrderLineInput => ({
-  category,
+const emptyLine = (): PurchaseOrderLineInput => ({
+  category: "",
   subcategory: "",
   grade: "",
   origin: "국내산",
   quantity: "",
   unitPrice: "",
+  productId: "",
 });
 
-function specText(line: PurchaseOrderRow["purchase_order_lines"][number]): string {
+const isFilled = (line: PurchaseOrderLineInput) => Object.values(line).some((value) => (value ?? "").trim() !== "" && value !== "국내산");
+
+function specText(line: { category: string; subcategory: string | null; grade: string | null; origin: string }): string {
   return [line.category, line.subcategory, line.grade, line.origin].filter(Boolean).join(" ");
 }
 
-export function PurchaseOrderView({ canManage, categories, subcategoriesByCategory, suppliers, orders }: Props) {
+export function PurchaseOrderView({ canManage, categories, subcategoriesByCategory, suppliers, orders, products, recentProductIds }: Props) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -127,6 +136,15 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
   const [notice, setNotice] = useState<string | null>(null);
   const [includePrice, setIncludePrice] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [creatingIndex, setCreatingIndex] = useState<number | null>(null);
+  const [createdProducts, setCreatedProducts] = useState<ProductOption[]>([]);
+  const productOptions = useMemo(() => {
+    const known = new Set(products.map((product) => product.id));
+
+    return [...products, ...createdProducts.filter((product) => !known.has(product.id))];
+  }, [products, createdProducts]);
+  const labeledProducts = useMemo(() => productOptions.map((option) => ({ option, label: productSpecLabel(option) })), [productOptions]);
+  const labelById = useMemo(() => new Map(labeledProducts.map((item) => [item.option.id, item.label])), [labeledProducts]);
 
   const updateLine = (index: number, patch: Partial<PurchaseOrderLineInput>) => {
     setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
@@ -136,6 +154,21 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
       delete next[index];
       return next;
     });
+  };
+
+  const pickProduct = (index: number, product: ProductOption) => {
+    updateLine(index, { productId: product.id, ...specFromProduct(product) });
+  };
+
+  const handleProductCreated = (index: number, product: ProductOption, created: boolean) => {
+    setCreatedProducts((prev) => [...prev, product]);
+    pickProduct(index, product);
+    setCreatingIndex(null);
+    setNotice(
+      created
+        ? `'${productSpecLabel(product)}'을(를) 상품 관리에 새로 등록했습니다(판매중지·0원 — 가격을 넣고 판매중으로 바꾸면 고객에게 보입니다).`
+        : `이미 등록된 '${productSpecLabel(product)}'을(를) 연결했습니다.`
+    );
   };
 
   const handleFile = async (file: File | undefined) => {
@@ -160,7 +193,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
     }
 
     const uploaded = result.data.rows;
-    const keepExisting = lines.filter((line) => Object.values(line).some((value) => value.trim() !== "" && value !== "국내산"));
+    const keepExisting = lines.filter(isFilled);
 
     setLines([...keepExisting, ...uploaded.map((row) => row.input)]);
     setRowErrors(
@@ -169,12 +202,19 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
       )
     );
 
+    setCreatingIndex(null);
+
     const badCount = uploaded.filter((row) => row.error).length;
+    const unlinkedCount = uploaded.filter((row) => !row.error && !row.input.productId).length;
+    const unlinkedNote =
+      unlinkedCount > 0
+        ? ` 등록된 품목과 연결되지 않은 ${unlinkedCount}줄은 목록에서 고르거나 '새 품목 만들기'로 등록하세요(그대로 저장해도 됩니다).`
+        : "";
 
     setNotice(
       badCount > 0
-        ? `${uploaded.length}줄을 읽었습니다. 빨간 표시가 있는 ${badCount}줄을 고친 뒤 저장하세요.`
-        : `${uploaded.length}줄을 읽었습니다. 내용을 확인하고 저장하세요.`
+        ? `${uploaded.length}줄을 읽었습니다. 빨간 표시가 있는 ${badCount}줄을 고친 뒤 저장하세요.${unlinkedNote}`
+        : `${uploaded.length}줄을 읽었습니다. 내용을 확인하고 저장하세요.${unlinkedNote}`
     );
   };
 
@@ -183,7 +223,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
     setError(null);
     setNotice(null);
 
-    const filled = lines.filter((line) => Object.values(line).some((value) => value.trim() !== "" && value !== "국내산"));
+    const filled = lines.filter(isFilled);
 
     const result = await createPurchaseOrderAction({
       supplierId,
@@ -205,6 +245,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
     setNote("");
     setLines([emptyLine()]);
     setRowErrors({});
+    setCreatingIndex(null);
     setOpen(false);
     setNotice("발주서를 저장했습니다.");
     router.refresh();
@@ -313,84 +354,45 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
 
               <div style={{ display: "grid", gap: "8px" }}>
                 {lines.map((line, index) => {
-                  const parts = subcategoriesByCategory[line.category] ?? [];
-                  const rule = specListRuleFor(line.category);
-                  const partFromList = rule.partFromList && parts.length > 0;
-                  const changeCategory = (category: string) => {
-                    const next = specListRuleFor(category);
-                    const nextParts = subcategoriesByCategory[category] ?? [];
-
-                    updateLine(index, {
-                      category,
-                      subcategory: nextParts.includes(line.subcategory) ? line.subcategory : "",
-                      grade: next.gradeFromList && !CATTLE_GRADES.includes(line.grade) ? "" : line.grade,
-                      origin: next.originFromList && !ORIGIN_OPTIONS.includes(line.origin) ? "국내산" : line.origin,
-                    });
-                  };
+                  const unlinked = !line.productId && Boolean(line.category);
+                  const lineSpec = { category: line.category, subcategory: line.subcategory, grade: line.grade, origin: line.origin };
 
                   return (
                     <div key={index} style={{ border: `1px solid ${rowErrors[index] ? "#fca5a5" : "#e2e8f0"}`, borderRadius: "8px", padding: "8px", backgroundColor: rowErrors[index] ? "#fef2f2" : "#f8fafc" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "6px" }}>
-                        <select aria-label={`${index + 1}번째 줄 축종`} value={line.category} onChange={(event) => changeCategory(event.target.value)} style={fieldStyle}>
-                          <option value="">축종 선택</option>
-                          {categories.map((name) => (
-                            <option key={name} value={name}>{name}</option>
-                          ))}
-                          {line.category && !categories.includes(line.category) && <option value={line.category}>{line.category} (없는 축종)</option>}
-                        </select>
-                        {partFromList ? (
-                          <select aria-label={`${index + 1}번째 줄 부위`} value={line.subcategory} onChange={(event) => updateLine(index, { subcategory: event.target.value })} style={fieldStyle}>
-                            <option value="">부위 선택</option>
-                            {parts.map((name) => (
-                              <option key={name} value={name}>{name}</option>
-                            ))}
-                            {line.subcategory && !parts.includes(line.subcategory) && <option value={line.subcategory}>{line.subcategory} (목록에 없음)</option>}
-                          </select>
-                        ) : (
-                          <>
-                            <input aria-label={`${index + 1}번째 줄 부위`} list={`po-parts-${index}`} value={line.subcategory} onChange={(event) => updateLine(index, { subcategory: event.target.value })} placeholder="부위 (예: 등심)" style={fieldStyle} autoComplete="off" />
-                            <datalist id={`po-parts-${index}`}>
-                              {parts.map((name) => (
-                                <option key={name} value={name} />
-                              ))}
-                            </datalist>
-                          </>
-                        )}
-                        {rule.gradeFromList ? (
-                          <select aria-label={`${index + 1}번째 줄 등급`} value={line.grade} onChange={(event) => updateLine(index, { grade: event.target.value })} style={fieldStyle}>
-                            <option value="">등급 선택</option>
-                            {CATTLE_GRADES.map((name) => (
-                              <option key={name} value={name}>{name}</option>
-                            ))}
-                            {line.grade && !CATTLE_GRADES.includes(line.grade) && <option value={line.grade}>{line.grade} (목록에 없음)</option>}
-                          </select>
-                        ) : (
-                          <input aria-label={`${index + 1}번째 줄 등급`} value={line.grade} onChange={(event) => updateLine(index, { grade: event.target.value })} placeholder="등급 (선택)" style={fieldStyle} autoComplete="off" />
-                        )}
-                        {rule.originFromList ? (
-                          <select aria-label={`${index + 1}번째 줄 원산지`} value={line.origin} onChange={(event) => updateLine(index, { origin: event.target.value })} style={fieldStyle}>
-                            <option value="">원산지 선택</option>
-                            {ORIGIN_OPTIONS.map((name) => (
-                              <option key={name} value={name}>{name}</option>
-                            ))}
-                            {line.origin && !ORIGIN_OPTIONS.includes(line.origin) && <option value={line.origin}>{line.origin} (목록에 없음)</option>}
-                          </select>
-                        ) : (
-                          <>
-                            <input aria-label={`${index + 1}번째 줄 원산지`} list={`po-origins-${index}`} value={line.origin} onChange={(event) => updateLine(index, { origin: event.target.value })} placeholder="원산지" style={fieldStyle} autoComplete="off" />
-                            <datalist id={`po-origins-${index}`}>
-                              {ORIGIN_OPTIONS.map((name) => (
-                                <option key={name} value={name} />
-                              ))}
-                            </datalist>
-                          </>
-                        )}
+                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 3fr) minmax(0, 1fr) minmax(0, 1fr)", gap: "6px" }}>
+                        <ProductPicker
+                          ariaLabel={`${index + 1}번째 줄 품목`}
+                          labeled={labeledProducts}
+                          labelById={labelById}
+                          recentIds={recentProductIds}
+                          selectedId={line.productId ?? ""}
+                          fallbackLabel={specText(line)}
+                          onPick={(product) => pickProduct(index, product)}
+                          onCreateNew={() => setCreatingIndex(index)}
+                        />
                         <input aria-label={`${index + 1}번째 줄 수량`} inputMode="decimal" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} placeholder="수량(kg)" style={fieldStyle} autoComplete="off" />
                         <input aria-label={`${index + 1}번째 줄 단가`} inputMode="numeric" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: event.target.value })} placeholder="단가(원/kg, 선택)" style={fieldStyle} autoComplete="off" />
                       </div>
+                      {unlinked && creatingIndex !== index && (
+                        <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#92400e" }}>
+                          등록된 품목과 연결되지 않은 줄입니다({specText(line)}). 그대로 저장할 수 있지만 입고 때 이 줄과 자동으로 이어지지 않습니다.{" "}
+                          <button type="button" onClick={() => setCreatingIndex(index)} style={{ border: "none", background: "none", padding: 0, fontSize: "12px", fontWeight: 700, color: "#1d4ed8", cursor: "pointer", textDecoration: "underline" }}>
+                            새 품목 만들기
+                          </button>
+                        </p>
+                      )}
+                      {creatingIndex === index && (
+                        <NewProductPanel
+                          categories={categories}
+                          subcategoriesByCategory={subcategoriesByCategory}
+                          initial={lineSpec}
+                          onCreated={(product, created) => handleProductCreated(index, product, created)}
+                          onCancel={() => setCreatingIndex(null)}
+                        />
+                      )}
                       {rowErrors[index] && <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#b91c1c" }}>{rowErrors[index]}</p>}
                       {lines.length > 1 && (
-                        <button type="button" onClick={() => { setLines((prev) => prev.filter((_, i) => i !== index)); setRowErrors({}); }} style={{ marginTop: "6px", border: "none", background: "none", padding: 0, fontSize: "12px", color: "#64748b", cursor: "pointer" }}>
+                        <button type="button" onClick={() => { setLines((prev) => prev.filter((_, i) => i !== index)); setRowErrors({}); setCreatingIndex(null); }} style={{ marginTop: "6px", border: "none", background: "none", padding: 0, fontSize: "12px", color: "#64748b", cursor: "pointer" }}>
                           이 줄 지우기
                         </button>
                       )}
@@ -398,7 +400,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
                   );
                 })}
                 {lines.length < PURCHASE_ORDER_MAX_LINES && (
-                  <button type="button" style={{ ...buttonStyle, justifySelf: "start" }} onClick={() => setLines((prev) => [...prev, emptyLine(prev[prev.length - 1]?.category ?? "")])}>
+                  <button type="button" style={{ ...buttonStyle, justifySelf: "start" }} onClick={() => setLines((prev) => [...prev, emptyLine()])}>
                     + 줄 추가
                   </button>
                 )}

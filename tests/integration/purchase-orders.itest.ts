@@ -3,9 +3,10 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import writeExcelFile from "write-excel-file/node";
-import { actAs, adminClient, seedWorld, type World } from "./harness";
+import { actAs, adminClient, getActorClient, seedWorld, type World } from "./harness";
 import {
   createPurchaseOrderAction,
+  createPurchaseOrderProductAction,
   createSupplierAction,
   parsePurchaseOrderFileAction,
   setPurchaseOrderStatusAction,
@@ -391,5 +392,187 @@ describe("DB 방어선", () => {
 
     expect(zero.error).not.toBeNull();
     expect(duplicate.error).not.toBeNull();
+  });
+});
+
+describe("발주서 줄 ↔ 등록된 상품 연결 (마이그레이션 138)", () => {
+  const line = (patch: Record<string, string> = {}) => ({ category: "소", subcategory: "등심", grade: "1++", origin: "국내산", quantity: "10", unitPrice: "", productId: "", ...patch });
+  const linesOf = async (id: string) => [...(await orderRow(id)).purchase_order_lines].sort((a, b) => Number(a.line_no) - Number(b.line_no));
+
+  it("상품을 고른 줄은 스펙을 상품에서 가져오고(보낸 값은 무시), 안 고른 줄은 스펙이 같은 상품에 자동으로 잇는다", async () => {
+    const beef = await world.createProduct({ category: "소", subcategory: "우삼겹", grade: "2", origin: "미국산", name: "우삼겹 2" });
+    const legacy = await world.createProduct({ category: "소", subcategory: "사태", grade: "3", origin: "호주", name: "사태 3" });
+    const pork = await world.createProduct({ category: "돼지", subcategory: "갈비", origin: "국내산", name: "갈비" });
+
+    const created = await createPurchaseOrderAction(
+      input({
+        lines: [
+          line({ productId: beef.id, category: "돼지", subcategory: "엉뚱", grade: "특", origin: "한국" }),
+          line({ category: "소", subcategory: "우삼겹", grade: "2", origin: "미국산" }),
+          line({ category: "돼지", subcategory: "갈비", grade: "아무거나", origin: "국내산" }),
+          line({ category: "소", subcategory: "다짐육", grade: "3", origin: "호주산" }),
+          line({ category: "소", subcategory: "사태", grade: "3", origin: "호주산" }),
+        ],
+      })
+    );
+
+    expect(created.success).toBe(true);
+
+    const lines = await linesOf(created.data!.id);
+
+    expect(lines[0]).toMatchObject({ product_id: beef.id, category: "소", subcategory: "우삼겹", grade: "2", origin: "미국산" });
+    expect(lines[1]).toMatchObject({ product_id: beef.id });
+    expect(lines[2]).toMatchObject({ product_id: pork.id });
+    expect(lines[3].product_id).toBeNull();
+    expect(lines[4]).toMatchObject({ product_id: legacy.id });
+  });
+
+  it("남의 공급사 상품·보관된 상품·없는 상품을 고른 줄은 거부한다", async () => {
+    const mine = await world.createProduct({ category: "가공육", subcategory: null, grade: null, origin: "국내산", name: `보관시험-${world.runId}` });
+    const { data: other } = await adminClient()
+      .from("products")
+      .insert({ wholesaler_id: world.wholesalerB, name: "B사 상품", category: "가공육", origin: "국내산", base_price: 0, unit: "kg", stock_quantity: 0, is_active: false })
+      .select("id")
+      .single();
+
+    await adminClient().from("products").update({ archived_at: new Date().toISOString() }).eq("id", mine.id);
+
+    for (const productId of [other!.id as string, mine.id, "00000000-0000-4000-8000-000000000000"]) {
+      const result = await createPurchaseOrderAction(input({ note: `연결거부-${world.runId}`, lines: [line({ productId })] }));
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("선택한 품목을 찾을 수 없습니다");
+    }
+
+    const tenantMismatch = await adminClient().from("purchase_orders").insert({ wholesaler_id: world.wholesalerA, supplier_id: supplierAId, supplier_name: "x" }).select("id").single();
+    const dbGuard = await adminClient().from("purchase_order_lines").insert({ purchase_order_id: tenantMismatch.data!.id, wholesaler_id: world.wholesalerA, line_no: 1, category: "소", origin: "국내산", quantity: 1, product_id: other!.id });
+
+    expect(dbGuard.error?.message).toContain("PURCHASE_ORDER_PRODUCT_MISMATCH");
+  });
+
+  it("엑셀을 올리면 스펙이 맞는 줄은 상품 ID가 채워지고 맞는 상품이 없는 줄은 비어 있다", async () => {
+    const product = await world.createProduct({ category: "소", subcategory: "채끝", grade: "1", origin: "호주", name: "채끝 1" });
+    const result = await parsePurchaseOrderFileAction(
+      fileForm(
+        await xlsxFile([
+          ["축종", "부위", "등급", "원산지", "수량(kg)"],
+          ["소", "채끝", "1", "호주산", "20"],
+          ["소", "채끝", "1", "캐나다산", "20"],
+          ["소", "등신", "1", "국내산", "20"],
+        ])
+      )
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data!.rows.map((row) => row.input.productId)).toEqual([product.id, "", ""]);
+    expect(result.data!.rows[2].error).toContain("목록에 없습니다");
+  });
+});
+
+describe("createPurchaseOrderProductAction — 발주서에서 새 품목 만들기", () => {
+  const spec = (patch: Record<string, string> = {}) => ({ category: "소", subcategory: "다짐육", grade: "1+", origin: "브라질산", name: "", ...patch });
+  const productRow = async (id: string) => (await adminClient().from("products").select("*").eq("id", id).single()).data as Record<string, unknown>;
+
+  it("소는 이름이 자동 조합되고 판매중지·0원으로 만들어지며, 같은 품목을 다시 만들면 새로 만들지 않는다", async () => {
+    const first = await createPurchaseOrderProductAction(spec());
+
+    expect(first.success).toBe(true);
+    expect(first.data!.created).toBe(true);
+    expect(await productRow(first.data!.product.id)).toMatchObject({ wholesaler_id: world.wholesalerA, name: "다짐육 1+", category: "소", origin: "브라질산", is_active: false, base_price: 0, stock_quantity: 0 });
+
+    const again = await createPurchaseOrderProductAction(spec());
+
+    expect(again.data).toMatchObject({ created: false });
+    expect(again.data!.product.id).toBe(first.data!.product.id);
+  });
+
+  it("돼지·닭·오리·계란은 키 칸만으로 만들어지고 오류는 안내문으로 거부한다", async () => {
+    const pork = await createPurchaseOrderProductAction(spec({ category: "돼지", subcategory: "가브리살", grade: "", origin: "스페인산" }));
+    const chicken = await createPurchaseOrderProductAction(spec({ category: "닭", subcategory: "", grade: "", origin: "브라질산" }));
+
+    expect(pork.data).toMatchObject({ created: true });
+    expect((await productRow(pork.data!.product.id)).name).toBe("가브리살");
+    expect(chicken.data).toMatchObject({ created: true });
+    expect((await productRow(chicken.data!.product.id)).name).toBe("닭");
+
+    const cases: Array<[Record<string, string>, string]> = [
+      [{ subcategory: "" }, "부위를 골라"],
+      [{ grade: "" }, "등급을 골라"],
+      [{ origin: "한국" }, "목록에 없습니다"],
+      [{ category: "말" }, "알 수 없습니다"],
+      [{ category: "양", subcategory: "", grade: "", origin: "호주산", name: "" }, "상품명"],
+    ];
+
+    for (const [patch, message] of cases) {
+      const result = await createPurchaseOrderProductAction(spec(patch));
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(message);
+    }
+
+    const sheep = await createPurchaseOrderProductAction(spec({ category: "양", subcategory: "", grade: "", origin: "호주산", name: `양시험-${world.runId}` }));
+
+    expect(sheep.data).toMatchObject({ created: true });
+    expect((await productRow(sheep.data!.product.id)).name).toBe(`양시험-${world.runId}`);
+  });
+
+  it("직원·고객·비로그인은 새 품목을 만들 수 없다", async () => {
+    for (const user of [world.users.staffA, world.users.retailerR, null]) {
+      await actAs(user);
+
+      expect((await createPurchaseOrderProductAction(spec({ origin: "스페인산" }))).success).toBe(false);
+    }
+
+    const { count } = await adminClient().from("products").select("id", { count: "exact", head: true }).eq("category", "소").eq("subcategory", "다짐육").eq("origin", "스페인산");
+
+    expect(count).toBe(0);
+  });
+});
+
+describe("list_product_options — 권한 검사는 한 번, 내 업체 상품만", () => {
+  const call = (wholesalerId: string) => getActorClient().rpc("list_product_options", { p_wholesaler_id: wholesalerId, p_categories: null, p_ids: null });
+
+  it("대표·직원은 내 업체 상품을 받고, 다른 업체 사장·고객·비로그인은 거부된다", async () => {
+    const product = await world.createProduct({ category: "가공육", subcategory: null, grade: null, origin: "국내산", name: `목록함수-${world.runId}` });
+
+    for (const user of [world.users.ownerA, world.users.staffA]) {
+      await actAs(user);
+
+      const result = await call(world.wholesalerA);
+
+      expect(result.error).toBeNull();
+      expect((result.data as Array<{ id: string }>).some((row) => row.id === product.id)).toBe(true);
+    }
+
+    for (const user of [world.users.ownerB, world.users.retailerR, null]) {
+      await actAs(user);
+
+      const result = await call(world.wholesalerA);
+
+      expect(result.error).not.toBeNull();
+      expect(result.data).toBeNull();
+    }
+  });
+
+  it("보관된 상품은 빠지고 축종·상품 ID 필터가 적용된다", async () => {
+    await actAs(world.users.ownerA);
+
+    const keep = await world.createProduct({ category: "가공육", subcategory: null, grade: null, origin: "국내산", name: `필터유지-${world.runId}` });
+    const archived = await world.createProduct({ category: "가공육", subcategory: null, grade: null, origin: "국내산", name: `필터보관-${world.runId}` });
+
+    await adminClient().from("products").update({ archived_at: new Date().toISOString() }).eq("id", archived.id);
+
+    const all = (await call(world.wholesalerA)).data as Array<{ id: string; category: string }>;
+
+    expect(all.some((row) => row.id === keep.id)).toBe(true);
+    expect(all.some((row) => row.id === archived.id)).toBe(false);
+
+    const byIds = (await getActorClient().rpc("list_product_options", { p_wholesaler_id: world.wholesalerA, p_categories: null, p_ids: [keep.id, archived.id] })).data as Array<{ id: string }>;
+
+    expect(byIds.map((row) => row.id)).toEqual([keep.id]);
+
+    const byCategory = (await getActorClient().rpc("list_product_options", { p_wholesaler_id: world.wholesalerA, p_categories: ["양"], p_ids: null })).data as Array<{ category: string }>;
+
+    expect(byCategory.every((row) => row.category === "양")).toBe(true);
   });
 });

@@ -5,6 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
 import { extractExcelTable } from "@/lib/livestock/excel-table";
 import { fetchSubcategoriesByCategory } from "../products/get-subcategories";
+import { composeIdentityName, identityFieldsFor } from "@/lib/products/identity-key";
+import { loadProductOptions } from "@/lib/purchase-orders/load-product-options";
+import { findProductForSpec, specFromProduct, type ProductOption } from "@/lib/purchase-orders/product-match";
 import {
   PURCHASE_ORDER_MAX_LINES,
   parsePurchaseOrderCells,
@@ -80,12 +83,17 @@ async function loadCategoryNames(supabase: Awaited<ReturnType<typeof createClien
   return ((data ?? []) as Array<{ name: string }>).map((row) => row.name);
 }
 
+/** 줄들에 나온 축종 중 상품 정체성 키가 있는 것 — 스펙으로 상품을 찾을 수 있는 축종만 미리 읽어 두면 된다. */
+function keyCategoriesOf(lines: ReadonlyArray<{ category: string }>): string[] {
+  return [...new Set(lines.map((line) => (line.category ?? "").trim()).filter((category) => identityFieldsFor(category) !== null))];
+}
+
 /** 엑셀(.xlsx)을 읽어 화면에 채울 줄을 돌려준다. 저장은 하지 않는다 — 화면에서 확인·수정한 뒤 저장한다. */
 export async function parsePurchaseOrderFileAction(
   formData: FormData
 ): Promise<ActionResult<{ rows: ParsedUploadRow[] }>> {
   try {
-    const { supabase } = await resolveScope();
+    const { supabase, wholesalerId } = await resolveScope();
     const file = formData.get("file");
 
     if (!(file instanceof File) || file.size === 0) {
@@ -121,6 +129,16 @@ export async function parsePurchaseOrderFileAction(
 
     if (parsed.rows.length > PURCHASE_ORDER_MAX_LINES) {
       throw new RbacError(`한 발주서에는 ${PURCHASE_ORDER_MAX_LINES}줄까지 넣을 수 있습니다.`);
+    }
+
+    // 오류 없는 줄은 등록된 상품과 스펙으로 맞춰 본다 — 맞는 상품이 있으면 화면에서 고른 것과 똑같이 연결된다.
+    // 줄에 나온 키 축종의 상품만 읽는다(상품이 수천 개여도 필요한 만큼만).
+    const products = await loadProductOptions(supabase, wholesalerId, { categories: keyCategoriesOf(parsed.rows.filter((row) => !row.error).map((row) => row.input)) });
+
+    for (const row of parsed.rows) {
+      if (!row.error) {
+        row.input.productId = findProductForSpec(row.input, products)?.id ?? "";
+      }
     }
 
     return { success: true, data: { rows: parsed.rows } };
@@ -185,15 +203,43 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
       throw new RbacError(`한 발주서에는 ${PURCHASE_ORDER_MAX_LINES}줄까지 넣을 수 있습니다.`);
     }
 
-    const [categories, subcategories] = await Promise.all([loadCategoryNames(supabase), fetchSubcategoriesByCategory(supabase)]);
+    const linkedIds = input.lines.map((line) => line.productId).filter((id): id is string => Boolean(id));
+
+    if (linkedIds.some((id) => !UUID_PATTERN.test(id))) {
+      throw new RbacError("선택한 품목을 찾을 수 없습니다. 다시 골라주세요.");
+    }
+
+    // 고른 상품은 그 상품만, 스펙만 적은 줄은 그 줄의 키 축종 상품만 읽는다(상품이 수천 개여도 필요한 만큼만).
+    const [categories, subcategories, linkedProducts, sameCategoryProducts] = await Promise.all([
+      loadCategoryNames(supabase),
+      fetchSubcategoriesByCategory(supabase),
+      linkedIds.length > 0 ? loadProductOptions(supabase, wholesalerId, { ids: linkedIds }) : Promise.resolve([] as ProductOption[]),
+      loadProductOptions(supabase, wholesalerId, { categories: keyCategoriesOf(input.lines.filter((line) => !line.productId)) }),
+    ]);
+    const products = [...new Map([...linkedProducts, ...sameCategoryProducts].map((product) => [product.id, product])).values()];
+    const productById = new Map(products.map((product) => [product.id, product]));
     const validated = input.lines.map((line, index) => {
-      const result = validatePurchaseOrderLine(line, categories, subcategories);
+      const linked = line.productId ? productById.get(line.productId) : undefined;
+
+      if (line.productId && !linked) {
+        throw new RbacError(`${index + 1}번째 줄: 선택한 품목을 찾을 수 없습니다(보관됐거나 삭제됨). 다시 골라주세요.`);
+      }
+
+      // 상품을 고른 줄은 스펙을 상품에서 가져온다(화면이 보낸 값은 믿지 않는다). 안 고른 줄은 스펙을 검사하고 같은 상품이 있으면 잇는다.
+      const result = validatePurchaseOrderLine(
+        linked ? { ...line, ...specFromProduct(linked) } : line,
+        categories,
+        subcategories,
+        { trustSpec: Boolean(linked) }
+      );
 
       if (!result.ok) {
         throw new RbacError(`${index + 1}번째 줄: ${result.error}`);
       }
 
-      return result.line;
+      const matched = linked ?? findProductForSpec({ ...result.line, subcategory: result.line.subcategory ?? "", grade: result.line.grade ?? "" }, products);
+
+      return { ...result.line, productId: matched?.id ?? null };
     });
 
     const { data: order, error: orderError } = await supabase
@@ -224,6 +270,7 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
         origin: line.origin,
         quantity: line.quantity,
         unit_price: line.unitPrice,
+        product_id: line.productId,
       }))
     );
 
@@ -235,6 +282,96 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
 
     revalidatePath(REVALIDATE_PATH);
     return { success: true, data: { id: order.id as string } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export interface CreatePurchaseOrderProductInput {
+  category: string;
+  subcategory: string;
+  grade: string;
+  origin: string;
+  /** 정체성 키가 없는 축종(양·가공육)만 — 키 축종은 이름이 자동으로 조합된다. */
+  name: string;
+}
+
+/**
+ * 발주서를 쓰다가 목록에 없는 품목을 그 자리에서 상품 관리에 등록한다. 판매중지·0원으로 만든다(가격을 넣고 켜야 고객에게 보인다).
+ * 같은 상품이 이미 있으면 새로 만들지 않고 그 상품을 돌려준다.
+ */
+export async function createPurchaseOrderProductAction(
+  input: CreatePurchaseOrderProductInput
+): Promise<ActionResult<{ product: ProductOption; created: boolean }>> {
+  try {
+    const { supabase, wholesalerId } = await resolveScope();
+    const [categories, subcategories] = await Promise.all([loadCategoryNames(supabase), fetchSubcategoriesByCategory(supabase)]);
+    const products = await loadProductOptions(supabase, wholesalerId, { categories: [(input.category ?? "").trim()] });
+    const spec = {
+      category: (input.category ?? "").trim(),
+      subcategory: (input.subcategory ?? "").trim(),
+      grade: (input.grade ?? "").trim(),
+      origin: (input.origin ?? "").trim(),
+    };
+    const checked = validatePurchaseOrderLine({ ...spec, quantity: "1", unitPrice: "" }, categories, subcategories);
+
+    if (!checked.ok) {
+      throw new RbacError(checked.error);
+    }
+
+    const fields = identityFieldsFor(spec.category);
+    const name = fields ? (composeIdentityName(spec.category, spec.subcategory, spec.grade) ?? spec.category) : (input.name ?? "").trim();
+
+    if (fields?.includes("subcategory") && !spec.subcategory) {
+      throw new RbacError("부위를 골라주세요.");
+    }
+
+    if (fields?.includes("grade") && !spec.grade) {
+      throw new RbacError("등급을 골라주세요.");
+    }
+
+    if (!fields && name.length < 2) {
+      throw new RbacError("상품명을 2자 이상 입력해주세요.");
+    }
+
+    const existing = fields ? findProductForSpec(spec, products) : products.find((product) => product.category === spec.category && product.name === name && product.origin === spec.origin);
+
+    if (existing) {
+      return { success: true, data: { product: existing, created: false } };
+    }
+
+    const { data, error } = await supabase
+      .from("products")
+      .insert({
+        wholesaler_id: wholesalerId,
+        name,
+        category: spec.category,
+        subcategory: spec.subcategory || null,
+        grade: spec.grade || null,
+        origin: spec.origin,
+        base_price: 0,
+        unit: "kg",
+        stock_quantity: 0,
+        is_active: false,
+        description: "발주서 작성 중 등록됨 — 판매가를 넣고 판매중으로 바꾸면 고객에게 보입니다.",
+      })
+      .select("id, name, category, subcategory, grade, origin")
+      .single();
+
+    if (error?.code === "23505") {
+      const again = fields ? findProductForSpec(spec, await loadProductOptions(supabase, wholesalerId, { categories: [spec.category] })) : null;
+
+      if (again) {
+        return { success: true, data: { product: again, created: false } };
+      }
+    }
+
+    if (error || !data) {
+      throw new Error(error?.message ?? "상품 등록에 실패했습니다.");
+    }
+
+    revalidatePath("/dashboard/products");
+    return { success: true, data: { product: data as ProductOption, created: true } };
   } catch (error) {
     return toResult(error);
   }
