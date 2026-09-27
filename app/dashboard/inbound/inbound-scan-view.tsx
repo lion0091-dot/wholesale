@@ -114,12 +114,12 @@ function formatTime(iso: string): string {
 }
 
 /**
- * 브라우저 내장 바코드 인식(BarcodeDetector) 지원 여부.
- * Android Chrome은 지원하고 iOS Safari는 아직 지원하지 않는다. 미지원 환경에서는
- * 카메라 버튼을 감추고 블루투스 스캐너/수동 입력으로 쓰게 둔다.
+ * 카메라로 바코드를 찍을 수 있는 환경인지. getUserMedia만 있으면 된다 —
+ * 인식 자체는 BarcodeDetector(Android Chrome 등)가 있으면 그걸 쓰고,
+ * 없으면(iOS Safari 등) zxing 라이브러리로 대신한다.
  */
-function hasBarcodeDetector(): boolean {
-  return typeof window !== "undefined" && "BarcodeDetector" in window;
+function hasCameraScan(): boolean {
+  return typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
 }
 
 interface Props {
@@ -411,7 +411,7 @@ export function InboundScanView({
   }, []);
 
   useEffect(() => {
-    setCameraSupported(hasBarcodeDetector());
+    setCameraSupported(hasCameraScan());
     traceInputRef.current?.focus();
   }, []);
 
@@ -760,7 +760,7 @@ export function InboundScanView({
     // BarcodeDetector는 표준화 진행 중이라 TS lib에 아직 없다.
     const BarcodeDetectorCtor = (
       window as unknown as {
-        BarcodeDetector: {
+        BarcodeDetector?: {
           new (options?: { formats: string[] }): {
             detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>>;
           };
@@ -776,57 +776,99 @@ export function InboundScanView({
     // 형식을 인식 대상에서 빼서 오인식 확률을 줄인다.
     const wantedFormats = ["code_128", "qr_code"];
 
-    (async () => {
-      let formats = wantedFormats;
+    const handleDetected = (rawValue: string) => {
+      const value = rawValue.trim();
 
+      if (!value) return;
+
+      stopCamera();
+      // 카메라는 이력번호만 읽는다 — 실중량은 저울 값이라 자동 제출하지 않고
+      // processTraceInput이 알아서 실중량 입력을 기다리거나(비어있으면) 곧장 등록한다
+      // (이미 실중량을 먼저 입력해둔 경우).
+      processTraceInput(value, "CAMERA");
+    };
+
+    let zxingControls: { stop: () => void } | undefined;
+
+    // iOS Safari 등 BarcodeDetector 미지원 브라우저는 zxing 라이브러리로 대신 읽는다.
+    const startZxingFallback = async () => {
       try {
-        // 요청 포맷 중 브라우저가 실제로 지원하지 않는 게 섞여 있으면 생성자 자체가
-        // 던질 수 있다 — 그러면 카메라는 켜지는데 인식은 영영 시작을 못 한다
-        // (실계정 테스트에서 발견: 화면은 나오는데 아무 반응이 없던 원인).
-        const supported = await BarcodeDetectorCtor.getSupportedFormats?.();
+        const { BrowserMultiFormatReader, BarcodeFormat } = await import("@zxing/browser");
 
-        if (supported && supported.length > 0) {
-          formats = wantedFormats.filter((format) => supported.includes(format));
+        if (cancelled || !videoRef.current) return;
+
+        const reader = new BrowserMultiFormatReader();
+
+        reader.possibleFormats = [BarcodeFormat.CODE_128, BarcodeFormat.QR_CODE];
+
+        const controls = await reader.decodeFromVideoElement(videoRef.current, (result) => {
+          if (!cancelled && result) handleDetected(result.getText());
+        });
+
+        if (cancelled) {
+          controls.stop();
+          return;
         }
 
-        if (formats.length === 0) {
-          throw new Error("NO_SUPPORTED_FORMAT");
-        }
-
-        const detector = new BarcodeDetectorCtor({ formats });
-
-        if (cancelled) return;
-
-        timer = window.setInterval(async () => {
-          if (cancelled || !videoRef.current) return;
-
-          try {
-            const found = await detector.detect(videoRef.current);
-
-            if (found.length > 0 && found[0].rawValue) {
-              const value = found[0].rawValue.trim();
-
-              stopCamera();
-              // 카메라는 이력번호만 읽는다 — 실중량은 저울 값이라 자동 제출하지 않고
-              // processTraceInput이 알아서 실중량 입력을 기다리거나(비어있으면) 곧장 등록한다
-              // (이미 실중량을 먼저 입력해둔 경우).
-              processTraceInput(value, "CAMERA");
-            }
-          } catch {
-            // 프레임 한 장 인식 실패는 정상이다 — 다음 주기에 다시 시도한다.
-          }
-        }, 400);
+        zxingControls = controls;
       } catch {
         if (!cancelled) {
           setError("이 기기·브라우저에서는 바코드 자동 인식을 쓸 수 없습니다. 이력번호를 직접 입력해주세요.");
           stopCamera();
         }
       }
-    })();
+    };
+
+    if (!BarcodeDetectorCtor) {
+      void startZxingFallback();
+    } else {
+      (async () => {
+        let formats = wantedFormats;
+
+        try {
+          // 요청 포맷 중 브라우저가 실제로 지원하지 않는 게 섞여 있으면 생성자 자체가
+          // 던질 수 있다 — 그러면 카메라는 켜지는데 인식은 영영 시작을 못 한다
+          // (실계정 테스트에서 발견: 화면은 나오는데 아무 반응이 없던 원인).
+          const supported = await BarcodeDetectorCtor.getSupportedFormats?.();
+
+          if (supported && supported.length > 0) {
+            formats = wantedFormats.filter((format) => supported.includes(format));
+          }
+
+          if (formats.length === 0) {
+            throw new Error("NO_SUPPORTED_FORMAT");
+          }
+
+          const detector = new BarcodeDetectorCtor({ formats });
+
+          if (cancelled) return;
+
+          timer = window.setInterval(async () => {
+            if (cancelled || !videoRef.current) return;
+
+            try {
+              const found = await detector.detect(videoRef.current);
+
+              if (found.length > 0 && found[0].rawValue) {
+                handleDetected(found[0].rawValue);
+              }
+            } catch {
+              // 프레임 한 장 인식 실패는 정상이다 — 다음 주기에 다시 시도한다.
+            }
+          }, 400);
+        } catch {
+          if (!cancelled) {
+            setError("이 기기·브라우저에서는 바코드 자동 인식을 쓸 수 없습니다. 이력번호를 직접 입력해주세요.");
+            stopCamera();
+          }
+        }
+      })();
+    }
 
     return () => {
       cancelled = true;
       if (timer !== undefined) window.clearInterval(timer);
+      zxingControls?.stop();
       window.clearTimeout(hintTimer);
     };
   }, [cameraOn, stopCamera, processTraceInput]);
