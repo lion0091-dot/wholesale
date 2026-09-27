@@ -562,6 +562,20 @@ export async function recordScanAction(input: {
   }
 }
 
+/** 되돌리기 취소를 시도하고, 실제로 취소되지 않은 scanId 목록을 돌려준다(voidScanAction 실패를 조용히 넘기지 않기 위함). */
+async function voidRecordedScans(scanIds: string[], reason: string): Promise<string[]> {
+  const failed: string[] = [];
+
+  for (const scanId of scanIds) {
+    const result = await voidScanAction(scanId, reason);
+    if (!result.success) {
+      failed.push(scanId);
+    }
+  }
+
+  return failed;
+}
+
 export interface SplitScanRow {
   productId: string;
   weight: number;
@@ -627,24 +641,26 @@ export async function recordSplitScansAction(input: {
 
       // 발주서 기준으로 이 줄이 거절되면 나눠 넣은 박스 전체를 되돌린다(반쪽 입고가 남지 않게).
       if (result.success && data?.status === "REJECTED") {
-        for (const scanId of recorded) {
-          await voidScanAction(scanId, "박스 나눠서 입고 중 발주서 기준 거절로 취소");
-        }
+        const failedRollback = await voidRecordedScans(recorded, "박스 나눠서 입고 중 발주서 기준 거절로 취소");
 
         throw new RbacError(
           `${index + 1}번째 줄: ${data.po ? rejectionSummary(data.po) : "발주서 기준으로 받지 않았습니다."}` +
-            (recorded.length > 0 ? ` 앞서 넣은 ${recorded.length}건은 취소했습니다. 이 줄을 빼고 다시 입력하세요.` : "")
+            (recorded.length > 0 ? ` 앞서 넣은 ${recorded.length}건은 취소했습니다. 이 줄을 빼고 다시 입력하세요.` : "") +
+            (failedRollback.length > 0
+              ? ` (취소 실패 ${failedRollback.length}건 — 재고·발주서 화면에서 직접 확인 후 취소해주세요)`
+              : "")
         );
       }
 
       if (!result.success || !data?.scanId) {
-        for (const scanId of recorded) {
-          await voidScanAction(scanId, "박스 나눠서 입고 중 실패로 취소");
-        }
+        const failedRollback = await voidRecordedScans(recorded, "박스 나눠서 입고 중 실패로 취소");
 
         throw new RbacError(
           `${index + 1}번째 줄 처리 중 실패했습니다: ${result.error ?? "알 수 없는 오류"}` +
-            (recorded.length > 0 ? ` 앞서 넣은 ${recorded.length}건은 취소했으니 처음부터 다시 입력하세요.` : "")
+            (recorded.length > 0 ? ` 앞서 넣은 ${recorded.length}건은 취소했으니 처음부터 다시 입력하세요.` : "") +
+            (failedRollback.length > 0
+              ? ` (취소 실패 ${failedRollback.length}건 — 재고·발주서 화면에서 직접 확인 후 취소해주세요)`
+              : "")
         );
       }
 

@@ -570,6 +570,24 @@ export async function deleteProductAction(productId: string): Promise<ActionResu
       );
     }
 
+    // purchase_order_lines.product_id는 ON DELETE SET NULL이라 DB가 막지 않는다.
+    // 아직 다 받지 않은(OPEN) 발주서 줄이 이 상품을 가리키는 채로 상품이 지워지면
+    // 연결만 조용히 끊어져(judge_scan_purchase_order가 그 줄을 다시 못 찾음)
+    // 이후 들어오는 박스가 전부 "발주서에 없는 물건"으로 오판정된다.
+    const { data: openLine } = await supabase
+      .from("purchase_order_lines")
+      .select("id, purchase_orders!inner(status)")
+      .eq("product_id", productId)
+      .eq("purchase_orders.status", "OPEN")
+      .limit(1)
+      .maybeSingle();
+
+    if (openLine) {
+      throw new RbacError(
+        "아직 다 받지 않은 발주서에 이 상품이 들어 있어 삭제할 수 없습니다. 발주서를 마감하거나 취소한 뒤 다시 시도해주세요 — 대신 '보관'으로 목록에서 감출 수 있습니다."
+      );
+    }
+
     let query = supabase.from("products").delete().eq("id", productId);
 
     if (!context.isSuperAdmin) {

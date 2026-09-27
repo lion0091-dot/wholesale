@@ -452,9 +452,12 @@ export async function setPurchaseOrderStatusAction(
       throw new RbacError("올바른 요청이 아닙니다.");
     }
 
+    // auto_closed_at은 "사람이 닫았거나 열려있으면 NULL"이 불변식이다(judge_scan_purchase_order·
+    // refresh_purchase_order_completion이 이 값으로 자동마감과 강제종결을 구분한다) — 여기 세
+    // 액션(강제종결·취소·다시 열기)은 전부 사람이 손으로 하는 것이므로 항상 비워야 한다.
     const { data, error } = await supabase
       .from("purchase_orders")
-      .update({ status: NEXT_STATUS[action] })
+      .update({ status: NEXT_STATUS[action], auto_closed_at: null })
       .eq("id", purchaseOrderId)
       .eq("wholesaler_id", wholesalerId)
       .select("id")
