@@ -727,6 +727,13 @@ export function ProductTable({
                           >
                             {stock.text} ✏️
                           </button>
+                          <Link
+                            href={`/dashboard/stock-ledger?product=${product.id}`}
+                            style={{ fontSize: "11px", color: "#64748b", textDecoration: "underline" }}
+                            title="이 상품의 입출고 내역 보기"
+                          >
+                            내역
+                          </Link>
                         </div>
                         <StockFreshness summary={allStockSummaries[product.id]} />
                         </div>
@@ -920,40 +927,48 @@ export function ProductTable({
                       </button>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingStockId(product.id);
-                        setStockInput(String(product.stock_quantity));
-                        setStockReason(STOCK_ADJUST_REASONS[0].code);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        border: "1px solid #e2e8f0",
-                        backgroundColor: "#f8fafc",
-                        borderRadius: "6px",
-                        padding: "7px 11px",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        color: "#334155",
-                      }}
-                    >
-                      <span
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingStockId(product.id);
+                          setStockInput(String(product.stock_quantity));
+                          setStockReason(STOCK_ADJUST_REASONS[0].code);
+                        }}
                         style={{
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          backgroundColor: stock.bg,
-                          color: stock.color,
-                          borderRadius: "4px",
-                          padding: "3px 7px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          border: "1px solid #e2e8f0",
+                          backgroundColor: "#f8fafc",
+                          borderRadius: "6px",
+                          padding: "7px 11px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          color: "#334155",
                         }}
                       >
-                        {stock.label}
-                      </span>
-                      {stock.text} ✏️
-                    </button>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            backgroundColor: stock.bg,
+                            color: stock.color,
+                            borderRadius: "4px",
+                            padding: "3px 7px",
+                          }}
+                        >
+                          {stock.label}
+                        </span>
+                        {stock.text} ✏️
+                      </button>
+                      <Link
+                        href={`/dashboard/stock-ledger?product=${product.id}`}
+                        style={{ fontSize: "11px", color: "#64748b", textDecoration: "underline" }}
+                      >
+                        내역
+                      </Link>
+                    </div>
                   )}
                 </div>
 

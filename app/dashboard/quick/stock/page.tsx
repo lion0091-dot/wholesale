@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
@@ -48,7 +49,11 @@ export default async function QuickStockPage() {
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>재고 확인</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>
-          지금 재고 수량만 빠르게 확인합니다. 재고를 고치려면 상품 관리 화면을 이용하세요.
+          지금 재고 수량만 빠르게 확인합니다. 재고를 고치려면{" "}
+          <Link href="/dashboard/products" style={{ color: "#1d4ed8", fontWeight: 700, textDecoration: "underline" }}>
+            상품 관리 화면
+          </Link>
+          을 이용하세요(사무실 PC용 화면이라 폰 메뉴에는 없습니다).
         </p>
       </header>
 
