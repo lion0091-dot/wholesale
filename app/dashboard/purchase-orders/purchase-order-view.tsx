@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PurchaseOrderLineInput } from "@/lib/purchase-orders/lines";
 import { PURCHASE_ORDER_MAX_LINES } from "@/lib/purchase-orders/lines";
+import { locateSaveError } from "@/lib/purchase-orders/locate-error";
 import { buildPurchaseOrderMessage } from "@/lib/purchase-orders/message";
 import { specFromProduct, productSpecLabel, type ProductOption } from "@/lib/purchase-orders/product-match";
 import { NewProductPanel } from "./new-product-panel";
@@ -227,6 +228,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
     setNotice(null);
 
     const filled = lines.filter(isFilled);
+    const lineIndexes = lines.flatMap((line, index) => (isFilled(line) ? [index] : []));
 
     const result = await createPurchaseOrderAction({
       supplierId,
@@ -239,7 +241,28 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
     setBusy(false);
 
     if (!result.success) {
-      setError(result.error ?? "저장에 실패했습니다.");
+      const message = result.error ?? "저장에 실패했습니다.";
+      const located = locateSaveError(message, lineIndexes);
+
+      // 어느 줄이 문제인지 알 수 있으면 그 줄에 표시하고 고칠 칸으로 커서를 옮긴다(맨 위 글자만으로는 어디를 고칠지 헤맨다).
+      if (located.lineIndex !== null && located.rowMessage) {
+        setError(null);
+        setRowErrors({ [located.lineIndex]: located.rowMessage });
+      } else {
+        setError(message);
+      }
+
+      if (located.selector) {
+        const selector = located.selector;
+
+        window.setTimeout(() => {
+          const target = document.querySelector<HTMLElement>(selector);
+
+          target?.scrollIntoView({ behavior: "smooth", block: "center" });
+          target?.focus({ preventScroll: true });
+        }, 0);
+      }
+
       return;
     }
 
@@ -635,7 +658,7 @@ function SupplierForm({
   return (
     <div style={{ border: "1px solid #cbd5e1", borderRadius: "8px", padding: "10px", display: "grid", gap: "8px", backgroundColor: "#f8fafc" }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "8px" }}>
-        <input aria-label="거래처 이름" value={form.name} maxLength={80} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="거래처 이름 *" style={fieldStyle} autoComplete="off" />
+        <input aria-label="거래처 이름" autoFocus value={form.name} maxLength={80} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="거래처 이름 *" style={fieldStyle} autoComplete="off" />
         <input aria-label="연락처" value={form.phone} maxLength={30} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="연락처 (선택)" style={fieldStyle} autoComplete="off" />
       </div>
       <input aria-label="명세서에 다르게 적히는 이름" value={form.aliases} onChange={(event) => setForm({ ...form, aliases: event.target.value })} placeholder="명세서에 다르게 적히는 이름 (쉼표로 구분, 선택)" style={fieldStyle} autoComplete="off" />
