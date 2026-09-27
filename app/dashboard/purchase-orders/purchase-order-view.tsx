@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PurchaseOrderLineInput } from "@/lib/purchase-orders/lines";
 import { PURCHASE_ORDER_MAX_LINES } from "@/lib/purchase-orders/lines";
+import { buildPurchaseOrderMessage } from "@/lib/purchase-orders/message";
 import {
   createPurchaseOrderAction,
   createSupplierAction,
@@ -79,6 +80,21 @@ const buttonStyle: React.CSSProperties = {
 };
 const primaryButtonStyle: React.CSSProperties = { ...buttonStyle, border: "none", backgroundColor: "#2563eb", color: "#fff" };
 
+async function copyText(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+
+  textarea.value = text;
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
+
 const today = () => new Date().toISOString().slice(0, 10);
 const emptyLine = (category = ""): PurchaseOrderLineInput => ({
   category,
@@ -108,6 +124,8 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [includePrice, setIncludePrice] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const updateLine = (index: number, patch: Partial<PurchaseOrderLineInput>) => {
     setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
@@ -189,6 +207,36 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
     setOpen(false);
     setNotice("발주서를 저장했습니다.");
     router.refresh();
+  };
+
+  // 카톡 본문에 붙여 넣을 문구 — 공급처에 보내는 것은 사장님이 카톡에서 직접 붙여 넣는다.
+  const handleCopy = async (order: PurchaseOrderRow) => {
+    try {
+      await copyText(
+        buildPurchaseOrderMessage(
+          {
+            supplierName: supplierNameById.get(order.supplier_id) ?? order.supplier_name,
+            orderedOn: order.ordered_on,
+            expectedOn: order.expected_on,
+            note: order.note,
+            lines: order.purchase_order_lines.map((line) => ({
+              category: line.category,
+              subcategory: line.subcategory,
+              grade: line.grade,
+              origin: line.origin,
+              quantity: Number(line.quantity),
+              unit: line.unit,
+              unitPrice: line.unit_price === null ? null : Number(line.unit_price),
+            })),
+          },
+          { includePrice }
+        )
+      );
+      setCopiedId(order.id);
+      window.setTimeout(() => setCopiedId((current) => (current === order.id ? null : current)), 2500);
+    } catch {
+      setError("복사하지 못했습니다. 브라우저의 복사 권한을 확인해주세요.");
+    }
   };
 
   const handleStatus = async (order: PurchaseOrderRow, action: "close" | "cancel" | "reopen") => {
@@ -326,6 +374,12 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
       <SupplierPanel suppliers={suppliers} canManage={canManage} setError={setError} />
 
       <section style={{ display: "grid", gap: "10px" }}>
+        {orders.length > 0 && (
+          <label style={{ display: "flex", gap: "6px", alignItems: "center", fontSize: "12px", color: "#475569" }}>
+            <input type="checkbox" checked={includePrice} onChange={(event) => setIncludePrice(event.target.checked)} />
+            카톡 문구에 단가도 넣기
+          </label>
+        )}
         {orders.length === 0 ? (
           <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>아직 작성한 발주서가 없습니다.</p>
         ) : (
@@ -352,18 +406,20 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
                   ))}
                 </ul>
                 {order.note && <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#64748b" }}>메모: {order.note}</p>}
-                {canManage && (
-                  <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
-                    {order.status === "OPEN" ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
+                  <button type="button" style={buttonStyle} onClick={() => void handleCopy(order)}>
+                    {copiedId === order.id ? "복사했습니다 — 카톡에 붙여넣기" : "카톡용 문구 복사"}
+                  </button>
+                  {canManage &&
+                    (order.status === "OPEN" ? (
                       <>
                         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void handleStatus(order, "close")}>마감(다 받음)</button>
                         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void handleStatus(order, "cancel")}>취소</button>
                       </>
                     ) : (
                       <button type="button" style={buttonStyle} disabled={busy} onClick={() => void handleStatus(order, "reopen")}>다시 열기</button>
-                    )}
-                  </div>
-                )}
+                    ))}
+                </div>
               </article>
             );
           })
