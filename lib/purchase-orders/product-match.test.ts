@@ -8,6 +8,7 @@ const product = (patch: Partial<ProductOption>): ProductOption => ({
   category: "소",
   subcategory: "등심",
   grade: "1++",
+  breed: "한우",
   origin: "국내산",
   ...patch,
 });
@@ -28,10 +29,11 @@ describe("originMatches — 포함 비교", () => {
 });
 
 describe("productSpecLabel", () => {
-  it("소는 부위·등급·원산지, 돼지는 등급 없이, 닭·오리·계란은 원산지만", () => {
-    expect(productSpecLabel(product({}))).toBe("소 등심 1++ 국내산");
-    expect(productSpecLabel(product({ category: "돼지", subcategory: "삼겹살", grade: "특" }))).toBe("돼지 삼겹살 국내산");
-    expect(productSpecLabel(product({ category: "닭", subcategory: "다리살", grade: null }))).toBe("닭 국내산");
+  it("소는 품종·부위·등급·원산지, 돼지는 등급 없이, 닭·오리·계란은 원산지만", () => {
+    expect(productSpecLabel(product({}))).toBe("소 한우 등심 1++ 국내산");
+    expect(productSpecLabel(product({ breed: "육우" }))).toBe("소 육우 등심 1++ 국내산");
+    expect(productSpecLabel(product({ category: "돼지", breed: null, subcategory: "삼겹살", grade: "특" }))).toBe("돼지 삼겹살 국내산");
+    expect(productSpecLabel(product({ category: "닭", breed: null, subcategory: "다리살", grade: null }))).toBe("닭 국내산");
   });
 
   it("키 없는 축종은 상품명을 넣는다", () => {
@@ -41,8 +43,9 @@ describe("productSpecLabel", () => {
 
 describe("specFromProduct", () => {
   it("키 없는 축종은 부위가 비면 상품명을 부위 자리에 둔다", () => {
-    expect(specFromProduct(product({ category: "가공육", name: "소시지", subcategory: null, grade: null }))).toEqual({
+    expect(specFromProduct(product({ category: "가공육", name: "소시지", breed: null, subcategory: null, grade: null }))).toEqual({
       category: "가공육",
+      breed: "",
       subcategory: "소시지",
       grade: "",
       origin: "국내산",
@@ -55,17 +58,25 @@ describe("findProductForSpec", () => {
   const products = [
     product({ id: "beef" }),
     product({ id: "us-beef", origin: "미국산", subcategory: "안심", grade: "1" }),
-    product({ id: "pork", category: "돼지", subcategory: "삼겹살", grade: null }),
-    product({ id: "chicken", category: "닭", subcategory: null, grade: null }),
-    product({ id: "sausage", category: "가공육", name: "소시지", subcategory: null, grade: null }),
+    product({ id: "yuk-beef", breed: "육우" }),
+    product({ id: "pork", category: "돼지", breed: null, subcategory: "삼겹살", grade: null }),
+    product({ id: "chicken", category: "닭", breed: null, subcategory: null, grade: null }),
+    product({ id: "sausage", category: "가공육", name: "소시지", breed: null, subcategory: null, grade: null }),
   ];
-  const spec = (patch: Record<string, string>) => ({ category: "소", subcategory: "등심", grade: "1++", origin: "국내산", ...patch });
+  const spec = (patch: Record<string, string>) => ({ category: "소", breed: "한우", subcategory: "등심", grade: "1++", origin: "국내산", ...patch });
 
   it("키 칸이 모두 같으면 찾고, 원산지는 포함 비교", () => {
     expect(findProductForSpec(spec({}), products)?.id).toBe("beef");
     expect(findProductForSpec(spec({ subcategory: "안심", grade: "1", origin: "미국" }), products)?.id).toBe("us-beef");
     expect(findProductForSpec(spec({ category: "돼지", subcategory: "삼겹살", grade: "아무거나" }), products)?.id).toBe("pork");
     expect(findProductForSpec(spec({ category: "닭", subcategory: "다리살", grade: "" }), products)?.id).toBe("chicken");
+  });
+
+  it("한우와 육우는 같은 부위·등급·원산지라도 다른 상품", () => {
+    expect(findProductForSpec(spec({ breed: "한우" }), products)?.id).toBe("beef");
+    expect(findProductForSpec(spec({ breed: "육우" }), products)?.id).toBe("yuk-beef");
+    expect(findProductForSpec(spec({ breed: "젖소" }), products)).toBeNull();
+    expect(findProductForSpec(spec({ breed: "" }), products)).toBeNull();
   });
 
   it("칸이 하나라도 다르거나 비어 있으면 붙이지 않는다", () => {

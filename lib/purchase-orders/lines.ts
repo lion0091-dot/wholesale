@@ -1,18 +1,20 @@
 /**
  * 공급처 발주서 줄 — 화면 입력, 엑셀 올리기, 서버 저장이 같은 검증을 쓴다.
  *
- * 줄은 상품 ID가 아니라 스펙(축종·부위·등급·원산지)과 수량(kg)이다. 처음 취급하는 품목은 상품이 아직 없을 수 있고
+ * 줄은 상품 ID가 아니라 스펙(축종·품종·부위·등급·원산지)과 수량(kg)이다. 처음 취급하는 품목은 상품이 아직 없을 수 있고
  * 이력 조회로 상품이 자동 생성되는 축종은 발주 시점에 상품이 없을 수 있기 때문이다(마이그레이션 135).
  */
 
-import { CATTLE_GRADES, ORIGIN_OPTIONS, specListRuleFor } from "./spec-options";
+import { CATTLE_BREEDS, CATTLE_GRADES, ORIGIN_OPTIONS, specListRuleFor } from "./spec-options";
 
 export const PURCHASE_ORDER_SHEET = "발주서";
-export const PURCHASE_ORDER_HEADERS = ["축종", "부위", "등급", "원산지", "수량(kg)", "단가(원/kg)"] as const;
+export const PURCHASE_ORDER_HEADERS = ["축종", "품종", "부위", "등급", "원산지", "수량(kg)", "단가(원/kg)"] as const;
 export const PURCHASE_ORDER_MAX_LINES = 300;
 
 export interface PurchaseOrderLineInput {
   category: string;
+  /** 소만 — 한우·육우·젖소. 다른 축종은 빈 문자열. */
+  breed: string;
   subcategory: string;
   grade: string;
   origin: string;
@@ -24,6 +26,7 @@ export interface PurchaseOrderLineInput {
 
 export interface ValidatedLine {
   category: string;
+  breed: string | null;
   subcategory: string | null;
   grade: string | null;
   origin: string;
@@ -57,6 +60,7 @@ export function validatePurchaseOrderLine(
   const origin = input.origin.trim();
   const subcategory = input.subcategory.trim();
   const grade = input.grade.trim();
+  const breed = input.breed.trim();
 
   if (!category) {
     return { ok: false, error: "축종을 골라주세요." };
@@ -68,6 +72,23 @@ export function validatePurchaseOrderLine(
 
   if (!origin) {
     return { ok: false, error: "원산지를 입력해주세요." };
+  }
+
+  const isCattle = category === "소";
+
+  if (isCattle) {
+    if (!breed) {
+      return {
+        ok: false,
+        error: options.trustSpec
+          ? "이 상품은 품종이 비어 있어 발주에 쓸 수 없습니다. 상품 관리에서 품종을 채워주세요."
+          : "품종을 골라주세요. (한우, 육우, 젖소)",
+      };
+    }
+
+    if (!CATTLE_BREEDS.includes(breed)) {
+      return { ok: false, error: `품종 '${breed}'은(는) 목록에 없습니다. (${CATTLE_BREEDS.join(", ")} 중 하나)` };
+    }
   }
 
   const rule = options.trustSpec ? specListRuleFor(null) : specListRuleFor(category);
@@ -106,6 +127,7 @@ export function validatePurchaseOrderLine(
     ok: true,
     line: {
       category,
+      breed: isCattle ? breed : null,
       subcategory: subcategory || null,
       grade: grade || null,
       origin,
@@ -131,6 +153,7 @@ const compact = (text: string) => text.replace(/\s/g, "").replace(/\(.*?\)/g, ""
 
 const HEADER_KEYS: Array<{ key: keyof PurchaseOrderLineInput; names: string[] }> = [
   { key: "category", names: ["축종", "카테고리"] },
+  { key: "breed", names: ["품종"] },
   { key: "subcategory", names: ["부위"] },
   { key: "grade", names: ["등급"] },
   { key: "origin", names: ["원산지"] },
@@ -147,13 +170,13 @@ export function parsePurchaseOrderCells(
   const headerIndex = cells.slice(0, 5).findIndex((row) => {
     const names = row.map(compact);
 
-    return names.includes("축종") && names.some((name) => HEADER_KEYS[4].names.includes(name));
+    return names.includes("축종") && names.some((name) => HEADER_KEYS.find((entry) => entry.key === "quantity")?.names.includes(name));
   });
 
   if (headerIndex === -1) {
     return {
       rows: [],
-      headerError: "머리글(축종·부위·등급·원산지·수량·단가)을 찾지 못했습니다. 내려받은 양식을 그대로 쓰세요.",
+      headerError: "머리글(축종·품종·부위·등급·원산지·수량·단가)을 찾지 못했습니다. 내려받은 양식을 그대로 쓰세요.",
     };
   }
 
@@ -178,6 +201,7 @@ export function parsePurchaseOrderCells(
     };
     const input: PurchaseOrderLineInput = {
       category: pick("category"),
+      breed: pick("breed"),
       subcategory: pick("subcategory"),
       grade: pick("grade"),
       origin: pick("origin"),

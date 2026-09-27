@@ -6,7 +6,7 @@ import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
 import { MANUAL_DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
 import { ORIGIN_OPTIONS } from "@/lib/products/origin-options";
 import { STOCK_ADJUST_REASON_CODES } from "@/lib/products/stock-adjust-reasons";
-import { composeIdentityName, IDENTITY_FIELD_LABELS, identityDescription, identityFieldsFor } from "@/lib/products/identity-key";
+import { CATTLE_BREEDS, composeIdentityName, IDENTITY_FIELD_LABELS, identityDescription, identityFieldsFor } from "@/lib/products/identity-key";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -74,6 +74,7 @@ interface ProductInput {
   subcategory: string | null;
   origin: string;
   grade: string | null;
+  breed: string | null;
   base_price: number;
   unit: string;
   stock_quantity: number;
@@ -96,8 +97,11 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
   const subcategory = ((formData.get("subcategory") as string) || "").trim() || null;
   const origin = ((formData.get("origin") as string) || "").trim();
   const grade = ((formData.get("grade") as string) || "").trim() || null;
-  // 키 규칙이 있는 축종(소)은 상품명을 사용자가 적지 않는다 — 부위+등급으로 서버가 만든다(identity-key.ts).
-  const identityName = composeIdentityName(category, subcategory, grade);
+  const breedRaw = ((formData.get("breed") as string) || "").trim() || null;
+  // 품종은 소에서만 의미가 있다 — 다른 축종에 값이 실려 와도 저장하지 않는다.
+  const breed = category === "소" ? breedRaw : null;
+  // 키 규칙이 있는 축종(소)은 상품명을 사용자가 적지 않는다 — 품종+부위+등급으로 서버가 만든다(identity-key.ts).
+  const identityName = composeIdentityName(category, subcategory, grade, breed);
   const name = identityName ?? rawName;
   const unit = ((formData.get("unit") as string) || "kg").trim();
   // 화면에서 천 단위 콤마를 붙여 표시하므로("25,000") 서버에서 항상 콤마를 제거하고 파싱한다.
@@ -133,7 +137,7 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
 
   // 키 축종은 부위·등급이 키의 일부라 신규 등록에서는 비워둘 수 없다(원산지는 아래에서 공통으로 검사).
   // 수정에서는 요구하지 않는다 — 이력으로 자동 생성된 "(부위 미지정)" 상품의 가격만 고치는 경우가 있어서다.
-  const identityValues = { subcategory, grade } as const;
+  const identityValues = { breed, subcategory, grade } as const;
 
   for (const field of options.requireIdentityFields ? (identityFieldsFor(category) ?? []) : []) {
     if (field !== "origin" && !identityValues[field]) {
@@ -141,6 +145,10 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
         `${category}는 ${IDENTITY_FIELD_LABELS[field]}을(를) 입력해주세요. ${identityDescription(category)}이(가) 이 상품의 정체성입니다.`
       );
     }
+  }
+
+  if (breed !== null && !CATTLE_BREEDS.includes(breed)) {
+    throw new RbacError(`품종 '${breed}'은(는) 목록에 없습니다. (${CATTLE_BREEDS.join(", ")} 중 하나)`);
   }
 
   if (!origin) {
@@ -181,6 +189,7 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
     subcategory,
     origin,
     grade,
+    breed,
     base_price: basePrice,
     unit,
     stock_quantity: stockQuantity,
@@ -203,7 +212,7 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
 async function assertNoDuplicateIdentity(
   supabase: Awaited<ReturnType<typeof createClient>>,
   wholesalerId: string,
-  key: { category: string; subcategory: string | null; grade: string | null; origin: string },
+  key: { category: string; subcategory: string | null; grade: string | null; breed: string | null; origin: string },
   excludeProductId?: string
 ): Promise<void> {
   const fields = identityFieldsFor(key.category);
@@ -311,12 +320,13 @@ export async function updateProductAction(
     // 이력으로 자동 생성된 "(부위 미지정)" 상품에 부위를 채우는 경로). 채우면 상품명도 다시 만든다.
     let subcategoryToSave = input.subcategory;
     let gradeToSave = input.grade;
+    let breedToSave = input.breed;
     let identityName: string | null = null;
 
     {
       let currentQuery = supabase
         .from("products")
-        .select("category, subcategory, grade, origin")
+        .select("category, subcategory, grade, breed, origin")
         .eq("id", productId);
 
       if (!context.isSuperAdmin) {
@@ -330,12 +340,14 @@ export async function updateProductAction(
       if (current && currentFields) {
         const currentPart = (current.subcategory as string | null)?.trim() || null;
         const currentGrade = (current.grade as string | null)?.trim() || null;
+        const currentBreed = (current.breed as string | null)?.trim() || null;
 
         subcategoryToSave = currentFields.includes("subcategory") ? (currentPart ?? input.subcategory) : input.subcategory;
         gradeToSave = currentFields.includes("grade") ? (currentGrade ?? input.grade) : input.grade;
+        breedToSave = currentFields.includes("breed") ? (currentBreed ?? input.breed) : null;
 
-        if (subcategoryToSave !== currentPart || gradeToSave !== currentGrade) {
-          identityName = composeIdentityName(current.category as string, subcategoryToSave, gradeToSave);
+        if (subcategoryToSave !== currentPart || gradeToSave !== currentGrade || breedToSave !== currentBreed) {
+          identityName = composeIdentityName(current.category as string, subcategoryToSave, gradeToSave, breedToSave);
 
           await assertNoDuplicateIdentity(
             supabase,
@@ -344,6 +356,7 @@ export async function updateProductAction(
               category: current.category as string,
               subcategory: subcategoryToSave,
               grade: gradeToSave,
+              breed: breedToSave,
               origin: current.origin as string,
             },
             productId
@@ -356,6 +369,7 @@ export async function updateProductAction(
       ...(identityName ? { name: identityName } : {}),
       subcategory: subcategoryToSave,
       grade: gradeToSave,
+      breed: breedToSave,
       base_price: input.base_price,
       unit: input.unit,
       // stock_quantity는 여기서 갱신하지 않는다 — 재고는 stock_ledger 합계로

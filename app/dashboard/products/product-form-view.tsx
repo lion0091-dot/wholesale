@@ -8,7 +8,7 @@ import { createProductAction, updateProductAction } from "./actions";
 import { ORIGIN_OPTIONS } from "@/lib/products/origin-options";
 import { MarketPriceWidget } from "@/components/market-price-widget";
 import { ProductStockBreakdownWidget } from "@/components/product-stock-breakdown";
-import { composeIdentityName, identityDescription, identityFieldsFor } from "@/lib/products/identity-key";
+import { CATTLE_BREEDS, composeIdentityName, identityDescription, identityFieldsFor } from "@/lib/products/identity-key";
 
 interface ProductFormViewProps {
   /** 수정 모드일 때 기존 상품 값 */
@@ -379,6 +379,7 @@ export function ProductFormView({
   });
   const [unit, setUnit] = useState(product?.unit ?? UNITS[0]);
   const [gradeValue, setGradeValue] = useState(product?.grade ?? "");
+  const [breedValue, setBreedValue] = useState(product?.breed ?? "");
 
   // 소처럼 정체성 키가 정해진 축종은 상품명을 적지 않는다 — 부위+등급으로 자동 조합된다(lib/products/identity-key.ts).
   // 등록 후에는 값이 이미 있는 부위·등급·원산지가 잠긴다(비어 있던 칸만 한 번 채울 수 있다).
@@ -386,10 +387,16 @@ export function ProductFormView({
   const hasIdentityKey = identityFields !== null;
   const partIsKey = identityFields?.includes("subcategory") ?? false;
   const gradeIsKey = identityFields?.includes("grade") ?? false;
+  const breedIsKey = identityFields?.includes("breed") ?? false;
   const partLocked = isEdit && partIsKey && Boolean(product?.subcategory?.trim());
   const gradeLocked = isEdit && gradeIsKey && Boolean(product?.grade?.trim());
-  const composedName = composeIdentityName(selectedCategory, selectedSubcategory, gradeValue);
-  const willRename = !isEdit || (!partLocked && Boolean(selectedSubcategory)) || (!gradeLocked && Boolean(gradeValue.trim()));
+  const breedLocked = isEdit && breedIsKey && Boolean(product?.breed?.trim());
+  const composedName = composeIdentityName(selectedCategory, selectedSubcategory, gradeValue, breedValue);
+  const willRename =
+    !isEdit ||
+    (!partLocked && Boolean(selectedSubcategory)) ||
+    (!gradeLocked && Boolean(gradeValue.trim())) ||
+    (!breedLocked && Boolean(breedValue.trim()));
   const nameToShow = hasIdentityKey && willRename ? (composedName ?? "") : product?.name;
 
   const handleCategoryChange = (next: string) => {
@@ -564,6 +571,38 @@ export function ProductFormView({
         </div>
 
         <div className="dash-form-grid-3">
+          {breedIsKey && (
+            <div>
+              <label htmlFor="breed" style={labelStyle}>
+                품종 *
+              </label>
+              {breedLocked ? (
+                <input id="breed" name="breed" type="text" readOnly value={breedValue} style={readOnlyFieldStyle} />
+              ) : (
+                <select
+                  id="breed"
+                  name="breed"
+                  required={!isEdit}
+                  value={breedValue}
+                  onChange={(event) => setBreedValue(event.target.value)}
+                  style={fieldStyle}
+                >
+                  <option value="">{isEdit ? "선택 안 함" : "품종 선택"}</option>
+                  {CATTLE_BREEDS.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {breedLocked && (
+                <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+                  등록 후에는 품종을 바꿀 수 없어요. 품종이 다르면 새 상품으로 등록해주세요.
+                </p>
+              )}
+            </div>
+          )}
+
           <div>
             <label htmlFor="subcategory" style={labelStyle}>
               {partIsKey ? "부위 *" : "부위 (선택)"}

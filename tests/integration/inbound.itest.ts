@@ -983,19 +983,19 @@ describe("resolveMappingAction", () => {
 
 describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산지)와 전표 기반 등급 채움", () => {
   async function productOf(productId: string) {
-    const { data } = await adminClient().from("products").select("name, category, subcategory, grade, origin").eq("id", productId).single();
+    const { data } = await adminClient().from("products").select("name, category, subcategory, grade, breed, origin").eq("id", productId).single();
 
-    return data as { name: string; category: string; subcategory: string | null; grade: string | null; origin: string };
+    return data as { name: string; category: string; subcategory: string | null; grade: string | null; breed: string | null; origin: string };
   }
 
-  it("상품명은 '부위 등급'으로 만들어진다(축종은 화면 태그가 붙인다)", async () => {
+  it("상품명은 '품종 부위 등급'으로 만들어지고 품종은 이력조회의 축종 원문에서 온다(축종은 화면 태그가 붙인다)", async () => {
     const traceNo = world.newTraceNo();
 
     await world.seedTrace(traceNo, { part: "채끝", grade: "1+" });
     const data = scanData(await recordScanAction({ traceNo, weight: 3, scanType: "BARCODE_SCAN" }));
 
-    expect(data.autoCreated?.productName).toBe("채끝 1+");
-    expect(await productOf(data.productId!)).toMatchObject({ name: "채끝 1+", category: "소", subcategory: "채끝", grade: "1+", origin: "국내산" });
+    expect(data.autoCreated?.productName).toBe("한우 채끝 1+");
+    expect(await productOf(data.productId!)).toMatchObject({ name: "한우 채끝 1+", category: "소", breed: "한우", subcategory: "채끝", grade: "1+", origin: "국내산" });
   });
 
   it("부위·등급이 같아도 원산지가 다르면(국내산 ↔ 수입산) 다른 상품으로 만든다", async () => {
@@ -1021,7 +1021,7 @@ describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산
     const data = scanData(await recordScanAction({ traceNo, weight: 3, scanType: "BARCODE_SCAN" }));
 
     expect(data.status).toBe("NORMAL");
-    expect(await productOf(data.productId!)).toMatchObject({ name: "양지 1", subcategory: "양지", grade: "1" });
+    expect(await productOf(data.productId!)).toMatchObject({ name: "한우 양지 1", subcategory: "양지", grade: "1" });
   });
 
   it("이력이 등급을 주면 전표 등급과 달라도 이력이 우선이다(조회는 사실, 전표는 빈칸만 메운다)", async () => {
@@ -1031,7 +1031,7 @@ describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산
     await world.createDocumentLine({ traceNo, partName: "목심", grade: "2" });
     const data = scanData(await recordScanAction({ traceNo, weight: 3, scanType: "BARCODE_SCAN" }));
 
-    expect(await productOf(data.productId!)).toMatchObject({ name: "목심 1++", grade: "1++" });
+    expect(await productOf(data.productId!)).toMatchObject({ name: "한우 목심 1++", grade: "1++" });
   });
 
   it("전표 줄이 여러 등급을 말하면(하나로 좁혀지지 않으면) 등급을 비워두고 '(부위 미지정)' 규칙은 그대로다", async () => {
@@ -1042,7 +1042,7 @@ describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산
     await world.createDocumentLine({ traceNo, partName: "설도", grade: "2" });
     const data = scanData(await recordScanAction({ traceNo, weight: 3, scanType: "BARCODE_SCAN" }));
 
-    expect(await productOf(data.productId!)).toMatchObject({ name: "설도", subcategory: "설도", grade: null });
+    expect(await productOf(data.productId!)).toMatchObject({ name: "한우 설도", subcategory: "설도", grade: null });
   });
 });
 

@@ -38,6 +38,7 @@ export interface PurchaseOrderRow {
     line_no: number;
     product_id?: string | null;
     category: string;
+    breed?: string | null;
     subcategory: string | null;
     grade: string | null;
     origin: string;
@@ -105,6 +106,7 @@ async function copyText(text: string) {
 const today = () => new Date().toISOString().slice(0, 10);
 const emptyLine = (): PurchaseOrderLineInput => ({
   category: "",
+  breed: "",
   subcategory: "",
   grade: "",
   origin: "국내산",
@@ -115,8 +117,8 @@ const emptyLine = (): PurchaseOrderLineInput => ({
 
 const isFilled = (line: PurchaseOrderLineInput) => Object.values(line).some((value) => (value ?? "").trim() !== "" && value !== "국내산");
 
-function specText(line: { category: string; subcategory: string | null; grade: string | null; origin: string }): string {
-  return [line.category, line.subcategory, line.grade, line.origin].filter(Boolean).join(" ");
+function specText(line: { category: string; breed?: string | null; subcategory: string | null; grade: string | null; origin: string }): string {
+  return [line.category, line.breed, line.subcategory, line.grade, line.origin].filter(Boolean).join(" ");
 }
 
 export function PurchaseOrderView({ canManage, categories, subcategoriesByCategory, suppliers, orders, products, recentProductIds }: Props) {
@@ -263,6 +265,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
             note: order.note,
             lines: order.purchase_order_lines.map((line) => ({
               category: line.category,
+              breed: line.breed,
               subcategory: line.subcategory,
               grade: line.grade,
               origin: line.origin,
@@ -355,7 +358,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
               <div style={{ display: "grid", gap: "8px" }}>
                 {lines.map((line, index) => {
                   const unlinked = !line.productId && Boolean(line.category);
-                  const lineSpec = { category: line.category, subcategory: line.subcategory, grade: line.grade, origin: line.origin };
+                  const lineSpec = { category: line.category, breed: line.breed, subcategory: line.subcategory, grade: line.grade, origin: line.origin };
 
                   return (
                     <div key={index} style={{ border: `1px solid ${rowErrors[index] ? "#fca5a5" : "#e2e8f0"}`, borderRadius: "8px", padding: "8px", backgroundColor: rowErrors[index] ? "#fef2f2" : "#f8fafc" }}>

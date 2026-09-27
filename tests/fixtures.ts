@@ -11,6 +11,7 @@ export function makeProduct(overrides: Partial<Product> = {}): Product {
     subcategory: "등심",
     origin: "국내산",
     grade: "1++",
+    breed: "한우",
     base_price: 30000,
     unit: "kg",
     stock_quantity: 10,

@@ -1,5 +1,5 @@
 /**
- * 발주서를 카톡 본문에 붙여 넣을 문구로 만든다. 축종별로 묶고 한 줄에 "부위 등급 원산지 수량"만 적는다.
+ * 발주서를 카톡 본문에 붙여 넣을 문구로 만든다. 축종별로 묶고 한 줄에 "품종 부위 등급 원산지 수량"만 적는다.
  * 카톡 본문은 표가 없으니 줄이 많아도 읽히게 하는 것이 목적이다. 단가는 옵션이다(선택 입력이라 없는 줄도 있다).
  */
 export interface PurchaseOrderMessageInput {
@@ -9,6 +9,7 @@ export interface PurchaseOrderMessageInput {
   note: string | null;
   lines: Array<{
     category: string;
+    breed?: string | null;
     subcategory: string | null;
     grade: string | null;
     origin: string;
@@ -34,7 +35,7 @@ export function buildPurchaseOrderMessage(order: PurchaseOrderMessageInput, opti
   const groups = new Map<string, string[]>();
 
   for (const line of order.lines) {
-    const spec = [line.subcategory, line.grade, line.origin].filter(Boolean).join(" ");
+    const spec = [line.breed, line.subcategory, line.grade, line.origin].filter(Boolean).join(" ");
     const price = options.includePrice && line.unitPrice !== null ? ` · ${amount(line.unitPrice)}원/${line.unit}` : "";
     const rows = groups.get(line.category) ?? [];
 

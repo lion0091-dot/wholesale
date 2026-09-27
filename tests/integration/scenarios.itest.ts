@@ -230,11 +230,11 @@ describe("SC-3 상품 중복 제어 — 스캔 자동 생성 → 같은 키 손 
       .eq("grade", "1+");
 
     expect(same).toHaveLength(1);
-    expect(same![0].name).toBe(`${p} 1+`);
+    expect(same![0].name).toBe(`한우 ${p} 1+`);
     expect(await stockOf([...productIds][0])).toBeCloseTo(12);
 
     // (a) 상품 관리 화면에서 같은 소 상품을 손으로 등록 → 같은 키라 거부
-    const manual = await createProductAction(productForm({ category: "소", subcategory: p, grade: "1+", name: "" }));
+    const manual = await createProductAction(productForm({ category: "소", breed: "한우", subcategory: p, grade: "1+", name: "" }));
 
     expect(manual.success).toBe(false);
     expect(manual.error).toContain("이미 같은 상품이 등록되어 있습니다");
@@ -249,7 +249,7 @@ describe("SC-3 상품 중복 제어 — 스캔 자동 생성 → 같은 키 손 
 
     // (c) 부위·등급이 비어 자동 생성된 상품을 수정으로 채우다가 이미 있는 키와 같아지면 거부
     const blank = await world.createProduct({ category: "소", subcategory: null, grade: null, origin: "국내산", name: "(부위 미지정)" });
-    const clash = await updateProductAction(blank.id, productForm({ category: "소", subcategory: p, grade: "1+", origin: "국내산" }));
+    const clash = await updateProductAction(blank.id, productForm({ category: "소", breed: "한우", subcategory: p, grade: "1+", origin: "국내산" }));
 
     expect(clash.success).toBe(false);
     expect(clash.error).toContain("이미 같은 상품이 등록되어 있습니다");
@@ -259,6 +259,7 @@ describe("SC-3 상품 중복 제어 — 스캔 자동 생성 → 같은 키 손 
       wholesaler_id: world.wholesalerA,
       name: "직접 삽입",
       category: "소",
+      breed: "한우",
       subcategory: p,
       grade: "1+",
       origin: "국내산",

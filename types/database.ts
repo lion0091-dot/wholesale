@@ -111,6 +111,8 @@ export interface Product {
   subcategory: string | null;
   origin: string;
   grade: string | null;
+  /** 소의 품종(한우·육우·젖소). 소가 아니거나 품종 도입 전 상품은 null. */
+  breed: string | null;
   base_price: number;
   unit: string;
   stock_quantity: number;

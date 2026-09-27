@@ -77,6 +77,7 @@ export function buildSampleProduct(kind: ProductSampleKey): { product: SamplePro
     subcategory: null,
     origin: "국내산",
     grade: sample.grade,
+    breed: "한우",
     base_price: 0,
     unit: "kg",
     stock_quantity: sample.stock,

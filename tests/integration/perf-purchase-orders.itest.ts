@@ -73,12 +73,12 @@ beforeAll(async () => {
   // 상품 5,000개: 소 360개(실제 목록 값 조합 전부), 나머지는 키 없는 가공육 — 실제 업체는 소·돼지·가공육이 섞여 있다.
   const rows = Array.from({ length: PRODUCTS }, (_, index) =>
     index < BEEF_COMBOS.length
-      ? { id: randomUUID(), wholesaler_id: world.wholesalerA, name: `${BEEF_COMBOS[index].part} ${BEEF_COMBOS[index].grade}`, category: "소", subcategory: BEEF_COMBOS[index].part, grade: BEEF_COMBOS[index].grade, origin: BEEF_COMBOS[index].origin, base_price: 0, unit: "kg", stock_quantity: 0, is_active: false }
+      ? { id: randomUUID(), wholesaler_id: world.wholesalerA, name: `${BEEF_COMBOS[index].part} ${BEEF_COMBOS[index].grade}`, category: "소", breed: "한우", subcategory: BEEF_COMBOS[index].part, grade: BEEF_COMBOS[index].grade, origin: BEEF_COMBOS[index].origin, base_price: 0, unit: "kg", stock_quantity: 0, is_active: false }
       : { id: randomUUID(), wholesaler_id: world.wholesalerA, name: `성능가공-${index}`, category: "가공육", subcategory: null, grade: null, origin: "국내산", base_price: 0, unit: "kg", stock_quantity: 0, is_active: false }
   );
 
   await insertChunks("products", rows);
-  beef = rows.slice(0, BEEF_COMBOS.length).map((row) => ({ id: row.id, name: row.name, category: "소", subcategory: row.subcategory, grade: row.grade, origin: row.origin }) as ProductOption);
+  beef = rows.slice(0, BEEF_COMBOS.length).map((row) => ({ id: row.id, name: row.name, category: "소", breed: "한우", subcategory: row.subcategory, grade: row.grade, origin: row.origin }) as ProductOption);
 }, 180_000);
 
 afterAll(async () => {
@@ -118,7 +118,7 @@ describe("발주서 화면·저장 경로 — 상품 5,000개, 300줄", () => {
       for (let i = 0; i < LINES; i += 1) {
         const combo = BEEF_COMBOS[i % BEEF_COMBOS.length];
 
-      findProductForSpec({ category: "소", subcategory: combo.part, grade: combo.grade, origin: combo.origin }, products);
+      findProductForSpec({ category: "소", breed: "한우", subcategory: combo.part, grade: combo.grade, origin: combo.origin }, products);
       }
     });
 
@@ -131,8 +131,8 @@ describe("발주서 화면·저장 경로 — 상품 5,000개, 300줄", () => {
 
     const lines = Array.from({ length: LINES }, (_, index) =>
       index % 2 === 0
-        ? { category: "", subcategory: "", grade: "", origin: "", quantity: "10", unitPrice: "", productId: beef[index].id }
-        : { category: "소", subcategory: BEEF_COMBOS[index].part, grade: BEEF_COMBOS[index].grade, origin: BEEF_COMBOS[index].origin, quantity: "10", unitPrice: "", productId: "" }
+        ? { category: "", breed: "", subcategory: "", grade: "", origin: "", quantity: "10", unitPrice: "", productId: beef[index].id }
+        : { category: "소", breed: "한우", subcategory: BEEF_COMBOS[index].part, grade: BEEF_COMBOS[index].grade, origin: BEEF_COMBOS[index].origin, quantity: "10", unitPrice: "", productId: "" }
     );
     const { value, ms } = await timed("발주서 300줄 저장(액션)", () =>
       createPurchaseOrderAction({ supplierId, orderedOn: "2026-09-28", expectedOn: "", note: "", lines })
@@ -151,10 +151,10 @@ describe("발주서 화면·저장 경로 — 상품 5,000개, 300줄", () => {
   it("300줄 엑셀을 올려 읽는 시간이 상한 안이다", async () => {
     await actAs(world.users.ownerA);
 
-    const rows: unknown[][] = [["축종", "부위", "등급", "원산지", "수량(kg)"]];
+    const rows: unknown[][] = [["축종", "품종", "부위", "등급", "원산지", "수량(kg)"]];
 
     for (let i = 0; i < LINES; i += 1) {
-      rows.push(["소", BEEF_COMBOS[i].part, BEEF_COMBOS[i].grade, BEEF_COMBOS[i].origin, "10"]);
+      rows.push(["소", "한우", BEEF_COMBOS[i].part, BEEF_COMBOS[i].grade, BEEF_COMBOS[i].origin, "10"]);
     }
 
     const buffer = await writeExcelFile([{ data: rows, sheet: "발주서" }] as never).toBuffer();
@@ -178,7 +178,7 @@ describe("발주서 화면·저장 경로 — 상품 5,000개, 300줄", () => {
     await insertChunks(
       "purchase_order_lines",
       orders.flatMap((order) =>
-        Array.from({ length: LINES }, (_, index) => ({ purchase_order_id: order.id, wholesaler_id: world.wholesalerA, line_no: index + 1, category: "소", subcategory: BEEF_COMBOS[index].part, grade: BEEF_COMBOS[index].grade, origin: BEEF_COMBOS[index].origin, quantity: 10, product_id: beef[index].id }))
+        Array.from({ length: LINES }, (_, index) => ({ purchase_order_id: order.id, wholesaler_id: world.wholesalerA, line_no: index + 1, category: "소", breed: "한우", subcategory: BEEF_COMBOS[index].part, grade: BEEF_COMBOS[index].grade, origin: BEEF_COMBOS[index].origin, quantity: 10, product_id: beef[index].id }))
       ),
       1000
     );
@@ -211,7 +211,7 @@ describe("일반적인 규모 — 최근 발주서 60건 × 20줄, 상품 300개
     await insertChunks(
       "purchase_order_lines",
       orders.flatMap((order) =>
-        Array.from({ length: 20 }, (_, index) => ({ purchase_order_id: order.id, wholesaler_id: world.wholesalerB, line_no: index + 1, category: "소", subcategory: BEEF_COMBOS[index].part, grade: BEEF_COMBOS[index].grade, origin: BEEF_COMBOS[index].origin, quantity: 10 }))
+        Array.from({ length: 20 }, (_, index) => ({ purchase_order_id: order.id, wholesaler_id: world.wholesalerB, line_no: index + 1, category: "소", breed: "한우", subcategory: BEEF_COMBOS[index].part, grade: BEEF_COMBOS[index].grade, origin: BEEF_COMBOS[index].origin, quantity: 10 }))
       ),
       1000
     );
@@ -272,7 +272,7 @@ describe("동시 부하 — 업체 20곳이 같은 시각에 300줄 발주서를
         expect(order.error, "발주서 헤더").toBeNull();
 
         const lines = await actor.client.from("purchase_order_lines").insert(
-          Array.from({ length: LINES }, (_, index) => ({ purchase_order_id: order.data!.id, wholesaler_id: actor.wholesalerId, line_no: index + 1, category: "소", subcategory: GRADE_PARTS[index % 9], grade: "1++", origin: "국내산", quantity: 10 }))
+          Array.from({ length: LINES }, (_, index) => ({ purchase_order_id: order.data!.id, wholesaler_id: actor.wholesalerId, line_no: index + 1, category: "소", breed: "한우", subcategory: GRADE_PARTS[index % 9], grade: "1++", origin: "국내산", quantity: 10 }))
         );
 
         expect(lines.error, "발주서 줄").toBeNull();

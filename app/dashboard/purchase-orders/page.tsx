@@ -41,7 +41,7 @@ export default async function PurchaseOrdersPage() {
       supabase
         .from("purchase_orders")
         .select(
-          "id, supplier_id, supplier_name, ordered_on, expected_on, note, status, purchase_order_lines ( line_no, product_id, category, subcategory, grade, origin, quantity, unit, unit_price )"
+          "id, supplier_id, supplier_name, ordered_on, expected_on, note, status, purchase_order_lines ( line_no, product_id, category, breed, subcategory, grade, origin, quantity, unit, unit_price )"
         )
         .eq("wholesaler_id", scope.wholesalerId)
         .order("ordered_on", { ascending: false })

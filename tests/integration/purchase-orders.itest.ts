@@ -33,7 +33,7 @@ const input = (patch: Partial<CreatePurchaseOrderInput> = {}): CreatePurchaseOrd
   orderedOn: "2026-09-27",
   expectedOn: "",
   note: "",
-  lines: [{ category: "소", subcategory: "등심", grade: "1++", origin: "국내산", quantity: "50", unitPrice: "45,000" }],
+  lines: [{ category: "소", breed: "한우", subcategory: "등심", grade: "1++", origin: "국내산", quantity: "50", unitPrice: "45,000" }],
   ...patch,
 });
 
@@ -134,8 +134,8 @@ describe("createPurchaseOrderAction", () => {
         expectedOn: "2026-09-29",
         note: " 오전 도착 ",
         lines: [
-          { category: "소", subcategory: "등심", grade: "1++", origin: "국내산", quantity: "50", unitPrice: "45,000" },
-          { category: "돼지", subcategory: "", grade: "", origin: "국내산", quantity: "1,200.5", unitPrice: "" },
+          { category: "소", breed: "한우", subcategory: "등심", grade: "1++", origin: "국내산", quantity: "50", unitPrice: "45,000" },
+          { category: "돼지", breed: "", subcategory: "", grade: "", origin: "국내산", quantity: "1,200.5", unitPrice: "" },
         ],
       })
     );
@@ -147,7 +147,7 @@ describe("createPurchaseOrderAction", () => {
 
     expect(row).toMatchObject({ wholesaler_id: world.wholesalerA, supplier_id: supplierAId, supplier_name: `테스트축산-${world.runId}`, note: "오전 도착", status: "OPEN", expected_on: "2026-09-29" });
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toMatchObject({ line_no: 1, category: "소", subcategory: "등심", grade: "1++", quantity: 50, unit_price: 45000 });
+    expect(lines[0]).toMatchObject({ line_no: 1, category: "소", breed: "한우", subcategory: "등심", grade: "1++", quantity: 50, unit_price: 45000 });
     expect(lines[1]).toMatchObject({ line_no: 2, category: "돼지", subcategory: null, grade: null, quantity: 1200.5, unit_price: null });
   });
 
@@ -160,9 +160,11 @@ describe("createPurchaseOrderAction", () => {
       [{ orderedOn: "" }, "발주일"],
       [{ expectedOn: "2026-09-01", orderedOn: "2026-09-27" }, "빠를 수 없습니다"],
       [{ lines: [] }, "한 줄 이상"],
-      [{ lines: [{ category: "말", subcategory: "", grade: "", origin: "국내산", quantity: "5", unitPrice: "" }] }, "알 수 없습니다"],
-      [{ lines: [{ category: "소", subcategory: "", grade: "", origin: "", quantity: "5", unitPrice: "" }] }, "원산지"],
-      [{ lines: [{ category: "소", subcategory: "", grade: "", origin: "국내산", quantity: "0", unitPrice: "" }] }, "0보다 큰"],
+      [{ lines: [{ category: "말", breed: "", subcategory: "", grade: "", origin: "국내산", quantity: "5", unitPrice: "" }] }, "알 수 없습니다"],
+      [{ lines: [{ category: "소", breed: "한우", subcategory: "", grade: "", origin: "", quantity: "5", unitPrice: "" }] }, "원산지"],
+      [{ lines: [{ category: "소", breed: "한우", subcategory: "", grade: "", origin: "국내산", quantity: "0", unitPrice: "" }] }, "0보다 큰"],
+      [{ lines: [{ category: "소", breed: "", subcategory: "등심", grade: "1++", origin: "국내산", quantity: "5", unitPrice: "" }] }, "품종"],
+      [{ lines: [{ category: "소", breed: "흑우", subcategory: "등심", grade: "1++", origin: "국내산", quantity: "5", unitPrice: "" }] }, "품종"],
       [{ note: "가".repeat(501) }, "500자"],
     ];
 
@@ -184,8 +186,8 @@ describe("createPurchaseOrderAction", () => {
       input({
         note: marker,
         lines: [
-          { category: "소", subcategory: "", grade: "", origin: "국내산", quantity: "5", unitPrice: "" },
-          { category: "소", subcategory: "", grade: "", origin: "국내산", quantity: "x", unitPrice: "" },
+          { category: "소", breed: "한우", subcategory: "", grade: "", origin: "국내산", quantity: "5", unitPrice: "" },
+          { category: "소", breed: "한우", subcategory: "", grade: "", origin: "국내산", quantity: "x", unitPrice: "" },
         ],
       })
     );
@@ -234,16 +236,16 @@ describe("setPurchaseOrderStatusAction", () => {
 describe("parsePurchaseOrderFileAction — 엑셀 올리기", () => {
   it("내려받은 양식에 채운 줄을 읽고 오류 줄에는 이유를 붙인다(저장은 하지 않는다)", async () => {
     const file = await xlsxFile([
-      ["축종", "부위", "등급", "원산지", "수량(kg)", "단가(원/kg)"],
-      ["소", "등심", "1++", "국내산", 50, 45000],
-      ["말", "", "", "국내산", 5, ""],
+      ["축종", "품종", "부위", "등급", "원산지", "수량(kg)", "단가(원/kg)"],
+      ["소", "한우", "등심", "1++", "국내산", 50, 45000],
+      ["말", "", "", "", "국내산", 5, ""],
     ]);
     const before = (await adminClient().from("purchase_orders").select("id", { count: "exact", head: true }).eq("wholesaler_id", world.wholesalerA)).count;
     const result = await parsePurchaseOrderFileAction(fileForm(file));
 
     expect(result.success).toBe(true);
     expect(result.data!.rows).toHaveLength(2);
-    expect(result.data!.rows[0]).toMatchObject({ error: null, input: { category: "소", subcategory: "등심", quantity: "50", unitPrice: "45000" } });
+    expect(result.data!.rows[0]).toMatchObject({ error: null, input: { category: "소", breed: "한우", subcategory: "등심", quantity: "50", unitPrice: "45000" } });
     expect(result.data!.rows[1].error).toContain("알 수 없습니다");
 
     const after = (await adminClient().from("purchase_orders").select("id", { count: "exact", head: true }).eq("wholesaler_id", world.wholesalerA)).count;
@@ -376,7 +378,7 @@ describe("DB 방어선", () => {
       purchase_order_id: created.data!.id,
       wholesaler_id: world.wholesalerB,
       line_no: 99,
-      category: "소",
+      category: "소", breed: "한우",
       origin: "국내산",
       quantity: 1,
     });
@@ -386,7 +388,7 @@ describe("DB 방어선", () => {
 
   it("수량 0 이하·같은 줄 번호 중복은 CHECK·UNIQUE가 막는다", async () => {
     const created = await createPurchaseOrderAction(input({ note: "제약 시험" }));
-    const base = { purchase_order_id: created.data!.id, wholesaler_id: world.wholesalerA, category: "소", origin: "국내산" };
+    const base = { purchase_order_id: created.data!.id, wholesaler_id: world.wholesalerA, category: "소", breed: "한우", origin: "국내산" };
     const zero = await adminClient().from("purchase_order_lines").insert({ ...base, line_no: 50, quantity: 0 });
     const duplicate = await adminClient().from("purchase_order_lines").insert({ ...base, line_no: 1, quantity: 3 });
 
@@ -396,22 +398,22 @@ describe("DB 방어선", () => {
 });
 
 describe("발주서 줄 ↔ 등록된 상품 연결 (마이그레이션 138)", () => {
-  const line = (patch: Record<string, string> = {}) => ({ category: "소", subcategory: "등심", grade: "1++", origin: "국내산", quantity: "10", unitPrice: "", productId: "", ...patch });
+  const line = (patch: Record<string, string> = {}) => ({ category: "소", breed: "한우", subcategory: "등심", grade: "1++", origin: "국내산", quantity: "10", unitPrice: "", productId: "", ...patch });
   const linesOf = async (id: string) => [...(await orderRow(id)).purchase_order_lines].sort((a, b) => Number(a.line_no) - Number(b.line_no));
 
   it("상품을 고른 줄은 스펙을 상품에서 가져오고(보낸 값은 무시), 안 고른 줄은 스펙이 같은 상품에 자동으로 잇는다", async () => {
-    const beef = await world.createProduct({ category: "소", subcategory: "우삼겹", grade: "2", origin: "미국산", name: "우삼겹 2" });
-    const legacy = await world.createProduct({ category: "소", subcategory: "사태", grade: "3", origin: "호주", name: "사태 3" });
+    const beef = await world.createProduct({ category: "소", breed: "한우", subcategory: "우삼겹", grade: "2", origin: "미국산", name: "우삼겹 2" });
+    const legacy = await world.createProduct({ category: "소", breed: "한우", subcategory: "사태", grade: "3", origin: "호주", name: "사태 3" });
     const pork = await world.createProduct({ category: "돼지", subcategory: "갈비", origin: "국내산", name: "갈비" });
 
     const created = await createPurchaseOrderAction(
       input({
         lines: [
           line({ productId: beef.id, category: "돼지", subcategory: "엉뚱", grade: "특", origin: "한국" }),
-          line({ category: "소", subcategory: "우삼겹", grade: "2", origin: "미국산" }),
+          line({ category: "소", breed: "한우", subcategory: "우삼겹", grade: "2", origin: "미국산" }),
           line({ category: "돼지", subcategory: "갈비", grade: "아무거나", origin: "국내산" }),
-          line({ category: "소", subcategory: "다짐육", grade: "3", origin: "호주산" }),
-          line({ category: "소", subcategory: "사태", grade: "3", origin: "호주산" }),
+          line({ category: "소", breed: "한우", subcategory: "다짐육", grade: "3", origin: "호주산" }),
+          line({ category: "소", breed: "한우", subcategory: "사태", grade: "3", origin: "호주산" }),
         ],
       })
     );
@@ -420,7 +422,7 @@ describe("발주서 줄 ↔ 등록된 상품 연결 (마이그레이션 138)", (
 
     const lines = await linesOf(created.data!.id);
 
-    expect(lines[0]).toMatchObject({ product_id: beef.id, category: "소", subcategory: "우삼겹", grade: "2", origin: "미국산" });
+    expect(lines[0]).toMatchObject({ product_id: beef.id, category: "소", breed: "한우", subcategory: "우삼겹", grade: "2", origin: "미국산" });
     expect(lines[1]).toMatchObject({ product_id: beef.id });
     expect(lines[2]).toMatchObject({ product_id: pork.id });
     expect(lines[3].product_id).toBeNull();
@@ -445,32 +447,33 @@ describe("발주서 줄 ↔ 등록된 상품 연결 (마이그레이션 138)", (
     }
 
     const tenantMismatch = await adminClient().from("purchase_orders").insert({ wholesaler_id: world.wholesalerA, supplier_id: supplierAId, supplier_name: "x" }).select("id").single();
-    const dbGuard = await adminClient().from("purchase_order_lines").insert({ purchase_order_id: tenantMismatch.data!.id, wholesaler_id: world.wholesalerA, line_no: 1, category: "소", origin: "국내산", quantity: 1, product_id: other!.id });
+    const dbGuard = await adminClient().from("purchase_order_lines").insert({ purchase_order_id: tenantMismatch.data!.id, wholesaler_id: world.wholesalerA, line_no: 1, category: "소", breed: "한우", origin: "국내산", quantity: 1, product_id: other!.id });
 
     expect(dbGuard.error?.message).toContain("PURCHASE_ORDER_PRODUCT_MISMATCH");
   });
 
   it("엑셀을 올리면 스펙이 맞는 줄은 상품 ID가 채워지고 맞는 상품이 없는 줄은 비어 있다", async () => {
-    const product = await world.createProduct({ category: "소", subcategory: "채끝", grade: "1", origin: "호주", name: "채끝 1" });
+    const product = await world.createProduct({ category: "소", breed: "한우", subcategory: "채끝", grade: "1", origin: "호주", name: "채끝 1" });
     const result = await parsePurchaseOrderFileAction(
       fileForm(
         await xlsxFile([
-          ["축종", "부위", "등급", "원산지", "수량(kg)"],
-          ["소", "채끝", "1", "호주산", "20"],
-          ["소", "채끝", "1", "캐나다산", "20"],
-          ["소", "등신", "1", "국내산", "20"],
+          ["축종", "품종", "부위", "등급", "원산지", "수량(kg)"],
+          ["소", "한우", "채끝", "1", "호주산", "20"],
+          ["소", "한우", "채끝", "1", "캐나다산", "20"],
+          ["소", "육우", "채끝", "1", "호주산", "20"],
+          ["소", "한우", "등신", "1", "국내산", "20"],
         ])
       )
     );
 
     expect(result.success).toBe(true);
-    expect(result.data!.rows.map((row) => row.input.productId)).toEqual([product.id, "", ""]);
-    expect(result.data!.rows[2].error).toContain("목록에 없습니다");
+    expect(result.data!.rows.map((row) => row.input.productId)).toEqual([product.id, "", "", ""]);
+    expect(result.data!.rows[3].error).toContain("목록에 없습니다");
   });
 });
 
 describe("createPurchaseOrderProductAction — 발주서에서 새 품목 만들기", () => {
-  const spec = (patch: Record<string, string> = {}) => ({ category: "소", subcategory: "다짐육", grade: "1+", origin: "브라질산", name: "", ...patch });
+  const spec = (patch: Record<string, string> = {}) => ({ category: "소", breed: "한우", subcategory: "다짐육", grade: "1+", origin: "브라질산", name: "", ...patch });
   const productRow = async (id: string) => (await adminClient().from("products").select("*").eq("id", id).single()).data as Record<string, unknown>;
 
   it("소는 이름이 자동 조합되고 판매중지·0원으로 만들어지며, 같은 품목을 다시 만들면 새로 만들지 않는다", async () => {
@@ -478,12 +481,24 @@ describe("createPurchaseOrderProductAction — 발주서에서 새 품목 만들
 
     expect(first.success).toBe(true);
     expect(first.data!.created).toBe(true);
-    expect(await productRow(first.data!.product.id)).toMatchObject({ wholesaler_id: world.wholesalerA, name: "다짐육 1+", category: "소", origin: "브라질산", is_active: false, base_price: 0, stock_quantity: 0 });
+    expect(await productRow(first.data!.product.id)).toMatchObject({ wholesaler_id: world.wholesalerA, name: "한우 다짐육 1+", category: "소", breed: "한우", origin: "브라질산", is_active: false, base_price: 0, stock_quantity: 0 });
 
     const again = await createPurchaseOrderProductAction(spec());
 
     expect(again.data).toMatchObject({ created: false });
     expect(again.data!.product.id).toBe(first.data!.product.id);
+
+    // 품종이 다르면 같은 부위·등급·원산지라도 별개 상품이다.
+    const yuk = await createPurchaseOrderProductAction(spec({ breed: "육우" }));
+
+    expect(yuk.data).toMatchObject({ created: true });
+    expect(yuk.data!.product.id).not.toBe(first.data!.product.id);
+    expect(await productRow(yuk.data!.product.id)).toMatchObject({ name: "육우 다짐육 1+", breed: "육우" });
+
+    const noBreed = await createPurchaseOrderProductAction(spec({ breed: "" }));
+
+    expect(noBreed.success).toBe(false);
+    expect(noBreed.error).toContain("품종");
   });
 
   it("돼지·닭·오리·계란은 키 칸만으로 만들어지고 오류는 안내문으로 거부한다", async () => {

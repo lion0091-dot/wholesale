@@ -229,7 +229,24 @@ describe("createProductAction", () => {
     }
 
     expect((await create({ category: "닭", origin: "한국" })).error).toContain("목록에 없습니다");
-    expect((await create({ category: "소", subcategory: "등심", grade: "1++", origin: "한국" })).error).toContain("목록에 없습니다");
+    expect((await create({ category: "소", breed: "한우", subcategory: "등심", grade: "1++", origin: "한국" })).error).toContain("목록에 없습니다");
+
+    // 소는 품종(한우·육우·젖소)이 정체성이다 — 없으면 거부, 목록 밖이면 거부, 품종이 다르면 같은 부위·등급·원산지라도 별개 상품.
+    const cattle = (fields: Record<string, string>) => create({ category: "소", subcategory: "등심", grade: "1++", origin: "국내산", ...fields });
+
+    expect((await cattle({ breed: "" })).error).toContain("품종");
+    expect((await cattle({ breed: "흑우" })).error).toContain("목록에 없습니다");
+
+    const hanwoo = await cattle({ breed: "한우" });
+    const yukwoo = await cattle({ breed: "육우" });
+
+    expect(hanwoo.success).toBe(true);
+    expect(yukwoo.success).toBe(true);
+    expect(await nameOf(hanwoo.data!.id)).toBe("한우 등심 1++");
+    expect(await nameOf(yukwoo.data!.id)).toBe("육우 등심 1++");
+    expect((await row(hanwoo.data!.id)).breed).toBe("한우");
+    expect((await cattle({ breed: "한우" })).error).toContain("이미 같은 상품이 등록되어 있습니다");
+    expect((await create({ category: "돼지", subcategory: "목살", breed: "한우" })).success).toBe(true);
 
     for (const category of ["양", "가공육"]) {
       expect((await create({ category, subcategory: "", name: `${category} 등록 상품`, origin: "한국" })).success).toBe(true);

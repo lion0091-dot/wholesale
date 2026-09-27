@@ -8,11 +8,13 @@ export interface ProductOption {
   category: string;
   subcategory: string | null;
   grade: string | null;
+  breed: string | null;
   origin: string | null;
 }
 
 export interface LineSpec {
   category: string;
+  breed: string;
   subcategory: string;
   grade: string;
   origin: string;
@@ -21,7 +23,7 @@ export interface LineSpec {
 const clean = (value: string | null | undefined) => (value ?? "").trim();
 
 /**
- * 목록·줄에 보이는 한 줄 이름 — 정체성 키가 있는 축종은 키 칸만("소 등심 1++ 국내산", 돼지는 등급 없이, 닭·오리·계란은 "닭 국내산"),
+ * 목록·줄에 보이는 한 줄 이름 — 정체성 키가 있는 축종은 키 칸만("소 한우 등심 1++ 국내산", 돼지는 등급 없이, 닭·오리·계란은 "닭 국내산"),
  * 키가 없는 축종(양·가공육)은 스펙만으로 상품을 못 가르니 상품명을 넣는다.
  */
 export function productSpecLabel(product: ProductOption): string {
@@ -33,6 +35,7 @@ export function productSpecLabel(product: ProductOption): string {
 
   return [
     product.category,
+    fields.includes("breed") ? product.breed : null,
     fields.includes("subcategory") ? product.subcategory : null,
     fields.includes("grade") ? product.grade : null,
     product.origin,
@@ -51,6 +54,7 @@ export function specFromProduct(product: ProductOption): LineSpec {
 
   return {
     category: product.category,
+    breed: clean(product.breed),
     subcategory: clean(product.subcategory) || (hasKey ? "" : clean(product.name)),
     grade: clean(product.grade),
     origin: clean(product.origin),

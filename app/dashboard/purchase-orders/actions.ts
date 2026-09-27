@@ -237,7 +237,7 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
         throw new RbacError(`${index + 1}번째 줄: ${result.error}`);
       }
 
-      const matched = linked ?? findProductForSpec({ ...result.line, subcategory: result.line.subcategory ?? "", grade: result.line.grade ?? "" }, products);
+      const matched = linked ?? findProductForSpec({ ...result.line, breed: result.line.breed ?? "", subcategory: result.line.subcategory ?? "", grade: result.line.grade ?? "" }, products);
 
       return { ...result.line, productId: matched?.id ?? null };
     });
@@ -265,6 +265,7 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
         wholesaler_id: wholesalerId,
         line_no: index + 1,
         category: line.category,
+        breed: line.breed,
         subcategory: line.subcategory,
         grade: line.grade,
         origin: line.origin,
@@ -289,6 +290,7 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
 
 export interface CreatePurchaseOrderProductInput {
   category: string;
+  breed: string;
   subcategory: string;
   grade: string;
   origin: string;
@@ -309,6 +311,7 @@ export async function createPurchaseOrderProductAction(
     const products = await loadProductOptions(supabase, wholesalerId, { categories: [(input.category ?? "").trim()] });
     const spec = {
       category: (input.category ?? "").trim(),
+      breed: (input.breed ?? "").trim(),
       subcategory: (input.subcategory ?? "").trim(),
       grade: (input.grade ?? "").trim(),
       origin: (input.origin ?? "").trim(),
@@ -320,7 +323,7 @@ export async function createPurchaseOrderProductAction(
     }
 
     const fields = identityFieldsFor(spec.category);
-    const name = fields ? (composeIdentityName(spec.category, spec.subcategory, spec.grade) ?? spec.category) : (input.name ?? "").trim();
+    const name = fields ? (composeIdentityName(spec.category, spec.subcategory, spec.grade, spec.breed) ?? spec.category) : (input.name ?? "").trim();
 
     if (fields?.includes("subcategory") && !spec.subcategory) {
       throw new RbacError("부위를 골라주세요.");
@@ -348,6 +351,7 @@ export async function createPurchaseOrderProductAction(
         category: spec.category,
         subcategory: spec.subcategory || null,
         grade: spec.grade || null,
+        breed: spec.category === "소" ? spec.breed : null,
         origin: spec.origin,
         base_price: 0,
         unit: "kg",
@@ -355,7 +359,7 @@ export async function createPurchaseOrderProductAction(
         is_active: false,
         description: "발주서 작성 중 등록됨 — 판매가를 넣고 판매중으로 바꾸면 고객에게 보입니다.",
       })
-      .select("id, name, category, subcategory, grade, origin")
+      .select("id, name, category, subcategory, grade, breed, origin")
       .single();
 
     if (error?.code === "23505") {

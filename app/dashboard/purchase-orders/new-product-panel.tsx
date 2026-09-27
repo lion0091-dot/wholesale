@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { identityFieldsFor } from "@/lib/products/identity-key";
-import { CATTLE_GRADES, ORIGIN_OPTIONS, specListRuleFor } from "@/lib/purchase-orders/spec-options";
+import { CATTLE_BREEDS, CATTLE_GRADES, ORIGIN_OPTIONS, specListRuleFor } from "@/lib/purchase-orders/spec-options";
 import type { LineSpec, ProductOption } from "@/lib/purchase-orders/product-match";
 import { createPurchaseOrderProductAction } from "./actions";
 
@@ -38,6 +38,7 @@ const buttonStyle: React.CSSProperties = {
 /** 목록에 없는 품목을 칸별로 골라 상품 관리에 등록한다(판매중지·0원). 이미 있는 상품이면 새로 만들지 않고 그걸 쓴다. */
 export function NewProductPanel({ categories, subcategoriesByCategory, initial, onCreated, onCancel }: Props) {
   const [category, setCategory] = useState(initial.category);
+  const [breed, setBreed] = useState(initial.breed);
   const [subcategory, setSubcategory] = useState(initial.subcategory);
   const [grade, setGrade] = useState(initial.grade);
   const [origin, setOrigin] = useState(initial.origin || "국내산");
@@ -54,6 +55,7 @@ export function NewProductPanel({ categories, subcategoriesByCategory, initial, 
     const nextRule = specListRuleFor(next);
 
     setCategory(next);
+    setBreed((prev) => (nextRule.breedFromList && CATTLE_BREEDS.includes(prev) ? prev : ""));
     setSubcategory((prev) => (nextParts.includes(prev) ? prev : ""));
     setGrade((prev) => (nextRule.gradeFromList && !CATTLE_GRADES.includes(prev) ? "" : prev));
     setOrigin((prev) => (nextRule.originFromList && !ORIGIN_OPTIONS.includes(prev) ? "국내산" : prev));
@@ -63,7 +65,7 @@ export function NewProductPanel({ categories, subcategoriesByCategory, initial, 
     setBusy(true);
     setError(null);
 
-    const result = await createPurchaseOrderProductAction({ category, subcategory, grade, origin, name });
+    const result = await createPurchaseOrderProductAction({ category, breed, subcategory, grade, origin, name });
 
     setBusy(false);
 
@@ -97,6 +99,16 @@ export function NewProductPanel({ categories, subcategoriesByCategory, initial, 
             </option>
           ))}
         </select>
+        {rule.breedFromList && (
+          <select aria-label="새 품목 품종" value={breed} onChange={(event) => setBreed(event.target.value)} style={fieldStyle}>
+            <option value="">품종 선택</option>
+            {CATTLE_BREEDS.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        )}
         {rule.partFromList && parts.length > 0 ? (
           <select aria-label="새 품목 부위" value={subcategory} onChange={(event) => setSubcategory(event.target.value)} style={fieldStyle}>
             <option value="">부위 선택</option>
