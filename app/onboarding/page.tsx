@@ -74,7 +74,7 @@ export default async function OnboardingPage() {
           {needsMinimumInfo ? (
             <>
               카카오 로그인이 완료되었습니다. 아래 항목만 입력하면{" "}
-              <strong>관리자 승인을 기다리지 않고</strong> 상품 등록과 발주 관리를 바로 시작할 수
+              <strong>관리자 승인을 기다리지 않고</strong> 상품 등록과 주문 관리를 바로 시작할 수
               있습니다.
             </>
           ) : (

@@ -120,7 +120,7 @@ export function KakaoLoginPanel({
 
       <p style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.7, marginTop: "14px" }}>
         처음 접속하는 카카오 계정이면 그대로 가입이 진행됩니다. 이어지는 화면에서 약관 동의와
-        상호·연락처만 입력하면 <strong>승인 대기 없이 바로</strong> 상품 등록과 발주 관리를
+        상호·연락처만 입력하면 <strong>승인 대기 없이 바로</strong> 상품 등록과 주문 관리를
         시작할 수 있습니다.
       </p>
     </div>

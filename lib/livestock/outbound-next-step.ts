@@ -37,9 +37,9 @@ export function pickOutboundGuide(input: OutboundGuideInput): OutboundGuide {
     return {
       key: "no-orders",
       tone: "info",
-      title: "출고할 발주서가 없습니다",
-      detail: "발주 관리에서 접수된 발주서를 '확정'하면 여기에 나타납니다.",
-      action: { label: "발주 관리로", kind: "link", href: "/dashboard/orders" },
+      title: "출고할 주문이 없습니다",
+      detail: "고객 주문에서 접수된 주문을 '확정'하면 여기에 나타납니다.",
+      action: { label: "고객 주문으로", kind: "link", href: "/dashboard/orders" },
     };
   }
 
@@ -76,7 +76,7 @@ export function pickOutboundGuide(input: OutboundGuideInput): OutboundGuide {
       tone: "warn",
       title: "재고 확보 대기 중인 발주서입니다",
       detail: "박스를 찍어 둘 수는 있지만, 마감은 재고가 채워져 발주서가 '확정'된 뒤에 할 수 있습니다.",
-      action: { label: "발주 관리로", kind: "link", href: "/dashboard/orders" },
+      action: { label: "고객 주문으로", kind: "link", href: "/dashboard/orders" },
     };
   }
 

@@ -6,7 +6,7 @@ import { ORDER_LIST_SELECT_COLUMNS, mapOrderJoinRow, type OrderJoinRow, type Ord
 import { QuickOrdersView } from "./quick-orders-view";
 
 export const metadata = {
-  title: "발주 처리 | 도매업체 통합관리시스템",
+  title: "주문 처리 | 도매업체 통합관리시스템",
 };
 
 /**
@@ -39,9 +39,9 @@ export default async function QuickOrdersPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <header>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>발주 처리</h1>
+        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>주문 처리</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>
-          지금 처리해야 하는 진행중 발주만 보여줍니다. 완료·취소 이력은 PC의 발주 관리
+          지금 처리해야 하는 진행중 주문만 보여줍니다. 완료·취소 이력은 PC의 고객 주문
           화면을 이용하세요.
         </p>
       </header>

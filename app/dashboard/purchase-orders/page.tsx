@@ -1,12 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
-import { ProductTabs } from "../section-tabs";
 import { fetchSubcategoriesByCategory } from "../products/get-subcategories";
 import { PurchaseOrderView, type PurchaseOrderRow, type SupplierRow } from "./purchase-order-view";
 
 export const metadata = {
-  title: "공급처 발주서 | 도매업체 통합관리시스템",
+  title: "발주 관리 | 도매업체 통합관리시스템",
 };
 
 const RECENT_LIMIT = 60;
@@ -64,9 +63,8 @@ export default async function PurchaseOrdersPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <ProductTabs />
       <header>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>공급처 발주서</h1>
+        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>발주 관리</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>
           공급처에 발주한 품목과 수량(예: 소 등심 1++ 국내산 50kg)을 적어 둡니다. 공급처는 아래 거래처 목록에서 고르고,
           품목은 화면에서 바로 적거나 엑셀 양식을 내려받아 채워 올리면 됩니다. 물건이 도착했을 때 이 발주서와 맞춰 보는 기능은 다음 단계에서 붙입니다.

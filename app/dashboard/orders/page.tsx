@@ -13,7 +13,7 @@ import { DEFAULT_ORDER_HISTORY_DAYS, ORDER_HISTORY_PAGE_SIZE } from "@/lib/order
 import { OrderBoard } from "./order-board";
 
 export const metadata = {
-  title: "발주 관리 | 도매업체 통합관리시스템",
+  title: "고객 주문 | 도매업체 통합관리시스템",
 };
 
 function historyCutoffISO(days: number): string {
@@ -74,7 +74,7 @@ export default async function DashboardOrdersPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <header>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>발주 관리</h1>
+        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>고객 주문</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
           미니샵으로 접수된 발주서를 상태별로 확인하고 출고·배송 처리를 진행합니다. 알림톡은 발주
           접수 및 상태 변경 시점에 자동 발송됩니다.

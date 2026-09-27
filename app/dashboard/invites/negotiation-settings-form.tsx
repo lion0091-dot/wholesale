@@ -71,7 +71,7 @@ export function NegotiationSettingsForm({ initial }: NegotiationSettingsFormProp
           </div>
           <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px" }}>
             켜면 고객이 장바구니에서 품목별 희망 단가와 가격 관련 요청 메모를 남길 수 있습니다.
-            실제 가격은 전화 등으로 협의 후 발주 상세에서 직접 확인·조정합니다.
+            실제 가격은 전화 등으로 협의 후 고객 주문 상세에서 직접 확인·조정합니다.
           </div>
         </div>
 

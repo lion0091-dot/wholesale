@@ -20,7 +20,7 @@ import { signExternalOpenToken } from "@/lib/pdf/external-open-token";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 export const metadata = {
-  title: "발주 상세 | 도매업체 통합관리시스템",
+  title: "고객 주문 상세 | 도매업체 통합관리시스템",
 };
 
 interface PageProps {
@@ -212,7 +212,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <header style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         <Link href="/dashboard/orders" style={{ fontSize: "12px", color: "#64748b" }}>
-          ← 발주 목록으로
+          ← 고객 주문 목록으로
         </Link>
 
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>

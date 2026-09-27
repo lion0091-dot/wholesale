@@ -251,7 +251,7 @@ export default async function DashboardInvitesPage() {
           </div>
           <p style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.7, marginBottom: "12px" }}>
             사업자등록번호를 제출하면 플랫폼 운영팀이 등록증을 대조해 승인 여부를 확정합니다.
-            승인 전에도 상품 등록·단가·발주 관리는 제한 없이 사용할 수 있습니다.
+            승인 전에도 상품 등록·단가·주문 관리는 제한 없이 사용할 수 있습니다.
           </p>
           <RepresentativeNameForm currentRepresentativeName={account.representativeName} />
           <BusinessNumberForm

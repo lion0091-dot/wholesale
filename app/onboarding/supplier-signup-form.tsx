@@ -305,7 +305,7 @@ export function SupplierSignupForm({ defaultName, defaultPhone }: SupplierSignup
       </button>
 
       <p style={{ ...hintStyle, textAlign: "center", marginTop: "12px" }}>
-        제출 즉시 상품 등록과 발주 관리를 사용할 수 있습니다. 초대장 발부는 행정 승인 후
+        제출 즉시 상품 등록과 주문 관리를 사용할 수 있습니다. 초대장 발부는 행정 승인 후
         활성화됩니다.
       </p>
     </form>

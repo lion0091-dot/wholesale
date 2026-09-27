@@ -5,7 +5,7 @@ import { listOrdersForHistoryAction } from "./actions";
 import { OrderHistoryPicker } from "./order-history-picker";
 
 export const metadata = {
-  title: "발주 이력 | 도매업체 통합관리시스템",
+  title: "고객 주문 이력 | 도매업체 통합관리시스템",
 };
 
 export default async function OrderHistoryPickerPage() {

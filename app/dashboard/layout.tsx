@@ -10,7 +10,7 @@ import type { SubscriptionStatus } from "@/types/database";
 
 export const metadata: Metadata = {
   title: "도매업체 통합관리시스템 | 미트 파트너스",
-  description: "상품·맞춤 단가·발주·고객 관리를 위한 도매(공급사) 관리자 화면",
+  description: "상품·맞춤 단가·주문·발주·고객 관리를 위한 도매(공급사) 관리자 화면",
 };
 
 /**
@@ -44,10 +44,13 @@ const NAV_GROUPS: DashboardNavItem[][] = [
       href: "/dashboard/products",
       icon: "🥩",
       ready: true,
-      alsoActiveFor: ["/dashboard/market-prices", "/dashboard/purchase-orders"],
+      alsoActiveFor: ["/dashboard/market-prices"],
     },
   ],
-  [{ label: "발주 관리", href: "/dashboard/orders", icon: "🧾", ready: true }],
+  [
+    { label: "발주 관리", href: "/dashboard/purchase-orders", icon: "📝", ready: true },
+    { label: "고객 주문", href: "/dashboard/orders", icon: "🧾", ready: true },
+  ],
   [
     {
       label: "고객 관리",
@@ -88,7 +91,7 @@ const ORG_ROLE_LABELS: Record<string, string> = {
 const MOBILE_FIELD_NAV: DashboardNavItem[] = [
   { label: "입고 스캔", href: "/dashboard/inbound", icon: "📦", ready: true },
   { label: "출고 스캔", href: "/dashboard/outbound", icon: "🚚", ready: true },
-  { label: "발주 처리", href: "/dashboard/quick/orders", icon: "🧾", ready: true },
+  { label: "주문 처리", href: "/dashboard/quick/orders", icon: "🧾", ready: true },
   { label: "배송의뢰서", href: "/dashboard/quick/delivery-request", icon: "📄", ready: true },
   { label: "수금 확인", href: "/dashboard/quick/settle", icon: "💰", ready: true },
   { label: "재고 확인", href: "/dashboard/quick/stock", icon: "🥩", ready: true },

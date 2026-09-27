@@ -68,7 +68,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           카카오로 3초 가입
         </h1>
         <p style={{ fontSize: "13px", color: "#64748b", lineHeight: 1.6 }}>
-          상품·단가·발주 관리를 위한 도매업체 관리자 화면입니다.
+          상품·단가·주문 관리를 위한 도매업체 관리자 화면입니다.
           <br />
           고객(소매)는 전달받은 전용 초대 링크로 접속해 주세요.
         </p>
