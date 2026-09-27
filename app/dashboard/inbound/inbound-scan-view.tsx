@@ -11,6 +11,7 @@ import {
   withDocumentContext,
   type ResultCard,
 } from "@/lib/livestock/inbound-scan-result";
+import { rejectionSummary } from "@/lib/livestock/scan-purchase-order";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -154,6 +155,8 @@ interface Props {
   archivedProductCount?: number;
   /** 매입단가 칸 노출 여부 — owner/manager/super_admin만 true. 직원은 칸이 없고 값도 안 보낸다. */
   canEditPurchasePrice: boolean;
+  /** "지금 온 거래처"로 고를 수 있는 거래처(사용 중인 것만). 발주 관리의 거래처 관리에서 만든다. */
+  suppliers: Array<{ id: string; name: string }>;
 }
 
 export interface AwaitingDocumentLine {
@@ -164,6 +167,8 @@ export interface AwaitingDocumentLine {
   unitPrice: number | null;
   supplierName: string | null;
 }
+
+const SUPPLIER_STORAGE_KEY = "inbound:current-supplier";
 
 /** 오픈 직전 Vercel에서 이 값을 지우거나 false로 바꾸면 샘플 패널이 전부 사라진다. */
 const SHOW_DEV_SAMPLES = process.env.NEXT_PUBLIC_SHOW_DEV_SAMPLES === "true";
@@ -299,8 +304,40 @@ export function InboundScanView({
   storageLocationSuggestions,
   archivedProductCount = 0,
   canEditPurchasePrice,
+  suppliers,
 }: Props) {
   const router = useRouter();
+
+  // 지금 온 거래처 — 한 번 고르면 다음 박스에도 그대로 남는다(한 차 분량은 대체로 한 거래처). 새로고침해도 기억한다.
+  const [supplierId, setSupplierId] = useState("");
+  const supplierSelectRef = useRef<HTMLSelectElement>(null);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(SUPPLIER_STORAGE_KEY);
+
+      if (saved && suppliers.some((item) => item.id === saved)) setSupplierId(saved);
+      else if (suppliers.length === 1) setSupplierId(suppliers[0].id);
+    } catch {
+      // 저장소를 못 쓰는 환경 — 그냥 매번 고르게 둔다.
+    }
+  }, [suppliers]);
+
+  const handleSupplierChange = (value: string) => {
+    setSupplierId(value);
+
+    try {
+      if (value) window.localStorage.setItem(SUPPLIER_STORAGE_KEY, value);
+      else window.localStorage.removeItem(SUPPLIER_STORAGE_KEY);
+    } catch {
+      // 저장 실패는 화면 동작에 영향이 없다.
+    }
+  };
+
+  const askSupplier = () => {
+    setResultCard({ card: buildMissingInputCard("supplier"), scanId: null });
+    supplierSelectRef.current?.focus();
+  };
 
   const documentTraceNoSet = useMemo(() => new Set(pendingDocumentTraceNos), [pendingDocumentTraceNos]);
 
@@ -339,9 +376,8 @@ export function InboundScanView({
   const [weight, setWeight] = useState("");
   // 바코드(GS1-128)에 실려 온 표기중량. 사람이 고칠 수도 있다.
   const [labeledWeight, setLabeledWeight] = useState("");
-  // 매입단가·매입처는 한 차에 들어오는 물건이 대체로 같아서 스캔 후에도 비우지 않는다.
+  // 매입단가는 한 차에 들어오는 물건이 대체로 같아서 스캔 후에도 비우지 않는다.
   const [unitPrice, setUnitPrice] = useState("");
-  const [supplier, setSupplier] = useState("");
   const [rows, setRows] = useState<InboundScanRow[]>(initialScans);
   const [pending, setPending] = useState<PendingRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -407,6 +443,12 @@ export function InboundScanView({
       carriedBestBefore: string | null = null,
       carriedLabeled: number | null = null
     ) => {
+      // 어느 거래처 물건인지 알아야 발주서와 맞춰 볼 수 있다 — 고르기 전에는 등록하지 않는다.
+      if (!supplierId) {
+        askSupplier();
+        return;
+      }
+
       // 스캐너가 보낸 값은 순수 이력번호일 수도, GS1-128 물류 바코드일 수도,
       // 소비자용 QR(URL)일 수도 있다. 한 곳에서 해석해 이력번호를 뽑는다.
       const parsed = parseBarcode(rawTraceNo);
@@ -453,7 +495,7 @@ export function InboundScanView({
       setPending((prev) => [{ key, traceNo: value, weight: parsedWeight }, ...prev]);
 
       // 다음 박스를 바로 찍을 수 있게 입력칸을 즉시 비운다.
-      // 단가·매입처는 한 차 분량이 대체로 같으므로 남겨둔다.
+      // 단가·거래처는 한 차 분량이 대체로 같으므로 남겨둔다.
       setTraceNo("");
       setWeight("");
       setLabeledWeight("");
@@ -469,7 +511,7 @@ export function InboundScanView({
         bestBefore,
         labeledWeight: labeled,
         purchaseUnitPrice,
-        purchaseSupplier: supplier.trim() || null,
+        supplierId,
         // 바코드의 상품코드. 이력번호가 소 한 마리를 가리킨다면 이건 공급처가
         // 부여한 품목 구분자다 — 이력조회가 부위를 안 주므로 이쪽으로 학습한다.
         gtin: parsed.gtin ?? null,
@@ -500,7 +542,8 @@ export function InboundScanView({
         // 결과는 색 있는 카드 하나로 알린다 — 표기·실중량 차이, 유통기한, 상품 자동 생성, 이력 실패 등
         // 겹치는 사정은 카드 안에 함께 담는다(판단은 lib/livestock/inbound-scan-result.ts).
         setResultCard({
-          scanId: data.scanId,
+          // 거절된 박스는 이미 취소돼 있어 "방금 찍은 박스 취소"를 보이지 않는다.
+          scanId: data.status === "REJECTED" ? null : data.scanId,
           card: buildScanResultCard(data, {
             canSeePrice: canEditPurchasePrice,
             actualWeight: parsedWeight,
@@ -519,7 +562,7 @@ export function InboundScanView({
 
       router.refresh();
     },
-    [router, labeledWeight, unitPrice, supplier, canEditPurchasePrice, products]
+    [router, labeledWeight, unitPrice, supplierId, canEditPurchasePrice, products]
   );
 
   /**
@@ -800,6 +843,12 @@ export function InboundScanView({
       return;
     }
 
+    if (result.data?.po?.result === "REJECTED") {
+      setError(`상품은 지정했지만 이 박스는 받지 않았습니다 — ${rejectionSummary(result.data.po)} 재고에는 넣지 않았습니다.`);
+      router.refresh();
+      return;
+    }
+
     // 고른 상품의 부위가 이력의 부위와 다르면 알려준다 — 여기서 잘못 고르면
     // 출고 때도 안 걸리고 식당에 다른 고기가 간다.
     if (result.data?.partMismatch) {
@@ -830,6 +879,15 @@ export function InboundScanView({
 
     if (!result.success) {
       setError(result.error ?? "주문 배정에 실패했습니다.");
+      return;
+    }
+
+    if (result.data?.po?.result === "REJECTED") {
+      setError(`이 박스는 받지 않아 주문에 배정하지 않았습니다 — ${rejectionSummary(result.data.po)}`);
+      setOrderTargetScanId(null);
+      setOrderTargetProductId("");
+      setOrderTargetOrderId("");
+      router.refresh();
       return;
     }
 
@@ -897,11 +955,18 @@ export function InboundScanView({
       return;
     }
 
+    if (!supplierId) {
+      setError("지금 온 거래처를 먼저 골라 주세요. 어느 거래처 물건인지 알아야 발주서와 맞춰 볼 수 있습니다.");
+      supplierSelectRef.current?.focus();
+      return;
+    }
+
     setSplitSubmitting(true);
     setError(null);
 
     const result = await recordSplitScansAction({
       boxCode,
+      supplierId,
       rows: validRows.map((row) => {
         // 줄에 이력번호를 따로 찍었으면 그걸 쓰고, 비웠으면 박스 코드를 쓴다
         // (같은 소에서 나온 부위들이면 박스 코드가 곧 이력번호다).
@@ -1487,6 +1552,35 @@ export function InboundScanView({
       ) : null}
 
       <section id="inbound-scan-form" style={{ ...panelStyle, scrollMarginTop: "12px" }}>
+        <div style={{ marginBottom: "10px" }}>
+          <label htmlFor="current_supplier" style={{ ...labelStyle, color: "#0f172a", fontWeight: 700 }}>
+            지금 온 거래처
+          </label>
+          {suppliers.length === 0 ? (
+            <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#991b1b" }}>
+              등록된 거래처가 없습니다. 발주 관리의 “거래처 관리”에서 먼저 등록해야 입고할 수 있습니다.{" "}
+              <a href="/dashboard/purchase-orders" style={{ color: "#1d4ed8", fontWeight: 700 }}>
+                발주 관리로
+              </a>
+            </p>
+          ) : (
+            <select
+              ref={supplierSelectRef}
+              id="current_supplier"
+              value={supplierId}
+              onChange={(event) => handleSupplierChange(event.target.value)}
+              style={{ ...inputStyle, maxWidth: "320px", borderColor: supplierId ? "#cbd5e1" : "#0f172a" }}
+            >
+              <option value="">거래처를 고르세요</option>
+              {suppliers.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end" }}>
           <div style={{ flex: "1 1 220px", minWidth: 0 }}>
             <label htmlFor="trace_no" style={labelStyle}>
@@ -1567,20 +1661,6 @@ export function InboundScanView({
             </div>
           ) : null}
 
-          <div style={{ width: "130px" }}>
-            <label htmlFor="purchase_supplier" style={labelStyle}>
-              매입처
-            </label>
-            <input
-              id="purchase_supplier"
-              value={supplier}
-              onChange={(event) => setSupplier(event.target.value)}
-              placeholder="도축장·거래처"
-              autoComplete="off"
-              style={inputStyle}
-            />
-          </div>
-
           <button
             type="button"
             onClick={() => void submitScan(traceNo, weight, "MANUAL")}
@@ -1637,7 +1717,7 @@ export function InboundScanView({
         <p style={{ fontSize: "11px", color: "#94a3b8", margin: "8px 0 0" }}>
           바코드를 찍으면 표기중량이 자동으로 채워지고 실중량 칸으로 넘어갑니다. 저울 값을 입력하고
           Enter를 누르면 등록됩니다 — 재고와 매입금액은 <strong>실중량</strong> 기준입니다.
-          단가·매입처는 다음 박스에도 그대로 남습니다.
+          단가·거래처는 다음 박스에도 그대로 남습니다.
           {!cameraSupported && " (이 브라우저는 카메라 스캔을 지원하지 않아 스캐너/수동 입력만 가능합니다)"}
         </p>
 

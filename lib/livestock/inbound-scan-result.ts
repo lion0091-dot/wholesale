@@ -6,11 +6,16 @@
  * 화면(inbound-scan-view.tsx)은 이 결과를 그리기만 한다.
  */
 
+import { rejectionSummary, type ScanPurchaseOrder } from "./scan-purchase-order";
+
 export type ResultTone = "green" | "yellow" | "red";
 
 export interface ScanResultInput {
   scanId: string;
-  status: "NORMAL" | "PENDING_MAPPING" | "EXCEPTION";
+  status: "NORMAL" | "PENDING_MAPPING" | "EXCEPTION" | "REJECTED";
+  productId?: string | null;
+  /** 거래처를 싣고 찍은 박스의 발주서 판정(없으면 null·생략). */
+  po?: ScanPurchaseOrder | null;
   bestBefore: string | null;
   daysLeft: number | null;
   labeledWeight: number | null;
@@ -96,8 +101,61 @@ function failureIssue(data: ScanResultInput, scanId: string): ResultIssue {
   };
 }
 
+function formatKg(value: number): string {
+  return value.toLocaleString("ko-KR", { maximumFractionDigits: 3 });
+}
+
+/** 발주서 기준으로 받지 않은 박스 — 재고에 없다는 것과 다음에 할 일을 알린다. */
+function buildRejectedCard(data: ScanResultInput, options: ScanResultOptions): ResultCard {
+  const po = data.po;
+  const name = data.productId ? `'${options.productName(data.productId)}' ` : "";
+
+  return {
+    tone: "red",
+    title: po?.reason === "UNLISTED" ? "받지 않았습니다 — 이 거래처 발주서에 없는 물건입니다" : "받지 않았습니다 — 발주 수량을 넘었습니다",
+    detail:
+      `${name}${po ? rejectionSummary(po) : "발주서 기준으로 받지 않았습니다."} 재고에는 넣지 않았고 거절 기록만 남겼습니다. ` +
+      "이 박스는 공급처와 상의해 돌려보내세요. 받기로 했다면 발주 관리에서 품목·수량을 먼저 늘린 뒤 다시 찍으세요.",
+    extras: [],
+    action: { label: "발주 관리로", href: "/dashboard/purchase-orders" },
+  };
+}
+
+/** 발주서 판정을 결과 카드에 덧붙인다 — 어느 발주서에 붙었는지, 사무실이 할 일이 있는지. */
+function addPurchaseOrderNotice(card: ResultCard, data: ScanResultInput): void {
+  const po = data.po;
+
+  if (!po) return;
+
+  if (po.result === "ASSIGNED") {
+    const progress =
+      po.ordered !== null && po.received !== null
+        ? `발주 ${formatKg(po.ordered)}kg 중 ${formatKg(po.received)}kg 받았습니다` +
+          (po.remaining !== null && po.remaining > 0 ? ` (남음 ${formatKg(po.remaining)}kg).` : ".")
+        : "발주서에 붙었습니다.";
+
+    card.extras.push({
+      tone: "green",
+      title: po.orderClosed ? "발주서를 다 받아 자동으로 마감했습니다" : "발주서에 붙었습니다",
+      detail: progress,
+    });
+  } else if (po.result === "UNLISTED_HELD") {
+    if (card.tone === "green") card.tone = "yellow";
+
+    card.extras.push({
+      tone: "yellow",
+      title: "발주서에 없는 물건입니다",
+      detail: "설정(입고 기준)에 따라 받아 두었습니다. 사무실이 확인해서 정리합니다.",
+    });
+  }
+}
+
 export function buildScanResultCard(data: ScanResultInput, options: ScanResultOptions): ResultCard {
+  if (data.status === "REJECTED") return buildRejectedCard(data, options);
+
   const card = buildCardWithoutClosedNotice(data, options);
+
+  addPurchaseOrderNotice(card, data);
 
   if (data.autoClosedDocument) {
     card.extras.push({
@@ -212,7 +270,17 @@ function buildCardWithoutClosedNotice(data: ScanResultInput, options: ScanResult
 }
 
 /** 입고 등록 전에 입력이 비었을 때의 카드 — 어느 칸을 채워야 하는지 알려 준다. */
-export function buildMissingInputCard(field: "trace" | "weight"): ResultCard {
+export function buildMissingInputCard(field: "trace" | "weight" | "supplier"): ResultCard {
+  if (field === "supplier") {
+    return {
+      tone: "red",
+      title: "지금 온 거래처를 먼저 고르세요",
+      detail: "어느 거래처 물건인지 알아야 발주서와 맞춰 볼 수 있습니다. 위 '지금 온 거래처' 칸에서 고르면 다음 박스에도 그대로 남습니다.",
+      extras: [],
+      action: null,
+    };
+  }
+
   return {
     tone: "red",
     title: field === "trace" ? "이력번호를 입력하세요" : "저울에 찍힌 실중량을 입력하세요",

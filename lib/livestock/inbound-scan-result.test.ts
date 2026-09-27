@@ -214,3 +214,64 @@ describe("buildScanResultCard — 자동 마감·부위 미지정 안내", () =>
     expect(card.action?.href).toBe("/dashboard/products");
   });
 });
+
+describe("발주서 판정(마이그레이션 142)이 결과 카드에 미치는 영향", () => {
+  const po = (patch: Partial<NonNullable<ScanResultInput["po"]>>): NonNullable<ScanResultInput["po"]> => ({
+    result: "ASSIGNED",
+    reason: null,
+    ordered: 50,
+    received: 20,
+    remaining: 30,
+    tolerance: null,
+    orderClosed: false,
+    ...patch,
+  });
+
+  it("초과로 받지 않은 박스 — 빨강, 재고에 없다는 말과 발주서로 가는 길을 준다", () => {
+    const card = buildScanResultCard(
+      { ...ok, status: "REJECTED", productId: "p1", po: po({ result: "REJECTED", reason: "OVER", ordered: 50, received: 50, remaining: null }) },
+      options
+    );
+
+    expect(card.tone).toBe("red");
+    expect(card.title).toContain("받지 않았습니다");
+    expect(card.title).toContain("발주 수량을 넘었습니다");
+    expect(card.detail).toContain("발주 50kg 중 이미 50kg 받았습니다");
+    expect(card.detail).toContain("재고에는 넣지 않았고");
+    expect(card.action?.href).toBe("/dashboard/purchase-orders");
+  });
+
+  it("발주서에 없는 물건으로 받지 않은 박스 — 제목이 없는 물건이라고 말한다", () => {
+    const card = buildScanResultCard(
+      { ...ok, status: "REJECTED", po: po({ result: "REJECTED", reason: "UNLISTED", ordered: null, received: null, remaining: null }) },
+      options
+    );
+
+    expect(card.tone).toBe("red");
+    expect(card.title).toContain("발주서에 없는 물건");
+  });
+
+  it("발주서에 붙은 박스 — 초록 그대로, 받은 양과 남은 양을 덧붙인다", () => {
+    const card = buildScanResultCard({ ...ok, po: po({}) }, options);
+
+    expect(card.tone).toBe("green");
+    expect(card.extras.map((extra) => extra.detail).join(" ")).toContain("발주 50kg 중 20kg 받았습니다 (남음 30kg)");
+  });
+
+  it("발주서를 다 채운 박스 — 자동 마감을 알린다", () => {
+    const card = buildScanResultCard({ ...ok, po: po({ received: 50, remaining: 0, orderClosed: true }) }, options);
+
+    expect(card.extras.map((extra) => extra.title)).toContain("발주서를 다 받아 자동으로 마감했습니다");
+  });
+
+  it("없는 물건을 받아 둔 박스 — 노랑", () => {
+    expect(buildScanResultCard({ ...ok, po: po({ result: "UNLISTED_HELD" }) }, options).tone).toBe("yellow");
+  });
+
+  it("거래처를 안 고르고 찍으면 거래처부터 고르라고 한다", () => {
+    const card = buildMissingInputCard("supplier");
+
+    expect(card.tone).toBe("red");
+    expect(card.title).toContain("거래처");
+  });
+});

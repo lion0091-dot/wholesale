@@ -41,7 +41,7 @@ export default async function PurchaseOrdersPage() {
       supabase
         .from("purchase_orders")
         .select(
-          "id, supplier_id, supplier_name, ordered_on, expected_on, note, status, purchase_order_lines ( line_no, product_id, category, breed, subcategory, grade, origin, quantity, unit, unit_price )"
+          "id, supplier_id, supplier_name, ordered_on, expected_on, note, status, auto_closed_at, purchase_order_lines ( line_no, product_id, category, breed, subcategory, grade, origin, quantity, unit, unit_price, purchase_order_line_scans ( weight, inbound_scans ( status ) ) )"
         )
         .eq("wholesaler_id", scope.wholesalerId)
         .order("ordered_on", { ascending: false })
@@ -57,9 +57,22 @@ export default async function PurchaseOrdersPage() {
       loadProductOptions(supabase, scope.wholesalerId),
     ]);
 
-    orders = ((orderRows ?? []) as unknown as PurchaseOrderRow[]).map((order) => ({
+    type RawLine = Omit<PurchaseOrderRow["purchase_order_lines"][number], "received"> & {
+      purchase_order_line_scans?: Array<{ weight: number | string; inbound_scans: { status: string } | null }>;
+    };
+
+    orders = ((orderRows ?? []) as unknown as Array<Omit<PurchaseOrderRow, "purchase_order_lines"> & { purchase_order_lines: RawLine[] }>).map((order) => ({
       ...order,
-      purchase_order_lines: [...(order.purchase_order_lines ?? [])].sort((a, b) => a.line_no - b.line_no),
+      purchase_order_lines: [...(order.purchase_order_lines ?? [])]
+        .sort((a, b) => a.line_no - b.line_no)
+        .map(({ purchase_order_line_scans, ...line }) => ({
+          ...line,
+          // 받은 양 = 이 줄에 채워진 박스 무게(취소 제외)의 합 — DB 판정(judge_scan_purchase_order)과 같은 계산.
+          received: (purchase_order_line_scans ?? []).reduce(
+            (sum, link) => (link.inbound_scans && link.inbound_scans.status !== "VOIDED" ? sum + Number(link.weight) : sum),
+            0
+          ),
+        })),
     }));
     categories = ((categoryRows ?? []) as Array<{ name: string }>).map((row) => row.name);
     subcategoriesByCategory = subcategories;

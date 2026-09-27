@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { LineAssignment, ReceivingPolicy, ToleranceMode, UnlistedItemPolicy } from "@/lib/receiving-policy/policy";
+import type { ReceivingPolicy, ToleranceMode, UnlistedItemPolicy } from "@/lib/receiving-policy/policy";
 import { saveReceivingPolicyAction } from "./actions";
 
 const cardStyle: React.CSSProperties = { border: "1px solid #e2e8f0", borderRadius: "12px", padding: "14px", backgroundColor: "#fff", display: "grid", gap: "8px" };
@@ -20,7 +20,6 @@ export function ReceivingPolicyForm({ initial, canManage }: Props) {
   const [mode, setMode] = useState<ToleranceMode>(initial.overToleranceMode);
   const [value, setValue] = useState(String(initial.overToleranceValue));
   const [unlisted, setUnlisted] = useState<UnlistedItemPolicy>(initial.unlistedItemPolicy);
-  const [assignment, setAssignment] = useState<LineAssignment>(initial.lineAssignment);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -36,7 +35,7 @@ export function ReceivingPolicyForm({ initial, canManage }: Props) {
     setBusy(true);
     setMessage(null);
 
-    const result = await saveReceivingPolicyAction({ overToleranceMode: mode, overToleranceValue: value, unlistedItemPolicy: unlisted, lineAssignment: assignment });
+    const result = await saveReceivingPolicyAction({ overToleranceMode: mode, overToleranceValue: value, unlistedItemPolicy: unlisted });
 
     setBusy(false);
     setMessage(result.success ? { ok: true, text: "저장했습니다." } : { ok: false, text: result.error ?? "저장하지 못했습니다." });
@@ -71,19 +70,6 @@ export function ReceivingPolicyForm({ initial, canManage }: Props) {
         <label style={optionStyle}>
           <input type="radio" name="unlisted" checked={unlisted === "HOLD"} disabled={!canManage} onChange={() => setUnlisted("HOLD")} />
           일단 받고, 사무실이 확인할 수 있게 따로 표시해 둡니다.
-        </label>
-      </section>
-
-      <section style={cardStyle}>
-        <h2 style={titleStyle}>같은 물건이 여러 발주서에 걸릴 때</h2>
-        <p style={hintStyle}>어느 발주서에 붙일지 정합니다. 해당하는 발주서가 하나뿐이면 항상 자동으로 붙습니다.</p>
-        <label style={optionStyle}>
-          <input type="radio" name="assignment" checked={assignment === "OFFICE"} disabled={!canManage} onChange={() => setAssignment("OFFICE")} />
-          사무실이 직접 고릅니다.
-        </label>
-        <label style={optionStyle}>
-          <input type="radio" name="assignment" checked={assignment === "OLDEST_FIRST"} disabled={!canManage} onChange={() => setAssignment("OLDEST_FIRST")} />
-          오래된 발주서부터 자동으로 붙입니다.
         </label>
       </section>
 

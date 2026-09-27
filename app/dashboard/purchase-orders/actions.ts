@@ -155,7 +155,7 @@ export interface CreatePurchaseOrderInput {
   lines: PurchaseOrderLineInput[];
 }
 
-export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput): Promise<ActionResult<{ id: string }>> {
+export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput): Promise<ActionResult<{ id: string; createdProducts: number }>> {
   try {
     const { supabase, wholesalerId } = await resolveScope();
     const note = (input.note ?? "").trim();
@@ -218,7 +218,10 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
     ]);
     const products = [...new Map([...linkedProducts, ...sameCategoryProducts].map((product) => [product.id, product])).values()];
     const productById = new Map(products.map((product) => [product.id, product]));
-    const validated = input.lines.map((line, index) => {
+    const createdProductIds = new Set<string>();
+    const validated: Array<ReturnType<typeof validatePurchaseOrderLine> extends infer R ? (R extends { ok: true; line: infer L } ? L & { productId: string } : never) : never> = [];
+
+    for (const [index, line] of input.lines.entries()) {
       const linked = line.productId ? productById.get(line.productId) : undefined;
 
       if (line.productId && !linked) {
@@ -237,10 +240,40 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
         throw new RbacError(`${index + 1}번째 줄: ${result.error}`);
       }
 
-      const matched = linked ?? findProductForSpec({ ...result.line, breed: result.line.breed ?? "", subcategory: result.line.subcategory ?? "", grade: result.line.grade ?? "" }, products);
+      let matched = linked ?? findProductForSpec({ ...result.line, breed: result.line.breed ?? "", subcategory: result.line.subcategory ?? "", grade: result.line.grade ?? "" }, products);
 
-      return { ...result.line, productId: matched?.id ?? null };
-    });
+      // 발주서의 모든 줄은 등록된 품목이어야 한다(입고 때 박스를 이 줄과 이으려면 상품이 필요하다). 화면으로 넣든 엑셀로 올리든 기준이 같고,
+      // 등록된 품목이 없는 줄은 튕기지 않고 상품 관리에 판매중지·0원으로 자동 등록해 잇는다(사장님 결정, 2026-09-28).
+      // 같은 발주서에서 같은 스펙이 여러 줄이면 첫 줄이 만든 상품을 다음 줄이 그대로 쓴다(products에 만든 상품을 보태 둔다).
+      if (!matched) {
+        try {
+          const ensured = await ensureProductForSpec(
+            supabase,
+            wholesalerId,
+            {
+              category: result.line.category,
+              breed: result.line.breed ?? "",
+              subcategory: result.line.subcategory ?? "",
+              grade: result.line.grade ?? "",
+              origin: result.line.origin,
+              name: result.line.subcategory ?? "",
+            },
+            products
+          );
+
+          matched = ensured.product;
+
+          if (ensured.created) {
+            products.push(ensured.product);
+            createdProductIds.add(ensured.product.id);
+          }
+        } catch (error) {
+          throw new RbacError(`${index + 1}번째 줄: ${error instanceof Error ? error.message : "품목을 등록하지 못했습니다."}`);
+        }
+      }
+
+      validated.push({ ...result.line, productId: matched.id });
+    }
 
     const { data: order, error: orderError } = await supabase
       .from("purchase_orders")
@@ -282,13 +315,18 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
     }
 
     revalidatePath(REVALIDATE_PATH);
-    return { success: true, data: { id: order.id as string } };
+
+    if (createdProductIds.size > 0) {
+      revalidatePath("/dashboard/products");
+    }
+
+    return { success: true, data: { id: order.id as string, createdProducts: createdProductIds.size } };
   } catch (error) {
     return toResult(error);
   }
 }
 
-export interface CreatePurchaseOrderProductInput {
+interface ProductSpecInput {
   category: string;
   breed: string;
   subcategory: string;
@@ -299,9 +337,74 @@ export interface CreatePurchaseOrderProductInput {
 }
 
 /**
- * 발주서를 쓰다가 목록에 없는 품목을 그 자리에서 상품 관리에 등록한다. 판매중지·0원으로 만든다(가격을 넣고 켜야 고객에게 보인다).
- * 같은 상품이 이미 있으면 새로 만들지 않고 그 상품을 돌려준다.
+ * 스펙에 맞는 상품을 돌려준다. 이미 있으면 그걸, 없으면 상품 관리에 판매중지·0원으로 새로 등록한다(가격을 넣고 켜야 고객에게 보인다).
+ * known은 이미 읽어 둔 같은 축종의 상품 목록이다.
  */
+async function ensureProductForSpec(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  wholesalerId: string,
+  spec: ProductSpecInput,
+  known: readonly ProductOption[]
+): Promise<{ product: ProductOption; created: boolean }> {
+  const fields = identityFieldsFor(spec.category);
+  const name = fields ? (composeIdentityName(spec.category, spec.subcategory, spec.grade, spec.breed) ?? spec.category) : spec.name.trim();
+
+  if (fields?.includes("subcategory") && !spec.subcategory) {
+    throw new RbacError("부위를 골라주세요.");
+  }
+
+  if (fields?.includes("grade") && !spec.grade) {
+    throw new RbacError("등급을 골라주세요.");
+  }
+
+  if (!fields && name.length < 2) {
+    throw new RbacError("상품명을 2자 이상 입력해주세요.");
+  }
+
+  const existing = fields ? findProductForSpec(spec, known) : known.find((product) => product.category === spec.category && product.name === name && product.origin === spec.origin);
+
+  if (existing) {
+    return { product: existing, created: false };
+  }
+
+  const { data, error } = await supabase
+    .from("products")
+    .insert({
+      wholesaler_id: wholesalerId,
+      name,
+      category: spec.category,
+      subcategory: spec.subcategory || null,
+      grade: spec.grade || null,
+      breed: spec.category === "소" ? spec.breed : null,
+      origin: spec.origin,
+      base_price: 0,
+      unit: "kg",
+      stock_quantity: 0,
+      is_active: false,
+      description: "발주서 작성 중 등록됨 — 판매가를 넣고 판매중으로 바꾸면 고객에게 보입니다.",
+    })
+    .select("id, name, category, subcategory, grade, breed, origin")
+    .single();
+
+  if (error?.code === "23505") {
+    // 같은 상품을 동시에 만들던 다른 요청이 먼저 만들었다 — 그 상품을 쓴다.
+    const again = fields ? findProductForSpec(spec, await loadProductOptions(supabase, wholesalerId, { categories: [spec.category] })) : null;
+
+    if (again) {
+      return { product: again, created: false };
+    }
+  }
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "상품 등록에 실패했습니다.");
+  }
+
+  return { product: data as ProductOption, created: true };
+}
+
+export type CreatePurchaseOrderProductInput = ProductSpecInput;
+
+/** 발주서를 쓰다가 목록에 없는 품목을 그 자리에서 상품 관리에 등록한다(화면의 "새 품목 만들기"). 같은 상품이 이미 있으면 그 상품을 돌려준다. */
 export async function createPurchaseOrderProductAction(
   input: CreatePurchaseOrderProductInput
 ): Promise<ActionResult<{ product: ProductOption; created: boolean }>> {
@@ -315,6 +418,7 @@ export async function createPurchaseOrderProductAction(
       subcategory: (input.subcategory ?? "").trim(),
       grade: (input.grade ?? "").trim(),
       origin: (input.origin ?? "").trim(),
+      name: (input.name ?? "").trim(),
     };
     const checked = validatePurchaseOrderLine({ ...spec, quantity: "1", unitPrice: "" }, categories, subcategories);
 
@@ -322,60 +426,13 @@ export async function createPurchaseOrderProductAction(
       throw new RbacError(checked.error);
     }
 
-    const fields = identityFieldsFor(spec.category);
-    const name = fields ? (composeIdentityName(spec.category, spec.subcategory, spec.grade, spec.breed) ?? spec.category) : (input.name ?? "").trim();
+    const ensured = await ensureProductForSpec(supabase, wholesalerId, spec, products);
 
-    if (fields?.includes("subcategory") && !spec.subcategory) {
-      throw new RbacError("부위를 골라주세요.");
+    if (ensured.created) {
+      revalidatePath("/dashboard/products");
     }
 
-    if (fields?.includes("grade") && !spec.grade) {
-      throw new RbacError("등급을 골라주세요.");
-    }
-
-    if (!fields && name.length < 2) {
-      throw new RbacError("상품명을 2자 이상 입력해주세요.");
-    }
-
-    const existing = fields ? findProductForSpec(spec, products) : products.find((product) => product.category === spec.category && product.name === name && product.origin === spec.origin);
-
-    if (existing) {
-      return { success: true, data: { product: existing, created: false } };
-    }
-
-    const { data, error } = await supabase
-      .from("products")
-      .insert({
-        wholesaler_id: wholesalerId,
-        name,
-        category: spec.category,
-        subcategory: spec.subcategory || null,
-        grade: spec.grade || null,
-        breed: spec.category === "소" ? spec.breed : null,
-        origin: spec.origin,
-        base_price: 0,
-        unit: "kg",
-        stock_quantity: 0,
-        is_active: false,
-        description: "발주서 작성 중 등록됨 — 판매가를 넣고 판매중으로 바꾸면 고객에게 보입니다.",
-      })
-      .select("id, name, category, subcategory, grade, breed, origin")
-      .single();
-
-    if (error?.code === "23505") {
-      const again = fields ? findProductForSpec(spec, await loadProductOptions(supabase, wholesalerId, { categories: [spec.category] })) : null;
-
-      if (again) {
-        return { success: true, data: { product: again, created: false } };
-      }
-    }
-
-    if (error || !data) {
-      throw new Error(error?.message ?? "상품 등록에 실패했습니다.");
-    }
-
-    revalidatePath("/dashboard/products");
-    return { success: true, data: { product: data as ProductOption, created: true } };
+    return { success: true, data: ensured };
   } catch (error) {
     return toResult(error);
   }

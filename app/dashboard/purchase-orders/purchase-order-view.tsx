@@ -35,7 +35,11 @@ export interface PurchaseOrderRow {
   expected_on: string | null;
   note: string | null;
   status: "OPEN" | "CLOSED" | "CANCELLED";
+  /** 입고로 다 받아서 자동 마감된 시각. 사람이 닫았으면 null. */
+  auto_closed_at?: string | null;
   purchase_order_lines: Array<{
+    /** 이 줄에 붙은 입고 박스(취소 제외)의 무게 합(kg). */
+    received: number;
     line_no: number;
     product_id?: string | null;
     category: string;
@@ -65,6 +69,23 @@ const STATUS_LABEL: Record<PurchaseOrderRow["status"], { text: string; bg: strin
   CLOSED: { text: "마감", bg: "#dcfce7", color: "#166534" },
   CANCELLED: { text: "취소", bg: "#f1f5f9", color: "#64748b" },
 };
+
+function formatKg(value: number): string {
+  return value.toLocaleString("ko-KR", { maximumFractionDigits: 3 });
+}
+
+/** 발주서 상태 표시 — 입고로 받은 양이 있으면 "입고 중", 입고로 다 받아 닫혔으면 "다 받음", 사람이 닫았으면 "마감". */
+function orderStatusBadge(order: PurchaseOrderRow, receivedTotal: number): { text: string; bg: string; color: string } {
+  if (order.status === "CLOSED" && order.auto_closed_at) {
+    return { text: "다 받음", bg: "#dcfce7", color: "#166534" };
+  }
+
+  if (order.status === "OPEN" && receivedTotal > 0) {
+    return { text: "입고 중", bg: "#fef3c7", color: "#92400e" };
+  }
+
+  return STATUS_LABEL[order.status];
+}
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
@@ -212,7 +233,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
     const unlinkedCount = uploaded.filter((row) => !row.error && !row.input.productId).length;
     const unlinkedNote =
       unlinkedCount > 0
-        ? ` 등록된 품목과 연결되지 않은 ${unlinkedCount}줄은 목록에서 고르거나 '새 품목 만들기'로 등록하세요(그대로 저장해도 됩니다).`
+        ? ` 등록된 품목이 아닌 ${unlinkedCount}줄은 저장할 때 상품 관리에 자동으로 등록됩니다(판매중지·0원).`
         : "";
 
     setNotice(
@@ -273,7 +294,11 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
     setRowErrors({});
     setCreatingIndex(null);
     setOpen(false);
-    setNotice("발주서를 저장했습니다.");
+    setNotice(
+      result.data && result.data.createdProducts > 0
+        ? `발주서를 저장했습니다. 등록된 품목이 아니던 ${result.data.createdProducts}개는 상품 관리에 판매중지·0원으로 새로 등록했습니다(가격을 넣고 판매중으로 바꾸면 고객에게 보입니다).`
+        : "발주서를 저장했습니다."
+    );
     router.refresh();
   };
 
@@ -406,7 +431,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
                       </div>
                       {unlinked && !showNewProduct && (
                         <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#92400e" }}>
-                          등록된 품목과 연결되지 않은 줄입니다({specText(line)}). 그대로 저장할 수 있지만 입고 때 이 줄과 자동으로 이어지지 않습니다.{" "}
+                          등록된 품목이 아닙니다({specText(line)}). 저장하면 상품 관리에 자동으로 등록됩니다.{" "}
                           <button type="button" onClick={() => setCreatingIndex(index)} style={{ border: "none", background: "none", padding: 0, fontSize: "12px", fontWeight: 700, color: "#1d4ed8", cursor: "pointer", textDecoration: "underline" }}>
                             새 품목 만들기
                           </button>
@@ -470,8 +495,9 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
           <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>아직 작성한 발주서가 없습니다.</p>
         ) : (
           orders.map((order) => {
-            const badge = STATUS_LABEL[order.status];
             const total = order.purchase_order_lines.reduce((sum, line) => sum + Number(line.quantity), 0);
+            const receivedTotal = order.purchase_order_lines.reduce((sum, line) => sum + Number(line.received ?? 0), 0);
+            const badge = orderStatusBadge(order, receivedTotal);
 
             return (
               <article key={order.id} style={{ border: "1px solid #e2e8f0", borderRadius: "12px", padding: "12px 14px", backgroundColor: "#fff" }}>
@@ -481,15 +507,30 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
                   <span style={{ fontSize: "12px", color: "#64748b" }}>
                     발주 {order.ordered_on}
                     {order.expected_on ? ` · 도착 예정 ${order.expected_on}` : ""} · 합계 {total.toLocaleString("ko-KR")}kg
+                    {order.status !== "CANCELLED" && receivedTotal > 0 ? ` · 받음 ${formatKg(receivedTotal)}kg` : ""}
                   </span>
                 </div>
                 <ul style={{ margin: "8px 0 0", padding: 0, listStyle: "none", display: "grid", gap: "3px", fontSize: "13px", color: "#334155" }}>
-                  {order.purchase_order_lines.map((line) => (
-                    <li key={line.line_no}>
-                      {specText(line)} — <strong>{Number(line.quantity).toLocaleString("ko-KR")}{line.unit}</strong>
-                      {line.unit_price !== null ? ` · ${Number(line.unit_price).toLocaleString("ko-KR")}원/${line.unit}` : ""}
-                    </li>
-                  ))}
+                  {order.purchase_order_lines.map((line) => {
+                    const received = Number(line.received ?? 0);
+                    const remaining = Number(line.quantity) - received;
+
+                    return (
+                      <li key={line.line_no}>
+                        {specText(line)} — <strong>{Number(line.quantity).toLocaleString("ko-KR")}{line.unit}</strong>
+                        {line.unit_price !== null ? ` · ${Number(line.unit_price).toLocaleString("ko-KR")}원/${line.unit}` : ""}
+                        {order.status !== "CANCELLED" && line.product_id && (
+                          remaining <= 0 ? (
+                            <span style={{ marginLeft: "6px", fontSize: "12px", fontWeight: 700, color: "#166534" }}>다 받음({formatKg(received)}kg)</span>
+                          ) : (
+                            <span style={{ marginLeft: "6px", fontSize: "12px", color: received > 0 ? "#1d4ed8" : "#64748b" }}>
+                              받음 {formatKg(received)}kg · 남음 {formatKg(remaining)}kg
+                            </span>
+                          )
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
                 {order.note && <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#64748b" }}>메모: {order.note}</p>}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>

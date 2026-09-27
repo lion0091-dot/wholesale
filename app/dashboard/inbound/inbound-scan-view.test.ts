@@ -52,6 +52,7 @@ const render = (scans: InboundScanRow[], products: Array<{ id: string; name: str
       awaitingDocumentLines: [],
       storageLocationSuggestions: [],
       canEditPurchasePrice: true,
+      suppliers: [{ id: "sup-1", name: "공급처가" }],
       archivedProductCount,
     })
   );
@@ -133,3 +134,17 @@ describe("입고 스캔 화면 구조 — 스캔과 입고 처리에 집중한�
   });
 });
 
+
+describe("입고 스캔 화면 — 지금 온 거래처", () => {
+  it("스캔 칸 위에 '지금 온 거래처' 선택칸이 있고 거래처 목록이 들어 있다", () => {
+    const html = render([]);
+
+    expect(html).toContain("지금 온 거래처");
+    expect(html).toContain("거래처를 고르세요");
+    expect(html).toContain("공급처가");
+  });
+
+  it("예전의 매입처 글자 입력칸은 없다(거래처를 고르면 그 이름이 매입처로 기록된다)", () => {
+    expect(render([])).not.toContain("도축장·거래처");
+  });
+});

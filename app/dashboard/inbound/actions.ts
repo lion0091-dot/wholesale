@@ -12,6 +12,12 @@ import {
 import { cacheTraceRecord } from "@/lib/livestock/master-cache";
 import { autoCloseDocuments, autoCloseDocumentsForScan } from "@/lib/livestock/auto-close";
 import { autoLinkNumberlessScan } from "@/lib/livestock/auto-link-numberless";
+import {
+  loadScanPurchaseOrder,
+  rejectionSummary,
+  scanPurchaseOrderFromDb,
+  type ScanPurchaseOrder,
+} from "@/lib/livestock/scan-purchase-order";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -32,9 +38,14 @@ export type ScanType = "BARCODE_SCAN" | "CAMERA" | "EXCEL" | "MANUAL";
 export interface ScanResult {
   scanId: string;
   traceNo: string;
-  /** NORMAL: 재고 반영 완료 / PENDING_MAPPING: 상품 확인 필요 / EXCEPTION: 이력 못 찾음 */
-  status: "NORMAL" | "PENDING_MAPPING" | "EXCEPTION";
+  /**
+   * NORMAL: 재고 반영 완료 / PENDING_MAPPING: 상품 확인 필요 / EXCEPTION: 이력 못 찾음 /
+   * REJECTED: 발주서 기준으로 받지 않음(재고에 없음 — `po`에 사유).
+   */
+  status: "NORMAL" | "PENDING_MAPPING" | "EXCEPTION" | "REJECTED";
   productId: string | null;
+  /** 거래처를 실어 보냈고 상품이 정해진 박스의 발주서 판정. 거래처를 안 실었거나 아직 상품이 없으면 null. */
+  po: ScanPurchaseOrder | null;
   masterFound: boolean;
   speciesGroup: string | null;
   partName: string | null;
@@ -295,6 +306,13 @@ async function finishRecordedScan(
           needsPrice: Boolean(createdRow.needs_price),
         };
       }
+
+      // 상품이 정해지는 순간 발주서 판정도 함께 돌아 박스가 거절(취소)됐을 수 있다 — DB 응답에는 안 실려 있어 직접 확인한다.
+      const { data: afterCreate } = await supabase.from("inbound_scans").select("status").eq("id", input.scanId).maybeSingle();
+
+      if (afterCreate?.status === "VOIDED") {
+        return { status: "REJECTED", productId, autoCreated, autoClosedDocument: false, matchedClosedDocument: false };
+      }
     }
   }
 
@@ -355,6 +373,11 @@ export async function recordScanAction(input: {
   /** 건별 매입단가. 비우면 상품별 기본 매입단가가 따라 들어간다. */
   purchaseUnitPrice?: number | null;
   purchaseSupplier?: string | null;
+  /**
+   * 지금 온 거래처(suppliers.id). 실어 보내면 그 거래처의 열린 발주서와 맞춰 받을지 판정한다(마이그레이션 142).
+   * 입고 스캔 화면은 항상 보낸다. 엑셀 대량 입고처럼 안 보내면 판정 없이 예전 그대로 받는다.
+   */
+  supplierId?: string | null;
   /**
    * GS1-128 라벨의 상품코드(GTIN). 이력번호가 개체(소 한 마리)를 가리킨다면
    * 이건 공급처가 품목에 부여한 코드다. 공공 이력조회가 부위를 주지 않는 것이
@@ -449,6 +472,7 @@ export async function recordScanAction(input: {
       p_labeled_weight: labeledWeight,
       p_purchase_unit_price: input.purchaseUnitPrice ?? null,
       p_purchase_supplier: input.purchaseSupplier ?? null,
+      p_supplier_id: input.supplierId ?? null,
     });
 
     if (error) {
@@ -456,6 +480,10 @@ export async function recordScanAction(input: {
 
       if (duplicate) {
         return { success: true, data: { duplicate: { lastScannedAt: duplicate[1] } } };
+      }
+
+      if (error.message.includes("SUPPLIER_NOT_FOUND")) {
+        throw new RbacError("선택한 거래처를 찾을 수 없습니다. 화면을 새로고침한 뒤 거래처를 다시 골라 주세요.");
       }
 
       // 같은 업로드 행을 다른 창(탭)이 먼저 입고시켰다. 실패가 아니라 "이미 됐다"다 —
@@ -474,12 +502,18 @@ export async function recordScanAction(input: {
     const row = data as Record<string, unknown>;
 
     // 전표 줄 붙이기·상품 코드 기록·상품 자동 생성·자동 마감을 한 묶음으로 처리한다.
-    const finished = row.scan_id
-      ? await finishRecordedScan(supabase, { scanId: String(row.scan_id), status: String(row.status), gtin })
-      : { status: String(row.status), productId: null, autoCreated: null, autoClosedDocument: false, matchedClosedDocument: false };
+    // 발주서 기준으로 이미 거절된 박스(취소됨)는 이어 붙일 것이 없다.
+    const finished =
+      row.status === "REJECTED"
+        ? { status: "REJECTED", productId: null, autoCreated: null, autoClosedDocument: false, matchedClosedDocument: false }
+        : row.scan_id
+          ? await finishRecordedScan(supabase, { scanId: String(row.scan_id), status: String(row.status), gtin })
+          : { status: String(row.status), productId: null, autoCreated: null, autoClosedDocument: false, matchedClosedDocument: false };
 
     row.status = finished.status;
     if (finished.productId) row.product_id = finished.productId;
+
+    const po = input.supplierId && row.scan_id ? await loadScanPurchaseOrder(supabase, String(row.scan_id)) : null;
 
     const autoCreated = finished.autoCreated;
     const autoClosedDocument = finished.autoClosedDocument;
@@ -495,6 +529,7 @@ export async function recordScanAction(input: {
         traceNo: String(row.trace_no),
         status: row.status as ScanResult["status"],
         productId: (row.product_id as string | null) ?? null,
+        po,
         masterFound: Boolean(row.master_found),
         speciesGroup: (row.species_group as string | null) ?? null,
         partName: (row.part_name as string | null) ?? null,
@@ -542,6 +577,8 @@ export interface SplitScanRow {
 export async function recordSplitScansAction(input: {
   boxCode: string;
   rows: SplitScanRow[];
+  /** 지금 온 거래처 — 줄마다 발주서 판정을 받는다. 하나라도 거절되면 전부 취소한다. */
+  supplierId?: string | null;
 }): Promise<ActionResult<{ scanIds: string[] }>> {
   try {
     const { supabase, wholesalerId } = await resolveInboundScope();
@@ -583,8 +620,21 @@ export async function recordSplitScansAction(input: {
         confirmDuplicate: true,
         memo: traceNo === boxCode ? "박스 나눠서 입고" : `박스 나눠서 입고 (박스 ${boxCode})`,
         gtin: row.gtin ?? null,
+        supplierId: input.supplierId ?? null,
       });
-      const data = result.data as { scanId?: string } | undefined;
+      const data = result.data as { scanId?: string; status?: string; po?: ScanPurchaseOrder | null } | undefined;
+
+      // 발주서 기준으로 이 줄이 거절되면 나눠 넣은 박스 전체를 되돌린다(반쪽 입고가 남지 않게).
+      if (result.success && data?.status === "REJECTED") {
+        for (const scanId of recorded) {
+          await voidScanAction(scanId, "박스 나눠서 입고 중 발주서 기준 거절로 취소");
+        }
+
+        throw new RbacError(
+          `${index + 1}번째 줄: ${data.po ? rejectionSummary(data.po) : "발주서 기준으로 받지 않았습니다."}` +
+            (recorded.length > 0 ? ` 앞서 넣은 ${recorded.length}건은 취소했습니다. 이 줄을 빼고 다시 입력하세요.` : "")
+        );
+      }
 
       if (!result.success || !data?.scanId) {
         for (const scanId of recorded) {
@@ -610,8 +660,10 @@ export interface ReplaceTraceResult {
   /** 교체된 새 박스 id. 조회가 여전히 안 돼 아무것도 안 바꿨으면 원래 박스 id. */
   scanId: string;
   traceNo: string;
-  /** NORMAL: 재고 반영 / PENDING_MAPPING: 상품 확인 필요 / EXCEPTION: 이력 못 찾음 */
-  status: "NORMAL" | "PENDING_MAPPING" | "EXCEPTION";
+  /** NORMAL: 재고 반영 / PENDING_MAPPING: 상품 확인 필요 / EXCEPTION: 이력 못 찾음 / REJECTED: 발주서 기준으로 받지 않음 */
+  status: "NORMAL" | "PENDING_MAPPING" | "EXCEPTION" | "REJECTED";
+  /** 새 박스의 발주서 판정(거래처가 실린 박스만). */
+  po: ScanPurchaseOrder | null;
   /** 번호를 실제로 바꾸거나 다시 기록했는가. false면 재조회했지만 여전히 못 찾아 그대로 뒀다. */
   changed: boolean;
   autoCreatedProductName: string | null;
@@ -647,6 +699,7 @@ async function replaceTrace(
         scanId: input.scanId,
         traceNo,
         status: "EXCEPTION",
+        po: null,
         changed: false,
         autoCreatedProductName: null,
         autoClosedDocument: false,
@@ -683,12 +736,17 @@ async function replaceTrace(
 
   const row = (data ?? {}) as Record<string, unknown>;
   const newScanId = String(row.scan_id);
-  const finished = await finishRecordedScan(supabase, {
-    scanId: newScanId,
-    status: String(row.status),
-    // 상품코드(GTIN)는 DB 함수가 새 박스로 옮겼다 — 여기서 다시 쓰지 않고 자동 생성 학습에만 쓰인다.
-    gtin: null,
-  });
+  // 발주서 기준으로 이미 거절된 박스(취소됨)는 이어 붙일 것이 없다.
+  const finished =
+    row.status === "REJECTED"
+      ? { status: "REJECTED", productId: null, autoCreated: null, autoClosedDocument: false, matchedClosedDocument: false }
+      : await finishRecordedScan(supabase, {
+          scanId: newScanId,
+          status: String(row.status),
+          // 상품코드(GTIN)는 DB 함수가 새 박스로 옮겼다 — 여기서 다시 쓰지 않고 자동 생성 학습에만 쓰인다.
+          gtin: null,
+        });
+  const po = await loadScanPurchaseOrder(supabase, newScanId);
 
   revalidatePath(REVALIDATE_PATH, "layout");
   revalidatePath("/dashboard/products");
@@ -699,6 +757,7 @@ async function replaceTrace(
       scanId: newScanId,
       traceNo,
       status: finished.status as ReplaceTraceResult["status"],
+      po,
       changed: true,
       autoCreatedProductName: finished.autoCreated?.productName ?? null,
       autoClosedDocument: finished.autoClosedDocument,
@@ -801,6 +860,8 @@ export interface MappingResult {
   partMismatch: boolean;
   tracePart: string | null;
   productPart: string | null;
+  /** 이 박스가 거래처를 달고 있었다면 상품이 정해지는 순간의 발주서 판정. REJECTED면 박스는 재고에 들어가지 않고 취소됐다. */
+  po: ScanPurchaseOrder | null;
 }
 
 export async function resolveMappingAction(
@@ -855,6 +916,7 @@ export async function resolveMappingAction(
         partMismatch: Boolean(row.part_mismatch),
         tracePart: (row.trace_part as string | null) ?? null,
         productPart: (row.product_part as string | null) ?? null,
+        po: scanPurchaseOrderFromDb(row.po),
       },
     };
   } catch (error) {
@@ -933,6 +995,7 @@ export async function resolveMappingToOrderAction(
         partMismatch: Boolean(resolveRow.part_mismatch),
         tracePart: (resolveRow.trace_part as string | null) ?? null,
         productPart: (resolveRow.product_part as string | null) ?? null,
+        po: scanPurchaseOrderFromDb(resolveRow.po),
         taken: Number(outboundRow.taken ?? 0),
         remainingNeeded: Number(outboundRow.remaining_needed ?? 0),
       },

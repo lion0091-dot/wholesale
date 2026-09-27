@@ -1,3 +1,4 @@
+import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { InboundScanView } from "./inbound-scan-view";
@@ -29,6 +30,21 @@ export default async function InboundPage() {
 
   const data = await loadInboundData(scope, { scanDetails: true });
   const configured = configuredTraceSources();
+
+  // "지금 온 거래처"로 고를 수 있는 거래처(발주 관리의 거래처 관리에서 만든 사용 중인 것).
+  let suppliers: Array<{ id: string; name: string }> = [];
+
+  if (scope?.wholesalerId) {
+    const supabase = await createClient();
+    const { data: supplierRows } = await supabase
+      .from("suppliers")
+      .select("id, name")
+      .eq("wholesaler_id", scope.wholesalerId)
+      .eq("is_active", true)
+      .order("name", { ascending: true });
+
+    suppliers = (supplierRows ?? []) as Array<{ id: string; name: string }>;
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -79,6 +95,7 @@ export default async function InboundPage() {
         storageLocationSuggestions={data.storageLocationSuggestions}
         archivedProductCount={data.archivedProductCount}
         canEditPurchasePrice={data.canManage}
+        suppliers={suppliers}
       />
     </div>
   );

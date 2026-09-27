@@ -12,7 +12,6 @@ const input = (patch: Partial<Parameters<typeof saveReceivingPolicyAction>[0]> =
   overToleranceMode: "PERCENT",
   overToleranceValue: "5",
   unlistedItemPolicy: "HOLD",
-  lineAssignment: "OLDEST_FIRST",
   ...patch,
 });
 
@@ -40,10 +39,10 @@ describe("saveReceivingPolicyAction — 입고 기준 저장", () => {
     const first = await saveReceivingPolicyAction(input({ overToleranceValue: "5" }));
 
     expect(first.success).toBe(true);
-    expect(first.data!.policy).toEqual({ overToleranceMode: "PERCENT", overToleranceValue: 5, unlistedItemPolicy: "HOLD", lineAssignment: "OLDEST_FIRST" });
-    expect(await rowOf(world.wholesalerA)).toMatchObject({ over_tolerance_mode: "PERCENT", unlisted_item_policy: "HOLD", line_assignment: "OLDEST_FIRST", updated_by: world.users.ownerA.id });
+    expect(first.data!.policy).toEqual({ overToleranceMode: "PERCENT", overToleranceValue: 5, unlistedItemPolicy: "HOLD" });
+    expect(await rowOf(world.wholesalerA)).toMatchObject({ over_tolerance_mode: "PERCENT", unlisted_item_policy: "HOLD", updated_by: world.users.ownerA.id });
 
-    const second = await saveReceivingPolicyAction(input({ overToleranceMode: "KG", overToleranceValue: "12.5", unlistedItemPolicy: "REJECT", lineAssignment: "OFFICE" }));
+    const second = await saveReceivingPolicyAction(input({ overToleranceMode: "KG", overToleranceValue: "12.5", unlistedItemPolicy: "REJECT" }));
 
     expect(second.success).toBe(true);
 
@@ -51,7 +50,7 @@ describe("saveReceivingPolicyAction — 입고 기준 저장", () => {
 
     expect(rows).toHaveLength(1);
     expect(Number(rows![0].over_tolerance_value)).toBe(12.5);
-    expect(rows![0]).toMatchObject({ over_tolerance_mode: "KG", unlisted_item_policy: "REJECT", line_assignment: "OFFICE" });
+    expect(rows![0]).toMatchObject({ over_tolerance_mode: "KG", unlisted_item_policy: "REJECT" });
   });
 
   it("매니저는 저장할 수 있고, 직원·고객·비로그인은 거부되며 값이 안 바뀐다", async () => {
@@ -111,7 +110,6 @@ describe("saveReceivingPolicyAction — 입고 기준 저장", () => {
       [{ overToleranceValue: "101" }, "100 이하"],
       [{ overToleranceMode: "TON" }, "단위"],
       [{ unlistedItemPolicy: "ACCEPT" }, "없는 물건"],
-      [{ lineAssignment: "RANDOM" }, "배정"],
     ];
 
     for (const [patch, expected] of cases) {
@@ -126,6 +124,5 @@ describe("saveReceivingPolicyAction — 입고 기준 저장", () => {
     const direct = await adminClient().from("receiving_policies").update({ over_tolerance_mode: "PERCENT", over_tolerance_value: 150 }).eq("wholesaler_id", world.wholesalerA);
 
     expect(direct.error?.code).toBe("23514");
-    expect((await adminClient().from("receiving_policies").update({ line_assignment: "RANDOM" }).eq("wholesaler_id", world.wholesalerA)).error?.code).toBe("23514");
   });
 });

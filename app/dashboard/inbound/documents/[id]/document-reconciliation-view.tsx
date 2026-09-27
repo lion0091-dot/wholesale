@@ -12,6 +12,7 @@ import {
   unlinkScanFromDocumentLineAction,
 } from "../../document-actions";
 import { resolveMappingAction } from "../../actions";
+import { rejectionSummary, type ScanPurchaseOrder } from "@/lib/livestock/scan-purchase-order";
 import { TraceNoFixer } from "../../trace-no-fixer";
 import type { ScanProductOption } from "../../inbound-scan-view";
 import { InboundTabs } from "../../../section-tabs";
@@ -244,7 +245,7 @@ export function DocumentReconciliationView({
   }, []);
   const matchableUnlinkedCount = unlinkedBoxes.filter((box) => box.candidates.length > 0).length;
 
-  const runAction = async (key: string, run: () => Promise<{ success: boolean; error?: string }>) => {
+  const runAction = async (key: string, run: () => Promise<{ success: boolean; error?: string; data?: unknown }>) => {
     setBusyKey(key);
     setError(null);
 
@@ -254,6 +255,15 @@ export function DocumentReconciliationView({
 
     if (!result.success) {
       setError(result.error ?? "처리하지 못했습니다.");
+      return false;
+    }
+
+    // 상품을 정하는 순간 발주서 기준으로 이 박스를 받지 않기로 판정되면 재고에 안 들어간다 — 조용히 넘기지 않는다.
+    const po = (result.data as { po?: ScanPurchaseOrder | null } | undefined)?.po;
+
+    if (po?.result === "REJECTED") {
+      setError(`이 박스는 받지 않았습니다 — ${rejectionSummary(po)} 재고에는 넣지 않았습니다.`);
+      router.refresh();
       return false;
     }
 
@@ -326,6 +336,10 @@ export function DocumentReconciliationView({
       if (!result.success) {
         setError(result.error ?? "처리하지 못했습니다.");
         break;
+      }
+
+      if (result.data?.po?.result === "REJECTED") {
+        setError(`받지 않은 박스가 있습니다 — ${rejectionSummary(result.data.po)} 재고에는 넣지 않았습니다.`);
       }
     }
 

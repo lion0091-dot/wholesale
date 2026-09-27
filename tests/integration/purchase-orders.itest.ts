@@ -135,7 +135,7 @@ describe("createPurchaseOrderAction", () => {
         note: " 오전 도착 ",
         lines: [
           { category: "소", breed: "한우", subcategory: "등심", grade: "1++", origin: "국내산", quantity: "50", unitPrice: "45,000" },
-          { category: "돼지", breed: "", subcategory: "", grade: "", origin: "국내산", quantity: "1,200.5", unitPrice: "" },
+          { category: "돼지", breed: "", subcategory: "삼겹살", grade: "", origin: "국내산", quantity: "1,200.5", unitPrice: "" },
         ],
       })
     );
@@ -148,7 +148,11 @@ describe("createPurchaseOrderAction", () => {
     expect(row).toMatchObject({ wholesaler_id: world.wholesalerA, supplier_id: supplierAId, supplier_name: `테스트축산-${world.runId}`, note: "오전 도착", status: "OPEN", expected_on: "2026-09-29" });
     expect(lines).toHaveLength(2);
     expect(lines[0]).toMatchObject({ line_no: 1, category: "소", breed: "한우", subcategory: "등심", grade: "1++", quantity: 50, unit_price: 45000 });
-    expect(lines[1]).toMatchObject({ line_no: 2, category: "돼지", subcategory: null, grade: null, quantity: 1200.5, unit_price: null });
+    expect(lines[1]).toMatchObject({ line_no: 2, category: "돼지", subcategory: "삼겹살", grade: null, quantity: 1200.5, unit_price: null });
+    // 등록된 품목이 없던 줄은 저장하면서 상품 관리에 자동 등록돼 연결된다(앞선 테스트가 이미 만든 상품이 있으면 그걸 쓴다).
+    expect(result.data!.createdProducts).toBeGreaterThanOrEqual(1);
+    expect(lines[0].product_id).not.toBeNull();
+    expect(lines[1].product_id).not.toBeNull();
   });
 
   it("입력 오류는 각각 안내문으로 거부하고 아무것도 저장하지 않는다", async () => {
@@ -186,8 +190,8 @@ describe("createPurchaseOrderAction", () => {
       input({
         note: marker,
         lines: [
-          { category: "소", breed: "한우", subcategory: "", grade: "", origin: "국내산", quantity: "5", unitPrice: "" },
-          { category: "소", breed: "한우", subcategory: "", grade: "", origin: "국내산", quantity: "x", unitPrice: "" },
+          { category: "소", breed: "한우", subcategory: "안심", grade: "1+", origin: "국내산", quantity: "5", unitPrice: "" },
+          { category: "소", breed: "한우", subcategory: "등심", grade: "1++", origin: "국내산", quantity: "x", unitPrice: "" },
         ],
       })
     );
@@ -198,6 +202,36 @@ describe("createPurchaseOrderAction", () => {
     const { count } = await adminClient().from("purchase_orders").select("id", { count: "exact", head: true }).eq("note", marker);
 
     expect(count).toBe(0);
+  });
+
+  it("등록된 품목이 없는 줄은 튕기지 않고 자동 등록해 잇는다 — 같은 스펙이 여러 줄이면 상품은 하나, 부위 없는 줄은 이유를 알려 준다", async () => {
+    const spec = { category: "소", breed: "육우", subcategory: "다짐육", grade: "3", origin: "국내산", unitPrice: "" };
+    const result = await createPurchaseOrderAction(input({ lines: [{ ...spec, quantity: "10" }, { ...spec, quantity: "5" }] }));
+
+    expect(result.success).toBe(true);
+    expect(result.data!.createdProducts).toBe(1);
+
+    const lines = [...(await orderRow(result.data!.id)).purchase_order_lines].sort((a, b) => Number(a.line_no) - Number(b.line_no));
+
+    expect(lines[0].product_id).not.toBeNull();
+    expect(lines[1].product_id).toBe(lines[0].product_id);
+
+    const { data: products } = await adminClient().from("products").select("name, breed, is_active, base_price, stock_quantity").eq("id", lines[0].product_id as string);
+
+    expect(products).toEqual([{ name: "육우 다짐육 3", breed: "육우", is_active: false, base_price: 0, stock_quantity: 0 }]);
+
+    // 같은 스펙을 다시 발주하면 새 상품을 만들지 않는다.
+    const again = await createPurchaseOrderAction(input({ lines: [{ ...spec, quantity: "1" }] }));
+
+    expect(again.data!.createdProducts).toBe(0);
+
+    // 부위가 비어 있으면 상품을 등록할 수 없어 그 줄을 짚어 안내하고 아무것도 저장하지 않는다.
+    const marker = `부위없음-${world.runId}`;
+    const noPart = await createPurchaseOrderAction(input({ note: marker, lines: [{ ...spec, quantity: "1" }, { ...spec, subcategory: "", quantity: "1" }] }));
+
+    expect(noPart.success).toBe(false);
+    expect(noPart.error).toContain("2번째 줄: 부위를 골라주세요");
+    expect((await adminClient().from("purchase_orders").select("id", { count: "exact", head: true }).eq("note", marker)).count).toBe(0);
   });
 
   it("사용 중지한 거래처로는 발주서를 만들 수 없고 다시 사용으로 바꾸면 만들 수 있다", async () => {
@@ -425,7 +459,8 @@ describe("발주서 줄 ↔ 등록된 상품 연결 (마이그레이션 138)", (
     expect(lines[0]).toMatchObject({ product_id: beef.id, category: "소", breed: "한우", subcategory: "우삼겹", grade: "2", origin: "미국산" });
     expect(lines[1]).toMatchObject({ product_id: beef.id });
     expect(lines[2]).toMatchObject({ product_id: pork.id });
-    expect(lines[3].product_id).toBeNull();
+    expect(lines[3].product_id).not.toBeNull();
+    expect(created.data!.createdProducts).toBe(1);
     expect(lines[4]).toMatchObject({ product_id: legacy.id });
   });
 

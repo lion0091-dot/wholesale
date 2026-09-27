@@ -38,7 +38,6 @@ export async function saveReceivingPolicyAction(input: ReceivingPolicyInput): Pr
         over_tolerance_mode: checked.policy.overToleranceMode,
         over_tolerance_value: checked.policy.overToleranceValue,
         unlisted_item_policy: checked.policy.unlistedItemPolicy,
-        line_assignment: checked.policy.lineAssignment,
         updated_by: scope.userId,
       },
       { onConflict: "wholesaler_id" }
