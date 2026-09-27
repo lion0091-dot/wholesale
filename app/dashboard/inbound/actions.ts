@@ -18,6 +18,7 @@ import {
   scanPurchaseOrderFromDb,
   type ScanPurchaseOrder,
 } from "@/lib/livestock/scan-purchase-order";
+import { retroactivePurchaseOrderFromDb, type RetroactivePurchaseOrderResult } from "@/lib/livestock/retroactive-purchase-order";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -1069,6 +1070,52 @@ export async function voidScanAction(scanId: string, reason?: string): Promise<A
     revalidatePath("/dashboard/products");
 
     return { success: true, data: { reopenedDocument } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
+ * 보류함 화면의 "발주서 추가 생성" — 발주서에 없거나(UNLISTED_HELD) 초과로 받은(OVER_HELD) 박스를
+ * 사후에 발주서로 등록한다(전표도 같이 만들어짐). owner/manager만(대표의 의사결정 없이는 안 만들어진다).
+ */
+export async function createPurchaseOrderFromUnlistedScanAction(
+  scanId: string
+): Promise<ActionResult<RetroactivePurchaseOrderResult>> {
+  try {
+    const { supabase, canManagePurchase } = await resolveInboundScope();
+
+    if (!canManagePurchase) {
+      throw new RbacError("발주서 추가 생성은 사장님·매니저만 할 수 있습니다.");
+    }
+
+    const { data, error } = await supabase.rpc("create_purchase_order_from_unlisted_scan", {
+      p_scan_id: scanId,
+    });
+
+    if (error) {
+      if (error.message.includes("SCAN_HAS_NO_SUPPLIER")) {
+        throw new RbacError("이 박스는 거래처가 기록돼 있지 않습니다.");
+      }
+      if (error.message.includes("SCAN_NOT_HOLD")) {
+        throw new RbacError("이미 처리된 박스입니다. 화면을 새로고침해주세요.");
+      }
+      if (error.message.includes("SCAN_ALREADY_ON_DOCUMENT")) {
+        throw new RbacError("이 박스는 이미 전표에 이어져 있습니다. 전표 대조 화면에서 처리해주세요.");
+      }
+      if (error.message.includes("SCAN_NOT_FOUND")) {
+        throw new RbacError("해당 박스를 찾을 수 없습니다.");
+      }
+      if (error.message.includes("FORBIDDEN")) {
+        throw new RbacError("발주서 추가 생성은 사장님·매니저만 할 수 있습니다.");
+      }
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH, "layout");
+    revalidatePath("/dashboard/purchase-orders");
+
+    return { success: true, data: retroactivePurchaseOrderFromDb(data) };
   } catch (error) {
     return toResult(error);
   }

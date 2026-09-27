@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   closeInboundDocumentAction,
+  createPurchaseOrderFromDocumentScanAction,
   getDocumentFileUrlAction,
   linkScanToDocumentLineAction,
   reopenInboundDocumentAction,
   setDocumentLineCountModeAction,
+  setDocumentSupplierAction,
   unlinkScanFromDocumentLineAction,
 } from "../../document-actions";
 import { resolveMappingAction } from "../../actions";
@@ -37,6 +39,15 @@ export interface ReconciliationLineBox {
   linkedHow: "AUTO" | "MANUAL";
   linkedAt: string;
   createdAt: string;
+  /** 상품이 정해졌는가 — "발주서 추가 생성"은 상품이 있어야 가능하다. */
+  hasProduct: boolean;
+  /** 발주서 줄에 아직 안 붙은 무게(kg). 0이면 이미 발주서에 다 붙어 있어 더 할 게 없다. */
+  unassignedWeight: number;
+}
+
+export interface SupplierOption {
+  id: string;
+  name: string;
 }
 
 export interface LineEdit {
@@ -101,6 +112,9 @@ export interface UnlinkedBox {
 export interface DocumentReconciliationViewProps {
   documentId: string;
   supplierName: string | null;
+  /** 이 전표가 어느 거래처인지(발주서 연결용, 143). 옛 전표는 비어 있을 수 있다. */
+  supplierId: string | null;
+  suppliers: SupplierOption[];
   documentNo: string | null;
   issuedOn: string | null;
   status: "PENDING" | "CLOSED";
@@ -111,6 +125,8 @@ export interface DocumentReconciliationViewProps {
   rangeFrom: string;
   rangeTo: string;
   products: ScanProductOption[];
+  /** 발주서 추가 생성·거래처 설정은 사장님·매니저만. */
+  canManage: boolean;
 }
 
 const STATUS_BADGE: Record<LineMatchStatus, { label: string; bg: string; color: string }> = {
@@ -146,6 +162,8 @@ function arrivalText(line: ReconciliationLine): string {
 export function DocumentReconciliationView({
   documentId,
   supplierName,
+  supplierId,
+  suppliers,
   documentNo,
   issuedOn,
   status,
@@ -156,12 +174,14 @@ export function DocumentReconciliationView({
   rangeFrom,
   rangeTo,
   products,
+  canManage,
 }: DocumentReconciliationViewProps) {
   const router = useRouter();
   const [expandedLineId, setExpandedLineId] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [supplierPick, setSupplierPick] = useState(supplierId ?? "");
   const [fromInput, setFromInput] = useState(rangeFrom);
   const [toInput, setToInput] = useState(rangeTo);
   const [closeModalOpen, setCloseModalOpen] = useState(false);
@@ -392,6 +412,17 @@ export function DocumentReconciliationView({
     await runAction("reopen", () => reopenInboundDocumentAction(documentId));
   };
 
+  const handleSaveSupplier = async () => {
+    if (!supplierPick) return;
+    await runAction("supplier", () => setDocumentSupplierAction(documentId, supplierPick));
+  };
+
+  const handleCreatePurchaseOrder = async (scanId: string) => {
+    const ok = await runAction(`po-create-${scanId}`, () => createPurchaseOrderFromDocumentScanAction(scanId));
+
+    if (ok) setNotice("발주서를 만들었습니다. 발주 관리에서 확인할 수 있습니다.");
+  };
+
   const applyRange = () => {
     const params = new URLSearchParams();
 
@@ -446,6 +477,35 @@ export function DocumentReconciliationView({
           {issuedOn ?? "서류 날짜 미상"}
           {documentNo ? ` · ${documentNo}` : ""}
         </p>
+
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "12px", color: "#64748b" }}>거래처(발주서 연결용)</span>
+          {canManage ? (
+            <>
+              <select
+                value={supplierPick}
+                onChange={(event) => setSupplierPick(event.target.value)}
+                style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: "12px" }}
+              >
+                <option value="">선택 안 함</option>
+                {suppliers.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </option>
+                ))}
+              </select>
+              {supplierPick && supplierPick !== supplierId && (
+                <button type="button" onClick={() => void handleSaveSupplier()} disabled={busyKey === "supplier"} style={secondaryButton}>
+                  {busyKey === "supplier" ? "저장 중…" : "저장"}
+                </button>
+              )}
+            </>
+          ) : (
+            <span style={{ fontSize: "12px", color: "#334155" }}>
+              {suppliers.find((supplier) => supplier.id === supplierId)?.name ?? "지정 안 됨"}
+            </span>
+          )}
+        </div>
 
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           {hasFile && (
@@ -830,6 +890,17 @@ export function DocumentReconciliationView({
                                     </option>
                                   ))}
                               </select>
+                            )}
+                            {canManage && supplierId && box.hasProduct && box.unassignedWeight > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => void handleCreatePurchaseOrder(box.scanId)}
+                                disabled={busyKey === `po-create-${box.scanId}`}
+                                style={secondaryButton}
+                                title={`발주서에 안 붙은 ${formatWeight(box.unassignedWeight)}만큼 발주서를 사후에 만듭니다`}
+                              >
+                                {busyKey === `po-create-${box.scanId}` ? "만드는 중…" : "발주서 추가 생성"}
+                              </button>
                             )}
                             {isPending && (
                               <button

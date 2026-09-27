@@ -15,6 +15,7 @@ import { autoCloseDocuments } from "@/lib/livestock/auto-close";
 import { autoLinkRecentUnlinkedScans } from "@/lib/livestock/auto-link-numberless";
 import { documentStorageName } from "@/lib/livestock/document-storage-name";
 import { legacySupplierKey, normalizeSupplierName, supplierKey } from "@/lib/livestock/supplier-name";
+import { retroactivePurchaseOrderFromDb, type RetroactivePurchaseOrderResult } from "@/lib/livestock/retroactive-purchase-order";
 
 /**
  * 공급처 원본 전표 저장 (29단계 A).
@@ -1404,6 +1405,87 @@ export async function reopenInboundDocumentAction(documentId: string): Promise<A
     revalidatePath(REVALIDATE_PATH, "layout");
 
     return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
+ * 전표에 거래처(실제 거래처 목록 중 하나)를 붙인다·바꾼다 — 발주서 연결(143)에 필요하다.
+ * owner/manager만. 대조 중이든 마감이든 상관없이 고칠 수 있다(전표 내용 자체를 바꾸는 게 아니라서).
+ */
+export async function setDocumentSupplierAction(documentId: string, supplierId: string): Promise<ActionResult> {
+  try {
+    const { supabase, canManage } = await resolveDocumentScope();
+
+    if (!canManage) {
+      throw new RbacError("전표 거래처는 사장님·매니저만 바꿀 수 있습니다.");
+    }
+
+    const { error } = await supabase.rpc("set_document_supplier", {
+      p_document_id: documentId,
+      p_supplier_id: supplierId,
+    });
+
+    if (error) {
+      if (error.message.includes("SUPPLIER_NOT_FOUND")) {
+        throw new RbacError("해당 거래처를 찾을 수 없습니다.");
+      }
+      if (error.message.includes("DOCUMENT_NOT_FOUND")) {
+        throw new RbacError("해당 전표를 찾을 수 없습니다.");
+      }
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH, "layout");
+
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
+ * 전표 대조 화면의 "발주서 추가 생성" — 전표(거래처가 정해져 있음)에 이어진 박스가 발주서에 못 붙은
+ * 만큼만 새 발주서로 사후 등록한다. 전표는 이미 있으니 새로 안 만든다. owner/manager만(대표의 의사결정).
+ */
+export async function createPurchaseOrderFromDocumentScanAction(
+  scanId: string
+): Promise<ActionResult<RetroactivePurchaseOrderResult>> {
+  try {
+    const { supabase, canManage } = await resolveDocumentScope();
+
+    if (!canManage) {
+      throw new RbacError("발주서 추가 생성은 사장님·매니저만 할 수 있습니다.");
+    }
+
+    const { data, error } = await supabase.rpc("create_purchase_order_from_document_scan", {
+      p_scan_id: scanId,
+    });
+
+    if (error) {
+      if (error.message.includes("DOCUMENT_SUPPLIER_REQUIRED")) {
+        throw new RbacError("이 전표에 거래처가 아직 없습니다. 먼저 위에서 거래처를 골라주세요.");
+      }
+      if (error.message.includes("SCAN_NOT_ON_DOCUMENT")) {
+        throw new RbacError("이 박스는 전표에 이어져 있지 않습니다.");
+      }
+      if (error.message.includes("NOTHING_TO_ASSIGN")) {
+        throw new RbacError("이 박스는 이미 발주서에 다 붙어 있습니다.");
+      }
+      if (error.message.includes("SCAN_NOT_FOUND")) {
+        throw new RbacError("해당 박스를 찾을 수 없습니다.");
+      }
+      if (error.message.includes("FORBIDDEN")) {
+        throw new RbacError("발주서 추가 생성은 사장님·매니저만 할 수 있습니다.");
+      }
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH, "layout");
+    revalidatePath("/dashboard/purchase-orders");
+
+    return { success: true, data: retroactivePurchaseOrderFromDb(data) };
   } catch (error) {
     return toResult(error);
   }

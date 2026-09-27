@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
+import type { SupplierOption } from "./document-reconciliation-view";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import {
   lineArrival,
@@ -85,9 +86,13 @@ export default async function DocumentReconciliationPage({ params, searchParams 
   const supabase = await createClient();
   const weightTolerance = await loadWeightTolerance(supabase, scope.wholesalerId);
 
+  const canManage = Boolean(
+    scope.isSuperAdmin || scope.orgRole === "owner" || scope.orgRole === "manager" || (!scope.organizationId && scope.wholesalerId)
+  );
+
   const { data: docRow } = await supabase
     .from("inbound_documents")
-    .select("id, supplier_name, document_no, issued_on, status, note, storage_path, created_at")
+    .select("id, supplier_id, supplier_name, document_no, issued_on, status, note, storage_path, created_at")
     .eq("id", id)
     .eq("wholesaler_id", scope.wholesalerId)
     .maybeSingle();
@@ -99,6 +104,19 @@ export default async function DocumentReconciliationPage({ params, searchParams 
 
   const documentId = String(docRow.id);
   const supplierName = (docRow.supplier_name as string | null) ?? null;
+  const documentSupplierId = (docRow.supplier_id as string | null) ?? null;
+
+  const { data: supplierRows } = await supabase
+    .from("suppliers")
+    .select("id, name")
+    .eq("wholesaler_id", scope.wholesalerId)
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  const suppliers: SupplierOption[] = ((supplierRows ?? []) as Array<{ id: string; name: string }>).map((row) => ({
+    id: row.id,
+    name: row.name,
+  }));
 
   const { data: lineRows } = await supabase
     .from("inbound_document_lines")
@@ -126,13 +144,28 @@ export default async function DocumentReconciliationPage({ params, searchParams 
     linkedScanIds.length > 0
       ? await supabase
           .from("inbound_scans")
-          .select("id, trace_no, weight, status, created_at")
+          .select("id, trace_no, weight, status, created_at, product_id")
           .in("id", linkedScanIds)
       : { data: [] as Array<Record<string, unknown>> };
 
   const linkedScanById = new Map(
     ((linkedScanRows ?? []) as Array<Record<string, unknown>>).map((row) => [String(row.id), row])
   );
+
+  // 이 박스들이 발주서 줄에 이미 얼마나 붙어 있는지(취소 여부 상관없이 존재하는 채움 행 그대로 합) —
+  // "발주서 추가 생성" 버튼을 보여줄지(붙은 만큼을 뺀 나머지가 남았는지) 판단하는 용도.
+  const { data: poFillRows } =
+    linkedScanIds.length > 0
+      ? await supabase.from("purchase_order_line_scans").select("scan_id, weight").in("scan_id", linkedScanIds)
+      : { data: [] as Array<{ scan_id: string; weight: number | string }> };
+
+  const assignedByScanId = new Map<string, number>();
+
+  (poFillRows ?? []).forEach((row) => {
+    const key = String(row.scan_id);
+
+    assignedByScanId.set(key, (assignedByScanId.get(key) ?? 0) + Number(row.weight));
+  });
 
   const linksByLineId = new Map<string, Array<Record<string, unknown>>>();
 
@@ -328,14 +361,18 @@ export default async function DocumentReconciliationPage({ params, searchParams 
 
         if (!scan) return null;
 
+        const weight = Number(scan.weight);
+
         return {
           scanId: String(scan.id),
           traceNo: String(scan.trace_no),
-          weight: Number(scan.weight),
+          weight,
           status: scan.status as "NORMAL" | "PENDING_MAPPING" | "EXCEPTION" | "VOIDED",
           linkedHow: link.linked_how as "AUTO" | "MANUAL",
           linkedAt: String(link.linked_at),
           createdAt: String(scan.created_at),
+          hasProduct: Boolean(scan.product_id),
+          unassignedWeight: Math.max(weight - (assignedByScanId.get(String(scan.id)) ?? 0), 0),
         };
       })
       .filter((box): box is NonNullable<typeof box> => box !== null && box.status !== "VOIDED")
@@ -429,6 +466,8 @@ export default async function DocumentReconciliationPage({ params, searchParams 
     <DocumentReconciliationView
       documentId={documentId}
       supplierName={supplierName}
+      supplierId={documentSupplierId}
+      suppliers={suppliers}
       documentNo={(docRow.document_no as string | null) ?? null}
       issuedOn={(docRow.issued_on as string | null) ?? null}
       status={docRow.status as "PENDING" | "CLOSED"}
@@ -442,6 +481,7 @@ export default async function DocumentReconciliationPage({ params, searchParams 
       rangeFrom={rangeFrom}
       rangeTo={rangeTo}
       products={products}
+      canManage={canManage}
     />
   );
 }

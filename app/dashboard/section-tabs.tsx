@@ -37,6 +37,7 @@ const INBOUND_TABS = [
     alsoActiveFor: ["/dashboard/inbound/documents"],
     desktopOnly: true,
   },
+  { label: "보류함", href: "/dashboard/inbound/holds", desktopOnly: true },
 ] as const;
 
 export function DashboardTabs() {
