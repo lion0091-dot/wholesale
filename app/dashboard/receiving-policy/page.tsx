@@ -31,7 +31,7 @@ export default async function ReceivingPolicyPage() {
     const supabase = await createClient();
     const { data } = await supabase
       .from("receiving_policies")
-      .select("over_tolerance_mode, over_tolerance_value, unlisted_item_policy")
+      .select("over_tolerance_mode, over_tolerance_value, over_item_policy, unlisted_item_policy")
       .eq("wholesaler_id", scope.wholesalerId)
       .maybeSingle();
 

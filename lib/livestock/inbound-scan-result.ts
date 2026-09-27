@@ -139,6 +139,20 @@ function addPurchaseOrderNotice(card: ResultCard, data: ScanResultInput): void {
       title: po.orderClosed ? "발주서를 다 받아 자동으로 마감했습니다" : "발주서에 붙었습니다",
       detail: progress,
     });
+  } else if (po.result === "OVER_HELD") {
+    if (card.tone === "green") card.tone = "yellow";
+
+    const numbers =
+      po.ordered !== null && po.received !== null
+        ? ` 발주 ${formatKg(po.ordered)}kg 중 ${formatKg(po.received)}kg 받았고` +
+          (po.excess !== null && po.excess > 0 ? `, ${formatKg(po.excess)}kg는 발주서에 붙지 않았습니다.` : ".")
+        : "";
+
+    card.extras.push({
+      tone: "yellow",
+      title: "발주 수량을 넘었습니다",
+      detail: `설정(입고 기준)에 따라 받아 두었습니다. 재고에는 들어가 판매할 수 있습니다.${numbers} 사무실이 확인해서 정리합니다.`,
+    });
   } else if (po.result === "UNLISTED_HELD") {
     if (card.tone === "green") card.tone = "yellow";
 

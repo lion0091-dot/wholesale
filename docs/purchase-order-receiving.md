@@ -18,13 +18,14 @@
 - 받은 양은 파생 값: 줄에 채워진 박스 무게(취소 제외)의 합. 별도 합계 컬럼 없음.
 - 초과 = 받은 양 + 박스 > 열린 발주 합계(품목별) + 허용 오차. 허용 오차는 비율 또는 kg 하나. 허용 오차 안의 초과분은 마지막에 채운 줄에 얹는다.
 - 발주서에 없는 물건은 기준에 따라 REJECT(거절+기록) / HOLD(받고 `UNLISTED_HELD`, 사무실 확인).
+- 발주 수량(+허용 오차)을 넘은 박스도 기준(`over_item_policy`)에 따라 REJECT(기본, 거절+기록) / HOLD(받아서 재고에 넣고 `OVER_HELD`, 사무실 확인). HOLD면 발주서 줄엔 남은 자리만 채우고 넘친 무게는 어느 줄에도 안 붙인다(결과에 `excess`).
 - 줄이 다 찬 발주서만 자동 마감(`auto_closed_at`). 박스를 취소하면 그 박스의 채움이 사라지고 자동 마감됐던 발주서들이 다시 열린다(사람이 닫은 것은 그대로).
 - **마감 뒤 같은 품목이 더 오면 초과(OVER)로 거절한다.** 자동 마감된 발주서에 그 품목이 있을 때만 — 사람이 닫은 발주서는 "없는 물건" 기준을 따른다.
 - 상품이 정해지기 전(PENDING_MAPPING·EXCEPTION)에는 판정하지 않고, 상품이 정해지는 순간(`resolve_inbound_mapping`, 자동 생성 포함)에 같은 판정을 한다.
 
 ## 함수
 
-- `judge_scan_purchase_order(scan_id)` — 판정+채움. 멱등(이미 판정된 박스는 결과만 돌려줌). 결과 `ASSIGNED / UNLISTED_HELD / REJECTED / SKIPPED`. `ordered/received/remaining`은 이 박스가 채운 줄들 기준.
+- `judge_scan_purchase_order(scan_id)` — 판정+채움. 멱등(이미 판정된 박스는 결과만 돌려줌). 결과 `ASSIGNED / UNLISTED_HELD / OVER_HELD / REJECTED / SKIPPED`. `ordered/received/remaining`은 이 박스가 채운 줄들 기준.
 - `record_inbound_scan(..., p_supplier_id)` — 거래처를 받아 스캔에 기록하고 판정. 거절이면 응답 `status = 'REJECTED'`, 판정은 `po` 키에 실린다. 매입처 이름은 거래처 이름으로 채워진다(직접 준 값이 우선).
 - `resolve_inbound_mapping` — 판정 결과를 `po`로 돌려주고 거절이면 `status = 'REJECTED'`. `resolve_inbound_mapping_to_order`는 거절이면 출고를 건너뛰고 `outbound: null`. `replace_inbound_scan_trace_no`는 거래처를 새 박스로 이어받고 판정한다.
 - 판정 함수는 `authenticated`만 실행. 내부 함수(`refresh_purchase_order_completion`, `purchase_order_scan_progress`, 취소 트리거)는 EXECUTE 회수.
@@ -35,7 +36,7 @@
 - **사장님 미답(2026-09-28 마지막 질문 "중량이 맞지 않은 상태에서도 판매가 일어나야 하는데?"):** 부족·덜 찬 발주서 상태의 판매는 이미 된다. 다만 허용 오차를 넘는 **초과 박스는 거절돼 재고에 안 들어가** 그 고기는 시스템에서 못 판다. 초과도 "없는 물건"처럼 "일단 받고(재고에 넣고) 사무실이 확인" 선택지를 줄지 사장님 결정 필요.
 - 허용 오차 %는 열린 발주 합계 기준이다 — 발주서들이 함께 닫히므로(묶음 채움) 앞 발주서가 먼저 마감돼 오차 폭이 줄어드는 일은 없다.
 - 덜 온 발주서(다 채우지 못함)는 자동 마감되지 않는다 — 사람이 발주 관리의 "마감(다 받음)"으로 닫는다.
-- 사무실 화면: 줄 고르기는 필요 없어졌다. 남은 것은 보류(UNLISTED_HELD) 목록·거절 기록 목록 정도(미착수).
+- 사무실 화면: 줄 고르기는 필요 없어졌다. 남은 것은 보류(UNLISTED_HELD·OVER_HELD) 목록·거절 기록 목록 정도(미착수).
 - 엑셀 입고는 거래처를 안 보내 판정을 받지 않는다.
 
 ## 배포 순서

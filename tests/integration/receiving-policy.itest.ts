@@ -11,6 +11,7 @@ let world: World;
 const input = (patch: Partial<Parameters<typeof saveReceivingPolicyAction>[0]> = {}) => ({
   overToleranceMode: "PERCENT",
   overToleranceValue: "5",
+  overItemPolicy: "HOLD",
   unlistedItemPolicy: "HOLD",
   ...patch,
 });
@@ -39,10 +40,10 @@ describe("saveReceivingPolicyAction — 입고 기준 저장", () => {
     const first = await saveReceivingPolicyAction(input({ overToleranceValue: "5" }));
 
     expect(first.success).toBe(true);
-    expect(first.data!.policy).toEqual({ overToleranceMode: "PERCENT", overToleranceValue: 5, unlistedItemPolicy: "HOLD" });
-    expect(await rowOf(world.wholesalerA)).toMatchObject({ over_tolerance_mode: "PERCENT", unlisted_item_policy: "HOLD", updated_by: world.users.ownerA.id });
+    expect(first.data!.policy).toEqual({ overToleranceMode: "PERCENT", overToleranceValue: 5, overItemPolicy: "HOLD", unlistedItemPolicy: "HOLD" });
+    expect(await rowOf(world.wholesalerA)).toMatchObject({ over_tolerance_mode: "PERCENT", over_item_policy: "HOLD", unlisted_item_policy: "HOLD", updated_by: world.users.ownerA.id });
 
-    const second = await saveReceivingPolicyAction(input({ overToleranceMode: "KG", overToleranceValue: "12.5", unlistedItemPolicy: "REJECT" }));
+    const second = await saveReceivingPolicyAction(input({ overToleranceMode: "KG", overToleranceValue: "12.5", overItemPolicy: "REJECT", unlistedItemPolicy: "REJECT" }));
 
     expect(second.success).toBe(true);
 
@@ -50,7 +51,7 @@ describe("saveReceivingPolicyAction — 입고 기준 저장", () => {
 
     expect(rows).toHaveLength(1);
     expect(Number(rows![0].over_tolerance_value)).toBe(12.5);
-    expect(rows![0]).toMatchObject({ over_tolerance_mode: "KG", unlisted_item_policy: "REJECT" });
+    expect(rows![0]).toMatchObject({ over_tolerance_mode: "KG", over_item_policy: "REJECT", unlisted_item_policy: "REJECT" });
   });
 
   it("매니저는 저장할 수 있고, 직원·고객·비로그인은 거부되며 값이 안 바뀐다", async () => {
@@ -110,6 +111,7 @@ describe("saveReceivingPolicyAction — 입고 기준 저장", () => {
       [{ overToleranceValue: "101" }, "100 이하"],
       [{ overToleranceMode: "TON" }, "단위"],
       [{ unlistedItemPolicy: "ACCEPT" }, "없는 물건"],
+      [{ overItemPolicy: "ACCEPT" }, "더 온 물건"],
     ];
 
     for (const [patch, expected] of cases) {

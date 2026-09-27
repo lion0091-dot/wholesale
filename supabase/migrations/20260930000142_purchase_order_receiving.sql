@@ -5,7 +5,9 @@
 --                    (박스가 한 줄에 통째로 붙지 않는다 — 200kg·25kg 발주서에 70+80+77kg 박스가 오면 앞 발주서를 채우고 남은 27kg이 다음 발주서로 간다).
 --                    줄이 다 차면 발주서는 자동 마감(auto_closed_at).
 --   UNLISTED_HELD  : 발주서에 없는 물건인데 기준이 HOLD — 받아 두고 사무실이 확인한다.
---   REJECTED       : 초과(받은 양 + 박스 > 열린 발주 합계 + 허용 오차) 또는 발주서에 없는 물건(기준 REJECT) — 재고에 남기지 않는다.
+--   OVER_HELD      : 초과(받은 양 + 박스 > 열린 발주 합계 + 허용 오차)인데 기준(over_item_policy)이 HOLD — 받아서 재고에 넣고(팔 수 있다),
+--                    발주서 줄에는 남은 자리만큼만 채우고 넘친 무게는 어느 줄에도 붙이지 않는다. 사무실이 확인한다.
+--   REJECTED       : 초과(기준 REJECT) 또는 발주서에 없는 물건(기준 REJECT) — 재고에 남기지 않는다.
 --                    스캔은 VOIDED로 취소하고, "거절했다"는 사실은 inbound_rejections에 한 줄 남긴다(사장님 결정: 남긴다).
 -- 상품이 정해지기 전(PENDING_MAPPING·EXCEPTION)엔 판정하지 않는다. 상품이 정해지는 순간(resolve_inbound_mapping — 자동 생성 포함)에 같은 판정을 한다.
 -- 거래처를 안 실은 스캔(엑셀 대량 입고, 옛 호출)은 판정 대상이 아니다 — 기존 동작 그대로.
@@ -25,14 +27,14 @@ ALTER TABLE public.inbound_scans
 ALTER TABLE public.inbound_scans DROP CONSTRAINT IF EXISTS inbound_scans_po_state_check;
 ALTER TABLE public.inbound_scans
     ADD CONSTRAINT inbound_scans_po_state_check
-    CHECK (po_state IS NULL OR po_state IN ('ASSIGNED', 'UNLISTED_HELD'));
+    CHECK (po_state IS NULL OR po_state IN ('ASSIGNED', 'UNLISTED_HELD', 'OVER_HELD'));
 
 CREATE INDEX IF NOT EXISTS idx_inbound_scans_supplier
     ON public.inbound_scans (wholesaler_id, supplier_id, created_at DESC)
     WHERE supplier_id IS NOT NULL;
 
 COMMENT ON COLUMN public.inbound_scans.supplier_id IS '이 박스를 가져온 거래처(입고 스캔 화면의 "지금 온 거래처"). 옛 기록·엑셀 입고는 비어 있다.';
-COMMENT ON COLUMN public.inbound_scans.po_state IS '발주서 판정 결과: ASSIGNED(발주서 줄들에 채워짐)·UNLISTED_HELD(발주서에 없어 보류). 판정 전·대상 아님은 NULL.';
+COMMENT ON COLUMN public.inbound_scans.po_state IS '발주서 판정 결과: ASSIGNED(발주서 줄들에 채워짐)·UNLISTED_HELD(발주서에 없어 보류)·OVER_HELD(발주 수량 초과라 보류). 판정 전·대상 아님은 NULL.';
 
 -- ------------------------------------------------------------------
 -- 박스 → 발주서 줄 채움 (박스 하나가 여러 줄에 나뉘어 채워질 수 있다)
@@ -85,6 +87,16 @@ CREATE POLICY "Inbound rejections viewable by supplier staff" ON public.inbound_
 
 COMMENT ON TABLE public.inbound_rejections IS '발주서 기준(초과·없는 물건)으로 받지 않은 박스의 기록. 재고에는 잡히지 않는다.';
 COMMENT ON COLUMN public.inbound_rejections.reason IS 'OVER = 발주 수량(+허용 오차) 초과, UNLISTED = 발주서에 없는 물건.';
+
+-- 입고 기준(141)에 "발주 수량을 넘어 온 박스" 처리 방식 추가: REJECT(받지 않음) / HOLD(일단 받고 사무실 확인). 기본은 기존 동작(REJECT).
+ALTER TABLE public.receiving_policies
+    ADD COLUMN IF NOT EXISTS over_item_policy TEXT NOT NULL DEFAULT 'REJECT';
+
+ALTER TABLE public.receiving_policies DROP CONSTRAINT IF EXISTS receiving_policies_over_item_policy_check;
+ALTER TABLE public.receiving_policies
+    ADD CONSTRAINT receiving_policies_over_item_policy_check CHECK (over_item_policy IN ('REJECT', 'HOLD'));
+
+COMMENT ON COLUMN public.receiving_policies.over_item_policy IS '발주 수량(+허용 오차)을 넘어 온 박스: REJECT = 받지 않음(거절 기록), HOLD = 받아서 재고에 넣고 사무실이 확인.';
 
 -- 발주서 자동 마감 표시: 입고로 다 받아서 닫힌 발주서만 취소(박스 취소) 때 다시 열어 준다. 사람이 닫은 발주서는 건드리지 않는다.
 ALTER TABLE public.purchase_orders ADD COLUMN IF NOT EXISTS auto_closed_at TIMESTAMPTZ;
@@ -221,6 +233,8 @@ DECLARE
     v_mode     TEXT := 'PERCENT';
     v_value    NUMERIC := 0;
     v_unlisted TEXT := 'REJECT';
+    v_over     TEXT := 'REJECT';
+    v_over_held BOOLEAN := false;
     v_lines    INTEGER;
     v_ordered  NUMERIC;
     v_received NUMERIC;
@@ -266,6 +280,7 @@ BEGIN
         v_mode := v_policy.over_tolerance_mode;
         v_value := v_policy.over_tolerance_value;
         v_unlisted := v_policy.unlisted_item_policy;
+        v_over := v_policy.over_item_policy;
     END IF;
 
     -- 후보 = 그 거래처의 열린 발주서 중 이 상품 줄 전체를 하나로 묶은 것(발주일 → 작성 시각 → 줄 번호 순).
@@ -312,6 +327,11 @@ BEGIN
         END IF;
     ELSIF v_received + v_scan.weight > v_ordered + v_tol THEN
         v_reason := 'OVER';
+    END IF;
+
+    IF v_reason = 'OVER' AND v_over = 'HOLD' THEN
+        v_over_held := true;
+        v_reason := NULL;
     END IF;
 
     IF v_reason IS NOT NULL THEN
@@ -364,7 +384,8 @@ BEGIN
         v_last := v_line.line_id;
     END LOOP;
 
-    IF v_left > 0 THEN
+    -- 초과를 받아 두는 경우(HOLD)는 남은 자리만 채우고, 넘친 무게는 어느 줄에도 붙이지 않는다.
+    IF v_left > 0 AND NOT v_over_held THEN
         IF v_last IS NULL THEN
             SELECT l.id INTO v_last
             FROM public.purchase_order_lines l
@@ -385,18 +406,28 @@ BEGIN
         END IF;
     END IF;
 
-    UPDATE public.inbound_scans SET po_state = 'ASSIGNED' WHERE id = p_scan_id;
+    UPDATE public.inbound_scans
+    SET po_state = CASE WHEN v_over_held THEN 'OVER_HELD' ELSE 'ASSIGNED' END
+    WHERE id = p_scan_id;
 
     SELECT array_agg(DISTINCT l.purchase_order_id) INTO v_pos
     FROM public.purchase_order_line_scans x
     JOIN public.purchase_order_lines l ON l.id = x.line_id
     WHERE x.scan_id = p_scan_id;
 
-    FOREACH v_po IN ARRAY v_pos LOOP
+    FOREACH v_po IN ARRAY COALESCE(v_pos, ARRAY[]::UUID[]) LOOP
         IF public.refresh_purchase_order_completion(v_po) THEN
             v_closed := true;
         END IF;
     END LOOP;
+
+    IF v_over_held THEN
+        RETURN jsonb_build_object(
+            'result', 'OVER_HELD', 'order_closed', v_closed,
+            'ordered', v_ordered, 'received', v_received + (v_scan.weight - v_left),
+            'remaining', 0, 'tolerance', v_tol, 'excess', v_left
+        );
+    END IF;
 
     RETURN jsonb_build_object('result', 'ASSIGNED', 'order_closed', v_closed) || public.purchase_order_scan_progress(p_scan_id);
 END;

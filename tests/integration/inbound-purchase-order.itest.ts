@@ -129,6 +129,45 @@ describe("입고 스캔 액션 — 거래처를 싣고 찍기", () => {
     expect(order?.auto_closed_at).not.toBeNull();
   });
 
+  it("입고 기준이 '초과도 일단 받기'면 넘치는 박스가 재고에 들어가 팔 수 있고, 발주서엔 남은 자리만 채워지며 거절 기록은 안 남는다", async () => {
+    const supplierId = await newSupplier("초과보류");
+    const product = await world.createProduct({ stock_quantity: 0 });
+    const orderId = await newPurchaseOrder(supplierId, [{ product, quantity: 30 }]);
+
+    await adminClient().from("receiving_policies").upsert({ wholesaler_id: world.wholesalerA, over_item_policy: "HOLD" }, { onConflict: "wholesaler_id" });
+
+    try {
+      const first = await scan(world.newTraceNo(), 20, { productId: product.id, supplierId });
+
+      expect(first.po).toMatchObject({ result: "ASSIGNED", remaining: 10 });
+
+      const overTrace = world.newTraceNo();
+      const over = await scan(overTrace, 15, { productId: product.id, supplierId });
+
+      expect(over.status).toBe("NORMAL");
+      expect(over.po).toMatchObject({ result: "OVER_HELD" });
+      expect(await stockOf(product.id)).toBe(35);
+
+      const row = await scanRow(overTrace);
+
+      expect(row).toMatchObject({ status: "NORMAL", po_state: "OVER_HELD" });
+
+      const { data: fills } = await adminClient().from("purchase_order_line_scans").select("weight").eq("scan_id", row.id);
+
+      expect(fills!.map((fill) => Number(fill.weight))).toEqual([10]);
+
+      const { data: rejections } = await adminClient().from("inbound_rejections").select("id").eq("trace_no", overTrace);
+
+      expect(rejections).toEqual([]);
+
+      const { data: order } = await adminClient().from("purchase_orders").select("status").eq("id", orderId).single();
+
+      expect(order?.status).toBe("CLOSED");
+    } finally {
+      await adminClient().from("receiving_policies").delete().eq("wholesaler_id", world.wholesalerA);
+    }
+  });
+
   it("거래처를 안 실으면 판정 없이 예전처럼 받는다", async () => {
     const product = await world.createProduct({ stock_quantity: 0 });
     const result = await scan(world.newTraceNo(), 500, { productId: product.id });

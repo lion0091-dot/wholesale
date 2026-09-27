@@ -6,22 +6,26 @@
 
 export type ToleranceMode = "PERCENT" | "KG";
 export type UnlistedItemPolicy = "REJECT" | "HOLD";
+export type OverItemPolicy = "REJECT" | "HOLD";
 
 export interface ReceivingPolicy {
   overToleranceMode: ToleranceMode;
   overToleranceValue: number;
+  overItemPolicy: OverItemPolicy;
   unlistedItemPolicy: UnlistedItemPolicy;
 }
 
 export const DEFAULT_RECEIVING_POLICY: ReceivingPolicy = {
   overToleranceMode: "PERCENT",
   overToleranceValue: 0,
+  overItemPolicy: "REJECT",
   unlistedItemPolicy: "REJECT",
 };
 
 export interface ReceivingPolicyRow {
   over_tolerance_mode: string;
   over_tolerance_value: number | string;
+  over_item_policy: string;
   unlisted_item_policy: string;
 }
 
@@ -33,6 +37,7 @@ export function policyFromRow(row: ReceivingPolicyRow | null | undefined): Recei
   return {
     overToleranceMode: row.over_tolerance_mode === "KG" ? "KG" : "PERCENT",
     overToleranceValue: Number(row.over_tolerance_value) || 0,
+    overItemPolicy: row.over_item_policy === "HOLD" ? "HOLD" : "REJECT",
     unlistedItemPolicy: row.unlisted_item_policy === "HOLD" ? "HOLD" : "REJECT",
   };
 }
@@ -41,6 +46,7 @@ export interface ReceivingPolicyInput {
   overToleranceMode: string;
   /** 화면 입력 그대로("5", "1,200.5") — 비우면 0. */
   overToleranceValue: string;
+  overItemPolicy: string;
   unlistedItemPolicy: string;
 }
 
@@ -66,6 +72,10 @@ export function validateReceivingPolicy(input: ReceivingPolicyInput): PolicyVali
     return { ok: false, error: "허용 오차가 너무 큽니다." };
   }
 
+  if (input.overItemPolicy !== "REJECT" && input.overItemPolicy !== "HOLD") {
+    return { ok: false, error: "발주보다 더 온 물건 처리 방식을 골라주세요." };
+  }
+
   if (input.unlistedItemPolicy !== "REJECT" && input.unlistedItemPolicy !== "HOLD") {
     return { ok: false, error: "발주서에 없는 물건 처리 방식을 골라주세요." };
   }
@@ -75,6 +85,7 @@ export function validateReceivingPolicy(input: ReceivingPolicyInput): PolicyVali
     policy: {
       overToleranceMode: input.overToleranceMode,
       overToleranceValue: Math.round(value * 100) / 100,
+      overItemPolicy: input.overItemPolicy,
       unlistedItemPolicy: input.unlistedItemPolicy,
     },
   };

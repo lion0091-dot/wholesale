@@ -3,10 +3,10 @@ import type { createClient } from "@/lib/supabase/server";
 /**
  * 입고 박스 하나가 발주서 판정에서 어떻게 됐는지(마이그레이션 142). 거래처를 실어 보낸 스캔에만 있다.
  * ASSIGNED 받았고 발주서 줄들에 채워짐(박스 하나가 여러 줄에 나뉠 수 있다) / UNLISTED_HELD 발주서에 없어 받아 두고 사무실 확인
- * / REJECTED 받지 않음(재고에 없음, 거절 기록만 남음).
+ * / OVER_HELD 발주 수량을 넘어 받아 두고 사무실 확인 / REJECTED 받지 않음(재고에 없음, 거절 기록만 남음).
  */
 export interface ScanPurchaseOrder {
-  result: "ASSIGNED" | "UNLISTED_HELD" | "REJECTED";
+  result: "ASSIGNED" | "UNLISTED_HELD" | "OVER_HELD" | "REJECTED";
   /** REJECTED일 때만: OVER = 발주 수량 초과, UNLISTED = 발주서에 없는 물건. */
   reason: "OVER" | "UNLISTED" | null;
   /** 받았으면 이 박스가 채운 줄들의 발주량 합, 거절이면 그 거래처 열린 발주 합계. */
@@ -15,6 +15,8 @@ export interface ScanPurchaseOrder {
   received: number | null;
   remaining: number | null;
   tolerance: number | null;
+  /** OVER_HELD일 때만: 발주서 줄에 못 붙고 넘친 무게(kg). */
+  excess: number | null;
   /** 이 박스로 발주서가 다 차서 자동 마감됐다. */
   orderClosed: boolean;
 }
@@ -32,7 +34,7 @@ export function scanPurchaseOrderFromDb(raw: unknown): ScanPurchaseOrder | null 
   const row = raw as Record<string, unknown>;
   const result = row.result;
 
-  if (result !== "ASSIGNED" && result !== "UNLISTED_HELD" && result !== "REJECTED") {
+  if (result !== "ASSIGNED" && result !== "UNLISTED_HELD" && result !== "OVER_HELD" && result !== "REJECTED") {
     return null;
   }
 
@@ -43,6 +45,7 @@ export function scanPurchaseOrderFromDb(raw: unknown): ScanPurchaseOrder | null 
     received: toNumberOrNull(row.received),
     remaining: toNumberOrNull(row.remaining),
     tolerance: toNumberOrNull(row.tolerance),
+    excess: toNumberOrNull(row.excess),
     orderClosed: Boolean(row.order_closed),
   };
 }
@@ -81,12 +84,17 @@ export async function loadScanPurchaseOrder(supabase: Client, scanId: string): P
         received: toNumberOrNull(detail.received),
         remaining: null,
         tolerance: toNumberOrNull(detail.tolerance),
+        excess: null,
         orderClosed: false,
       };
     }
 
     if (scan.po_state === "UNLISTED_HELD") {
-      return { result: "UNLISTED_HELD", reason: null, ordered: null, received: null, remaining: null, tolerance: null, orderClosed: false };
+      return { result: "UNLISTED_HELD", reason: null, ordered: null, received: null, remaining: null, tolerance: null, excess: null, orderClosed: false };
+    }
+
+    if (scan.po_state === "OVER_HELD") {
+      return { result: "OVER_HELD", reason: null, ordered: null, received: null, remaining: null, tolerance: null, excess: null, orderClosed: false };
     }
 
     if (scan.po_state !== "ASSIGNED") return null;
@@ -144,6 +152,7 @@ export async function loadScanPurchaseOrder(supabase: Client, scanId: string): P
       received: receivedTotal,
       remaining: Math.max(ordered - receivedTotal, 0),
       tolerance: null,
+      excess: null,
       orderClosed,
     };
   } catch (error) {

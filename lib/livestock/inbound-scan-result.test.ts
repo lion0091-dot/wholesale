@@ -223,6 +223,7 @@ describe("발주서 판정(마이그레이션 142)이 결과 카드에 미치는
     received: 20,
     remaining: 30,
     tolerance: null,
+    excess: null,
     orderClosed: false,
     ...patch,
   });
@@ -266,6 +267,17 @@ describe("발주서 판정(마이그레이션 142)이 결과 카드에 미치는
 
   it("없는 물건을 받아 둔 박스 — 노랑", () => {
     expect(buildScanResultCard({ ...ok, po: po({ result: "UNLISTED_HELD" }) }, options).tone).toBe("yellow");
+  });
+
+  it("초과를 받아 둔 박스 — 노랑, 재고에 들어갔다는 말과 넘친 무게를 알린다", () => {
+    const card = buildScanResultCard({ ...ok, po: po({ result: "OVER_HELD", ordered: 50, received: 50, remaining: 0, excess: 12.5 }) }, options);
+
+    expect(card.tone).toBe("yellow");
+
+    const extra = card.extras.find((item) => item.title === "발주 수량을 넘었습니다");
+
+    expect(extra?.detail).toContain("판매할 수 있습니다");
+    expect(extra?.detail).toContain("12.5kg는 발주서에 붙지 않았습니다");
   });
 
   it("거래처를 안 고르고 찍으면 거래처부터 고르라고 한다", () => {

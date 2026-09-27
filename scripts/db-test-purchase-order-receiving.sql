@@ -303,6 +303,52 @@ begin
     perform pg_temp.expect('다른 업체의 거래처 ID → SUPPLIER_NOT_FOUND', v_ok);
 end $$;
 
+-- 18-2) 초과도 일단 받기(over_item_policy = HOLD): 재고에 들어가 팔 수 있고, 발주서엔 남은 자리만 채우며, 거절 기록은 안 남는다
+reset role;
+insert into public.products (id, wholesaler_id, name, category, subcategory, grade, origin, breed, base_price, unit) values
+    ('d2d2d2d2-0000-0000-0000-0000000000d1', 'd2d2d2d2-0000-0000-0000-0000000000a1', '한우 설도 1++', '소', '설도', '1++', '국내산', '한우', 0, 'kg');
+insert into public.purchase_orders (id, wholesaler_id, supplier_id, supplier_name, ordered_on, status) values
+    ('d2d2d2d2-0000-0000-0000-000000000b06', 'd2d2d2d2-0000-0000-0000-0000000000a1', 'd2d2d2d2-0000-0000-0000-0000000005a1', '공급처가', current_date, 'OPEN');
+insert into public.purchase_order_lines (id, purchase_order_id, wholesaler_id, line_no, category, subcategory, grade, origin, breed, quantity, product_id) values
+    ('d2d2d2d2-0000-0000-0000-00000000f601', 'd2d2d2d2-0000-0000-0000-000000000b06', 'd2d2d2d2-0000-0000-0000-0000000000a1', 1, '소', '설도', '1++', '국내산', '한우', 10, 'd2d2d2d2-0000-0000-0000-0000000000d1');
+update public.receiving_policies set over_tolerance_mode = 'PERCENT', over_tolerance_value = 0, over_item_policy = 'REJECT' where wholesaler_id = 'd2d2d2d2-0000-0000-0000-0000000000a1';
+set role authenticated;
+set request.jwt.claim.sub = 'd2d2d2d2-0000-0000-0000-000000000001';
+
+select pg_temp.scan('009800000031', 6, 'd2d2d2d2-0000-0000-0000-0000000000d1', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
+select pg_temp.expect('기준 REJECT(기본): 6kg는 받고 발주 10kg 중 남음 4', (:'r'::jsonb) #>> '{po,result}' = 'ASSIGNED');
+select pg_temp.scan('009800000032', 7, 'd2d2d2d2-0000-0000-0000-0000000000d1', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
+select pg_temp.expect('기준 REJECT: 초과 7kg은 그대로 거절',
+    (:'r'::jsonb) #>> '{po,result}' = 'REJECTED' and (:'r'::jsonb) ->> 'status' = 'REJECTED'
+    and (select stock_quantity = 6 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000d1'));
+
+reset role;
+update public.receiving_policies set over_item_policy = 'HOLD' where wholesaler_id = 'd2d2d2d2-0000-0000-0000-0000000000a1';
+set role authenticated;
+set request.jwt.claim.sub = 'd2d2d2d2-0000-0000-0000-000000000001';
+
+select pg_temp.scan('009800000033', 7, 'd2d2d2d2-0000-0000-0000-0000000000d1', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
+select pg_temp.expect('기준 HOLD: 7kg → OVER_HELD, 박스는 NORMAL로 받아 재고 13, 응답 status는 REJECTED가 아님, 넘친 무게 3kg',
+    (:'r'::jsonb) #>> '{po,result}' = 'OVER_HELD' and (:'r'::jsonb) ->> 'status' is distinct from 'REJECTED'
+    and ((:'r'::jsonb) #>> '{po,excess}')::numeric = 3
+    and (select status = 'NORMAL' and po_state = 'OVER_HELD' from public.inbound_scans where trace_no = '009800000033')
+    and (select stock_quantity = 13 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000d1')
+    and not exists (select 1 from public.inbound_rejections where trace_no = '009800000033'));
+select pg_temp.expect('발주서 줄엔 남은 자리 4kg만 채워지고(넘친 3kg는 안 붙음), 줄이 다 차서 발주서 자동 마감',
+    (select count(*) = 1 and sum(x.weight) = 4 from public.purchase_order_line_scans x join public.inbound_scans s on s.id = x.scan_id where s.trace_no = '009800000033')
+    and (select status = 'CLOSED' and auto_closed_at is not null from public.purchase_orders where id = 'd2d2d2d2-0000-0000-0000-000000000b06'));
+
+select pg_temp.scan('009800000034', 5, 'd2d2d2d2-0000-0000-0000-0000000000d1', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
+select pg_temp.expect('이미 다 받아 자동 마감된 발주서의 품목이 또 와도 HOLD면 받아 둠(열린 줄이 없어도 오류 없이 채움 0)',
+    (:'r'::jsonb) #>> '{po,result}' = 'OVER_HELD'
+    and (select status = 'NORMAL' and po_state = 'OVER_HELD' from public.inbound_scans where trace_no = '009800000034')
+    and not exists (select 1 from public.purchase_order_line_scans x join public.inbound_scans s on s.id = x.scan_id where s.trace_no = '009800000034')
+    and (select stock_quantity = 18 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000d1'));
+
+select public.void_inbound_scan((select id from public.inbound_scans where trace_no = '009800000033' and status = 'NORMAL' limit 1), '테스트 취소3');
+select pg_temp.expect('OVER_HELD 박스 취소 → 채움이 사라지고 자동 마감됐던 발주서 다시 OPEN',
+    (select status = 'OPEN' and auto_closed_at is null from public.purchase_orders where id = 'd2d2d2d2-0000-0000-0000-000000000b06'));
+
 -- 19) 격리: B 업체 세션은 A의 거절 기록·연결을 못 본다
 set request.jwt.claim.sub = 'd2d2d2d2-0000-0000-0000-000000000002';
 select pg_temp.expect('B는 A의 거절 기록·발주서 연결이 0건으로 보임',

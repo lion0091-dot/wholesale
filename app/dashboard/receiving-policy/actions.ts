@@ -37,6 +37,7 @@ export async function saveReceivingPolicyAction(input: ReceivingPolicyInput): Pr
         wholesaler_id: scope.wholesalerId,
         over_tolerance_mode: checked.policy.overToleranceMode,
         over_tolerance_value: checked.policy.overToleranceValue,
+        over_item_policy: checked.policy.overItemPolicy,
         unlisted_item_policy: checked.policy.unlistedItemPolicy,
         updated_by: scope.userId,
       },
