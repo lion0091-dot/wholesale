@@ -14,7 +14,7 @@ import {
   unlinkScanFromDocumentLineAction,
 } from "../../document-actions";
 import { resolveMappingAction } from "../../actions";
-import { rejectionSummary, type ScanPurchaseOrder } from "@/lib/livestock/scan-purchase-order";
+import { rejectionBatchSummary, rejectionSummary, type ScanPurchaseOrder } from "@/lib/livestock/scan-purchase-order";
 import { TraceNoFixer } from "../../trace-no-fixer";
 import type { ScanProductOption } from "../../inbound-scan-view";
 import { InboundTabs } from "../../../section-tabs";
@@ -321,11 +321,77 @@ export function DocumentReconciliationView({
       : []
   );
 
+  // 지금 할 일은 한 번에 하나만 — 여러 상황이 동시에 있어도 가장 급한 것 하나만 정확히 짚는다
+  // (다 늘어놓으면 뭐부터 해야 할지 헷갈린다). 순서: 이미 온 박스 잇기 → 이력 확인 → 상품 지정 →
+  // 초과 확인 → 미착 처리 → 마감.
+  // exceptionLinkedCount는 unresolvedLinkedCount(EXCEPTION+PENDING_MAPPING)의 부분집합이라
+  // 반드시 먼저 확인해야 한다 — 순서가 바뀌면 이력 못 찾은 박스가 있어도 "상품 미지정"으로만
+  // 안내되고 번호부터 확인하라는 더 정확한 안내가 영영 안 뜬다.
+  const nextStep = useMemo(() => {
+    if (!isPending) return null;
+
+    if (matchableUnlinkedCount > 0) {
+      return sureUnlinked.length > 0
+        ? {
+            kind: "sure-unlinked" as const,
+            title: `확실한 박스 ${sureUnlinked.length}개를 이으세요`,
+            detail:
+              matchableUnlinkedCount > sureUnlinked.length
+                ? "나머지는 아래 목록에서 직접 골라 이으세요."
+                : "전표와 맞는 박스입니다.",
+          }
+        : {
+            kind: "ambiguous-unlinked" as const,
+            title: `비슷해 보이는 박스 ${matchableUnlinkedCount}개가 있습니다`,
+            detail: "아래 목록에서 맞는 줄을 직접 골라 이으세요.",
+          };
+    }
+
+    if (exceptionLinkedCount > 0) {
+      return {
+        kind: "exception" as const,
+        title: `이력 못 찾은 박스 ${exceptionLinkedCount}개`,
+        detail: "번호부터 확인하세요. 틀렸으면 박스 옆 번호 바꾸기로 고치세요.",
+      };
+    }
+
+    if (unresolvedLinkedCount > 0) {
+      return resolvableLinked.length > 0
+        ? {
+            kind: "unresolved-auto" as const,
+            title: `상품 미지정 박스 ${unresolvedLinkedCount}개`,
+            detail:
+              resolvableLinked.length < unresolvedLinkedCount
+                ? `${resolvableLinked.length}개는 자동 지정되고, 나머지는 직접 지정하세요.`
+                : "전표 줄의 상품으로 바로 지정할 수 있습니다.",
+          }
+        : { kind: "unresolved-manual" as const, title: `상품 미지정 박스 ${unresolvedLinkedCount}개`, detail: "박스에서 상품을 지정하세요." };
+    }
+
+    if (overLines.length > 0) {
+      return {
+        kind: "over" as const,
+        title: `더 많이 온 줄 ${overLines.length}개`,
+        detail: "잘못 이었을 수 있습니다. 다른 줄로 옮기거나, 진짜 초과면 사유를 적고 마감하세요.",
+      };
+    }
+
+    if (shortLines.length > 0) {
+      return {
+        kind: "short" as const,
+        title: `아직 안 온 물건 ${shortLines.length}줄`,
+        detail: "오는 중이면 기다리고, 끝내 안 오면 사유를 적고 마감하세요.",
+      };
+    }
+
+    return { kind: "ready-to-close" as const, title: "모두 도착했습니다", detail: "마감하면 끝입니다." };
+  }, [isPending, matchableUnlinkedCount, sureUnlinked.length, unresolvedLinkedCount, resolvableLinked.length, exceptionLinkedCount, overLines.length, shortLines.length]);
+
   const linkAllSure = async () => {
     setBusyKey("batch-link");
     setError(null);
 
-    const rejectedMessages: string[] = [];
+    const rejectedReasons: Array<ScanPurchaseOrder["reason"]> = [];
 
     for (const box of sureUnlinked) {
       const lineId = box.candidates[0].lineId;
@@ -345,19 +411,13 @@ export function DocumentReconciliationView({
         const resolveResult = await resolveMappingAction(box.scanId, line.productId, false);
 
         if (resolveResult.success && resolveResult.data?.po?.result === "REJECTED") {
-          rejectedMessages.push(rejectionSummary(resolveResult.data.po));
+          rejectedReasons.push(resolveResult.data.po.reason);
         }
       }
     }
 
-    // 여러 박스가 한꺼번에 거절될 수 있다 — 마지막 것만 남기면 앞서 거절된 박스는 알림 없이 묻힌다.
-    if (rejectedMessages.length > 0) {
-      setError(
-        rejectedMessages.length === 1
-          ? `받지 않은 박스가 있습니다 — ${rejectedMessages[0]} 재고에는 넣지 않았습니다.`
-          : `받지 않은 박스가 ${rejectedMessages.length}건 있습니다 — ${rejectedMessages.join(" / ")} 재고에는 넣지 않았습니다.`
-      );
-    }
+    // 한 줄로 짧게 — 몇 건이든 늘어놓지 않는다.
+    if (rejectedReasons.length > 0) setError(rejectionBatchSummary(rejectedReasons));
 
     setBusyKey(null);
     router.refresh();
@@ -367,7 +427,7 @@ export function DocumentReconciliationView({
     setBusyKey("batch-resolve");
     setError(null);
 
-    const rejectedMessages: string[] = [];
+    const rejectedReasons: Array<ScanPurchaseOrder["reason"]> = [];
 
     for (const item of resolvableLinked) {
       const result = await resolveMappingAction(item.scanId, item.productId, false);
@@ -380,18 +440,12 @@ export function DocumentReconciliationView({
       }
 
       if (result.data?.po?.result === "REJECTED") {
-        rejectedMessages.push(rejectionSummary(result.data.po));
+        rejectedReasons.push(result.data.po.reason);
       }
     }
 
-    // 여러 박스가 한꺼번에 거절될 수 있다 — 마지막 것만 남기면 앞서 거절된 박스는 알림 없이 묻힌다.
-    if (rejectedMessages.length > 0) {
-      setError(
-        rejectedMessages.length === 1
-          ? `받지 않은 박스가 있습니다 — ${rejectedMessages[0]} 재고에는 넣지 않았습니다.`
-          : `받지 않은 박스가 ${rejectedMessages.length}건 있습니다 — ${rejectedMessages.join(" / ")} 재고에는 넣지 않았습니다.`
-      );
-    }
+    // 한 줄로 짧게 — 몇 건이든 늘어놓지 않는다.
+    if (rejectedReasons.length > 0) setError(rejectionBatchSummary(rejectedReasons));
 
     setBusyKey(null);
     router.refresh();
@@ -611,130 +665,89 @@ export function DocumentReconciliationView({
         </p>
       )}
 
-      {/* 지금 할 일 안내 + 요약 */}
-      <section style={{ ...panelStyle, backgroundColor: "#f8fafc" }}>
-        <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#0f172a", lineHeight: 1.6 }}>
-          {!isPending
-            ? "마감된 전표입니다. 고칠 것이 있으면 위의 '다시 열기'를 누르세요."
-            : incompleteLines.length === 0
-              ? unresolvedLinkedCount === 0
-                ? "물건이 모두 도착했습니다. 위의 '마감'을 누르면 끝납니다."
-                : "물건은 모두 도착했습니다. 아래 안내대로 상품 정하기를 먼저 하세요."
-              : `${lines.length}줄 중 ${summary.counts.COMPLETE}줄 도착.` +
-                (shortLines.length > 0 ? ` 안 온 물건 ${shortLines.length}줄` : "") +
-                (overLines.length > 0 ? ` · 더 온 줄 ${overLines.length}줄` : "")}
-        </p>
+      {/* 지금 할 일 — 여러 상황이 겹쳐도 가장 급한 것 하나만 정확히 짚는다 */}
+      {nextStep ? (
+        <section style={{ ...panelStyle, backgroundColor: "#f8fafc" }}>
+          <p style={{ margin: 0, fontSize: "12px", fontWeight: 700, color: "#1d4ed8" }}>지금 할 일</p>
+          <p style={{ margin: "4px 0 0", fontSize: "15px", fontWeight: 800, color: "#0f172a" }}>{nextStep.title}</p>
+          <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#475569", lineHeight: 1.6 }}>{nextStep.detail}</p>
 
-        {isPending && lines.length > 0 && incompleteLines.length === 0 && (
-          <div style={{ marginTop: "10px" }}>
-            <button type="button" onClick={() => setCloseModalOpen(true)} style={{ ...primaryButton, width: "100%", padding: "14px 16px", fontSize: "16px" }}>
-              마감하기
-            </button>
-            <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#64748b" }}>
-              마감하면 박스 연결이 잠깁니다. 고칠 게 생기면 "다시 열기"를 누르세요.
-            </p>
-          </div>
-        )}
-
-        {isPending && matchableUnlinkedCount > 0 && (
-          <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#92400e" }}>
-            전표와 맞아 보이는 박스가 {matchableUnlinkedCount}개 있습니다.
-            {sureUnlinked.length > 0 && (
-              <button
-                type="button"
-                onClick={() => void linkAllSure()}
-                disabled={busyKey === "batch-link"}
-                style={{ ...primaryButton, marginLeft: "8px" }}
-              >
-                {busyKey === "batch-link" ? "잇는 중…" : `확실한 ${sureUnlinked.length}개 한꺼번에 이어 주기`}
+          <div style={{ marginTop: "10px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
+            {nextStep.kind === "sure-unlinked" && (
+              <button type="button" onClick={() => void linkAllSure()} disabled={busyKey === "batch-link"} style={primaryButton}>
+                {busyKey === "batch-link" ? "잇는 중…" : `확실한 ${sureUnlinked.length}개 한꺼번에 잇기`}
               </button>
             )}
-            {matchableUnlinkedCount > sureUnlinked.length && " 나머지는 아래에서 골라 주세요."}
-          </p>
-        )}
 
-        <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#64748b" }}>
-          전표 무게 합계 {summary.labeledTotal.toFixed(1)}kg · 지금까지 잰 무게 {summary.actualTotal.toFixed(1)}kg
-        </p>
-
-        {isPending && unresolvedLinkedCount > 0 && (
-          <p style={{ margin: "8px 0 0", fontSize: "13px", color: "#92400e", lineHeight: 1.7 }}>
-            <strong>상품이 안 정해진 박스 {unresolvedLinkedCount}개</strong>는 재고에 아직 안 들어갔습니다.
-            {resolvableLinked.length > 0
-              ? `${resolvableLinked.length}개는 전표 줄의 상품으로 바로 지정할 수 있습니다.`
-              : "버튼을 누르면 그 박스로 이동합니다."}
-            {resolvableLinked.length > 0 && (
+            {nextStep.kind === "ambiguous-unlinked" && (
               <button
                 type="button"
-                onClick={() => void resolveAllFromLines()}
-                disabled={busyKey === "batch-resolve"}
-                style={{ ...primaryButton, marginLeft: "8px" }}
+                onClick={() => {
+                  setShowUnlinked(true);
+                  window.setTimeout(() => document.getElementById("unlinked-boxes")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+                }}
+                style={primaryButton}
               >
-                {busyKey === "batch-resolve" ? "지정 중…" : `${resolvableLinked.length}개 한꺼번에 지정`}
+                박스 목록 보기
               </button>
             )}
-            {firstUnresolved && resolvableLinked.length < unresolvedLinkedCount && (
-              <button
-                type="button"
-                onClick={() => jumpTo(firstUnresolved.lineId, `box-${firstUnresolved.scanId}`)}
-                style={{ ...secondaryButton, marginLeft: "8px" }}
-              >
+
+            {nextStep.kind === "unresolved-auto" && (
+              <>
+                <button type="button" onClick={() => void resolveAllFromLines()} disabled={busyKey === "batch-resolve"} style={primaryButton}>
+                  {busyKey === "batch-resolve" ? "지정 중…" : `${resolvableLinked.length}개 한꺼번에 지정`}
+                </button>
+                {firstUnresolved && resolvableLinked.length < unresolvedLinkedCount && (
+                  <button type="button" onClick={() => jumpTo(firstUnresolved.lineId, `box-${firstUnresolved.scanId}`)} style={secondaryButton}>
+                    나머지 직접 지정하기
+                  </button>
+                )}
+              </>
+            )}
+
+            {nextStep.kind === "unresolved-manual" && firstUnresolved && (
+              <button type="button" onClick={() => jumpTo(firstUnresolved.lineId, `box-${firstUnresolved.scanId}`)} style={primaryButton}>
                 상품 지정하러 가기
               </button>
             )}
-          </p>
-        )}
 
-        {isPending && exceptionLinkedCount > 0 && firstException && (
-          <p style={{ margin: "8px 0 0", fontSize: "13px", color: "#991b1b", lineHeight: 1.7 }}>
-            <strong>이력을 못 찾은 박스 {exceptionLinkedCount}개</strong> — 번호부터 확인하세요. 번호가 틀렸으면 박스 옆 <strong>번호 바꾸기</strong>로
-            바로잡으세요(무게·위치는 그대로 옮겨지고 저절로 확인됩니다). 번호가 맞으면 시스템이 자동으로 다시 조회하니 기다리거나, 박스 옆에서 상품을 지정하세요.
-            <Link
-              href={`/dashboard/inbound#scan-${firstException.scanId}`}
-              style={{ ...secondaryButton, marginLeft: "8px", textDecoration: "none", display: "inline-block" }}
-            >
-              스캔 화면에서 확인하기
-            </Link>
-          </p>
-        )}
+            {nextStep.kind === "exception" && firstException && (
+              <Link href={`/dashboard/inbound#scan-${firstException.scanId}`} style={{ ...primaryButton, textDecoration: "none", display: "inline-block" }}>
+                스캔 화면에서 확인하기
+              </Link>
+            )}
 
-        {isPending && overLines.length > 0 && (
-          <p style={{ margin: "8px 0 0", fontSize: "13px", color: "#991b1b", lineHeight: 1.7 }}>
-            <strong>"더 많이 옴" 줄</strong>은 다른 줄의 박스를 잘못 이은 걸 수 있습니다. 박스 옆 <strong>다른 줄로 옮기기</strong>로
-            바로잡으세요. 전표에 무게가 적혀 있는데 박스 수로 세고 있다면 그 줄의 <strong>줄 내용 고치기</strong>에서 중량을 넣거나 세는 기준을 &quot;무게&quot;로 바꾸세요.
-            진짜 더 온 거면 <strong>사유를 적고 마감</strong>해야 합니다(사유 없이는 마감되지 않습니다).
-            {overLines[0] && (
-              <button
-                type="button"
-                onClick={() => jumpTo(overLines[0].id, `line-${overLines[0].id}`)}
-                style={{ ...secondaryButton, marginLeft: "8px" }}
-              >
+            {nextStep.kind === "over" && overLines[0] && (
+              <button type="button" onClick={() => jumpTo(overLines[0].id, `line-${overLines[0].id}`)} style={primaryButton}>
                 그 줄 열기
               </button>
             )}
-          </p>
-        )}
 
-        {isPending && shortLines.length > 0 && (
-          <ol style={{ margin: "8px 0 0", paddingLeft: "20px", fontSize: "13px", color: "#334155", lineHeight: 1.7 }}>
-            <li>
-              <strong>오는 중이면</strong> — 기다리세요. 박스를 찍으면 저절로 채워집니다.
-            </li>
-            <li>
-              <strong>끝내 안 오면</strong> — 사유(예: 결품)를 적고 마감하세요.{" "}
-              <button type="button" onClick={() => setCloseModalOpen(true)} style={secondaryButton}>
-                안 온 채로 마감하기
+            {nextStep.kind === "short" && (
+              <>
+                <button type="button" onClick={() => setCloseModalOpen(true)} style={primaryButton}>
+                  안 온 채로 마감하기
+                </button>
+                <button type="button" onClick={copySupplierRequest} style={secondaryButton}>
+                  공급처에 보낼 문구 복사
+                </button>
+              </>
+            )}
+
+            {nextStep.kind === "ready-to-close" && (
+              <button type="button" onClick={() => setCloseModalOpen(true)} style={primaryButton}>
+                마감하기
               </button>
-            </li>
-          </ol>
-        )}
+            )}
+          </div>
 
-        {shortLines.length > 0 && (
-          <button type="button" onClick={copySupplierRequest} style={{ ...secondaryButton, marginTop: "10px" }}>
-            안 온 물건 {shortLines.length}줄, 공급처에 보낼 문구 복사
-          </button>
-        )}
-      </section>
+          <p style={{ margin: "10px 0 0", fontSize: "11px", color: "#94a3b8" }}>
+            전표 {summary.labeledTotal.toFixed(1)}kg · 실측 {summary.actualTotal.toFixed(1)}kg
+          </p>
+        </section>
+      ) : (
+        <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>마감된 전표입니다. 고칠 게 있으면 위 &quot;다시 열기&quot;를 누르세요.</p>
+      )}
 
       {/* 줄 표 */}
       <section style={panelStyle}>
@@ -955,7 +968,7 @@ export function DocumentReconciliationView({
       </section>
 
       {/* 전표와 연결 안 된 박스 — 평소엔 접어 둔다 */}
-      <section style={panelStyle}>
+      <section id="unlinked-boxes" style={panelStyle}>
         <button
           type="button"
           onClick={() => setShowUnlinked((value) => !value)}

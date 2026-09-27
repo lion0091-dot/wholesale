@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rejectionSummary, scanPurchaseOrderFromDb } from "./scan-purchase-order";
+import { rejectionBatchSummary, rejectionSummary, scanPurchaseOrderFromDb } from "./scan-purchase-order";
 
 describe("scanPurchaseOrderFromDb", () => {
   it("DB가 돌려준 판정 JSON을 화면용 모양으로 바꾼다", () => {
@@ -41,5 +41,15 @@ describe("rejectionSummary", () => {
     const text = rejectionSummary({ result: "REJECTED", reason: "UNLISTED", ordered: null, received: null, remaining: null, tolerance: null, excess: null, orderClosed: false });
 
     expect(text).toContain("발주서에 없는 물건");
+  });
+});
+
+describe("rejectionBatchSummary", () => {
+  it("하나씩 늘어놓지 않고 사유별 건수와 총 건수만 짧게 말한다", () => {
+    expect(rejectionBatchSummary(["OVER", "OVER", "UNLISTED"])).toBe("받지 않은 박스 3건(발주 초과 2건, 목록에 없음 1건) — 재고에 안 들어갔습니다.");
+  });
+
+  it("한 가지 사유뿐이면 그 사유만", () => {
+    expect(rejectionBatchSummary(["UNLISTED"])).toBe("받지 않은 박스 1건(목록에 없음 1건) — 재고에 안 들어갔습니다.");
   });
 });

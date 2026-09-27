@@ -190,3 +190,15 @@ export function rejectionSummary(po: ScanPurchaseOrder): string {
 
   return "이 거래처의 발주서에 없는 물건이라 받지 않았습니다.";
 }
+
+/** 한꺼번에 여러 박스가 거절됐을 때 — 하나씩 다 늘어놓지 않고 사유별 건수만 짧게. */
+export function rejectionBatchSummary(reasons: ReadonlyArray<ScanPurchaseOrder["reason"]>): string {
+  const overCount = reasons.filter((reason) => reason === "OVER").length;
+  const unlistedCount = reasons.filter((reason) => reason === "UNLISTED").length;
+  const parts = [
+    overCount > 0 ? `발주 초과 ${overCount}건` : null,
+    unlistedCount > 0 ? `목록에 없음 ${unlistedCount}건` : null,
+  ].filter((part): part is string => part !== null);
+
+  return `받지 않은 박스 ${reasons.length}건(${parts.join(", ")}) — 재고에 안 들어갔습니다.`;
+}
