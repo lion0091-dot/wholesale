@@ -151,6 +151,11 @@ select pg_temp.expect('T3(거래처 없던 스캔) → 전표의 거래처로 �
 
 select pg_temp.expect_error(format('select public.create_purchase_order_from_document_scan(%L)', :'t3_scan_id'), 'NOTHING_TO_ASSIGN', '같은 스캔 다시 → NOTHING_TO_ASSIGN');
 
+-- 격리: B 세션이 A 전표에 이어진 스캔으로 호출 → 테넌트 스코프에서 곧바로 막힘(SCAN_NOT_ON_DOCUMENT)
+set request.jwt.claim.sub = 'e4e4e4e4-0000-0000-0000-000000000004';
+select pg_temp.expect_error(format('select public.create_purchase_order_from_document_scan(%L)', :'t3_scan_id'), 'SCAN_NOT_ON_DOCUMENT', '격리: B가 A 전표에 이어진 스캔으로 호출 → SCAN_NOT_ON_DOCUMENT');
+set request.jwt.claim.sub = 'e4e4e4e4-0000-0000-0000-000000000001';
+
 -- 전표에 거래처가 없으면 거부
 select pg_temp.scan('009900000005', 6, 'e4e4e4e4-0000-0000-0000-0000000000c1', null) as r \gset
 select id as t5_scan_id from public.inbound_scans where trace_no = '009900000005' \gset

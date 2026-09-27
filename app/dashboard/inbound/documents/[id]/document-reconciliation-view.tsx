@@ -338,7 +338,11 @@ export function DocumentReconciliationView({
       const line = lineById.get(lineId);
 
       if (line?.productId && box.productId === null && box.status === "PENDING_MAPPING") {
-        await resolveMappingAction(box.scanId, line.productId, false);
+        const resolveResult = await resolveMappingAction(box.scanId, line.productId, false);
+
+        if (resolveResult.success && resolveResult.data?.po?.result === "REJECTED") {
+          setError(`받지 않은 박스가 있습니다 — ${rejectionSummary(resolveResult.data.po)} 재고에는 넣지 않았습니다.`);
+        }
       }
     }
 

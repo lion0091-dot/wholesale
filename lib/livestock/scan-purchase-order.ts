@@ -58,7 +58,7 @@ export async function loadScanPurchaseOrder(supabase: Client, scanId: string): P
   try {
     const { data: scan } = await supabase
       .from("inbound_scans")
-      .select("status, po_state, supplier_id")
+      .select("status, po_state, supplier_id, po_detail")
       .eq("id", scanId)
       .maybeSingle();
 
@@ -94,7 +94,18 @@ export async function loadScanPurchaseOrder(supabase: Client, scanId: string): P
     }
 
     if (scan.po_state === "OVER_HELD") {
-      return { result: "OVER_HELD", reason: null, ordered: null, received: null, remaining: null, tolerance: null, excess: null, orderClosed: false };
+      const detail = (scan.po_detail ?? {}) as Record<string, unknown>;
+
+      return {
+        result: "OVER_HELD",
+        reason: null,
+        ordered: toNumberOrNull(detail.ordered),
+        received: toNumberOrNull(detail.received),
+        remaining: toNumberOrNull(detail.remaining),
+        tolerance: toNumberOrNull(detail.tolerance),
+        excess: toNumberOrNull(detail.excess),
+        orderClosed: false,
+      };
     }
 
     if (scan.po_state !== "ASSIGNED") return null;

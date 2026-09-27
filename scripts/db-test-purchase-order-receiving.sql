@@ -344,6 +344,12 @@ select pg_temp.expect('이미 다 받아 자동 마감된 발주서의 품목이
     and (select status = 'NORMAL' and po_state = 'OVER_HELD' from public.inbound_scans where trace_no = '009800000034')
     and not exists (select 1 from public.purchase_order_line_scans x join public.inbound_scans s on s.id = x.scan_id where s.trace_no = '009800000034')
     and (select stock_quantity = 18 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000d1'));
+select pg_temp.expect('이미 마감된 발주서 초과분도 ordered/received가 0/0이 아니라 실제 수량(발주 10 중 10 이미 받음)으로 표시',
+    ((:'r'::jsonb) #>> '{po,ordered}')::numeric = 10 and ((:'r'::jsonb) #>> '{po,received}')::numeric = 10
+    and ((:'r'::jsonb) #>> '{po,excess}')::numeric = 5);
+select pg_temp.expect('OVER_HELD 판정 수치는 po_detail에 저장돼 나중에 다시 읽을 수 있다',
+    (select po_detail = jsonb_build_object('ordered', 10, 'received', 10, 'remaining', 0, 'tolerance', 0, 'excess', 5)
+     from public.inbound_scans where trace_no = '009800000034'));
 
 select public.void_inbound_scan((select id from public.inbound_scans where trace_no = '009800000033' and status = 'NORMAL' limit 1), '테스트 취소3');
 select pg_temp.expect('OVER_HELD 박스 취소 → 채움이 사라지고 자동 마감됐던 발주서 다시 OPEN',
