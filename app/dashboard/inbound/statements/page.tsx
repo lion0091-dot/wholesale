@@ -57,7 +57,7 @@ export default async function InboundStatementsPage() {
           <span>
             부위가 비어 있는 상품이 <strong>{partlessProductCount}개</strong> 있습니다. 부위를 채워야 정확히 관리됩니다.
           </span>
-          <Link href="/dashboard/products" style={{ fontWeight: 700, color: "#1d4ed8" }}>
+          <Link href="/dashboard/products?status=partless#product-table" style={{ fontWeight: 700, color: "#1d4ed8" }}>
             상품 관리에서 채우기
           </Link>
         </div>

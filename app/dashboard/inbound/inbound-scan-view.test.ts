@@ -96,12 +96,12 @@ describe("입고 스캔 화면 구조 — 스캔과 입고 처리에 집중한�
     expect(html).toContain("· 판매중지");
   });
 
-  it("상품이 없는 이유가 '보관(감춤)'이면 그 사실과 보관을 풀라는 안내를 함께 보여 준다", () => {
+  it("상품이 없는 이유가 '보관(감춤)'이면 그 사실과 보관을 풀라는 안내를 함께 보여 주고, 링크는 보관함 필터로 바로 간다", () => {
     const html = render(scans, [], 2);
 
     expect(html).toContain("보관된 상품 2개");
-    expect(html).toContain("보관함");
     expect(html).toContain("복원");
+    expect(html).toContain('href="/dashboard/products?status=archived"');
   });
 
   it("확인이 필요한 박스 행은 칸별 대조표·위치 지정·매입 금액 없이 할 일 한 줄과 처리 버튼만 보여 준다", () => {

@@ -3,7 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { MANUAL_DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
+import { PART_UNSPECIFIED_LABEL } from "@/lib/products/identity-key";
+import { pickProductsNextStep } from "@/lib/products/products-next-step";
 import { ProductTable, type StockSummary } from "./product-table";
+import { ProductsNextStepCard } from "./products-next-step-card";
 import { getLatestMarketPricesAction } from "@/app/actions/market-price";
 import { buildMarketPriceIndex, findMarketPrice, type MarketPriceIndex } from "@/lib/market-price/product-match";
 import { PriceBulkPanel } from "./price-bulk-panel";
@@ -117,6 +120,22 @@ export default async function DashboardProductsPage() {
     return sold < limit && remaining <= alertThreshold;
   });
 
+  const partlessProductCount = products.filter(
+    (product) => !product.archived_at && product.name.includes(PART_UNSPECIFIED_LABEL)
+  ).length;
+
+  const nextStep = pickProductsNextStep({
+    // "products.length === 0"과 같은 기준을 써야 한다 — 아래 등록 안내 칸(#products-seed)도
+    // 그 조건으로 그려지므로, 기준이 다르면 카드가 없는 칸을 가리키게 된다(보관만 있고
+    // 활성 상품은 0개인 경우).
+    totalCount: products.length,
+    autoStoppedCount: autoStoppedProducts.length,
+    unpricedCount: unpricedProducts.length,
+    partlessCount: partlessProductCount,
+    hotDealReachedCount: quotaReachedHotDeals.length,
+    hotDealNearingCount: quotaNearingHotDeals.length,
+  });
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <ProductTabs />
@@ -153,9 +172,13 @@ export default async function DashboardProductsPage() {
         </Link>
       </header>
 
+      <ProductsNextStepCard step={nextStep} />
+
       {quotaReachedHotDeals.length > 0 && (
         <div
+          id="products-hotdeal-reached"
           style={{
+            scrollMarginTop: "12px",
             backgroundColor: "#fef2f2",
             border: "1px solid #fecaca",
             borderRadius: "8px",
@@ -183,7 +206,9 @@ export default async function DashboardProductsPage() {
 
       {quotaNearingHotDeals.length > 0 && (
         <div
+          id="products-hotdeal-nearing"
           style={{
+            scrollMarginTop: "12px",
             backgroundColor: "#fffbeb",
             border: "1px solid #fde68a",
             borderRadius: "8px",
@@ -211,7 +236,9 @@ export default async function DashboardProductsPage() {
 
       {autoStoppedProducts.length > 0 && (
         <div
+          id="products-auto-stopped"
           style={{
+            scrollMarginTop: "12px",
             backgroundColor: "#fef2f2",
             border: "1px solid #fecaca",
             borderRadius: "8px",
@@ -236,7 +263,9 @@ export default async function DashboardProductsPage() {
 
       {scope?.wholesalerId && products.length === 0 && (
         <div
+          id="products-seed"
           style={{
+            scrollMarginTop: "12px",
             backgroundColor: "#f8fafc",
             border: "1px solid #e2e8f0",
             borderRadius: "8px",

@@ -1396,11 +1396,11 @@ export function InboundScanView({
 
           {needsProduct && products.length === 0 && (
             <Link
-              href="/dashboard/products"
+              href={archivedProductCount > 0 ? "/dashboard/products?status=archived" : "/dashboard/products"}
               style={{ fontSize: "12px", fontWeight: 700, color: "#1d4ed8", textDecoration: "underline" }}
             >
               {archivedProductCount > 0
-                ? `지정할 상품이 없습니다 — 보관된 상품 ${archivedProductCount}개가 있습니다. 상품 관리 → '보관함'에서 '복원'하면 여기서 고를 수 있습니다. 시험 입력이면 이 박스를 '취소'하세요`
+                ? `지정할 상품이 없습니다 — 보관된 상품 ${archivedProductCount}개가 있습니다. 상품 관리에서 '복원'하면 여기서 고를 수 있습니다. 시험 입력이면 이 박스를 '취소'하세요`
                 : "지정할 상품이 없습니다 — 양·가공육은 상품 관리에서 직접 등록하고, 소·돼지·닭·오리·계란은 이력이 조회되면 입고 스캔으로 자동 등록됩니다(상품 관리에서 미리 등록해 둘 수도 있습니다). 시험 입력이면 이 박스를 '취소'하세요"}
             </Link>
           )}

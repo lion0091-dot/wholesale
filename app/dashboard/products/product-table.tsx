@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { Product } from "@/types/database";
 import { SampleBadge } from "@/components/sample-badge";
 import { MiniToggle } from "@/components/mini-toggle";
 import { composeProductDisplayName } from "@/lib/products/display-name";
+import { PART_UNSPECIFIED_LABEL } from "@/lib/products/identity-key";
 import { findMarketPrice, type MarketPriceIndex } from "@/lib/market-price/product-match";
 import {
   deleteProductAction,
@@ -192,13 +193,21 @@ export function ProductTable({
   marketPrices = new Map(),
 }: ProductTableProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState("all");
   /**
    * 상태 필터. 자동 생성된 상품은 판매가 0원·판매중지로 들어오므로, 그대로 두면
    * 진짜 파는 상품이 그 사이에 묻힌다. 기본은 보관을 제외한 전체를 보여준다.
+   * URL에 ?status=archived가 있으면 그걸로 시작한다(다른 화면에서 "보관함으로"
+   * 안내할 때 필터까지 미리 켜서 보여주기 위함 — 따라가기).
    */
-  const [status, setStatus] = useState<"all" | "selling" | "unpriced" | "archived">("all");
+  const initialStatus = searchParams.get("status");
+  const [status, setStatus] = useState<"all" | "selling" | "unpriced" | "partless" | "archived">(
+    initialStatus === "archived" || initialStatus === "selling" || initialStatus === "unpriced" || initialStatus === "partless"
+      ? initialStatus
+      : "all"
+  );
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingStockId, setEditingStockId] = useState<string | null>(null);
@@ -235,6 +244,7 @@ export function ProductTable({
 
     const isArchived = Boolean(product.archived_at);
     const isUnpriced = Number(product.base_price) <= 0;
+    const isPartless = product.name.includes(PART_UNSPECIFIED_LABEL);
 
     const matchesStatus =
       status === "archived"
@@ -243,14 +253,20 @@ export function ProductTable({
           ? !isArchived && product.is_active && !isUnpriced
           : status === "unpriced"
             ? !isArchived && isUnpriced
-            // 'all'은 보관을 뺀 전체다 — 보관은 치운 상품이라 기본 목록에 섞이면 안 된다.
-            : !isArchived;
+            : status === "partless"
+              ? !isArchived && isPartless
+              // 'all'은 보관을 뺀 전체다 — 보관은 치운 상품이라 기본 목록에 섞이면 안 된다.
+              : !isArchived;
 
     return matchesKeyword && matchesCategory && matchesStatus;
   });
 
   const unpricedCount = allProducts.filter(
     (product) => !product.archived_at && Number(product.base_price) <= 0
+  ).length;
+
+  const partlessCount = allProducts.filter(
+    (product) => !product.archived_at && product.name.includes(PART_UNSPECIFIED_LABEL)
   ).length;
 
   const removeSampleProduct = (id: string) => {
@@ -389,7 +405,7 @@ export function ProductTable({
   };
 
   const handleArchive = (product: Product, archived: boolean) => {
-    if (archived && !window.confirm(`'${product.name}'을(를) 보관하시겠습니까?\n목록과 미니샵에서 빠지고, 입출고 기록은 그대로 남습니다.`)) {
+    if (archived && !window.confirm(`'${product.name}'을(를) 보관하시겠습니까?\n목록과 미니샵에서 빠지고, 입출고 기록은 그대로 남습니다.\n다시 꺼내려면 상태 필터에서 '보관함'을 고른 뒤 '복원'을 누르면 됩니다.`)) {
       return;
     }
 
@@ -406,7 +422,9 @@ export function ProductTable({
 
   return (
     <section
+      id="product-table"
       style={{
+        scrollMarginTop: "12px",
         backgroundColor: "#ffffff",
         border: "1px solid #e2e8f0",
         borderRadius: "12px",
@@ -500,6 +518,7 @@ export function ProductTable({
           <option value="all">전체 (보관 제외)</option>
           <option value="selling">판매중만</option>
           <option value="unpriced">판매가 미설정{unpricedCount > 0 ? ` (${unpricedCount})` : ""}</option>
+          <option value="partless">부위 미지정{partlessCount > 0 ? ` (${partlessCount})` : ""}</option>
           <option value="archived">보관함</option>
         </select>
       </div>

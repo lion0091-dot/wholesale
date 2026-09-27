@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildPriceCsv, parsePriceCsv, type PriceCsvProduct } from "@/lib/products/price-import";
+import { PRODUCTS_ANCHORS, PRODUCTS_OPEN_PRICE_PANEL_EVENT } from "@/lib/products/products-next-step";
 import { bulkUpdateProductPricesAction, type BulkPriceResult } from "./actions";
 
 /**
@@ -28,6 +29,19 @@ export function PriceBulkPanel({ unpricedProducts }: Props) {
   const [busy, setBusy] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 상품 관리 맨 위 카드의 "판매가 채우러 가기" 버튼이 이 칸으로 이동하면서 접혀 있으면 함께 연다.
+  useEffect(() => {
+    const openPanel = () => setOpen(true);
+
+    if (window.location.hash === PRODUCTS_ANCHORS.priceBulk) {
+      openPanel();
+    }
+
+    window.addEventListener(PRODUCTS_OPEN_PRICE_PANEL_EVENT, openPanel);
+
+    return () => window.removeEventListener(PRODUCTS_OPEN_PRICE_PANEL_EVENT, openPanel);
+  }, []);
 
   const handleDownload = () => {
     const csv = buildPriceCsv(unpricedProducts);
@@ -103,7 +117,7 @@ export function PriceBulkPanel({ unpricedProducts }: Props) {
   };
 
   return (
-    <section style={panelStyle}>
+    <section id="products-price-bulk" style={panelStyle}>
       <button
         type="button"
         onClick={() => setOpen((previous) => !previous)}
@@ -249,6 +263,7 @@ const panelStyle: React.CSSProperties = {
   backgroundColor: "#fff",
   padding: "14px",
   marginBottom: "14px",
+  scrollMarginTop: "12px",
 };
 
 const buttonStyle: React.CSSProperties = {
