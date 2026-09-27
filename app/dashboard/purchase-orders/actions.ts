@@ -11,6 +11,12 @@ import {
   type ParsedUploadRow,
   type PurchaseOrderLineInput,
 } from "@/lib/purchase-orders/lines";
+import {
+  findSupplierCollision,
+  validateSupplierInput,
+  type SupplierFormInput,
+  type SupplierNameEntry,
+} from "@/lib/purchase-orders/suppliers";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -122,7 +128,7 @@ export async function parsePurchaseOrderFileAction(
 }
 
 export interface CreatePurchaseOrderInput {
-  supplierName: string;
+  supplierId: string;
   orderedOn: string;
   expectedOn: string;
   note: string;
@@ -132,15 +138,25 @@ export interface CreatePurchaseOrderInput {
 export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput): Promise<ActionResult<{ id: string }>> {
   try {
     const { supabase, wholesalerId } = await resolveScope();
-    const supplierName = (input.supplierName ?? "").trim();
     const note = (input.note ?? "").trim();
 
-    if (!supplierName) {
-      throw new RbacError("공급처 이름을 입력해주세요.");
+    if (!UUID_PATTERN.test(input.supplierId ?? "")) {
+      throw new RbacError("공급처를 목록에서 골라주세요.");
     }
 
-    if (supplierName.length > 80) {
-      throw new RbacError("공급처 이름은 80자 이내로 입력해주세요.");
+    const { data: supplier } = await supabase
+      .from("suppliers")
+      .select("id, name, is_active")
+      .eq("id", input.supplierId)
+      .eq("wholesaler_id", wholesalerId)
+      .maybeSingle();
+
+    if (!supplier) {
+      throw new RbacError("선택한 공급처를 찾을 수 없습니다. 거래처 목록에서 다시 골라주세요.");
+    }
+
+    if (!supplier.is_active) {
+      throw new RbacError("사용을 중지한 거래처입니다. 거래처를 다시 사용으로 바꾸거나 다른 거래처를 고르세요.");
     }
 
     if (note.length > 500) {
@@ -182,7 +198,8 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
       .from("purchase_orders")
       .insert({
         wholesaler_id: wholesalerId,
-        supplier_name: supplierName,
+        supplier_id: supplier.id,
+        supplier_name: supplier.name,
         ordered_on: input.orderedOn,
         expected_on: input.expectedOn || null,
         note: note || null,
@@ -249,6 +266,127 @@ export async function setPurchaseOrderStatusAction(
 
     if (!data) {
       throw new RbacError("권한이 없거나 해당 발주서를 찾을 수 없습니다.");
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+// ====================================================================
+// 거래처(공급처) 관리 — 발주서 화면 안에서 쓴다(마이그레이션 136)
+// ====================================================================
+async function loadSupplierNames(supabase: Awaited<ReturnType<typeof createClient>>, wholesalerId: string): Promise<SupplierNameEntry[]> {
+  const { data } = await supabase.from("suppliers").select("id, name, aliases").eq("wholesaler_id", wholesalerId);
+
+  return ((data ?? []) as Array<{ id: string; name: string; aliases: string[] | null }>).map((row) => ({
+    id: row.id,
+    name: row.name,
+    aliases: row.aliases ?? [],
+  }));
+}
+
+export async function createSupplierAction(input: SupplierFormInput): Promise<ActionResult<{ id: string; name: string }>> {
+  try {
+    const { supabase, wholesalerId } = await resolveScope();
+    const validation = validateSupplierInput(input);
+
+    if (!validation.ok) {
+      throw new RbacError(validation.error);
+    }
+
+    const collision = findSupplierCollision(validation.value, await loadSupplierNames(supabase, wholesalerId));
+
+    if (collision) {
+      throw new RbacError(collision);
+    }
+
+    const { data, error } = await supabase
+      .from("suppliers")
+      .insert({ wholesaler_id: wholesalerId, ...validation.value })
+      .select("id, name")
+      .single();
+
+    if (error || !data) {
+      // 동시에 같은 이름을 등록한 경우 — DB 유니크 인덱스가 마지막으로 막는다.
+      throw new RbacError(error?.code === "23505" ? "이미 같은 이름의 거래처가 있습니다." : (error?.message ?? "거래처 저장에 실패했습니다."));
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+    return { success: true, data: { id: data.id as string, name: data.name as string } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export async function updateSupplierAction(supplierId: string, input: SupplierFormInput): Promise<ActionResult> {
+  try {
+    const { supabase, wholesalerId } = await resolveScope();
+
+    if (!UUID_PATTERN.test(supplierId)) {
+      throw new RbacError("올바른 거래처가 아닙니다.");
+    }
+
+    const validation = validateSupplierInput(input);
+
+    if (!validation.ok) {
+      throw new RbacError(validation.error);
+    }
+
+    const collision = findSupplierCollision(validation.value, await loadSupplierNames(supabase, wholesalerId), supplierId);
+
+    if (collision) {
+      throw new RbacError(collision);
+    }
+
+    const { data, error } = await supabase
+      .from("suppliers")
+      .update(validation.value)
+      .eq("id", supplierId)
+      .eq("wholesaler_id", wholesalerId)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      throw new RbacError(error.code === "23505" ? "이미 같은 이름의 거래처가 있습니다." : error.message);
+    }
+
+    if (!data) {
+      throw new RbacError("권한이 없거나 해당 거래처를 찾을 수 없습니다.");
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** 거래처는 지우지 않고 사용 중지한다 — 지난 발주서가 이 거래처를 가리키고 있다. 중지하면 새 발주서의 선택 목록에서만 빠진다. */
+export async function setSupplierActiveAction(supplierId: string, active: boolean): Promise<ActionResult> {
+  try {
+    const { supabase, wholesalerId } = await resolveScope();
+
+    if (!UUID_PATTERN.test(supplierId)) {
+      throw new RbacError("올바른 거래처가 아닙니다.");
+    }
+
+    const { data, error } = await supabase
+      .from("suppliers")
+      .update({ is_active: active })
+      .eq("id", supplierId)
+      .eq("wholesaler_id", wholesalerId)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data) {
+      throw new RbacError("권한이 없거나 해당 거래처를 찾을 수 없습니다.");
     }
 
     revalidatePath(REVALIDATE_PATH);

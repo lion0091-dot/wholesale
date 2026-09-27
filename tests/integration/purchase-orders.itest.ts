@@ -6,16 +6,29 @@ import writeExcelFile from "write-excel-file/node";
 import { actAs, adminClient, seedWorld, type World } from "./harness";
 import {
   createPurchaseOrderAction,
+  createSupplierAction,
   parsePurchaseOrderFileAction,
   setPurchaseOrderStatusAction,
+  setSupplierActiveAction,
+  updateSupplierAction,
   type CreatePurchaseOrderInput,
 } from "@/app/dashboard/purchase-orders/actions";
 import { buildPurchaseOrderTemplate } from "@/lib/purchase-orders/template";
 
 let world: World;
+let supplierAId: string;
+let supplierBId: string;
+
+async function seedSupplier(wholesalerId: string, name: string, extra: Record<string, unknown> = {}): Promise<string> {
+  const { data, error } = await adminClient().from("suppliers").insert({ wholesaler_id: wholesalerId, name, ...extra }).select("id").single();
+
+  if (error || !data) throw new Error(error?.message ?? "거래처 시드 실패");
+
+  return data.id as string;
+}
 
 const input = (patch: Partial<CreatePurchaseOrderInput> = {}): CreatePurchaseOrderInput => ({
-  supplierName: "테스트축산",
+  supplierId: supplierAId,
   orderedOn: "2026-09-27",
   expectedOn: "",
   note: "",
@@ -45,10 +58,13 @@ function fileForm(file: File): FormData {
 
 beforeAll(async () => {
   world = await seedWorld();
+  supplierAId = await seedSupplier(world.wholesalerA, `테스트축산-${world.runId}`);
+  supplierBId = await seedSupplier(world.wholesalerB, `B사 거래처-${world.runId}`);
 });
 
 afterAll(async () => {
   await adminClient().from("purchase_orders").delete().eq("wholesaler_id", world.wholesalerA);
+  await adminClient().from("suppliers").delete().in("wholesaler_id", [world.wholesalerA, world.wholesalerB]);
   await world?.cleanup();
 });
 
@@ -65,7 +81,7 @@ describe("발주서 — 권한·격리", () => {
     for (const user of [world.users.staffA, world.users.retailerR, null]) {
       await actAs(user);
 
-      expect((await createPurchaseOrderAction(input({ supplierName: "몰래 발주" }))).success).toBe(false);
+      expect((await createPurchaseOrderAction(input({ note: "몰래 발주" }))).success).toBe(false);
       expect((await setPurchaseOrderStatusAction(created.data!.id, "cancel")).success).toBe(false);
       expect((await parsePurchaseOrderFileAction(fileForm(await xlsxFile([["축종", "수량"]])))).success).toBe(false);
     }
@@ -75,7 +91,7 @@ describe("발주서 — 권한·격리", () => {
     const { count } = await adminClient()
       .from("purchase_orders")
       .select("id", { count: "exact", head: true })
-      .eq("supplier_name", "몰래 발주");
+      .eq("note", "몰래 발주");
 
     expect(count).toBe(0);
   });
@@ -83,7 +99,7 @@ describe("발주서 — 권한·격리", () => {
   it("매니저는 만들 수 있고, 다른 공급사 사장은 남의 발주서를 바꿀 수 없다", async () => {
     await actAs(world.users.managerA);
 
-    const created = await createPurchaseOrderAction(input({ supplierName: "매니저 발주" }));
+    const created = await createPurchaseOrderAction(input({ note: "매니저 발주" }));
 
     expect(created.success).toBe(true);
 
@@ -94,7 +110,7 @@ describe("발주서 — 권한·격리", () => {
   });
 
   it("직원은 RLS로 발주서를 조회할 수 있지만 다른 공급사 계정에는 보이지 않는다", async () => {
-    const created = await createPurchaseOrderAction(input({ supplierName: "조회 시험" }));
+    const created = await createPurchaseOrderAction(input({ note: "조회 시험" }));
     const client = async (user: Parameters<typeof actAs>[0]) => {
       await actAs(user);
       const { createClient } = await import("@/lib/supabase/server");
@@ -114,7 +130,6 @@ describe("createPurchaseOrderAction", () => {
   it("정상 저장 — 헤더·줄이 소유 공급사로 저장되고 값이 다듬어진다", async () => {
     const result = await createPurchaseOrderAction(
       input({
-        supplierName: "  좋은축산  ",
         expectedOn: "2026-09-29",
         note: " 오전 도착 ",
         lines: [
@@ -129,7 +144,7 @@ describe("createPurchaseOrderAction", () => {
     const row = await orderRow(result.data!.id);
     const lines = [...row.purchase_order_lines].sort((a, b) => Number(a.line_no) - Number(b.line_no));
 
-    expect(row).toMatchObject({ wholesaler_id: world.wholesalerA, supplier_name: "좋은축산", note: "오전 도착", status: "OPEN", expected_on: "2026-09-29" });
+    expect(row).toMatchObject({ wholesaler_id: world.wholesalerA, supplier_id: supplierAId, supplier_name: `테스트축산-${world.runId}`, note: "오전 도착", status: "OPEN", expected_on: "2026-09-29" });
     expect(lines).toHaveLength(2);
     expect(lines[0]).toMatchObject({ line_no: 1, category: "소", subcategory: "등심", grade: "1++", quantity: 50, unit_price: 45000 });
     expect(lines[1]).toMatchObject({ line_no: 2, category: "돼지", subcategory: null, grade: null, quantity: 1200.5, unit_price: null });
@@ -138,7 +153,9 @@ describe("createPurchaseOrderAction", () => {
   it("입력 오류는 각각 안내문으로 거부하고 아무것도 저장하지 않는다", async () => {
     const marker = `검증실패-${world.runId}`;
     const cases: Array<[Partial<CreatePurchaseOrderInput>, string]> = [
-      [{ supplierName: " " }, "공급처 이름"],
+      [{ supplierId: "" }, "목록에서 골라"],
+      [{ supplierId: "00000000-0000-4000-8000-000000000000" }, "찾을 수 없습니다"],
+      [{ supplierId: "__B__" }, "찾을 수 없습니다"],
       [{ orderedOn: "" }, "발주일"],
       [{ expectedOn: "2026-09-01", orderedOn: "2026-09-27" }, "빠를 수 없습니다"],
       [{ lines: [] }, "한 줄 이상"],
@@ -149,13 +166,13 @@ describe("createPurchaseOrderAction", () => {
     ];
 
     for (const [patch, message] of cases) {
-      const result = await createPurchaseOrderAction(input({ supplierName: marker, ...patch }));
+      const result = await createPurchaseOrderAction(input({ note: marker, ...patch, ...(patch.supplierId === "__B__" ? { supplierId: supplierBId } : {}) }));
 
       expect(result.success).toBe(false);
       expect(result.error).toContain(message);
     }
 
-    const { count } = await adminClient().from("purchase_orders").select("id", { count: "exact", head: true }).eq("supplier_name", marker);
+    const { count } = await adminClient().from("purchase_orders").select("id", { count: "exact", head: true }).eq("note", marker);
 
     expect(count).toBe(0);
   });
@@ -164,7 +181,7 @@ describe("createPurchaseOrderAction", () => {
     const marker = `줄오류-${world.runId}`;
     const result = await createPurchaseOrderAction(
       input({
-        supplierName: marker,
+        note: marker,
         lines: [
           { category: "소", subcategory: "", grade: "", origin: "국내산", quantity: "5", unitPrice: "" },
           { category: "소", subcategory: "", grade: "", origin: "국내산", quantity: "x", unitPrice: "" },
@@ -175,15 +192,29 @@ describe("createPurchaseOrderAction", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("2번째 줄");
 
-    const { count } = await adminClient().from("purchase_orders").select("id", { count: "exact", head: true }).eq("supplier_name", marker);
+    const { count } = await adminClient().from("purchase_orders").select("id", { count: "exact", head: true }).eq("note", marker);
 
     expect(count).toBe(0);
+  });
+
+  it("사용 중지한 거래처로는 발주서를 만들 수 없고 다시 사용으로 바꾸면 만들 수 있다", async () => {
+    const id = await seedSupplier(world.wholesalerA, `중지 시험-${world.runId}`);
+
+    expect((await setSupplierActiveAction(id, false)).success).toBe(true);
+
+    const blocked = await createPurchaseOrderAction(input({ supplierId: id, note: "중지 거래처" }));
+
+    expect(blocked.success).toBe(false);
+    expect(blocked.error).toContain("사용을 중지");
+
+    expect((await setSupplierActiveAction(id, true)).success).toBe(true);
+    expect((await createPurchaseOrderAction(input({ supplierId: id, note: "재사용 거래처" }))).success).toBe(true);
   });
 });
 
 describe("setPurchaseOrderStatusAction", () => {
   it("마감·취소·다시 열기가 되고 줄은 그대로 남는다", async () => {
-    const created = await createPurchaseOrderAction(input({ supplierName: "상태 시험" }));
+    const created = await createPurchaseOrderAction(input({ note: "상태 시험" }));
     const id = created.data!.id;
 
     expect((await setPurchaseOrderStatusAction(id, "close")).success).toBe(true);
@@ -241,9 +272,105 @@ describe("parsePurchaseOrderFileAction — 엑셀 올리기", () => {
   });
 });
 
+describe("거래처 관리", () => {
+  it("등록 — 이름은 공백이 다듬어지고 연락처·메모·별칭이 저장되며 소유 공급사는 서버가 정한다", async () => {
+    const name = `  새   거래처-${world.runId}  `;
+    const result = await createSupplierAction({ name, phone: " 010-1234-5678 ", note: " 메모 ", aliases: "새거래처별칭, 다른 별칭" });
+
+    expect(result.success).toBe(true);
+    expect(result.data!.name).toBe(`새 거래처-${world.runId}`);
+
+    const { data } = await adminClient().from("suppliers").select("*").eq("id", result.data!.id).single();
+
+    expect(data).toMatchObject({ wholesaler_id: world.wholesalerA, phone: "010-1234-5678", note: "메모", aliases: ["새거래처별칭", "다른 별칭"], is_active: true });
+    expect(data!.name_key).toBe(`새거래처-${world.runId}`.toLowerCase());
+  });
+
+  it("같은 거래처를 공백·대소문자만 바꿔 또 등록하거나 다른 거래처의 이름·별칭과 겹치게 하면 거부한다", async () => {
+    const base = `중복시험-${world.runId}`;
+    const first = await createSupplierAction({ name: base, phone: "", note: "", aliases: `별칭${world.runId}` });
+
+    expect(first.success).toBe(true);
+
+    const spaced = await createSupplierAction({ name: base.replace("시험", " 시 험").toUpperCase(), phone: "", note: "", aliases: "" });
+    const aliasCollision = await createSupplierAction({ name: `다른곳-${world.runId}`, phone: "", note: "", aliases: `별칭${world.runId}` });
+
+    expect(spaced.success).toBe(false);
+    expect(spaced.error).toContain(base);
+    expect(aliasCollision.success).toBe(false);
+    expect(aliasCollision.error).toContain("이미 등록된 거래처");
+
+    // 다른 공급사는 같은 이름을 써도 된다(업체별 목록).
+    await actAs(world.users.ownerB);
+    expect((await createSupplierAction({ name: base, phone: "", note: "", aliases: "" })).success).toBe(true);
+  });
+
+  it("수정은 자기 자신과 겹치는 것은 허용하고 다른 거래처와 겹치면 거부하며, 다른 공급사 거래처는 못 고친다", async () => {
+    const a = await createSupplierAction({ name: `수정A-${world.runId}`, phone: "", note: "", aliases: "" });
+    const b = await createSupplierAction({ name: `수정B-${world.runId}`, phone: "", note: "", aliases: "" });
+
+    expect((await updateSupplierAction(a.data!.id, { name: `수정A-${world.runId}`, phone: "02-1", note: "", aliases: "" })).success).toBe(true);
+    expect((await updateSupplierAction(a.data!.id, { name: `수정b-${world.runId}`, phone: "", note: "", aliases: "" })).success).toBe(false);
+
+    await actAs(world.users.ownerB);
+
+    expect((await updateSupplierAction(b.data!.id, { name: "탈취", phone: "", note: "", aliases: "" })).success).toBe(false);
+    expect((await setSupplierActiveAction(b.data!.id, false)).success).toBe(false);
+
+    const { data } = await adminClient().from("suppliers").select("name, is_active").eq("id", b.data!.id).single();
+
+    expect(data).toMatchObject({ name: `수정B-${world.runId}`, is_active: true });
+  });
+
+  it("직원·고객·비로그인은 거래처를 만들거나 바꿀 수 없고, 직원은 RLS로 조회만 된다", async () => {
+    for (const user of [world.users.staffA, world.users.retailerR, null]) {
+      await actAs(user);
+
+      expect((await createSupplierAction({ name: `몰래-${world.runId}`, phone: "", note: "", aliases: "" })).success).toBe(false);
+      expect((await setSupplierActiveAction(supplierAId, false)).success).toBe(false);
+    }
+
+    await actAs(world.users.staffA);
+
+    const { createClient } = await import("@/lib/supabase/server");
+    const { data } = await (await createClient()).from("suppliers").select("id").eq("id", supplierAId);
+
+    expect(data).toHaveLength(1);
+
+    await actAs(world.users.ownerB);
+
+    const { data: hidden } = await (await createClient()).from("suppliers").select("id").eq("id", supplierAId);
+
+    expect(hidden).toHaveLength(0);
+  });
+
+  it("입력 오류는 안내문으로 거부한다", async () => {
+    for (const [patch, message] of [
+      [{ name: "  " }, "이름을 입력"],
+      [{ phone: "1".repeat(31) }, "30자"],
+      [{ aliases: Array.from({ length: 11 }, (_, index) => `별칭${index}`).join(",") }, "10개"],
+    ] as Array<[Partial<Parameters<typeof createSupplierAction>[0]>, string]>) {
+      const result = await createSupplierAction({ name: `오류-${world.runId}`, phone: "", note: "", aliases: "", ...patch });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(message);
+    }
+  });
+});
+
 describe("DB 방어선", () => {
+  it("발주서에 다른 공급사의 거래처를 붙이면 트리거가 막고, 거래처 이름 열쇠는 DB가 유일하게 지킨다", async () => {
+    const mismatch = await adminClient().from("purchase_orders").insert({ wholesaler_id: world.wholesalerA, supplier_id: supplierBId, supplier_name: "x" });
+
+    expect(mismatch.error?.message).toContain("SUPPLIER_TENANT_MISMATCH");
+
+    const duplicate = await adminClient().from("suppliers").insert({ wholesaler_id: world.wholesalerA, name: ` 테스트 축산-${world.runId} ` });
+
+    expect(duplicate.error?.code).toBe("23505");
+  });
+
   it("다른 공급사 발주서에 줄을 끼워 넣으면 트리거가 막는다", async () => {
-    const created = await createPurchaseOrderAction(input({ supplierName: "테넌트 시험" }));
+    const created = await createPurchaseOrderAction(input({ note: "테넌트 시험" }));
     const { error } = await adminClient().from("purchase_order_lines").insert({
       purchase_order_id: created.data!.id,
       wholesaler_id: world.wholesalerB,
@@ -257,7 +384,7 @@ describe("DB 방어선", () => {
   });
 
   it("수량 0 이하·같은 줄 번호 중복은 CHECK·UNIQUE가 막는다", async () => {
-    const created = await createPurchaseOrderAction(input({ supplierName: "제약 시험" }));
+    const created = await createPurchaseOrderAction(input({ note: "제약 시험" }));
     const base = { purchase_order_id: created.data!.id, wholesaler_id: world.wholesalerA, category: "소", origin: "국내산" };
     const zero = await adminClient().from("purchase_order_lines").insert({ ...base, line_no: 50, quantity: 0 });
     const duplicate = await adminClient().from("purchase_order_lines").insert({ ...base, line_no: 1, quantity: 3 });

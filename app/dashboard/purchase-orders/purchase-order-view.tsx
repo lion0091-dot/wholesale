@@ -6,12 +6,25 @@ import type { PurchaseOrderLineInput } from "@/lib/purchase-orders/lines";
 import { PURCHASE_ORDER_MAX_LINES } from "@/lib/purchase-orders/lines";
 import {
   createPurchaseOrderAction,
+  createSupplierAction,
   parsePurchaseOrderFileAction,
   setPurchaseOrderStatusAction,
+  setSupplierActiveAction,
+  updateSupplierAction,
 } from "./actions";
+
+export interface SupplierRow {
+  id: string;
+  name: string;
+  phone: string | null;
+  note: string | null;
+  aliases: string[];
+  is_active: boolean;
+}
 
 export interface PurchaseOrderRow {
   id: string;
+  supplier_id: string;
   supplier_name: string;
   ordered_on: string;
   expected_on: string | null;
@@ -33,7 +46,7 @@ interface Props {
   canManage: boolean;
   categories: string[];
   subcategoriesByCategory: Record<string, string[]>;
-  supplierSuggestions: string[];
+  suppliers: SupplierRow[];
   orders: PurchaseOrderRow[];
 }
 
@@ -80,11 +93,13 @@ function specText(line: PurchaseOrderRow["purchase_order_lines"][number]): strin
   return [line.category, line.subcategory, line.grade, line.origin].filter(Boolean).join(" ");
 }
 
-export function PurchaseOrderView({ canManage, categories, subcategoriesByCategory, supplierSuggestions, orders }: Props) {
+export function PurchaseOrderView({ canManage, categories, subcategoriesByCategory, suppliers, orders }: Props) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
-  const [supplierName, setSupplierName] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const activeSuppliers = suppliers.filter((supplier) => supplier.is_active);
+  const supplierNameById = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
   const [orderedOn, setOrderedOn] = useState(today);
   const [expectedOn, setExpectedOn] = useState("");
   const [note, setNote] = useState("");
@@ -152,7 +167,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
     const filled = lines.filter((line) => Object.values(line).some((value) => value.trim() !== "" && value !== "국내산"));
 
     const result = await createPurchaseOrderAction({
-      supplierName,
+      supplierId,
       orderedOn,
       expectedOn,
       note,
@@ -166,7 +181,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
       return;
     }
 
-    setSupplierName("");
+    setSupplierId("");
     setExpectedOn("");
     setNote("");
     setLines([emptyLine()]);
@@ -218,12 +233,13 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "10px" }}>
                 <div>
                   <label htmlFor="po-supplier" style={labelStyle}>공급처 *</label>
-                  <input id="po-supplier" list="po-supplier-list" value={supplierName} maxLength={80} onChange={(event) => setSupplierName(event.target.value)} placeholder="예: OO축산" style={fieldStyle} autoComplete="off" />
-                  <datalist id="po-supplier-list">
-                    {supplierSuggestions.map((name) => (
-                      <option key={name} value={name} />
+                  <select id="po-supplier" value={supplierId} onChange={(event) => setSupplierId(event.target.value)} style={fieldStyle}>
+                    <option value="">{activeSuppliers.length === 0 ? "아래 거래처 관리에서 먼저 등록하세요" : "거래처를 고르세요"}</option>
+                    {activeSuppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
                     ))}
-                  </datalist>
+                  </select>
+                  <QuickSupplierAdd onCreated={(id) => { setSupplierId(id); router.refresh(); }} setError={setError} />
                 </div>
                 <div>
                   <label htmlFor="po-ordered" style={labelStyle}>발주일 *</label>
@@ -307,6 +323,8 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
         <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>발주서 작성과 수정은 사장님·매니저만 할 수 있습니다. 직원은 조회만 됩니다.</p>
       )}
 
+      <SupplierPanel suppliers={suppliers} canManage={canManage} setError={setError} />
+
       <section style={{ display: "grid", gap: "10px" }}>
         {orders.length === 0 ? (
           <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>아직 작성한 발주서가 없습니다.</p>
@@ -318,7 +336,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
             return (
               <article key={order.id} style={{ border: "1px solid #e2e8f0", borderRadius: "12px", padding: "12px 14px", backgroundColor: "#fff" }}>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
-                  <strong style={{ fontSize: "15px", color: "#0f172a" }}>{order.supplier_name}</strong>
+                  <strong style={{ fontSize: "15px", color: "#0f172a" }}>{supplierNameById.get(order.supplier_id) ?? order.supplier_name}</strong>
                   <span style={{ fontSize: "11px", fontWeight: 700, backgroundColor: badge.bg, color: badge.color, borderRadius: "4px", padding: "2px 6px" }}>{badge.text}</span>
                   <span style={{ fontSize: "12px", color: "#64748b" }}>
                     발주 {order.ordered_on}
@@ -351,6 +369,168 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
           })
         )}
       </section>
+    </div>
+  );
+}
+
+
+/** 발주서 작성 중 목록에 없는 거래처를 그 자리에서 이름만으로 빨리 추가한다 — 자세한 정보는 아래 거래처 관리에서 채운다. */
+function QuickSupplierAdd({ onCreated, setError }: { onCreated: (id: string) => void; setError: (message: string | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} style={{ marginTop: "4px", border: "none", background: "none", padding: 0, fontSize: "12px", color: "#2563eb", cursor: "pointer" }}>
+        + 목록에 없는 거래처 추가
+      </button>
+    );
+  }
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+
+    const result = await createSupplierAction({ name, phone: "", note: "", aliases: "" });
+
+    setBusy(false);
+
+    if (!result.success || !result.data) {
+      setError(result.error ?? "거래처 추가에 실패했습니다.");
+      return;
+    }
+
+    setName("");
+    setOpen(false);
+    onCreated(result.data.id);
+  };
+
+  return (
+    <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
+      <input value={name} maxLength={80} autoFocus onChange={(event) => setName(event.target.value)} placeholder="새 거래처 이름" style={fieldStyle} aria-label="새 거래처 이름" />
+      <button type="button" style={primaryButtonStyle} disabled={busy} onClick={() => void save()}>추가</button>
+      <button type="button" style={buttonStyle} onClick={() => { setOpen(false); setName(""); }}>취소</button>
+    </div>
+  );
+}
+
+const emptySupplierForm = { name: "", phone: "", note: "", aliases: "" };
+
+/** 거래처 관리 — 공급처 목록을 만들고 고친다. 발주서·입고는 이 목록에서 고르기만 한다. */
+function SupplierPanel({ suppliers, canManage, setError }: { suppliers: SupplierRow[]; canManage: boolean; setError: (message: string | null) => void }) {
+  const router = useRouter();
+  const [editingId, setEditingId] = useState<string | "new" | null>(null);
+  const [form, setForm] = useState(emptySupplierForm);
+  const [busy, setBusy] = useState(false);
+
+  const startEdit = (supplier: SupplierRow | null) => {
+    setError(null);
+    setEditingId(supplier ? supplier.id : "new");
+    setForm(supplier ? { name: supplier.name, phone: supplier.phone ?? "", note: supplier.note ?? "", aliases: supplier.aliases.join(", ") } : emptySupplierForm);
+  };
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+
+    const result = editingId === "new" ? await createSupplierAction(form) : await updateSupplierAction(editingId as string, form);
+
+    setBusy(false);
+
+    if (!result.success) {
+      setError(result.error ?? "저장에 실패했습니다.");
+      return;
+    }
+
+    setEditingId(null);
+    router.refresh();
+  };
+
+  const toggleActive = async (supplier: SupplierRow) => {
+    setBusy(true);
+    setError(null);
+
+    const result = await setSupplierActiveAction(supplier.id, !supplier.is_active);
+
+    setBusy(false);
+
+    if (!result.success) {
+      setError(result.error ?? "처리에 실패했습니다.");
+      return;
+    }
+
+    router.refresh();
+  };
+
+  return (
+    <details style={{ border: "1px solid #e2e8f0", borderRadius: "12px", padding: "12px 14px", backgroundColor: "#fff" }} open={suppliers.length === 0}>
+      <summary style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a", cursor: "pointer" }}>
+        거래처 관리 <span style={{ fontWeight: 400, color: "#64748b", fontSize: "12px" }}>물건을 사 오는 공급처 {suppliers.length}곳</span>
+      </summary>
+
+      <div style={{ display: "grid", gap: "8px", marginTop: "10px" }}>
+        {suppliers.length === 0 && <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>등록된 거래처가 없습니다. 아래 버튼으로 처음 거래처를 등록하세요.</p>}
+
+        {suppliers.map((supplier) =>
+          editingId === supplier.id ? (
+            <SupplierForm key={supplier.id} form={form} setForm={setForm} busy={busy} onSave={() => void save()} onCancel={() => setEditingId(null)} />
+          ) : (
+            <div key={supplier.id} style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", opacity: supplier.is_active ? 1 : 0.6 }}>
+              <strong style={{ fontSize: "14px", color: "#0f172a" }}>{supplier.name}</strong>
+              {!supplier.is_active && <span style={{ fontSize: "11px", backgroundColor: "#f1f5f9", color: "#64748b", borderRadius: "4px", padding: "2px 6px" }}>사용 중지</span>}
+              <span style={{ fontSize: "12px", color: "#64748b" }}>
+                {[supplier.phone, supplier.aliases.length > 0 ? `명세서 표기: ${supplier.aliases.join(", ")}` : null, supplier.note].filter(Boolean).join(" · ")}
+              </span>
+              {canManage && (
+                <span style={{ display: "flex", gap: "6px", marginLeft: "auto" }}>
+                  <button type="button" style={buttonStyle} disabled={busy} onClick={() => startEdit(supplier)}>수정</button>
+                  <button type="button" style={buttonStyle} disabled={busy} onClick={() => void toggleActive(supplier)}>{supplier.is_active ? "사용 중지" : "다시 사용"}</button>
+                </span>
+              )}
+            </div>
+          )
+        )}
+
+        {canManage &&
+          (editingId === "new" ? (
+            <SupplierForm form={form} setForm={setForm} busy={busy} onSave={() => void save()} onCancel={() => setEditingId(null)} />
+          ) : (
+            <button type="button" style={{ ...buttonStyle, justifySelf: "start" }} disabled={busy} onClick={() => startEdit(null)}>
+              + 거래처 등록
+            </button>
+          ))}
+        {!canManage && <p style={{ margin: 0, fontSize: "12px", color: "#64748b" }}>거래처 등록·수정은 사장님·매니저만 할 수 있습니다.</p>}
+      </div>
+    </details>
+  );
+}
+
+function SupplierForm({
+  form,
+  setForm,
+  busy,
+  onSave,
+  onCancel,
+}: {
+  form: typeof emptySupplierForm;
+  setForm: (next: typeof emptySupplierForm) => void;
+  busy: boolean;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div style={{ border: "1px solid #cbd5e1", borderRadius: "8px", padding: "10px", display: "grid", gap: "8px", backgroundColor: "#f8fafc" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "8px" }}>
+        <input aria-label="거래처 이름" value={form.name} maxLength={80} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="거래처 이름 *" style={fieldStyle} autoComplete="off" />
+        <input aria-label="연락처" value={form.phone} maxLength={30} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="연락처 (선택)" style={fieldStyle} autoComplete="off" />
+      </div>
+      <input aria-label="명세서에 다르게 적히는 이름" value={form.aliases} onChange={(event) => setForm({ ...form, aliases: event.target.value })} placeholder="명세서에 다르게 적히는 이름 (쉼표로 구분, 선택)" style={fieldStyle} autoComplete="off" />
+      <input aria-label="메모" value={form.note} maxLength={500} onChange={(event) => setForm({ ...form, note: event.target.value })} placeholder="메모 (선택)" style={fieldStyle} autoComplete="off" />
+      <div style={{ display: "flex", gap: "6px" }}>
+        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={onSave}>{busy ? "저장 중..." : "저장"}</button>
+        <button type="button" style={buttonStyle} disabled={busy} onClick={onCancel}>취소</button>
+      </div>
     </div>
   );
 }

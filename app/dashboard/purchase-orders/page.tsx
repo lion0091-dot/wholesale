@@ -3,7 +3,7 @@ import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { ProductTabs } from "../section-tabs";
 import { fetchSubcategoriesByCategory } from "../products/get-subcategories";
-import { PurchaseOrderView, type PurchaseOrderRow } from "./purchase-order-view";
+import { PurchaseOrderView, type PurchaseOrderRow, type SupplierRow } from "./purchase-order-view";
 
 export const metadata = {
   title: "공급처 발주서 | 도매업체 통합관리시스템",
@@ -28,17 +28,17 @@ export default async function PurchaseOrdersPage() {
   );
 
   let orders: PurchaseOrderRow[] = [];
-  let supplierSuggestions: string[] = [];
+  let suppliers: SupplierRow[] = [];
   let categories: string[] = [];
   let subcategoriesByCategory: Record<string, string[]> = {};
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
-    const [{ data: orderRows }, { data: categoryRows }, subcategories, { data: documentSuppliers }] = await Promise.all([
+    const [{ data: orderRows }, { data: categoryRows }, subcategories, { data: supplierRows }] = await Promise.all([
       supabase
         .from("purchase_orders")
         .select(
-          "id, supplier_name, ordered_on, expected_on, note, status, purchase_order_lines ( line_no, category, subcategory, grade, origin, quantity, unit, unit_price )"
+          "id, supplier_id, supplier_name, ordered_on, expected_on, note, status, purchase_order_lines ( line_no, category, subcategory, grade, origin, quantity, unit, unit_price )"
         )
         .eq("wholesaler_id", scope.wholesalerId)
         .order("ordered_on", { ascending: false })
@@ -46,7 +46,11 @@ export default async function PurchaseOrdersPage() {
         .limit(RECENT_LIMIT),
       supabase.from("product_categories").select("name").order("sort_order", { ascending: true }),
       fetchSubcategoriesByCategory(supabase),
-      supabase.from("inbound_documents").select("supplier_name").eq("wholesaler_id", scope.wholesalerId).limit(200),
+      supabase
+        .from("suppliers")
+        .select("id, name, phone, note, aliases, is_active")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .order("name", { ascending: true }),
     ]);
 
     orders = ((orderRows ?? []) as unknown as PurchaseOrderRow[]).map((order) => ({
@@ -55,13 +59,7 @@ export default async function PurchaseOrdersPage() {
     }));
     categories = ((categoryRows ?? []) as Array<{ name: string }>).map((row) => row.name);
     subcategoriesByCategory = subcategories;
-    supplierSuggestions = Array.from(
-      new Set(
-        [...orders.map((order) => order.supplier_name), ...((documentSuppliers ?? []) as Array<{ supplier_name: string | null }>).map((row) => row.supplier_name ?? "")]
-          .map((name) => name.trim())
-          .filter(Boolean)
-      )
-    ).slice(0, 50);
+    suppliers = ((supplierRows ?? []) as unknown as SupplierRow[]).map((row) => ({ ...row, aliases: row.aliases ?? [] }));
   }
 
   return (
@@ -70,8 +68,8 @@ export default async function PurchaseOrdersPage() {
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>공급처 발주서</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>
-          공급처에 발주한 품목과 수량(예: 소 등심 1++ 국내산 50kg)을 적어 둡니다. 화면에서 바로 적거나, 엑셀 양식을
-          내려받아 채워 올리면 됩니다. 물건이 도착했을 때 이 발주서와 맞춰 보는 기능은 다음 단계에서 붙입니다.
+          공급처에 발주한 품목과 수량(예: 소 등심 1++ 국내산 50kg)을 적어 둡니다. 공급처는 아래 거래처 목록에서 고르고,
+          품목은 화면에서 바로 적거나 엑셀 양식을 내려받아 채워 올리면 됩니다. 물건이 도착했을 때 이 발주서와 맞춰 보는 기능은 다음 단계에서 붙입니다.
         </p>
       </header>
 
@@ -79,7 +77,7 @@ export default async function PurchaseOrdersPage() {
         canManage={canManage}
         categories={categories}
         subcategoriesByCategory={subcategoriesByCategory}
-        supplierSuggestions={supplierSuggestions}
+        suppliers={suppliers}
         orders={orders}
       />
     </div>
