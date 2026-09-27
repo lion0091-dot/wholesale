@@ -66,6 +66,7 @@ export async function loadInboundData(
   let awaitingWeightLines = 0;
   let lateBoxes: Array<{ scanId: string; documentId: string }> = [];
   let unlinkedOpenBoxes: Array<{ scanId: string; documentId: string }> = [];
+  let holdsCount = 0;
   // 창고 구조가 업체마다 달라(플랫폼) 고정 위치 목록 대신, 이 업체가 그동안
   // 직접 입력한 위치 이름을 제안 목록으로 쓴다.
   let storageLocationSuggestions: string[] = [];
@@ -80,6 +81,15 @@ export async function loadInboundData(
     const unlinkedRowsPromise = supabase.rpc("list_unlinked_boxes_for_documents", {
       p_wholesaler_id: scope.wholesalerId,
     });
+
+    // 보류함(발주서에 없거나 초과로 받은 박스, 142) — 재고엔 이미 들어가 급하진 않지만, "지금 할 일"
+    // 카드가 안 알려주면 탭을 직접 눌러보지 않는 한 사무실이 잊을 수 있다(끊김 방지).
+    const holdsCountPromise = supabase
+      .from("inbound_scans")
+      .select("id", { count: "exact", head: true })
+      .eq("wholesaler_id", scope.wholesalerId)
+      .eq("status", "NORMAL")
+      .in("po_state", ["UNLISTED_HELD", "OVER_HELD"]);
 
     // 입고 내역은 계속 쌓이기만 하므로 최근 100건만 불러온다. 현장에서 보는 건
     // "방금 찍은 것들"이고, 과거 조회는 이력관리 메뉴가 따로 담당한다.
@@ -133,6 +143,8 @@ export async function loadInboundData(
       ]);
 
     const { data: unlinkedRows } = await unlinkedRowsPromise;
+
+    holdsCount = (await holdsCountPromise).count ?? 0;
     const unlinked = ((unlinkedRows ?? []) as Array<{ scan_id: string; document_id: string; document_status: string }>).map((row) => ({
       scanId: String(row.scan_id),
       documentId: String(row.document_id),
@@ -553,6 +565,7 @@ export async function loadInboundData(
       scans.find((scan) => scan.status === "EXCEPTION" || scan.status === "PENDING_MAPPING")?.id ?? null,
     lateBoxes,
     unlinkedOpenBoxes,
+    holdsCount,
   };
 
   // 원가(매입단가) 입력·전표 완전 삭제 같은 관리 행위 권한 — DB의 can_manage_wholesaler()와

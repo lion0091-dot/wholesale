@@ -39,6 +39,12 @@ export interface InboundNextStepInput {
    * 박스는 이미 왔으니 "스캔 중이니 기다리세요"가 아니라 사무실이 대조 화면에서 이어야 한다.
    */
   unlinkedOpenBoxes?: Array<{ scanId: string; documentId: string }>;
+  /**
+   * 발주서에 없거나(UNLISTED_HELD) 초과로 받은(OVER_HELD) 채 보류함에 쌓인 박스 수 — 재고엔 이미
+   * 들어가 팔 수 있어서 막지는 않지만, 보류함(/dashboard/inbound/holds)은 카드 어디서도 안 알려주면
+   * 사무실이 잊고 안 볼 수 있다(발주서 사후 생성 안내가 필요).
+   */
+  holdsCount?: number;
 }
 
 export type InboundNextStepKey =
@@ -108,6 +114,8 @@ export const INBOUND_ANCHORS = {
 /** 입고는 두 화면이다 — 현장이 쓰는 입고 스캔, 사무실이 쓰는 전표입력(전표 올리기·대조·마감). */
 export const INBOUND_SCAN_PATH = "/dashboard/inbound";
 export const INBOUND_STATEMENTS_PATH = "/dashboard/inbound/statements";
+/** 발주서에 없거나 초과로 받은 박스가 쌓이는 곳 — 재고엔 이미 들어가 있어 급하진 않지만, 카드가 안 알려주면 사무실이 잊는다. */
+export const INBOUND_HOLDS_PATH = "/dashboard/inbound/holds";
 
 /** 전표입력 화면에서 입고 스캔 화면의 칸으로 가는 링크(다른 화면이라 경로를 붙인다). */
 const SCAN_FORM_LINK = `${INBOUND_SCAN_PATH}${INBOUND_ANCHORS.scanForm}`;
@@ -145,17 +153,23 @@ function pickAttentionDocument(docs: InboundNextStepInput["pendingDocuments"]) {
   return docs.find((doc) => doc.completeLines < doc.totalLines) ?? docs[0];
 }
 
-/** 사무실 카드: 다음 할 일 하나에, 마감된 전표 뒤에 온 박스가 있으면 그 전표로 가는 링크를 작은 링크로 덧붙인다. */
+/**
+ * 사무실 카드: 다음 할 일 하나에, 아래 2가지가 있으면 작은 링크로 덧붙인다 —
+ * 마감된 전표 뒤에 온 박스(길을 못 찾으면 안 이어지니 급함), 보류함에 쌓인 확인할 물건(급하진 않지만 잊으면 안 됨).
+ */
 export function pickInboundNextStep(input: InboundNextStepInput): InboundNextStep {
   const step = pickOfficeStep(input);
   const late = input.lateBoxes ?? [];
+  const holds = input.holdsCount ?? 0;
 
-  if (late.length === 0) return step;
+  let result: InboundNextStep;
 
-  // 대기 전표가 없어 카드가 "먼저 전표를 올리세요"뿐이면, 이미 와 있는 박스 처리가 더 급하다 — 종 배지에서 넘어온 사람이
-  // 작은 링크를 찾지 않아도 되게 큰 버튼으로 올린다.
-  if (step.key === "upload") {
-    return {
+  if (late.length === 0) {
+    result = step;
+  } else if (step.key === "upload") {
+    // 대기 전표가 없어 카드가 "먼저 전표를 올리세요"뿐이면, 이미 와 있는 박스 처리가 더 급하다 — 종 배지에서 넘어온
+    // 사람이 작은 링크를 찾지 않아도 되게 큰 버튼으로 올린다.
+    result = {
       key: "reconcile",
       who: "사무실",
       title: "마감된 전표 뒤에 박스가 왔습니다",
@@ -166,18 +180,27 @@ export function pickInboundNextStep(input: InboundNextStepInput): InboundNextSte
       // 원래 카드의 작은 링크(전표 없이 스캔, 확인이 필요한 박스 보기)는 그대로 남긴다 — 길이 하나도 사라지지 않게.
       secondaries: [{ label: "새 전표 올리기", href: INBOUND_ANCHORS.documents }, ...step.secondaries],
     };
+  } else {
+    result = {
+      ...step,
+      secondaries: [
+        ...step.secondaries,
+        {
+          label: `마감된 전표 뒤에 온 박스 ${late.length}개 — 전표를 다시 열어 이어 주세요`,
+          href: documentReconcileHref(late[0].documentId),
+        },
+      ],
+    };
   }
 
-  return {
-    ...step,
-    secondaries: [
-      ...step.secondaries,
-      {
-        label: `마감된 전표 뒤에 온 박스 ${late.length}개 — 전표를 다시 열어 이어 주세요`,
-        href: documentReconcileHref(late[0].documentId),
-      },
-    ],
-  };
+  if (holds > 0) {
+    result = {
+      ...result,
+      secondaries: [...result.secondaries, { label: `보류함 확인할 물건 ${holds}개 — 보류함 보기`, href: INBOUND_HOLDS_PATH }],
+    };
+  }
+
+  return result;
 }
 
 function pickOfficeStep(input: InboundNextStepInput): InboundNextStep {

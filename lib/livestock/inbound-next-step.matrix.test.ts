@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   INBOUND_ANCHORS,
+  INBOUND_HOLDS_PATH,
   needsAttention,
   pickFieldNextStep,
   pickInboundNextStep,
@@ -35,18 +36,21 @@ function allInputs(): Array<{ name: string; input: InboundNextStepInput }> {
         for (const needsCheck of [0, 2]) {
           for (const late of [0, 1]) {
             for (const unlinked of [0, 1]) {
-              list.push({
-                name: `전표=${docName} 남은=${remaining} 무게줄=${weightLines} 확인필요=${needsCheck} 뒤늦게=${late} 안이어짐=${unlinked}`,
-                input: {
-                  pendingDocuments,
-                  remainingBoxCount: remaining,
-                  remainingWeightLines: Math.min(weightLines, remaining),
-                  needsCheckScanCount: needsCheck,
-                  firstNeedsCheckScanId: needsCheck ? "s1" : null,
-                  lateBoxes: late ? [{ scanId: "s2", documentId: "closed-doc" }] : [],
-                  unlinkedOpenBoxes: unlinked ? [{ scanId: "s3", documentId: "d1" }] : [],
-                },
-              });
+              for (const holds of [0, 2]) {
+                list.push({
+                  name: `전표=${docName} 남은=${remaining} 무게줄=${weightLines} 확인필요=${needsCheck} 뒤늦게=${late} 안이어짐=${unlinked} 보류함=${holds}`,
+                  input: {
+                    pendingDocuments,
+                    remainingBoxCount: remaining,
+                    remainingWeightLines: Math.min(weightLines, remaining),
+                    needsCheckScanCount: needsCheck,
+                    firstNeedsCheckScanId: needsCheck ? "s1" : null,
+                    lateBoxes: late ? [{ scanId: "s2", documentId: "closed-doc" }] : [],
+                    unlinkedOpenBoxes: unlinked ? [{ scanId: "s3", documentId: "d1" }] : [],
+                    holdsCount: holds,
+                  },
+                });
+              }
             }
           }
         }
@@ -64,7 +68,7 @@ describe("사무실 카드 — 모든 상태에서 따라가기가 끊기지 않
   const cases = allInputs();
 
   it("조합이 충분히 많다(표가 비어 있어 통과하는 일이 없게)", () => {
-    expect(cases.length).toBe(192);
+    expect(cases.length).toBe(384);
   });
 
   it("모든 상태에서 제목·문구·버튼 이름이 있고, 모든 링크가 화면 안 앵커나 대시보드 경로다", () => {
@@ -111,6 +115,26 @@ describe("사무실 카드 — 모든 상태에서 따라가기가 끊기지 않
       if (input.unlinkedOpenBoxes?.length && input.pendingDocuments.length > 0) continue;
 
       expect(links.includes("/dashboard/inbound/documents/closed-doc"), name).toBe(true);
+    }
+  });
+
+  it("보류함에 확인할 물건이 있으면 보류함으로 가는 길이 어떤 카드든 항상 있다(재고엔 이미 들어가 있어 급하진 않지만 잊으면 안 된다)", () => {
+    for (const { name, input } of cases) {
+      if (!input.holdsCount) continue;
+
+      const links = allLinks(pickInboundNextStep(input));
+
+      expect(links.includes(INBOUND_HOLDS_PATH), name).toBe(true);
+    }
+  });
+
+  it("보류함에 확인할 물건이 없으면 보류함 링크는 안 붙는다", () => {
+    for (const { name, input } of cases) {
+      if (input.holdsCount) continue;
+
+      const links = allLinks(pickInboundNextStep(input));
+
+      expect(links.includes(INBOUND_HOLDS_PATH), name).toBe(false);
     }
   });
 
