@@ -67,7 +67,7 @@ const NAV_GROUPS: DashboardNavItem[][] = [
       href: "/dashboard/invites",
       icon: "⚙️",
       ready: true,
-      alsoActiveFor: ["/dashboard/team", "/dashboard/billing"],
+      alsoActiveFor: ["/dashboard/team", "/dashboard/billing", "/dashboard/receiving-policy"],
     },
   ],
   // 이력관리 — 각 화면에 흩어져 있던 "이력보기" 버튼을 전용 메뉴로 모았다(2026-09-21).

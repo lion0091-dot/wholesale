@@ -3,6 +3,7 @@ import { PillTabs } from "./pill-tabs";
 const TABS = [
   { label: "초대장 · 업체 설정", href: "/dashboard/invites" },
   { label: "팀원", href: "/dashboard/team" },
+  { label: "입고 기준", href: "/dashboard/receiving-policy" },
   { label: "구독료", href: "/dashboard/billing" },
 ] as const;
 

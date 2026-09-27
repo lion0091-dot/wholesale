@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PurchaseOrderLineInput } from "@/lib/purchase-orders/lines";
 import { PURCHASE_ORDER_MAX_LINES } from "@/lib/purchase-orders/lines";
@@ -126,6 +126,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
   const fileInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [supplierId, setSupplierId] = useState("");
+  const [newSupplierSignal, setNewSupplierSignal] = useState(0);
   const activeSuppliers = suppliers.filter((supplier) => supplier.is_active);
   const supplierNameById = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
   const [orderedOn, setOrderedOn] = useState(today);
@@ -332,7 +333,9 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
                       <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
                     ))}
                   </select>
-                  <QuickSupplierAdd onCreated={(id) => { setSupplierId(id); router.refresh(); }} setError={setError} />
+                  <button type="button" onClick={() => setNewSupplierSignal((count) => count + 1)} style={{ marginTop: "4px", border: "none", background: "none", padding: 0, fontSize: "12px", color: "#2563eb", cursor: "pointer" }}>
+                    + 목록에 없는 거래처 추가 (아래 거래처 관리에서 등록)
+                  </button>
                 </div>
                 <div>
                   <label htmlFor="po-ordered" style={labelStyle}>발주일 *</label>
@@ -357,6 +360,8 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
 
               <div style={{ display: "grid", gap: "8px" }}>
                 {lines.map((line, index) => {
+                  // 등록된 품목이 하나도 없으면 고를 목록이 없으니 새 품목 칸(축종·품종·부위·등급·원산지)을 바로 열어 둔다.
+                  const showNewProduct = creatingIndex === index || (productOptions.length === 0 && !line.productId);
                   const unlinked = !line.productId && Boolean(line.category);
                   const lineSpec = { category: line.category, breed: line.breed, subcategory: line.subcategory, grade: line.grade, origin: line.origin };
 
@@ -369,14 +374,14 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
                           labelById={labelById}
                           recentIds={recentProductIds}
                           selectedId={line.productId ?? ""}
-                          fallbackLabel={specText(line)}
+                          fallbackLabel={line.category ? specText(line) : ""}
                           onPick={(product) => pickProduct(index, product)}
                           onCreateNew={() => setCreatingIndex(index)}
                         />
                         <input aria-label={`${index + 1}번째 줄 수량`} inputMode="decimal" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} placeholder="수량(kg)" style={fieldStyle} autoComplete="off" />
                         <input aria-label={`${index + 1}번째 줄 단가`} inputMode="numeric" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: event.target.value })} placeholder="단가(원/kg, 선택)" style={fieldStyle} autoComplete="off" />
                       </div>
-                      {unlinked && creatingIndex !== index && (
+                      {unlinked && !showNewProduct && (
                         <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#92400e" }}>
                           등록된 품목과 연결되지 않은 줄입니다({specText(line)}). 그대로 저장할 수 있지만 입고 때 이 줄과 자동으로 이어지지 않습니다.{" "}
                           <button type="button" onClick={() => setCreatingIndex(index)} style={{ border: "none", background: "none", padding: 0, fontSize: "12px", fontWeight: 700, color: "#1d4ed8", cursor: "pointer", textDecoration: "underline" }}>
@@ -384,13 +389,13 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
                           </button>
                         </p>
                       )}
-                      {creatingIndex === index && (
+                      {showNewProduct && (
                         <NewProductPanel
                           categories={categories}
                           subcategoriesByCategory={subcategoriesByCategory}
                           initial={lineSpec}
                           onCreated={(product, created) => handleProductCreated(index, product, created)}
-                          onCancel={() => setCreatingIndex(null)}
+                          onCancel={creatingIndex === index ? () => setCreatingIndex(null) : undefined}
                         />
                       )}
                       {rowErrors[index] && <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#b91c1c" }}>{rowErrors[index]}</p>}
@@ -429,7 +434,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
         <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>발주서 작성과 수정은 사장님·매니저만 할 수 있습니다. 직원은 조회만 됩니다.</p>
       )}
 
-      <SupplierPanel suppliers={suppliers} canManage={canManage} setError={setError} />
+      <SupplierPanel suppliers={suppliers} canManage={canManage} setError={setError} newSupplierSignal={newSupplierSignal} onCreated={(id) => setSupplierId(id)} />
 
       <section style={{ display: "grid", gap: "10px" }}>
         {orders.length > 0 && (
@@ -488,55 +493,40 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
 }
 
 
-/** 발주서 작성 중 목록에 없는 거래처를 그 자리에서 이름만으로 빨리 추가한다 — 자세한 정보는 아래 거래처 관리에서 채운다. */
-function QuickSupplierAdd({ onCreated, setError }: { onCreated: (id: string) => void; setError: (message: string | null) => void }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  if (!open) {
-    return (
-      <button type="button" onClick={() => setOpen(true)} style={{ marginTop: "4px", border: "none", background: "none", padding: 0, fontSize: "12px", color: "#2563eb", cursor: "pointer" }}>
-        + 목록에 없는 거래처 추가
-      </button>
-    );
-  }
-
-  const save = async () => {
-    setBusy(true);
-    setError(null);
-
-    const result = await createSupplierAction({ name, phone: "", note: "", aliases: "" });
-
-    setBusy(false);
-
-    if (!result.success || !result.data) {
-      setError(result.error ?? "거래처 추가에 실패했습니다.");
-      return;
-    }
-
-    setName("");
-    setOpen(false);
-    onCreated(result.data.id);
-  };
-
-  return (
-    <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
-      <input value={name} maxLength={80} autoFocus onChange={(event) => setName(event.target.value)} placeholder="새 거래처 이름" style={fieldStyle} aria-label="새 거래처 이름" />
-      <button type="button" style={primaryButtonStyle} disabled={busy} onClick={() => void save()}>추가</button>
-      <button type="button" style={buttonStyle} onClick={() => { setOpen(false); setName(""); }}>취소</button>
-    </div>
-  );
-}
-
 const emptySupplierForm = { name: "", phone: "", note: "", aliases: "" };
 
 /** 거래처 관리 — 공급처 목록을 만들고 고친다. 발주서·입고는 이 목록에서 고르기만 한다. */
-function SupplierPanel({ suppliers, canManage, setError }: { suppliers: SupplierRow[]; canManage: boolean; setError: (message: string | null) => void }) {
+function SupplierPanel({
+  suppliers,
+  canManage,
+  setError,
+  newSupplierSignal,
+  onCreated,
+}: {
+  suppliers: SupplierRow[];
+  canManage: boolean;
+  setError: (message: string | null) => void;
+  /** 값이 바뀌면(발주서 쪽 "목록에 없는 거래처 추가") 이 패널을 펼치고 새 거래처 양식을 연다. */
+  newSupplierSignal: number;
+  onCreated: (id: string) => void;
+}) {
   const router = useRouter();
+  const panelRef = useRef<HTMLDetailsElement>(null);
+  const [panelOpen, setPanelOpen] = useState(suppliers.length === 0);
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [form, setForm] = useState(emptySupplierForm);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (newSupplierSignal === 0 || !canManage) return;
+
+    setPanelOpen(true);
+    setError(null);
+    setEditingId("new");
+    setForm(emptySupplierForm);
+    panelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newSupplierSignal]);
 
   const startEdit = (supplier: SupplierRow | null) => {
     setError(null);
@@ -555,6 +545,10 @@ function SupplierPanel({ suppliers, canManage, setError }: { suppliers: Supplier
     if (!result.success) {
       setError(result.error ?? "저장에 실패했습니다.");
       return;
+    }
+
+    if (editingId === "new" && result.data) {
+      onCreated(result.data.id);
     }
 
     setEditingId(null);
@@ -578,7 +572,12 @@ function SupplierPanel({ suppliers, canManage, setError }: { suppliers: Supplier
   };
 
   return (
-    <details style={{ border: "1px solid #e2e8f0", borderRadius: "12px", padding: "12px 14px", backgroundColor: "#fff" }} open={suppliers.length === 0}>
+    <details
+      ref={panelRef}
+      style={{ border: "1px solid #e2e8f0", borderRadius: "12px", padding: "12px 14px", backgroundColor: "#fff" }}
+      open={panelOpen}
+      onToggle={(event) => setPanelOpen(event.currentTarget.open)}
+    >
       <summary style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a", cursor: "pointer" }}>
         거래처 관리 <span style={{ fontWeight: 400, color: "#64748b", fontSize: "12px" }}>물건을 사 오는 공급처 {suppliers.length}곳</span>
       </summary>

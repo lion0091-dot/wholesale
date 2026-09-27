@@ -11,7 +11,8 @@ interface Props {
   subcategoriesByCategory: Record<string, string[]>;
   initial: LineSpec;
   onCreated: (product: ProductOption, created: boolean) => void;
-  onCancel: () => void;
+  /** 없으면 취소 버튼을 보이지 않는다(등록된 품목이 없어 이 칸이 항상 열려 있을 때). */
+  onCancel?: () => void;
 }
 
 const fieldStyle: React.CSSProperties = {
@@ -173,9 +174,11 @@ export function NewProductPanel({ categories, subcategoriesByCategory, initial, 
         <button type="button" disabled={busy} onClick={() => void submit()} style={{ ...buttonStyle, border: "none", backgroundColor: "#2563eb", color: "#fff" }}>
           {busy ? "등록 중…" : "품목 등록"}
         </button>
-        <button type="button" disabled={busy} onClick={onCancel} style={buttonStyle}>
-          취소
-        </button>
+        {onCancel && (
+          <button type="button" disabled={busy} onClick={onCancel} style={buttonStyle}>
+            취소
+          </button>
+        )}
       </div>
     </div>
   );
