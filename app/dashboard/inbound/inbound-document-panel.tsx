@@ -669,13 +669,6 @@ export function InboundDocumentPanel({
     );
   };
 
-  const focusDocumentNoField = () => {
-    const field = document.getElementById("document-no-input");
-
-    field?.scrollIntoView({ block: "center", behavior: "smooth" });
-    (field as HTMLInputElement | null)?.focus();
-  };
-
   const handleSave = async () => {
     setError(null);
 
@@ -691,14 +684,6 @@ export function InboundDocumentPanel({
 
     if (!supplierName.trim()) {
       setError("공급처 이름을 입력해주세요. 위쪽 \"공급처 이름\" 칸에 적으면 됩니다. (예: 대성축산)");
-      return;
-    }
-
-    if (!documentNo.trim()) {
-      setError("전표번호를 입력해주세요. 종이 전표 위쪽에 적힌 번호를 아래 \"전표 번호\" 칸에 적으면 됩니다.");
-
-      // 글자 안내로 끝내지 않고 그 칸으로 데려가 바로 적게 한다.
-      focusDocumentNoField();
       return;
     }
 
@@ -812,7 +797,7 @@ export function InboundDocumentPanel({
           };
 
   // 카드가 안내하는 단계의 칸·버튼을 같은 색으로 강조한다.
-  const activeUploadField: "pick" | "supplier" | "documentNo" | "save" | null =
+  const activeUploadField: "pick" | "supplier" | "save" | null =
     saving || extracting
       ? null
       : mode === "idle"
@@ -821,9 +806,7 @@ export function InboundDocumentPanel({
           : "pick"
         : !supplierName.trim()
           ? "supplier"
-          : !documentNo.trim()
-            ? "documentNo"
-            : "save";
+          : "save";
 
   const columnCount = grid?.cells.reduce((max, row) => Math.max(max, row.length), 0) ?? 0;
 
@@ -1011,15 +994,9 @@ export function InboundDocumentPanel({
                         title: "2단계: 공급처 이름을 적으세요",
                         detail: "\"공급처 이름\" 칸을 채우세요. (예: 대성축산)",
                       }
-                    : !documentNo.trim()
-                      ? {
-                          title: "3단계: 전표번호를 적으세요",
-                          detail: "종이 전표 위쪽에 적힌 번호를 \"전표 번호\" 칸에 적으세요. 같은 전표를 두 번 올리지 않게 막아 주는 번호입니다.",
-                          action: { label: "전표 번호 칸으로 가기", onClick: focusDocumentNoField },
-                        }
                     : {
-                        title: "4단계: \"전표 저장\"을 누르세요",
-                        detail: "저장해야 다음 단계(박스 찍기)로 넘어갑니다.",
+                        title: "3단계: \"전표 저장\"을 누르세요",
+                        detail: "저장해야 다음 단계(박스 찍기)로 넘어갑니다. 전표 번호는 있으면 적어 두세요(선택) — 같은 전표를 두 번 올리는 것을 막아 줍니다.",
                         action: { label: "전표 저장", onClick: () => void handleSave() },
                       }
             }
@@ -1353,13 +1330,13 @@ export function InboundDocumentPanel({
                   />
                 </div>
                 <div style={{ flex: "0 1 150px" }}>
-                  <label style={labelStyle}>전표 번호 (필수)</label>
+                  <label style={labelStyle}>전표 번호 (선택)</label>
                   <input
                     id="document-no-input"
                     value={documentNo}
                     onChange={(event) => setDocumentNo(event.target.value)}
                     placeholder="종이 전표 위쪽 번호"
-                    style={{ ...inputStyle, ...(activeUploadField === "documentNo" ? HIGHLIGHT_FIELD : {}) }}
+                    style={inputStyle}
                   />
                 </div>
               </div>
@@ -1401,13 +1378,13 @@ export function InboundDocumentPanel({
                   />
                 </div>
                 <div style={{ flex: "0 1 150px" }}>
-                  <label style={labelStyle}>전표 번호 (필수)</label>
+                  <label style={labelStyle}>전표 번호 (선택)</label>
                   <input
                     id="document-no-input"
                     value={documentNo}
                     onChange={(event) => setDocumentNo(event.target.value)}
                     placeholder="종이 전표 위쪽 번호"
-                    style={{ ...inputStyle, ...(activeUploadField === "documentNo" ? HIGHLIGHT_FIELD : {}) }}
+                    style={inputStyle}
                   />
                 </div>
                 <div style={{ flex: "0 1 150px" }}>
