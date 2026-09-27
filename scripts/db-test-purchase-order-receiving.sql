@@ -359,9 +359,51 @@ select pg_temp.expect('146: OVER_HELD 박스 재조회(멱등)해도 ordered/rec
     and ((:'r'::jsonb) ->> 'ordered')::numeric = 10 and ((:'r'::jsonb) ->> 'received')::numeric = 10
     and ((:'r'::jsonb) ->> 'excess')::numeric = 5);
 
+-- 148: 같은 거래처·상품으로 자동 마감된 발주서가 여러 건이면 합치지 말고 가장 최근 것 하나만 봐야 한다
+reset role;
+insert into public.purchase_orders (id, wholesaler_id, supplier_id, supplier_name, ordered_on, status, auto_closed_at) values
+    ('d2d2d2d2-0000-0000-0000-000000000b07', 'd2d2d2d2-0000-0000-0000-0000000000a1', 'd2d2d2d2-0000-0000-0000-0000000005a1', '공급처가', current_date - 30, 'CLOSED', current_date - 29);
+insert into public.purchase_order_lines (id, purchase_order_id, wholesaler_id, line_no, category, subcategory, grade, origin, breed, quantity, product_id) values
+    ('d2d2d2d2-0000-0000-0000-00000000f701', 'd2d2d2d2-0000-0000-0000-000000000b07', 'd2d2d2d2-0000-0000-0000-0000000000a1', 1, '소', '설도', '1++', '국내산', '한우', 20, 'd2d2d2d2-0000-0000-0000-0000000000d1');
+set role authenticated;
+set request.jwt.claim.sub = 'd2d2d2d2-0000-0000-0000-000000000001';
+
+select pg_temp.scan('009800000035', 5, 'd2d2d2d2-0000-0000-0000-0000000000d1', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
+select pg_temp.expect('148: 예전에 마감된 발주서(20kg, 못 받은 채)와 최근 마감(10kg 다 받음)이 둘 다 있어도 합쳐서 30이 아니라 최근 것(10) 기준',
+    ((:'r'::jsonb) #>> '{po,result}') = 'OVER_HELD'
+    and ((:'r'::jsonb) #>> '{po,ordered}')::numeric = 10 and ((:'r'::jsonb) #>> '{po,received}')::numeric = 10);
+
 select public.void_inbound_scan((select id from public.inbound_scans where trace_no = '009800000033' and status = 'NORMAL' limit 1), '테스트 취소3');
 select pg_temp.expect('OVER_HELD 박스 취소 → 채움이 사라지고 자동 마감됐던 발주서 다시 OPEN',
     (select status = 'OPEN' and auto_closed_at is null from public.purchase_orders where id = 'd2d2d2d2-0000-0000-0000-000000000b06'));
+
+-- 147: 상품 삭제는 열린(OPEN) 발주서 줄이 있으면 트리거가 막는다(앱 쪽 확인과 삭제 사이의 틈을 노려도 DB가 막음)
+reset role;
+insert into public.products (id, wholesaler_id, name, category, subcategory, grade, origin, breed, base_price, unit) values
+    ('d2d2d2d2-0000-0000-0000-0000000000e1', 'd2d2d2d2-0000-0000-0000-0000000000a1', '한우 차돌박이 1++', '소', '차돌박이', '1++', '국내산', '한우', 0, 'kg');
+insert into public.purchase_orders (id, wholesaler_id, supplier_id, supplier_name, ordered_on, status) values
+    ('d2d2d2d2-0000-0000-0000-000000000b08', 'd2d2d2d2-0000-0000-0000-0000000000a1', 'd2d2d2d2-0000-0000-0000-0000000005a1', '공급처가', current_date, 'OPEN');
+insert into public.purchase_order_lines (id, purchase_order_id, wholesaler_id, line_no, category, subcategory, grade, origin, breed, quantity, product_id) values
+    ('d2d2d2d2-0000-0000-0000-00000000f801', 'd2d2d2d2-0000-0000-0000-000000000b08', 'd2d2d2d2-0000-0000-0000-0000000000a1', 1, '소', '차돌박이', '1++', '국내산', '한우', 10, 'd2d2d2d2-0000-0000-0000-0000000000e1');
+set role authenticated;
+set request.jwt.claim.sub = 'd2d2d2d2-0000-0000-0000-000000000001';
+
+do $$
+declare v_ok boolean;
+begin
+    v_ok := false;
+    begin
+        delete from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000e1';
+    exception when others then v_ok := sqlerrm like '%PRODUCT_HAS_OPEN_PURCHASE_ORDER_LINE%'; end;
+    perform pg_temp.expect('147: 열린 발주서 줄이 있는 상품 삭제 → 트리거가 막음', v_ok);
+end $$;
+
+reset role;
+update public.purchase_orders set status = 'CLOSED' where id = 'd2d2d2d2-0000-0000-0000-000000000b08';
+set role authenticated;
+set request.jwt.claim.sub = 'd2d2d2d2-0000-0000-0000-000000000001';
+delete from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000e1';
+select pg_temp.expect('147: 발주서가 닫히면 그 상품은 삭제할 수 있다', not exists (select 1 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000e1'));
 
 -- 19) 격리: B 업체 세션은 A의 거절 기록·연결을 못 본다
 set request.jwt.claim.sub = 'd2d2d2d2-0000-0000-0000-000000000002';

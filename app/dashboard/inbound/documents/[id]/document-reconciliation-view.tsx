@@ -325,6 +325,8 @@ export function DocumentReconciliationView({
     setBusyKey("batch-link");
     setError(null);
 
+    const rejectedMessages: string[] = [];
+
     for (const box of sureUnlinked) {
       const lineId = box.candidates[0].lineId;
       const result = await linkScanToDocumentLineAction(box.scanId, lineId);
@@ -332,7 +334,9 @@ export function DocumentReconciliationView({
       // 마지막 박스로 전표가 채워져 저절로 마감되면 남은 박스는 이을 곳이 없다 — 오류가 아니다.
       if (!result.success) {
         if (!result.error?.includes("마감")) setError(result.error ?? "처리하지 못했습니다.");
-        break;
+        setBusyKey(null);
+        router.refresh();
+        return;
       }
 
       const line = lineById.get(lineId);
@@ -341,9 +345,18 @@ export function DocumentReconciliationView({
         const resolveResult = await resolveMappingAction(box.scanId, line.productId, false);
 
         if (resolveResult.success && resolveResult.data?.po?.result === "REJECTED") {
-          setError(`받지 않은 박스가 있습니다 — ${rejectionSummary(resolveResult.data.po)} 재고에는 넣지 않았습니다.`);
+          rejectedMessages.push(rejectionSummary(resolveResult.data.po));
         }
       }
+    }
+
+    // 여러 박스가 한꺼번에 거절될 수 있다 — 마지막 것만 남기면 앞서 거절된 박스는 알림 없이 묻힌다.
+    if (rejectedMessages.length > 0) {
+      setError(
+        rejectedMessages.length === 1
+          ? `받지 않은 박스가 있습니다 — ${rejectedMessages[0]} 재고에는 넣지 않았습니다.`
+          : `받지 않은 박스가 ${rejectedMessages.length}건 있습니다 — ${rejectedMessages.join(" / ")} 재고에는 넣지 않았습니다.`
+      );
     }
 
     setBusyKey(null);
@@ -354,17 +367,30 @@ export function DocumentReconciliationView({
     setBusyKey("batch-resolve");
     setError(null);
 
+    const rejectedMessages: string[] = [];
+
     for (const item of resolvableLinked) {
       const result = await resolveMappingAction(item.scanId, item.productId, false);
 
       if (!result.success) {
         setError(result.error ?? "처리하지 못했습니다.");
-        break;
+        setBusyKey(null);
+        router.refresh();
+        return;
       }
 
       if (result.data?.po?.result === "REJECTED") {
-        setError(`받지 않은 박스가 있습니다 — ${rejectionSummary(result.data.po)} 재고에는 넣지 않았습니다.`);
+        rejectedMessages.push(rejectionSummary(result.data.po));
       }
+    }
+
+    // 여러 박스가 한꺼번에 거절될 수 있다 — 마지막 것만 남기면 앞서 거절된 박스는 알림 없이 묻힌다.
+    if (rejectedMessages.length > 0) {
+      setError(
+        rejectedMessages.length === 1
+          ? `받지 않은 박스가 있습니다 — ${rejectedMessages[0]} 재고에는 넣지 않았습니다.`
+          : `받지 않은 박스가 ${rejectedMessages.length}건 있습니다 — ${rejectedMessages.join(" / ")} 재고에는 넣지 않았습니다.`
+      );
     }
 
     setBusyKey(null);

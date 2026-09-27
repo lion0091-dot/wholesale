@@ -607,6 +607,14 @@ export async function deleteProductAction(productId: string): Promise<ActionResu
         );
       }
 
+      // 위 openLine 확인은 빠른 안내용 사전 체크일 뿐이고, 실제 강제는 트리거(DB)가 한다 —
+      // 확인과 삭제 사이(왕복)에 다른 요청이 같은 상품으로 발주서 줄을 새로 만든 경우를 여기서 잡는다.
+      if (error.message.includes("PRODUCT_HAS_OPEN_PURCHASE_ORDER_LINE")) {
+        throw new RbacError(
+          "아직 다 받지 않은 발주서에 이 상품이 들어 있어 삭제할 수 없습니다. 발주서를 마감하거나 취소한 뒤 다시 시도해주세요 — 대신 '보관'으로 목록에서 감출 수 있습니다."
+        );
+      }
+
       throw new Error(error.message);
     }
 
