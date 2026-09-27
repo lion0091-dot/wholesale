@@ -15,8 +15,8 @@ interface ShopViewProps {
   authMessage?: string | null;
 }
 
-const CATEGORIES = ["전체", "소", "돼지", "닭/오리", "가공육/기타"] as const;
-const MAIN_CATEGORIES = ["소", "돼지", "닭/오리"];
+const CATEGORIES = ["전체", "소", "돼지", "닭", "오리", "계란", "가공육/기타"] as const;
+const MAIN_CATEGORIES = ["소", "돼지", "닭", "오리", "계란"];
 const PREVIEW_STATUS_LABELS: Record<string, string> = {
   pending: "승인 대기 중",
   suspended: "정지",

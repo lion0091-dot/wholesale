@@ -103,7 +103,7 @@ insert into results (who,what,expected,result) values
 -- ========== 2-B. 정체성(축종·상품명·원산지) 잠금 — 현재 DB 현황(정보) ==========
 insert into results (who,what,expected,result) values
  ('A사장','같은 축종·부위·등급·원산지의 소 상품을 또 등록 → DB 유니크가 거부(마이그레이션 121)','DENIED: duplicate key value violates unique constraint "idx_products_cattle_identity"', pg_temp.try($q$insert into public.products (id,wholesaler_id,name,category,subcategory,origin,base_price,unit,stock_quantity) values ('c3999999-0000-0000-0000-000000000008','a3999999-0000-0000-0000-000000000001','P1 등심 복사','소','등심','국내산',31000,'kg',0)$q$)),
- ('A사장','돼지는 수동 등록 상품(trace_key 없음)이라 DB 유니크 대상이 아님 — 앱이 손 등록을 막는다(정보)','ALLOWED', pg_temp.try($q$insert into public.products (id,wholesaler_id,name,category,subcategory,origin,base_price,unit,stock_quantity) values ('c3999999-0000-0000-0000-000000000009','a3999999-0000-0000-0000-000000000001','P6 삼겹','돼지','삼겹살','국내산',31000,'kg',0)$q$)),
+ ('A사장','같은 부위·원산지의 돼지 상품을 또 등록 → DB 유니크가 거부(마이그레이션 137)','DENIED: duplicate key value violates unique constraint "idx_products_pork_identity"', pg_temp.try($q$insert into public.products (id,wholesaler_id,name,category,subcategory,origin,base_price,unit,stock_quantity) values ('c3999999-0000-0000-0000-000000000009','a3999999-0000-0000-0000-000000000001','P6 삼겹','돼지','삼겹살','국내산',31000,'kg',0)$q$)),
  ('A사장','거래 있는 상품의 축종·원산지 직접 변경 → DB 잠금 없음(앱 폼에서만 읽기전용, 정보)','1', pg_temp.rows($q$update public.products set category='돼지', origin='수입산' where id='c3999999-0000-0000-0000-000000000001'$q$)),
  ('A사장','  └ 원복','1', pg_temp.rows($q$update public.products set category='소', origin='국내산' where id='c3999999-0000-0000-0000-000000000001'$q$));
 

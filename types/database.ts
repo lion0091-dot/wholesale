@@ -127,8 +127,6 @@ export interface Product {
    * 대신 보관한다. 보관된 상품은 목록과 고객 카탈로그에서 제외된다.
    */
   archived_at: string | null;
-  /** 소 외 축종의 이력번호 출처 키(돼지 농장·닭/오리 도축장 …). 자동 생성 상품만 채워진다 — 114, lib/livestock/trace-number.ts. */
-  trace_key?: string | null;
   /** 고객에게 보이는 상품명(공급사 설정). null이면 name을 보인다 — 134. lib/shop/catalog-types.ts의 shopProductName 참고. */
   display_alias?: string | null;
   /** 핫딜 할인가. hot_deal_active가 꺼져 있으면 값이 남아 있어도 적용 안 됨. */

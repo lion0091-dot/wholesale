@@ -129,7 +129,7 @@ export function lineArrival(line: LineCountInput, linkedWeights: number[], toler
  */
 export const LINE_SUGGESTION_WEIGHT_TOLERANCE_RATIO = 0.1;
 
-/** 품목명·부위 텍스트에서 뽑은 축종을 species_group 값(소/돼지/닭·오리) 스케일로 옮긴다. 계란은 대응 그룹이 없다. */
+/** 품목명·부위 텍스트에서 뽑은 축종을 species_group 값(소/돼지/닭/오리/계란) 스케일로 옮긴다. */
 function speciesGroupOfMention(species: TraceNumberSpecies | null): string | null {
   switch (species) {
     case "소":
@@ -137,8 +137,11 @@ function speciesGroupOfMention(species: TraceNumberSpecies | null): string | nul
     case "돼지":
       return "돼지";
     case "닭":
+      return "닭";
     case "오리":
-      return "닭/오리";
+      return "오리";
+    case "계란":
+      return "계란";
     default:
       return null;
   }

@@ -77,11 +77,7 @@ export function parseTraceNumber(traceNo: string | null | undefined): ParsedTrac
   }
 }
 
-/**
- * 번호에서 추론한 축종을 상품 카테고리(products.category / product_categories)로 옮긴다.
- * 카테고리에 "닭/오리"가 한 덩어리로 있어 닭·오리는 둘 다 그쪽이고, 계란은 카테고리가 없어 null이다.
- * 닭과 오리를 카테고리로 나눌지는 사장님 결정 대기.
- */
+/** 번호에서 추론한 축종을 상품 카테고리(products.category / product_categories)로 옮긴다. 닭·오리·계란은 카테고리가 따로 있다(마이그레이션 137). */
 export function speciesGroupFromTraceNumber(traceNo: string | null | undefined): string | null {
   switch (parseTraceNumber(traceNo)?.species) {
     case "소":
@@ -89,8 +85,11 @@ export function speciesGroupFromTraceNumber(traceNo: string | null | undefined):
     case "돼지":
       return "돼지";
     case "닭":
+      return "닭";
     case "오리":
-      return "닭/오리";
+      return "오리";
+    case "계란":
+      return "계란";
     default:
       return null;
   }
@@ -112,29 +111,4 @@ export function speciesMentionedIn(text: string | null | undefined): TraceNumber
   if (/계란|달걀/.test(value)) found.add("계란");
 
   return found.size === 1 ? [...found][0] : null;
-}
-
-/**
- * 소 외 축종의 상품 정체성 키 중 "이력번호에서 파싱한 출처" 부분 — 돼지 농장, 닭·오리 도축장, 계란 발급월일+표시의무자.
- * 같은 공급사에서 (이 키 + 부위)가 같으면 같은 상품이다. 소·형식 밖 번호는 null(소는 별도 규칙).
- * DB의 trace_identity_key()(마이그레이션 114)와 같은 값을 만든다 — 바꾸면 양쪽을 같이 고칠 것.
- */
-export function traceIdentityKey(traceNo: string | null | undefined): string | null {
-  const parsed = parseTraceNumber(traceNo);
-
-  if (!parsed) {
-    return null;
-  }
-
-  switch (parsed.species) {
-    case "돼지":
-      return `돼지:${parsed.farmCode}`;
-    case "닭":
-    case "오리":
-      return `${parsed.species}:${parsed.slaughterhouseCode}`;
-    case "계란":
-      return `계란:${parsed.issuedMonthDay}-${parsed.labelerCode}`;
-    default:
-      return null;
-  }
 }

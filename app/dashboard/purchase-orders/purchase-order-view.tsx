@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { PurchaseOrderLineInput } from "@/lib/purchase-orders/lines";
 import { PURCHASE_ORDER_MAX_LINES } from "@/lib/purchase-orders/lines";
 import { buildPurchaseOrderMessage } from "@/lib/purchase-orders/message";
+import { CATTLE_GRADES, ORIGIN_OPTIONS, specListRuleFor } from "@/lib/purchase-orders/spec-options";
 import {
   createPurchaseOrderAction,
   createSupplierAction,
@@ -313,25 +314,77 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
               <div style={{ display: "grid", gap: "8px" }}>
                 {lines.map((line, index) => {
                   const parts = subcategoriesByCategory[line.category] ?? [];
+                  const rule = specListRuleFor(line.category);
+                  const partFromList = rule.partFromList && parts.length > 0;
+                  const changeCategory = (category: string) => {
+                    const next = specListRuleFor(category);
+                    const nextParts = subcategoriesByCategory[category] ?? [];
+
+                    updateLine(index, {
+                      category,
+                      subcategory: nextParts.includes(line.subcategory) ? line.subcategory : "",
+                      grade: next.gradeFromList && !CATTLE_GRADES.includes(line.grade) ? "" : line.grade,
+                      origin: next.originFromList && !ORIGIN_OPTIONS.includes(line.origin) ? "국내산" : line.origin,
+                    });
+                  };
 
                   return (
                     <div key={index} style={{ border: `1px solid ${rowErrors[index] ? "#fca5a5" : "#e2e8f0"}`, borderRadius: "8px", padding: "8px", backgroundColor: rowErrors[index] ? "#fef2f2" : "#f8fafc" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "6px" }}>
-                        <select aria-label={`${index + 1}번째 줄 축종`} value={line.category} onChange={(event) => updateLine(index, { category: event.target.value })} style={fieldStyle}>
+                        <select aria-label={`${index + 1}번째 줄 축종`} value={line.category} onChange={(event) => changeCategory(event.target.value)} style={fieldStyle}>
                           <option value="">축종 선택</option>
                           {categories.map((name) => (
                             <option key={name} value={name}>{name}</option>
                           ))}
                           {line.category && !categories.includes(line.category) && <option value={line.category}>{line.category} (없는 축종)</option>}
                         </select>
-                        <input aria-label={`${index + 1}번째 줄 부위`} list={`po-parts-${index}`} value={line.subcategory} onChange={(event) => updateLine(index, { subcategory: event.target.value })} placeholder="부위 (예: 등심)" style={fieldStyle} autoComplete="off" />
-                        <datalist id={`po-parts-${index}`}>
-                          {parts.map((name) => (
-                            <option key={name} value={name} />
-                          ))}
-                        </datalist>
-                        <input aria-label={`${index + 1}번째 줄 등급`} value={line.grade} onChange={(event) => updateLine(index, { grade: event.target.value })} placeholder="등급 (예: 1++)" style={fieldStyle} autoComplete="off" />
-                        <input aria-label={`${index + 1}번째 줄 원산지`} value={line.origin} onChange={(event) => updateLine(index, { origin: event.target.value })} placeholder="원산지" style={fieldStyle} autoComplete="off" />
+                        {partFromList ? (
+                          <select aria-label={`${index + 1}번째 줄 부위`} value={line.subcategory} onChange={(event) => updateLine(index, { subcategory: event.target.value })} style={fieldStyle}>
+                            <option value="">부위 선택</option>
+                            {parts.map((name) => (
+                              <option key={name} value={name}>{name}</option>
+                            ))}
+                            {line.subcategory && !parts.includes(line.subcategory) && <option value={line.subcategory}>{line.subcategory} (목록에 없음)</option>}
+                          </select>
+                        ) : (
+                          <>
+                            <input aria-label={`${index + 1}번째 줄 부위`} list={`po-parts-${index}`} value={line.subcategory} onChange={(event) => updateLine(index, { subcategory: event.target.value })} placeholder="부위 (예: 등심)" style={fieldStyle} autoComplete="off" />
+                            <datalist id={`po-parts-${index}`}>
+                              {parts.map((name) => (
+                                <option key={name} value={name} />
+                              ))}
+                            </datalist>
+                          </>
+                        )}
+                        {rule.gradeFromList ? (
+                          <select aria-label={`${index + 1}번째 줄 등급`} value={line.grade} onChange={(event) => updateLine(index, { grade: event.target.value })} style={fieldStyle}>
+                            <option value="">등급 선택</option>
+                            {CATTLE_GRADES.map((name) => (
+                              <option key={name} value={name}>{name}</option>
+                            ))}
+                            {line.grade && !CATTLE_GRADES.includes(line.grade) && <option value={line.grade}>{line.grade} (목록에 없음)</option>}
+                          </select>
+                        ) : (
+                          <input aria-label={`${index + 1}번째 줄 등급`} value={line.grade} onChange={(event) => updateLine(index, { grade: event.target.value })} placeholder="등급 (선택)" style={fieldStyle} autoComplete="off" />
+                        )}
+                        {rule.originFromList ? (
+                          <select aria-label={`${index + 1}번째 줄 원산지`} value={line.origin} onChange={(event) => updateLine(index, { origin: event.target.value })} style={fieldStyle}>
+                            <option value="">원산지 선택</option>
+                            {ORIGIN_OPTIONS.map((name) => (
+                              <option key={name} value={name}>{name}</option>
+                            ))}
+                            {line.origin && !ORIGIN_OPTIONS.includes(line.origin) && <option value={line.origin}>{line.origin} (목록에 없음)</option>}
+                          </select>
+                        ) : (
+                          <>
+                            <input aria-label={`${index + 1}번째 줄 원산지`} list={`po-origins-${index}`} value={line.origin} onChange={(event) => updateLine(index, { origin: event.target.value })} placeholder="원산지" style={fieldStyle} autoComplete="off" />
+                            <datalist id={`po-origins-${index}`}>
+                              {ORIGIN_OPTIONS.map((name) => (
+                                <option key={name} value={name} />
+                              ))}
+                            </datalist>
+                          </>
+                        )}
                         <input aria-label={`${index + 1}번째 줄 수량`} inputMode="decimal" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} placeholder="수량(kg)" style={fieldStyle} autoComplete="off" />
                         <input aria-label={`${index + 1}번째 줄 단가`} inputMode="numeric" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: event.target.value })} placeholder="단가(원/kg, 선택)" style={fieldStyle} autoComplete="off" />
                       </div>

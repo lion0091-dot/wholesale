@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
 import { MANUAL_DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
+import { ORIGIN_OPTIONS } from "@/lib/products/origin-options";
 import { STOCK_ADJUST_REASON_CODES } from "@/lib/products/stock-adjust-reasons";
-import { composeIdentityName, IDENTITY_FIELD_LABELS, identityFieldsFor } from "@/lib/products/identity-key";
-import { isTraceableCategory, TRACEABLE_MANUAL_BLOCK_MESSAGE } from "@/lib/products/traceable-categories";
+import { composeIdentityName, IDENTITY_FIELD_LABELS, identityDescription, identityFieldsFor } from "@/lib/products/identity-key";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -138,13 +138,18 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
   for (const field of options.requireIdentityFields ? (identityFieldsFor(category) ?? []) : []) {
     if (field !== "origin" && !identityValues[field]) {
       throw new RbacError(
-        `${category}는 ${IDENTITY_FIELD_LABELS[field]}을(를) 입력해주세요. 축종·부위·등급·원산지가 이 상품의 정체성입니다.`
+        `${category}는 ${IDENTITY_FIELD_LABELS[field]}을(를) 입력해주세요. ${identityDescription(category)}이(가) 이 상품의 정체성입니다.`
       );
     }
   }
 
   if (!origin) {
     throw new RbacError("원산지를 입력해주세요.");
+  }
+
+  // 키 축종은 원산지가 정체성이라 표기를 목록 하나로 맞춘다(신규 등록만 — 예전 값이 있는 기존 상품 수정은 막지 않는다).
+  if (options.requireIdentityFields && identityFieldsFor(category) && !ORIGIN_OPTIONS.includes(origin)) {
+    throw new RbacError(`원산지 '${origin}'은(는) 목록에 없습니다. (${ORIGIN_OPTIONS.join(", ")} 중 하나)`);
   }
 
   if (!Number.isFinite(basePrice) || basePrice < 0) {
@@ -193,7 +198,7 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
 /**
  * 같은 정체성 키의 상품이 이미 있으면 거부한다(키 규칙이 있는 축종만 — identity-key.ts).
  * 보관된 상품도 대상이다: 같은 상품을 새로 만들지 말고 복원해서 쓰게 안내한다.
- * 소는 DB 유니크 인덱스(idx_products_cattle_identity, 마이그레이션 121)가 동시 등록 두 건까지 막는다 — 이 검사는 그 전에 친절한 문구를 주는 용도다.
+ * 키 축종은 DB 유니크 인덱스(idx_products_cattle/pork/poultry_egg_identity, 마이그레이션 121·137)가 동시 등록 두 건까지 막는다 — 이 검사는 그 전에 친절한 문구를 주는 용도다.
  */
 async function assertNoDuplicateIdentity(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -235,7 +240,7 @@ async function assertNoDuplicateIdentity(
     throw new RbacError(
       duplicate.archived_at
         ? `보관된 같은 상품이 있습니다(${duplicate.name}). 새로 만들지 말고 보관 목록에서 복원해서 쓰세요.`
-        : `이미 같은 상품이 등록되어 있습니다(${duplicate.name}). ${key.category}은(는) 축종·부위·등급·원산지가 같으면 같은 상품입니다.`
+        : `이미 같은 상품이 등록되어 있습니다(${duplicate.name}). ${key.category}은(는) ${identityDescription(key.category)}이(가) 같으면 같은 상품입니다.`
     );
   }
 }
@@ -251,11 +256,6 @@ export async function createProductAction(
     const { order_stopped_action: _orderStoppedAction, ...input } = parseProductForm(formData, {
       requireIdentityFields: true,
     });
-
-    // 이력 대상 축종은 입고 스캔으로만 만든다 — 손 등록은 이력번호 없는 중복 상품을 만든다.
-    if (isTraceableCategory(input.category)) {
-      throw new RbacError(TRACEABLE_MANUAL_BLOCK_MESSAGE);
-    }
 
     await assertNoDuplicateIdentity(supabase, wholesalerId, input);
 
@@ -325,12 +325,14 @@ export async function updateProductAction(
 
       const { data: current } = await currentQuery.maybeSingle();
 
-      if (current && identityFieldsFor(current.category as string)) {
+      const currentFields = current ? identityFieldsFor(current.category as string) : null;
+
+      if (current && currentFields) {
         const currentPart = (current.subcategory as string | null)?.trim() || null;
         const currentGrade = (current.grade as string | null)?.trim() || null;
 
-        subcategoryToSave = currentPart ?? input.subcategory;
-        gradeToSave = currentGrade ?? input.grade;
+        subcategoryToSave = currentFields.includes("subcategory") ? (currentPart ?? input.subcategory) : input.subcategory;
+        gradeToSave = currentFields.includes("grade") ? (currentGrade ?? input.grade) : input.grade;
 
         if (subcategoryToSave !== currentPart || gradeToSave !== currentGrade) {
           identityName = composeIdentityName(current.category as string, subcategoryToSave, gradeToSave);
@@ -692,12 +694,7 @@ export async function seedDefaultProductsAction(): Promise<ActionResult<{ create
       );
     }
 
-    // 이력 대상 축종은 입고 스캔으로만 만든다 — 이력번호 없는 시드 상품은 스캔 자동 생성 상품과 중복이 된다.
     const items = MANUAL_DEFAULT_DELIVERY_ITEMS;
-
-    if (items.length === 0) {
-      throw new RbacError(TRACEABLE_MANUAL_BLOCK_MESSAGE);
-    }
 
     const { data, error } = await supabase
       .from("products")

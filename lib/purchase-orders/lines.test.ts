@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseAmount, parsePurchaseOrderCells, validatePurchaseOrderLine } from "./lines";
 
-const CATEGORIES = ["소", "돼지", "닭/오리", "가공육/기타"];
+const CATEGORIES = ["소", "돼지", "닭", "오리", "계란", "가공육/기타"];
 const line = (patch: Partial<Parameters<typeof validatePurchaseOrderLine>[0]> = {}) => ({
   category: "소",
   subcategory: "등심",
@@ -48,6 +48,49 @@ describe("validatePurchaseOrderLine", () => {
       expect(result.ok).toBe(false);
       expect(result.ok === false && result.error).toContain(message);
     }
+  });
+});
+
+describe("validatePurchaseOrderLine — 목록에서만 고르는 칸", () => {
+  const PARTS = { 소: ["등심", "안심"], 돼지: ["삼겹살", "목살"], 닭: ["통닭"], "가공육/기타": ["소시지"] };
+  const check = (patch: Partial<ReturnType<typeof line>>) => validatePurchaseOrderLine(line(patch), CATEGORIES, PARTS);
+
+  it("목록 안의 값은 통과하고 비운 부위·등급도 통과한다", () => {
+    expect(check({}).ok).toBe(true);
+    expect(check({ category: "돼지", subcategory: "삼겹살", grade: "아무거나" }).ok).toBe(true);
+    expect(check({ subcategory: "", grade: "" }).ok).toBe(true);
+  });
+
+  it("소·돼지의 목록에 없는 부위, 다른 축종의 부위는 거부한다", () => {
+    expect(check({ subcategory: "등신" })).toMatchObject({ ok: false });
+    expect(check({ category: "돼지", subcategory: "등심" })).toMatchObject({ ok: false });
+  });
+
+  it("소 등급은 목록만, 다른 축종의 등급은 자유", () => {
+    expect(check({ grade: "1+ +" })).toMatchObject({ ok: false });
+    expect(check({ category: "돼지", subcategory: "목살", grade: "1+ +" }).ok).toBe(true);
+  });
+
+  it("소·돼지·닭·오리·계란의 원산지는 목록만, 그 밖의 축종은 자유", () => {
+    expect(check({ origin: "한국" })).toMatchObject({ ok: false });
+    expect(check({ category: "닭", subcategory: "", origin: "한국" })).toMatchObject({ ok: false });
+    expect(check({ category: "오리", subcategory: "아무 부위", origin: "브라질산" }).ok).toBe(true);
+    expect(check({ category: "가공육/기타", subcategory: "아무 부위", origin: "한국" }).ok).toBe(true);
+  });
+
+  it("엑셀 올리기도 같은 검사를 한다", () => {
+    const parsed = parsePurchaseOrderCells(
+      [
+        ["축종", "부위", "등급", "원산지", "수량", "단가"],
+        ["소", "등신", "1++", "국내산", "5", ""],
+        ["소", "등심", "1++", "국내산", "5", ""],
+      ],
+      CATEGORIES,
+      PARTS
+    );
+
+    expect(parsed.rows[0].error).toContain("부위");
+    expect(parsed.rows[1].error).toBeNull();
   });
 });
 

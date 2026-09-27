@@ -208,33 +208,38 @@ describe("createProductAction", () => {
     expect((await updateProductAliasAction("not-a-uuid", "x")).success).toBe(false);
   });
 
-  it("이력 대상 축종(소·돼지·닭/오리)은 손으로 등록할 수 없고, 이력번호가 없는 양·가공육은 등록된다", async () => {
-    const marker = `손등록차단-${world.runId}`;
+  it("소·돼지·닭·오리·계란도 미리 손으로 등록되고 상품명이 자동 조합되며, 같은 키는 거부되고 원산지는 목록만 받는다", async () => {
+    const marker = `미리등록-${world.runId}`;
+    const create = (fields: Record<string, string>) =>
+      createProductAction(form({ name: "손 등록", description: marker, origin: "스페인산", ...fields }));
+    const nameOf = async (id: string) => (await row(id)).name;
 
-    for (const category of ["소", "돼지", "닭/오리"]) {
-      const result = await createProductAction(
-        form({ category, subcategory: "등심", grade: "1++", origin: "국내산", name: "손 등록 시도", description: marker })
-      );
+    const pork = await create({ category: "돼지", subcategory: "항정살", grade: "특" });
+    expect(pork.success).toBe(true);
+    expect(await nameOf(pork.data!.id)).toBe("항정살");
+    expect((await create({ category: "돼지", subcategory: "항정살" })).error).toContain("이미 같은 상품이 등록되어 있습니다");
+    expect((await create({ category: "돼지", subcategory: "" })).error).toContain("부위");
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("입고 스캔으로 자동 등록됩니다");
+    for (const category of ["닭", "오리", "계란"]) {
+      const created = await create({ category, subcategory: "", grade: "" });
+
+      expect(created.success).toBe(true);
+      expect(await nameOf(created.data!.id)).toBe(category);
+      expect((await create({ category })).error).toContain("이미 같은 상품이 등록되어 있습니다");
     }
 
-    const { count } = await adminClient().from("products").select("id", { count: "exact", head: true }).eq("description", marker);
-
-    expect(count).toBe(0);
+    expect((await create({ category: "닭", origin: "한국" })).error).toContain("목록에 없습니다");
+    expect((await create({ category: "소", subcategory: "등심", grade: "1++", origin: "한국" })).error).toContain("목록에 없습니다");
 
     for (const category of ["양", "가공육"]) {
-      const result = await createProductAction(form({ category, subcategory: "", name: `${category} 등록 상품`, description: marker }));
-
-      expect(result.success).toBe(true);
+      expect((await create({ category, subcategory: "", name: `${category} 등록 상품`, origin: "한국" })).success).toBe(true);
     }
   });
 });
 
 describe("updateProductAction", () => {
   it("축종·상품명·원산지는 바꿔 보내도 안 바뀌고, 부위·등급·단가·판매여부만 갱신되며 재고 값은 무시된다", async () => {
-    const product = await world.createProduct({ stock_quantity: 5 });
+    const product = await world.createProduct({ stock_quantity: 5, category: "양", subcategory: null });
     const result = await updateProductAction(
       product.id,
       form({ name: "다른 이름", category: "소", origin: "수입산", subcategory: "안심", grade: "1+", base_price: "18,000", stock_quantity: "999", is_active: "off", description: "수정 메모" })
@@ -244,7 +249,7 @@ describe("updateProductAction", () => {
 
     const after = await row(product.id);
 
-    expect(after).toMatchObject({ name: product.name, category: "돼지", origin: "국내산", subcategory: "안심", grade: "1+", is_active: false, description: "수정 메모" });
+    expect(after).toMatchObject({ name: product.name, category: "양", origin: "국내산", subcategory: "안심", grade: "1+", is_active: false, description: "수정 메모" });
     expect(Number(after.base_price)).toBe(18000);
     expect(Number(after.stock_quantity)).toBe(5);
   });

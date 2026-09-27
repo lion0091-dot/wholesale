@@ -354,6 +354,17 @@ async function buildWorld(tracker: Tracker): Promise<World> {
         (row as Record<string, unknown>).grade = `테스트등급-${runId}-${productIds.length + 1}`;
       }
 
+      // 돼지(부위+원산지)·닭·오리·계란(원산지)도 같은 키의 상품을 DB가 막는다(마이그레이션 137). 부위·원산지를 안 정했으면 상품마다 다르게 붙인다.
+      const seq = productIds.length + 1;
+
+      if (row.category === "돼지" && !("subcategory" in overrides)) {
+        (row as Record<string, unknown>).subcategory = `테스트부위-${runId}-${seq}`;
+      }
+
+      if (["닭", "오리", "계란"].includes(row.category) && !("origin" in overrides)) {
+        (row as Record<string, unknown>).origin = `테스트산지-${runId}-${seq}`;
+      }
+
       must(await admin.from("products").insert(row), "products");
       productIds.push(id);
 

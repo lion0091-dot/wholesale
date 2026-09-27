@@ -194,7 +194,7 @@ describe("SC-2 결품 — 박스가 끝내 다 안 옴 → 현장 스캔 종료 
   });
 });
 
-describe("SC-3 상품 중복 제어 — 스캔 자동 생성 → 손 등록 차단 → 수정으로 겹치기 차단 → DB가 마지막으로 막음", () => {
+describe("SC-3 상품 중복 제어 — 스캔 자동 생성 → 같은 키 손 등록 거부 → 수정으로 겹치기 차단 → DB가 마지막으로 막음", () => {
   const part = () => `채끝-${world.runId}`;
 
   function productForm(fields: Record<string, string>): FormData {
@@ -233,15 +233,17 @@ describe("SC-3 상품 중복 제어 — 스캔 자동 생성 → 손 등록 차�
     expect(same![0].name).toBe(`${p} 1+`);
     expect(await stockOf([...productIds][0])).toBeCloseTo(12);
 
-    // (a) 상품 관리 화면에서 같은 소 상품을 손으로 등록 → 소는 손 등록 자체가 막혀 있다
+    // (a) 상품 관리 화면에서 같은 소 상품을 손으로 등록 → 같은 키라 거부
     const manual = await createProductAction(productForm({ category: "소", subcategory: p, grade: "1+", name: "" }));
 
     expect(manual.success).toBe(false);
-    expect(manual.error).toContain("입고 스캔으로 자동 등록됩니다");
+    expect(manual.error).toContain("이미 같은 상품이 등록되어 있습니다");
 
-    // (b) 돼지·닭/오리도 마찬가지, 이력번호가 없는 가공육·양은 손으로 등록된다
-    expect((await createProductAction(productForm({ category: "돼지", subcategory: "삼겹살", name: "손 삼겹" }))).success).toBe(false);
-    expect((await createProductAction(productForm({ category: "닭/오리", subcategory: "통닭", name: "손 통닭" }))).success).toBe(false);
+    // (b) 돼지·닭·오리·계란도 미리 손으로 등록할 수 있고(상품명은 자동 조합), 같은 키를 다시 등록하면 거부, 가공육·양은 키가 없어 그대로 등록된다
+    expect((await createProductAction(productForm({ category: "돼지", subcategory: "삼겹살", origin: "스페인산", name: "손 삼겹" }))).success).toBe(true);
+    expect((await createProductAction(productForm({ category: "돼지", subcategory: "삼겹살", origin: "스페인산", name: "손 삼겹2" }))).success).toBe(false);
+    expect((await createProductAction(productForm({ category: "닭", origin: "스페인산", name: "손 닭" }))).success).toBe(true);
+    expect((await createProductAction(productForm({ category: "오리", origin: "스페인산", name: "손 오리" }))).success).toBe(true);
     expect((await createProductAction(productForm({ category: "가공육", subcategory: "소시지", name: "손 소시지" }))).success).toBe(true);
     expect((await createProductAction(productForm({ category: "양", subcategory: "", name: "양 다리" }))).success).toBe(true);
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope } from "@/lib/supplier/scope";
 import { buildPurchaseOrderTemplate } from "@/lib/purchase-orders/template";
+import { fetchSubcategoriesByCategory } from "../../products/get-subcategories";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,7 @@ export async function GET() {
   const supabase = await createClient();
   const { data } = await supabase.from("product_categories").select("name").order("sort_order", { ascending: true });
   const categories = ((data ?? []) as Array<{ name: string }>).map((row) => row.name);
-  const file = await buildPurchaseOrderTemplate(categories);
+  const file = await buildPurchaseOrderTemplate(categories, await fetchSubcategoriesByCategory(supabase));
   const koreanName = encodeURIComponent("공급처발주서_입력양식.xlsx");
 
   return new NextResponse(new Uint8Array(file), {

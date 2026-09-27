@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { MarketPriceWidget } from "@/components/market-price-widget";
 
-/** 시세 데이터가 있는 축종만 — 그 외(닭/오리, 양, 가공육)는 공공 경락가가 없다. */
+/** 시세 데이터가 있는 축종만 — 그 외(닭, 오리, 계란, 양, 가공육)는 공공 경락가가 없다. */
 const SPECIES_TABS = ["소", "돼지"] as const;
 
 /**

@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Product } from "@/types/database";
 import { createProductAction, updateProductAction } from "./actions";
-import { isTraceableCategory, TRACEABLE_MANUAL_BLOCK_MESSAGE } from "@/lib/products/traceable-categories";
+import { ORIGIN_OPTIONS } from "@/lib/products/origin-options";
 import { MarketPriceWidget } from "@/components/market-price-widget";
 import { ProductStockBreakdownWidget } from "@/components/product-stock-breakdown";
-import { composeIdentityName, identityFieldsFor } from "@/lib/products/identity-key";
+import { composeIdentityName, identityDescription, identityFieldsFor } from "@/lib/products/identity-key";
 
 interface ProductFormViewProps {
   /** 수정 모드일 때 기존 상품 값 */
@@ -19,7 +19,7 @@ interface ProductFormViewProps {
   subcategoriesByCategory: Record<string, string[]>;
 }
 
-const FALLBACK_CATEGORIES = ["소", "돼지", "닭/오리", "양", "가공육"];
+const FALLBACK_CATEGORIES = ["소", "돼지", "닭", "오리", "계란", "양", "가공육"];
 const UNITS = ["kg", "박스", "마리", "팩"];
 const FORM_ID = "product-form";
 const QUICK_ADD_AMOUNTS = [1000, 5000, 10000, 50000];
@@ -369,10 +369,7 @@ export function ProductFormView({
 }: ProductFormViewProps) {
   const router = useRouter();
   const isEdit = Boolean(product);
-  // 신규 등록에서는 이력 대상 축종(소·돼지·닭/오리)을 고를 수 없다 — 그 상품은 입고 스캔으로 만들어진다.
-  // 수정 화면은 이미 있는 상품이라 그대로 둔다.
-  const allCategoryOptions = categories.length > 0 ? categories : FALLBACK_CATEGORIES;
-  const categoryOptions = isEdit ? allCategoryOptions : allCategoryOptions.filter((item) => !isTraceableCategory(item));
+  const categoryOptions = categories.length > 0 ? categories : FALLBACK_CATEGORIES;
 
   const [selectedCategory, setSelectedCategory] = useState(product?.category ?? categoryOptions[0]);
   const subcategoryOptions = subcategoriesByCategory[selectedCategory] ?? [];
@@ -385,9 +382,12 @@ export function ProductFormView({
 
   // 소처럼 정체성 키가 정해진 축종은 상품명을 적지 않는다 — 부위+등급으로 자동 조합된다(lib/products/identity-key.ts).
   // 등록 후에는 값이 이미 있는 부위·등급·원산지가 잠긴다(비어 있던 칸만 한 번 채울 수 있다).
-  const hasIdentityKey = identityFieldsFor(selectedCategory) !== null;
-  const partLocked = isEdit && hasIdentityKey && Boolean(product?.subcategory?.trim());
-  const gradeLocked = isEdit && hasIdentityKey && Boolean(product?.grade?.trim());
+  const identityFields = identityFieldsFor(selectedCategory);
+  const hasIdentityKey = identityFields !== null;
+  const partIsKey = identityFields?.includes("subcategory") ?? false;
+  const gradeIsKey = identityFields?.includes("grade") ?? false;
+  const partLocked = isEdit && partIsKey && Boolean(product?.subcategory?.trim());
+  const gradeLocked = isEdit && gradeIsKey && Boolean(product?.grade?.trim());
   const composedName = composeIdentityName(selectedCategory, selectedSubcategory, gradeValue);
   const willRename = !isEdit || (!partLocked && Boolean(selectedSubcategory)) || (!gradeLocked && Boolean(gradeValue.trim()));
   const nameToShow = hasIdentityKey && willRename ? (composedName ?? "") : product?.name;
@@ -468,9 +468,7 @@ export function ProductFormView({
           {isEdit ? "상품 정보 수정" : "신규 상품 등록"}
         </h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          {isEdit
-            ? "고객(소매) 미니샵에 노출될 품목 정보와 기본 단가를 입력하세요."
-            : TRACEABLE_MANUAL_BLOCK_MESSAGE}
+          고객(소매) 미니샵에 노출될 품목 정보와 기본 단가를 입력하세요.
         </p>
       </header>
 
@@ -498,7 +496,7 @@ export function ProductFormView({
                 type="text"
                 readOnly
                 value={nameToShow ?? ""}
-                placeholder="부위·등급을 고르면 자동으로 채워져요"
+                placeholder="축종·부위·등급을 고르면 자동으로 채워져요"
                 autoComplete="off"
                 style={readOnlyFieldStyle}
               />
@@ -518,7 +516,7 @@ export function ProductFormView({
             )}
             <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
               {hasIdentityKey
-                ? `${selectedCategory}는 축종·부위·등급·원산지가 이 상품의 정체성이에요. 상품명은 부위와 등급으로 자동으로 만들어지고, 축종은 화면에서 앞에 자동으로 붙어요.`
+                ? `${selectedCategory}는 ${identityDescription(selectedCategory)}가 이 상품의 정체성이에요. 상품명은 자동으로 만들어지고, 축종은 화면에서 앞에 자동으로 붙어요.`
                 : isEdit
                   ? "등록 후에는 상품명을 바꿀 수 없어요. 축종·상품명·원산지가 이 상품의 정체성이라 셋 중 하나라도 다르면 새 상품으로 등록해주세요."
                   : "축종은 아래에서 따로 고르면 화면에 자동으로 앞에 붙어요. 여기엔 부위/상세 설명만 적으면 됩니다."}
@@ -568,7 +566,7 @@ export function ProductFormView({
         <div className="dash-form-grid-3">
           <div>
             <label htmlFor="subcategory" style={labelStyle}>
-              {hasIdentityKey ? "부위 *" : "부위 (선택)"}
+              {partIsKey ? "부위 *" : "부위 (선택)"}
             </label>
             <BottomSheetField
               id="subcategory"
@@ -578,7 +576,7 @@ export function ProductFormView({
               onChange={setSelectedSubcategory}
               disabled={subcategoryOptions.length === 0 || partLocked}
               options={[
-                ...(hasIdentityKey && !isEdit ? [] : [{ value: "", label: "선택 안 함" }]),
+                ...(partIsKey && !isEdit ? [] : [{ value: "", label: "선택 안 함" }]),
                 ...subcategoryOptions.map((item) => ({ value: item, label: item })),
               ]}
             />
@@ -593,17 +591,28 @@ export function ProductFormView({
             <label htmlFor="origin" style={labelStyle}>
               원산지 *
             </label>
-            <input
-              id="origin"
-              name="origin"
-              type="text"
-              required
-              readOnly={isEdit}
-              defaultValue={product?.origin}
-              placeholder="예: 국내산, 미국산"
-              autoComplete="off"
-              style={isEdit ? readOnlyFieldStyle : fieldStyle}
-            />
+            {hasIdentityKey && !isEdit ? (
+              <select id="origin" name="origin" required defaultValue="" style={fieldStyle}>
+                <option value="">원산지 선택</option>
+                {ORIGIN_OPTIONS.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id="origin"
+                name="origin"
+                type="text"
+                required
+                readOnly={isEdit}
+                defaultValue={product?.origin}
+                placeholder="예: 국내산, 미국산"
+                autoComplete="off"
+                style={isEdit ? readOnlyFieldStyle : fieldStyle}
+              />
+            )}
             {isEdit && (
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
                 등록 후에는 원산지를 바꿀 수 없어요.
@@ -613,13 +622,13 @@ export function ProductFormView({
 
           <div>
             <label htmlFor="grade" style={labelStyle}>
-              {hasIdentityKey ? "등급 *" : "등급"}
+              {gradeIsKey ? "등급 *" : "등급"}
             </label>
             <input
               id="grade"
               name="grade"
               type="text"
-              required={hasIdentityKey && !isEdit}
+              required={gradeIsKey && !isEdit}
               readOnly={gradeLocked}
               value={gradeValue}
               onChange={(event) => setGradeValue(event.target.value)}

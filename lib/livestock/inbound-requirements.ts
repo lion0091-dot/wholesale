@@ -1,3 +1,4 @@
+import { normalizeImportedOrigin } from "@/lib/products/origin-options";
 /**
  * 입고 한 건이 플랫폼 기준을 채웠는지 판정한다 (29단계 B).
  *
@@ -138,8 +139,8 @@ export function resolveTraceOrigin(
 ): string | null {
   const explicit = (originCountry ?? "").trim();
 
-  // API가 명시적으로 준 값이 있으면 그게 우선이다(수입 쪽은 국가명이 온다).
-  if (explicit) return explicit;
+  // API가 명시적으로 준 값이 있으면 그게 우선이다(수입 쪽은 국가명이 온다) — 원산지 목록의 값으로 옮기고 목록 밖 나라는 '기타 수입산'.
+  if (explicit) return /국내|한국/.test(explicit) ? "국내산" : normalizeImportedOrigin(explicit);
 
   return (source ?? "").startsWith("mtrace_livestock") ? "국내산" : null;
 }

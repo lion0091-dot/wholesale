@@ -1,4 +1,4 @@
-import { isTraceableCategory } from "./traceable-categories";
+import { identityFieldsFor } from "./identity-key";
 
 /**
  * 공급사 온보딩용 '기본 납품 품목' 시드 세트.
@@ -74,7 +74,7 @@ export const DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = [
   },
   {
     name: "닭 정육 (다리살)",
-    category: "닭/오리",
+    category: "닭",
     subcategory: "다리살",
     origin: "국내산",
     grade: null,
@@ -86,7 +86,7 @@ export const DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = [
   },
   {
     name: "생닭 10호",
-    category: "닭/오리",
+    category: "닭",
     subcategory: "통닭",
     origin: "국내산",
     grade: null,
@@ -123,9 +123,9 @@ export const DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = [
 ];
 
 /**
- * 실제로 불러올 수 있는 시드 — 이력 대상 축종(소·돼지·닭/오리)은 입고 스캔으로만 만든다(traceable-categories.ts).
- * 이력번호가 없는 가공육 등만 남는다.
+ * 실제로 불러올 수 있는 시드 — 상품 정체성 키가 있는 축종(소·돼지·닭·오리·계란)은 이름·원산지 규칙(identity-key.ts)에 맞춰
+ * 직접 등록하거나 입고 스캔으로 만들고, 시드는 키가 없는 가공육 등만 남는다.
  */
 export const MANUAL_DEFAULT_DELIVERY_ITEMS: DefaultDeliveryItem[] = DEFAULT_DELIVERY_ITEMS.filter(
-  (item) => !isTraceableCategory(item.category)
+  (item) => identityFieldsFor(item.category) === null
 );

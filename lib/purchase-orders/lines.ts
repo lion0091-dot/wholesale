@@ -2,8 +2,10 @@
  * 공급처 발주서 줄 — 화면 입력, 엑셀 올리기, 서버 저장이 같은 검증을 쓴다.
  *
  * 줄은 상품 ID가 아니라 스펙(축종·부위·등급·원산지)과 수량(kg)이다. 처음 취급하는 품목은 상품이 아직 없을 수 있고
- * 소·돼지·닭/오리 상품은 이력 조회로만 만들어지기 때문이다(마이그레이션 135).
+ * 이력 조회로 상품이 자동 생성되는 축종은 발주 시점에 상품이 없을 수 있기 때문이다(마이그레이션 135).
  */
+
+import { CATTLE_GRADES, ORIGIN_OPTIONS, specListRuleFor } from "./spec-options";
 
 export const PURCHASE_ORDER_SHEET = "발주서";
 export const PURCHASE_ORDER_HEADERS = ["축종", "부위", "등급", "원산지", "수량(kg)", "단가(원/kg)"] as const;
@@ -42,9 +44,15 @@ export function parseAmount(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function validatePurchaseOrderLine(input: PurchaseOrderLineInput, categories: readonly string[]): LineValidation {
+export function validatePurchaseOrderLine(
+  input: PurchaseOrderLineInput,
+  categories: readonly string[],
+  subcategoriesByCategory: Readonly<Record<string, readonly string[]>> = {}
+): LineValidation {
   const category = input.category.trim();
   const origin = input.origin.trim();
+  const subcategory = input.subcategory.trim();
+  const grade = input.grade.trim();
 
   if (!category) {
     return { ok: false, error: "축종을 골라주세요." };
@@ -56,6 +64,21 @@ export function validatePurchaseOrderLine(input: PurchaseOrderLineInput, categor
 
   if (!origin) {
     return { ok: false, error: "원산지를 입력해주세요." };
+  }
+
+  const rule = specListRuleFor(category);
+  const parts = subcategoriesByCategory[category] ?? [];
+
+  if (rule.partFromList && subcategory && parts.length > 0 && !parts.includes(subcategory)) {
+    return { ok: false, error: `${category}의 부위 '${subcategory}'은(는) 목록에 없습니다. 목록에서 골라주세요.` };
+  }
+
+  if (rule.gradeFromList && grade && !CATTLE_GRADES.includes(grade)) {
+    return { ok: false, error: `등급 '${grade}'은(는) 목록에 없습니다. (${CATTLE_GRADES.join(", ")} 중 하나)` };
+  }
+
+  if (rule.originFromList && !ORIGIN_OPTIONS.includes(origin)) {
+    return { ok: false, error: `원산지 '${origin}'은(는) 목록에 없습니다. (${ORIGIN_OPTIONS.join(", ")} 중 하나)` };
   }
 
   const quantity = parseAmount(input.quantity);
@@ -79,8 +102,8 @@ export function validatePurchaseOrderLine(input: PurchaseOrderLineInput, categor
     ok: true,
     line: {
       category,
-      subcategory: input.subcategory.trim() || null,
-      grade: input.grade.trim() || null,
+      subcategory: subcategory || null,
+      grade: grade || null,
       origin,
       quantity,
       unitPrice,
@@ -112,7 +135,11 @@ const HEADER_KEYS: Array<{ key: keyof PurchaseOrderLineInput; names: string[] }>
 ];
 
 /** 엑셀 격자에서 발주서 줄을 읽는다. 머리글은 위쪽 5줄 안에서 축종·수량 칸이 있는 줄을 찾고, 칸 순서는 이름으로 찾는다. */
-export function parsePurchaseOrderCells(cells: string[][], categories: readonly string[]): ParsedUpload {
+export function parsePurchaseOrderCells(
+  cells: string[][],
+  categories: readonly string[],
+  subcategoriesByCategory: Readonly<Record<string, readonly string[]>> = {}
+): ParsedUpload {
   const headerIndex = cells.slice(0, 5).findIndex((row) => {
     const names = row.map(compact);
 
@@ -158,7 +185,7 @@ export function parsePurchaseOrderCells(cells: string[][], categories: readonly 
       return;
     }
 
-    const validation = validatePurchaseOrderLine(input, categories);
+    const validation = validatePurchaseOrderLine(input, categories, subcategoriesByCategory);
 
     rows.push({ rowNo: headerIndex + offset + 2, input, error: validation.ok ? null : validation.error });
   });

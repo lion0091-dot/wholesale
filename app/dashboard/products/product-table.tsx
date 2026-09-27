@@ -174,7 +174,9 @@ const chipButtonStyle: React.CSSProperties = {
 const CATEGORY_ICONS: Record<string, string> = {
   소: "🐄",
   돼지: "🐷",
-  "닭/오리": "🐔",
+  닭: "🐔",
+  오리: "🦆",
+  계란: "🥚",
   양: "🐑",
   가공육: "🥓",
 };

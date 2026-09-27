@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTraceNumber, speciesGroupFromTraceNumber, speciesMentionedIn, traceIdentityKey } from "@/lib/livestock/trace-number";
+import { parseTraceNumber, speciesGroupFromTraceNumber, speciesMentionedIn } from "@/lib/livestock/trace-number";
 
 describe("parseTraceNumber", () => {
   it("소(0) — 개체식별번호, 세부 구조 없음", () => {
@@ -35,12 +35,13 @@ describe("parseTraceNumber", () => {
 });
 
 describe("speciesGroupFromTraceNumber", () => {
-  it("카테고리 표기로 옮긴다 — 닭·오리는 '닭/오리', 계란은 카테고리가 없어 null", () => {
+  it("카테고리 표기로 옮긴다 — 닭·오리·계란은 각자 카테고리", () => {
     expect(speciesGroupFromTraceNumber("002191840078")).toBe("소");
     expect(speciesGroupFromTraceNumber("140077000150")).toBe("돼지");
-    expect(speciesGroupFromTraceNumber("234500000001")).toBe("닭/오리");
-    expect(speciesGroupFromTraceNumber("521060600101")).toBe("닭/오리");
-    expect(speciesGroupFromTraceNumber("308151230042")).toBeNull();
+    expect(speciesGroupFromTraceNumber("234500000001")).toBe("닭");
+    expect(speciesGroupFromTraceNumber("521060600101")).toBe("오리");
+    expect(speciesGroupFromTraceNumber("308151230042")).toBe("계란");
+    expect(speciesGroupFromTraceNumber("412345678901")).toBeNull();
     expect(speciesGroupFromTraceNumber("abc")).toBeNull();
   });
 });
@@ -65,27 +66,5 @@ describe("speciesMentionedIn", () => {
 
   it("'오리지널' 같은 단어에 걸리지 않는다", () => {
     expect(speciesMentionedIn("오리지널 소스")).toBeNull();
-  });
-});
-
-describe("traceIdentityKey — DB의 trace_identity_key()와 같은 값", () => {
-  it("돼지 농장·닭 오리 도축장·계란 발급월일+표시의무자", () => {
-    expect(traceIdentityKey("140077000150")).toBe("돼지:400770");
-    expect(traceIdentityKey("234500000001")).toBe("닭:345");
-    expect(traceIdentityKey("521060600101")).toBe("오리:210");
-    expect(traceIdentityKey("308151230042")).toBe("계란:0815-123");
-  });
-
-  it("같은 출처의 다른 일련번호는 같은 키, 출처가 다르면 다른 키, 닭과 오리는 도축장이 같아도 다르다", () => {
-    expect(traceIdentityKey("140077000150")).toBe(traceIdentityKey("140077000199"));
-    expect(traceIdentityKey("140077000150")).not.toBe(traceIdentityKey("140081700699"));
-    expect(traceIdentityKey("221000000001")).not.toBe(traceIdentityKey("521000000001"));
-  });
-
-  it("소(코드 0)·형식 밖 번호는 null", () => {
-    expect(traceIdentityKey("002191840078")).toBeNull();
-    expect(traceIdentityKey("912345678901")).toBeNull();
-    expect(traceIdentityKey("L12512266043001")).toBeNull();
-    expect(traceIdentityKey(null)).toBeNull();
   });
 });

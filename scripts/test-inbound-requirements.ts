@@ -203,7 +203,7 @@ function field(report: ReturnType<typeof buildScanRequirementReport>, key: strin
   check("국내 이력제 기록 + 빈 원산지 → 국내산", resolveTraceOrigin("mtrace_livestock", null) === "국내산");
   check(
     "API가 원산지를 명시했으면 그 값이 우선",
-    resolveTraceOrigin("mtrace_imported", "미국") === "미국",
+    resolveTraceOrigin("mtrace_imported", "미국") === "미국산" && resolveTraceOrigin("mtrace_imported", "프랑스") === "기타 수입산",
   );
   check("수입 이력 기록인데 원산지가 없으면 추론하지 않음", resolveTraceOrigin("mtrace_imported", null) === null);
   check("출처를 모르면 추론하지 않음", resolveTraceOrigin(null, null) === null);

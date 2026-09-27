@@ -1046,107 +1046,124 @@ describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산
   });
 });
 
-describe("소 외 축종 자동 생성 — 정체성 키 = 이력번호 출처(파싱) + 전표 부위", () => {
+describe("소 외 축종 자동 생성 — 정체성 키 = 돼지 부위+원산지, 닭·오리·계란 원산지(마이그레이션 137)", () => {
   async function productOf(productId: string) {
-    const { data } = await adminClient().from("products").select("name, category, subcategory, trace_key").eq("id", productId).single();
+    const { data } = await adminClient().from("products").select("name, category, subcategory, origin, grade").eq("id", productId).single();
 
-    return data as { name: string; category: string; subcategory: string | null; trace_key: string | null };
+    return data as { name: string; category: string; subcategory: string | null; origin: string | null; grade: string | null };
   }
 
-  const pork = (prefix: string) => world.newTraceNo(prefix);
+  // 같은 실행 안의 다른 테스트가 만든 상품과 키가 겹치지 않게 부위 이름을 실행별로 만든다.
+  const part = (name: string) => `${name}-${world.runId}`;
 
-  async function scanPork(traceNo: string, part: string | null) {
-    await world.seedTrace(traceNo, { speciesGroup: "돼지", part: null, grade: null });
+  async function scan(
+    traceNo: string,
+    speciesGroup: string,
+    docPart: string | null,
+    seed: { traceKind?: string; originCountry?: string } = {}
+  ) {
+    await world.seedTrace(traceNo, { speciesGroup, part: null, grade: null, ...seed });
 
-    if (part) {
-      await world.createDocumentLine({ traceNo, partName: part });
+    if (docPart) {
+      await world.createDocumentLine({ traceNo, partName: docPart });
     }
 
     return scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN" }));
   }
 
-  it("돼지: 같은 농장(앞 7자리) + 같은 전표 부위면 같은 상품 — 일련번호가 달라도 새로 만들지 않는다", async () => {
-    const first = await scanPork(pork("1400771"), "삼겹살");
-    const second = await scanPork(pork("1400771"), "삼겹살");
+  it("돼지: 같은 부위+원산지면 농장이 달라도 같은 상품이고 이름은 부위뿐이다", async () => {
+    const p = part("삼겹살");
+    const first = await scan(world.newTraceNo("1400771"), "돼지", p);
+    const second = await scan(world.newTraceNo("1400772"), "돼지", p);
 
     expect(second.productId).toBe(first.productId);
     expect(first.autoCreated).not.toBeNull();
     expect(second.autoCreated).toBeNull();
-
-    const product = await productOf(first.productId!);
-
-    expect(product).toMatchObject({ category: "돼지", subcategory: "삼겹살", trace_key: "돼지:400771", name: "삼겹살 (농장 400771)" });
+    expect(await productOf(first.productId!)).toMatchObject({ category: "돼지", subcategory: p, origin: "국내산", name: p });
   });
 
-  it("돼지: 같은 농장이어도 부위가 다르면 다른 상품, 부위가 같아도 농장이 다르면 다른 상품", async () => {
-    const base = await scanPork(pork("1400772"), "삼겹살");
-    const otherPart = await scanPork(pork("1400772"), "목살");
-    const otherFarm = await scanPork(pork("1400773"), "삼겹살");
+  it("돼지: 부위가 다르거나 원산지가 다르면 다른 상품", async () => {
+    const base = await scan(world.newTraceNo("1400773"), "돼지", part("목살"));
+    const otherPart = await scan(world.newTraceNo("1400773"), "돼지", part("갈비"));
+    const imported = await scan(world.newTraceNo("1400773"), "돼지", part("목살"), { traceKind: "imported", originCountry: "스페인산" });
 
-    expect(new Set([base.productId, otherPart.productId, otherFarm.productId]).size).toBe(3);
-    expect((await productOf(otherPart.productId!)).name).toBe("목살 (농장 400772)");
-    expect((await productOf(otherFarm.productId!)).trace_key).toBe("돼지:400773");
+    expect(new Set([base.productId, otherPart.productId, imported.productId]).size).toBe(3);
+    expect((await productOf(imported.productId!)).origin).toBe("스페인산");
   });
 
-  it("전표에 부위가 없으면 '(부위 미지정)' 상품이 출처별로 하나씩 만들어지고 재사용된다", async () => {
-    const first = await scanPork(pork("1400774"), null);
-    const second = await scanPork(pork("1400774"), null);
+  it("돼지: 전표에 부위가 없으면 '(부위 미지정)' 상품 하나가 만들어지고 재사용된다", async () => {
+    const first = await scan(world.newTraceNo("1400774"), "돼지", null);
+    const second = await scan(world.newTraceNo("1400775"), "돼지", null);
 
     expect(second.productId).toBe(first.productId);
-    expect((await productOf(first.productId!)).name).toBe("(농장 400774) (부위 미지정)");
+    expect((await productOf(first.productId!)).name).toBe("(부위 미지정)");
   });
 
-  it("닭·오리: 도축장이 같아도 축종코드가 다르면(2 닭 / 5 오리) 다른 상품이고 이름에 축종이 드러난다", async () => {
-    const scanPoultry = async (traceNo: string) => {
-      await world.seedTrace(traceNo, { speciesGroup: "닭/오리", part: null, grade: null });
-      await world.createDocumentLine({ traceNo, partName: "훈제" });
+  it("닭·오리·계란: 카테고리가 따로고 원산지만 같으면 부위와 상관없이 한 상품이며 이름은 축종이다", async () => {
+    const chicken = await scan(world.newTraceNo("2777"), "닭", "정육");
+    const chickenAgain = await scan(world.newTraceNo("2778"), "닭", "통닭");
+    const duck = await scan(world.newTraceNo("5777"), "오리", "훈제");
+    const egg = await scan(world.newTraceNo("3777"), "계란", null);
 
-      return scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN" }));
-    };
-
-    const chicken = await scanPoultry(world.newTraceNo("2777"));
-    const duck = await scanPoultry(world.newTraceNo("5777"));
-    const duckAgain = await scanPoultry(world.newTraceNo("5777"));
-
-    expect(chicken.productId).not.toBe(duck.productId);
-    expect(duckAgain.productId).toBe(duck.productId);
-    expect(await productOf(chicken.productId!)).toMatchObject({ trace_key: "닭:777", name: "닭 훈제 (도축장 777)" });
-    expect(await productOf(duck.productId!)).toMatchObject({ trace_key: "오리:777", name: "오리 훈제 (도축장 777)" });
+    expect(chickenAgain.productId).toBe(chicken.productId);
+    expect(new Set([chicken.productId, duck.productId, egg.productId]).size).toBe(3);
+    expect(await productOf(chicken.productId!)).toMatchObject({ category: "닭", name: "닭", subcategory: null, origin: "국내산" });
+    expect(await productOf(duck.productId!)).toMatchObject({ category: "오리", name: "오리", subcategory: null });
+    expect(await productOf(egg.productId!)).toMatchObject({ category: "계란", name: "계란" });
   });
 
-  it("키를 뽑을 수 없는 번호(형식 밖 첫 자리)는 예전 방식(축종+부위+등급)으로 찾고 trace_key는 비어 있다", async () => {
-    const traceNo = world.newTraceNo("9");
+  it("상품 관리에서 미리 등록한 상품이 있으면 스캔이 새로 만들지 않고 그 상품에 붙는다", async () => {
+    const p = part("항정살");
+    const preRegistered = await world.createProduct({ category: "돼지", subcategory: p, origin: "국내산", name: p });
+    const pork = await scan(world.newTraceNo("1400776"), "돼지", p);
 
-    await world.seedTrace(traceNo, { speciesGroup: "돼지", part: null, grade: null });
-    await world.createDocumentLine({ traceNo, partName: "앞다리" });
+    expect(pork.productId).toBe(preRegistered.id);
+    expect(pork.autoCreated).toBeNull();
 
-    const data = scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN" }));
+    const duck = await world.createProduct({ category: "오리", origin: "호주산", name: "오리" });
+    const scannedDuck = await scan(world.newTraceNo("5778"), "오리", null, { traceKind: "imported", originCountry: "호주산" });
 
-    expect((await productOf(data.productId!)).trace_key).toBeNull();
+    expect(scannedDuck.productId).toBe(duck.id);
   });
 
-  it("같은 출처+부위 상품을 동시에 만들려 해도 상품은 하나만 생기고 두 스캔 모두 그 상품에 붙는다", async () => {
-    const a = pork("1400775");
-    const b = pork("1400775");
+  it("원산지는 포함 비교(like) — 이력조회의 '미국'이 미리 등록한 '미국산' 상품에 붙고, 다른 나라는 붙지 않는다", async () => {
+    const p = part("등심");
+    const registered = await world.createProduct({ category: "돼지", subcategory: p, origin: "미국산", name: p });
+    const us = await scan(world.newTraceNo("1400779"), "돼지", p, { traceKind: "imported", originCountry: "미국" });
+    const au = await scan(world.newTraceNo("1400779"), "돼지", p, { traceKind: "imported", originCountry: "호주" });
+
+    expect(us.productId).toBe(registered.id);
+    expect(au.productId).not.toBe(registered.id);
+    expect((await productOf(au.productId!)).origin).toBe("호주산");
+
+    const fr = await scan(world.newTraceNo("1400779"), "돼지", p, { traceKind: "imported", originCountry: "프랑스" });
+
+    expect((await productOf(fr.productId!)).origin).toBe("기타 수입산");
+  });
+
+  it("같은 부위+원산지 돼지 상품을 동시에 만들려 해도 상품은 하나만 생기고 두 스캔 모두 그 상품에 붙는다", async () => {
+    const p = part("앞다리");
+    const a = world.newTraceNo("1400777");
+    const b = world.newTraceNo("1400778");
 
     for (const traceNo of [a, b]) {
       await world.seedTrace(traceNo, { speciesGroup: "돼지", part: null, grade: null });
-      await world.createDocumentLine({ traceNo, partName: "갈비" });
+      await world.createDocumentLine({ traceNo, partName: p });
     }
 
     const [first, second] = await Promise.all([
       recordScanAction({ traceNo: a, weight: 4, scanType: "BARCODE_SCAN" }),
       recordScanAction({ traceNo: b, weight: 4, scanType: "BARCODE_SCAN" }),
     ]);
-    const productIds = new Set([scanData(first).productId, scanData(second).productId]);
 
-    expect(productIds.size).toBe(1);
+    expect(new Set([scanData(first).productId, scanData(second).productId]).size).toBe(1);
 
     const { count } = await adminClient()
       .from("products")
       .select("id", { count: "exact", head: true })
       .eq("wholesaler_id", world.wholesalerA)
-      .eq("trace_key", "돼지:400775");
+      .eq("category", "돼지")
+      .eq("subcategory", p);
 
     expect(count).toBe(1);
   });

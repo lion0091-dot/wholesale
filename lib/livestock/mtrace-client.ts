@@ -240,8 +240,16 @@ function normalizeSpeciesGroup(species: string | null): string | null {
     return "돼지";
   }
 
-  if (/닭|오리|육계|삼계/.test(species)) {
-    return "닭/오리";
+  if (/닭|육계|삼계/.test(species)) {
+    return "닭";
+  }
+
+  if (/오리/.test(species)) {
+    return "오리";
+  }
+
+  if (/계란|달걀/.test(species)) {
+    return "계란";
   }
 
   return null;
@@ -526,7 +534,8 @@ function toRecord(
       ? // 수입은 쇠고기·돈육이 섞여 들어온다 — 원문 축종으로 가르고, 못 가르면 null.
         normalizeSpeciesGroup(species)
       : source === "poultry"
-        ? "닭/오리"
+        ? // 닭·오리·계란은 응답 축종명으로 가르고, 없으면 번호 첫 자리(축종코드)로 보충한다.
+          (normalizeSpeciesGroup(species) ?? speciesGroupFromTraceNumber(traceNo))
         : // 응답에 축종 이름도 개체번호 필드도 없으면 번호 첫 자리(축종코드)로 보충한다 — 원문 species는 API 값 그대로 둔다.
           (normalizeSpeciesGroup(species) ?? speciesGroupFromIdField(tree) ?? speciesGroupFromTraceNumber(traceNo));
 

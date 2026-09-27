@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
 import { extractExcelTable } from "@/lib/livestock/excel-table";
+import { fetchSubcategoriesByCategory } from "../products/get-subcategories";
 import {
   PURCHASE_ORDER_MAX_LINES,
   parsePurchaseOrderCells,
@@ -107,7 +108,8 @@ export async function parsePurchaseOrderFileAction(
       throw new RbacError("엑셀 파일을 읽지 못했습니다. 내려받은 양식(.xlsx)을 그대로 채워 올려주세요.");
     }
 
-    const parsed = parsePurchaseOrderCells(table.cells, await loadCategoryNames(supabase));
+    const [categoryNames, subcategories] = await Promise.all([loadCategoryNames(supabase), fetchSubcategoriesByCategory(supabase)]);
+    const parsed = parsePurchaseOrderCells(table.cells, categoryNames, subcategories);
 
     if (parsed.headerError) {
       throw new RbacError(parsed.headerError);
@@ -183,9 +185,9 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
       throw new RbacError(`한 발주서에는 ${PURCHASE_ORDER_MAX_LINES}줄까지 넣을 수 있습니다.`);
     }
 
-    const categories = await loadCategoryNames(supabase);
+    const [categories, subcategories] = await Promise.all([loadCategoryNames(supabase), fetchSubcategoriesByCategory(supabase)]);
     const validated = input.lines.map((line, index) => {
-      const result = validatePurchaseOrderLine(line, categories);
+      const result = validatePurchaseOrderLine(line, categories, subcategories);
 
       if (!result.ok) {
         throw new RbacError(`${index + 1}번째 줄: ${result.error}`);

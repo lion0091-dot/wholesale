@@ -51,7 +51,7 @@ function formatSnapshotDate(isoDate: string): string {
 }
 
 interface MarketPriceWidgetProps {
-  /** 상품 등록 폼에서 선택된 카테고리(축종) 표기, 예: "소", "돼지", "닭/오리" */
+  /** 상품 등록 폼에서 선택된 카테고리(축종) 표기, 예: "소", "돼지", "닭" */
   category: string;
 }
 
