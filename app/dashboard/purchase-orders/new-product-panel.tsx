@@ -90,7 +90,7 @@ export function NewProductPanel({ categories, subcategoriesByCategory, initial, 
         gap: "8px",
       }}
     >
-      <div style={{ fontSize: "12px", fontWeight: 800, color: "#1d4ed8" }}>새 품목 만들기 — 상품 관리에 판매중지·0원으로 등록됩니다</div>
+      <div style={{ fontSize: "12px", fontWeight: 800, color: "#1d4ed8" }}>축종부터 차례로 골라주세요 — 이미 등록된 상품이면 그걸 쓰고, 없으면 판매중지·0원으로 새로 등록합니다</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "6px" }}>
         <select aria-label="새 품목 축종" value={category} onChange={(event) => changeCategory(event.target.value)} style={fieldStyle}>
           <option value="">축종 선택</option>
@@ -172,7 +172,7 @@ export function NewProductPanel({ categories, subcategoriesByCategory, initial, 
       )}
       <div style={{ display: "flex", gap: "8px" }}>
         <button type="button" disabled={busy} onClick={() => void submit()} style={{ ...buttonStyle, border: "none", backgroundColor: "#2563eb", color: "#fff" }}>
-          {busy ? "등록 중…" : "품목 등록"}
+          {busy ? "확인 중…" : "이 조합으로 선택"}
         </button>
         {onCancel && (
           <button type="button" disabled={busy} onClick={onCancel} style={buttonStyle}>

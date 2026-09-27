@@ -8,7 +8,6 @@ import { locateSaveError } from "@/lib/purchase-orders/locate-error";
 import { buildPurchaseOrderMessage } from "@/lib/purchase-orders/message";
 import { specFromProduct, productSpecLabel, type ProductOption } from "@/lib/purchase-orders/product-match";
 import { NewProductPanel } from "./new-product-panel";
-import { ProductPicker } from "./product-picker";
 import {
   createPurchaseOrderAction,
   createSupplierAction,
@@ -60,8 +59,6 @@ interface Props {
   suppliers: SupplierRow[];
   orders: PurchaseOrderRow[];
   products: ProductOption[];
-  /** 최근 발주서에 쓴 상품 ID(가장 최근이 앞) — 품목 목록 맨 위에 보여준다. */
-  recentProductIds: string[];
 }
 
 const STATUS_LABEL: Record<PurchaseOrderRow["status"], { text: string; bg: string; color: string }> = {
@@ -143,7 +140,7 @@ function specText(line: { category: string; breed?: string | null; subcategory: 
   return [line.category, line.breed, line.subcategory, line.grade, line.origin].filter(Boolean).join(" ");
 }
 
-export function PurchaseOrderView({ canManage, categories, subcategoriesByCategory, suppliers, orders, products, recentProductIds }: Props) {
+export function PurchaseOrderView({ canManage, categories, subcategoriesByCategory, suppliers, orders, products }: Props) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -161,7 +158,6 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
   const [notice, setNotice] = useState<string | null>(null);
   const [includePrice, setIncludePrice] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [creatingIndex, setCreatingIndex] = useState<number | null>(null);
   const [createdProducts, setCreatedProducts] = useState<ProductOption[]>([]);
   const productOptions = useMemo(() => {
     const known = new Set(products.map((product) => product.id));
@@ -188,7 +184,6 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
   const handleProductCreated = (index: number, product: ProductOption, created: boolean) => {
     setCreatedProducts((prev) => [...prev, product]);
     pickProduct(index, product);
-    setCreatingIndex(null);
     setNotice(
       created
         ? `'${productSpecLabel(product)}'을(를) 상품 관리에 새로 등록했습니다(판매중지·0원 — 가격을 넣고 판매중으로 바꾸면 고객에게 보입니다).`
@@ -226,8 +221,6 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
         uploaded.flatMap((row, offset) => (row.error ? [[keepExisting.length + offset, `엑셀 ${row.rowNo}행: ${row.error}`]] : []))
       )
     );
-
-    setCreatingIndex(null);
 
     const badCount = uploaded.filter((row) => row.error).length;
     const unlinkedCount = uploaded.filter((row) => !row.error && !row.input.productId).length;
@@ -292,7 +285,6 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
     setNote("");
     setLines([emptyLine()]);
     setRowErrors({});
-    setCreatingIndex(null);
     setOpen(false);
     setNotice(
       result.data && result.data.createdProducts > 0
@@ -408,47 +400,57 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
 
               <div style={{ display: "grid", gap: "8px" }}>
                 {lines.map((line, index) => {
-                  // 등록된 품목이 하나도 없으면 고를 목록이 없으니 새 품목 칸(축종·품종·부위·등급·원산지)을 바로 열어 둔다.
-                  const showNewProduct = creatingIndex === index || (productOptions.length === 0 && !line.productId);
-                  const unlinked = !line.productId && Boolean(line.category);
                   const lineSpec = { category: line.category, breed: line.breed, subcategory: line.subcategory, grade: line.grade, origin: line.origin };
+                  // 상품이 몇 개가 등록돼 있든 상관없이 축종→부위→등급→원산지를 차례로 골라서 찾는다(전체 상품을 검색하는 목록이 아니다).
+                  const selectedLabel = line.productId ? labelById.get(line.productId) ?? specText(line) : null;
 
                   return (
                     <div key={index} style={{ border: `1px solid ${rowErrors[index] ? "#fca5a5" : "#e2e8f0"}`, borderRadius: "8px", padding: "8px", backgroundColor: rowErrors[index] ? "#fef2f2" : "#f8fafc" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 3fr) minmax(0, 1fr) minmax(0, 1fr)", gap: "6px" }}>
-                        <ProductPicker
-                          ariaLabel={`${index + 1}번째 줄 품목`}
-                          labeled={labeledProducts}
-                          labelById={labelById}
-                          recentIds={recentProductIds}
-                          selectedId={line.productId ?? ""}
-                          fallbackLabel={line.category ? specText(line) : ""}
-                          onPick={(product) => pickProduct(index, product)}
-                          onCreateNew={() => setCreatingIndex(index)}
-                        />
+                        {selectedLabel ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: "8px",
+                              padding: "7px 9px",
+                              fontSize: "13px",
+                              fontWeight: 700,
+                              border: "1px solid #93c5fd",
+                              borderRadius: "6px",
+                              backgroundColor: "#eff6ff",
+                              color: "#0f172a",
+                            }}
+                          >
+                            <span>{selectedLabel}</span>
+                            <button
+                              type="button"
+                              onClick={() => updateLine(index, { productId: "" })}
+                              style={{ border: "none", background: "none", padding: 0, fontSize: "12px", fontWeight: 700, color: "#1d4ed8", cursor: "pointer" }}
+                            >
+                              바꾸기
+                            </button>
+                          </div>
+                        ) : (
+                          <div aria-hidden style={{ fontSize: "12px", color: "#94a3b8", alignSelf: "center" }}>
+                            아래에서 축종부터 골라주세요
+                          </div>
+                        )}
                         <input aria-label={`${index + 1}번째 줄 수량`} inputMode="decimal" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} placeholder="수량(kg)" style={fieldStyle} autoComplete="off" />
                         <input aria-label={`${index + 1}번째 줄 단가`} inputMode="numeric" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: event.target.value })} placeholder="단가(원/kg, 선택)" style={fieldStyle} autoComplete="off" />
                       </div>
-                      {unlinked && !showNewProduct && (
-                        <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#92400e" }}>
-                          등록된 품목이 아닙니다({specText(line)}). 저장하면 상품 관리에 자동으로 등록됩니다.{" "}
-                          <button type="button" onClick={() => setCreatingIndex(index)} style={{ border: "none", background: "none", padding: 0, fontSize: "12px", fontWeight: 700, color: "#1d4ed8", cursor: "pointer", textDecoration: "underline" }}>
-                            새 품목 만들기
-                          </button>
-                        </p>
-                      )}
-                      {showNewProduct && (
+                      {!line.productId && (
                         <NewProductPanel
                           categories={categories}
                           subcategoriesByCategory={subcategoriesByCategory}
                           initial={lineSpec}
                           onCreated={(product, created) => handleProductCreated(index, product, created)}
-                          onCancel={creatingIndex === index ? () => setCreatingIndex(null) : undefined}
                         />
                       )}
                       {rowErrors[index] && <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#b91c1c" }}>{rowErrors[index]}</p>}
                       {lines.length > 1 && (
-                        <button type="button" onClick={() => { setLines((prev) => prev.filter((_, i) => i !== index)); setRowErrors({}); setCreatingIndex(null); }} style={{ marginTop: "6px", border: "none", background: "none", padding: 0, fontSize: "12px", color: "#64748b", cursor: "pointer" }}>
+                        <button type="button" onClick={() => { setLines((prev) => prev.filter((_, i) => i !== index)); setRowErrors({}); }} style={{ marginTop: "6px", border: "none", background: "none", padding: 0, fontSize: "12px", color: "#64748b", cursor: "pointer" }}>
                           이 줄 지우기
                         </button>
                       )}
