@@ -43,7 +43,9 @@ export function NewProductPanel({ categories, subcategoriesByCategory, initial, 
   const [subcategory, setSubcategory] = useState(initial.subcategory);
   const [grade, setGrade] = useState(initial.grade);
   const [origin, setOrigin] = useState(initial.origin || "국내산");
-  const [name, setName] = useState("");
+  // 정체성 키가 없는 축종(양·가공육)은 specFromProduct가 이름을 subcategory 자리에 담아 보낸다(줄에 이름 칸이 따로 없어서) —
+  // "바꾸기"로 다시 열었을 때 이름이 사라지지 않도록 여기서 이어받는다.
+  const [name, setName] = useState(() => (identityFieldsFor(initial.category) === null ? initial.subcategory : ""));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

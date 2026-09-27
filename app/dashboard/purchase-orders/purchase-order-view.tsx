@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PurchaseOrderLineInput } from "@/lib/purchase-orders/lines";
 import { PURCHASE_ORDER_MAX_LINES } from "@/lib/purchase-orders/lines";
@@ -140,6 +140,107 @@ function specText(line: { category: string; breed?: string | null; subcategory: 
   return [line.category, line.breed, line.subcategory, line.grade, line.origin].filter(Boolean).join(" ");
 }
 
+// 줄마다 배열 순서(index)가 아니라 이 값으로 화면 컴포넌트를 식별한다 — index를 key로 쓰면 줄을 지웠을 때
+// 뒤 줄들이 밀리면서 아직 저장 안 한 "새 품목 만들기" 입력 중이던 내용이 엉뚱한 줄로 옮겨 붙는다.
+let lineKeySeq = 0;
+const makeLineKey = () => `line-${Date.now()}-${(lineKeySeq += 1)}`;
+
+interface LineRowProps {
+  line: PurchaseOrderLineInput;
+  index: number;
+  errorMessage?: string;
+  canDelete: boolean;
+  categories: string[];
+  subcategoriesByCategory: Record<string, string[]>;
+  selectedLabel: string | null;
+  /** 이미 고른 상품을 "바꾸기"로 다시 여는 중 — 취소하면 원래 고른 것으로 되돌아간다. */
+  isEditing: boolean;
+  onUpdate: (index: number, patch: Partial<PurchaseOrderLineInput>) => void;
+  onDelete: (index: number) => void;
+  onEdit: (index: number) => void;
+  onCancelEdit: () => void;
+  onProductCreated: (index: number, product: ProductOption, created: boolean) => void;
+}
+
+// 줄마다 하나씩 뜬다 — 300줄짜리 엑셀에서 매칭 안 된 줄이 많아도, memo로 감싸 다른 줄 입력 때문에
+// 다시 그려지지 않게 한다(안 그러면 줄 하나에 칠 때마다 전체 줄이 다시 렌더링된다).
+const PurchaseOrderLineRow = memo(function PurchaseOrderLineRow({
+  line,
+  index,
+  errorMessage,
+  canDelete,
+  categories,
+  subcategoriesByCategory,
+  selectedLabel,
+  isEditing,
+  onUpdate,
+  onDelete,
+  onEdit,
+  onCancelEdit,
+  onProductCreated,
+}: LineRowProps) {
+  const lineSpec = { category: line.category, breed: line.breed, subcategory: line.subcategory, grade: line.grade, origin: line.origin };
+  const showPanel = isEditing || !line.productId;
+
+  return (
+    <div style={{ border: `1px solid ${errorMessage ? "#fca5a5" : "#e2e8f0"}`, borderRadius: "8px", padding: "8px", backgroundColor: errorMessage ? "#fef2f2" : "#f8fafc" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 3fr) minmax(0, 1fr) minmax(0, 1fr)", gap: "6px" }}>
+        {selectedLabel && !isEditing ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "8px",
+              padding: "7px 9px",
+              fontSize: "13px",
+              fontWeight: 700,
+              border: "1px solid #93c5fd",
+              borderRadius: "6px",
+              backgroundColor: "#eff6ff",
+              color: "#0f172a",
+            }}
+          >
+            <span>{selectedLabel}</span>
+            <button
+              type="button"
+              onClick={() => onEdit(index)}
+              style={{ border: "none", background: "none", padding: 0, fontSize: "12px", fontWeight: 700, color: "#1d4ed8", cursor: "pointer" }}
+            >
+              바꾸기
+            </button>
+          </div>
+        ) : (
+          <div aria-hidden style={{ fontSize: "12px", color: "#94a3b8", alignSelf: "center" }}>
+            아래에서 축종부터 골라주세요
+          </div>
+        )}
+        <input aria-label={`${index + 1}번째 줄 수량`} inputMode="decimal" value={line.quantity} onChange={(event) => onUpdate(index, { quantity: event.target.value })} placeholder="수량(kg)" style={fieldStyle} autoComplete="off" />
+        <input aria-label={`${index + 1}번째 줄 단가`} inputMode="numeric" value={line.unitPrice} onChange={(event) => onUpdate(index, { unitPrice: event.target.value })} placeholder="단가(원/kg, 선택)" style={fieldStyle} autoComplete="off" />
+      </div>
+      {showPanel && (
+        <NewProductPanel
+          categories={categories}
+          subcategoriesByCategory={subcategoriesByCategory}
+          initial={lineSpec}
+          onCreated={(product, created) => onProductCreated(index, product, created)}
+          onCancel={isEditing ? onCancelEdit : undefined}
+        />
+      )}
+      {errorMessage && <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#b91c1c" }}>{errorMessage}</p>}
+      {canDelete && (
+        <button
+          type="button"
+          onClick={() => onDelete(index)}
+          style={{ marginTop: "6px", border: "none", background: "none", padding: 0, fontSize: "12px", color: "#64748b", cursor: "pointer" }}
+        >
+          이 줄 지우기
+        </button>
+      )}
+    </div>
+  );
+});
+
 export function PurchaseOrderView({ canManage, categories, subcategoriesByCategory, suppliers, orders, products }: Props) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -152,6 +253,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
   const [expectedOn, setExpectedOn] = useState("");
   const [note, setNote] = useState("");
   const [lines, setLines] = useState<PurchaseOrderLineInput[]>([emptyLine()]);
+  const [lineKeys, setLineKeys] = useState<string[]>([makeLineKey()]);
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -159,15 +261,16 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
   const [includePrice, setIncludePrice] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [createdProducts, setCreatedProducts] = useState<ProductOption[]>([]);
+  // 이미 고른 상품을 "바꾸기"로 다시 여는 중인 줄 — 한 번에 하나만. 취소하면 원래 고른 상품으로 되돌아간다(productId는 안 지운다).
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const productOptions = useMemo(() => {
     const known = new Set(products.map((product) => product.id));
 
     return [...products, ...createdProducts.filter((product) => !known.has(product.id))];
   }, [products, createdProducts]);
-  const labeledProducts = useMemo(() => productOptions.map((option) => ({ option, label: productSpecLabel(option) })), [productOptions]);
-  const labelById = useMemo(() => new Map(labeledProducts.map((item) => [item.option.id, item.label])), [labeledProducts]);
+  const labelById = useMemo(() => new Map(productOptions.map((option) => [option.id, productSpecLabel(option)])), [productOptions]);
 
-  const updateLine = (index: number, patch: Partial<PurchaseOrderLineInput>) => {
+  const updateLine = useCallback((index: number, patch: Partial<PurchaseOrderLineInput>) => {
     setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
     setRowErrors((prev) => {
       if (!(index in prev)) return prev;
@@ -175,21 +278,43 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
       delete next[index];
       return next;
     });
-  };
+  }, []);
 
-  const pickProduct = (index: number, product: ProductOption) => {
-    updateLine(index, { productId: product.id, ...specFromProduct(product) });
-  };
+  const handleDeleteLine = useCallback((index: number) => {
+    setLines((prev) => prev.filter((_, i) => i !== index));
+    setLineKeys((prev) => prev.filter((_, i) => i !== index));
+    setRowErrors({});
+    setEditingIndex(null);
+  }, []);
 
-  const handleProductCreated = (index: number, product: ProductOption, created: boolean) => {
-    setCreatedProducts((prev) => [...prev, product]);
-    pickProduct(index, product);
-    setNotice(
-      created
-        ? `'${productSpecLabel(product)}'을(를) 상품 관리에 새로 등록했습니다(판매중지·0원 — 가격을 넣고 판매중으로 바꾸면 고객에게 보입니다).`
-        : `이미 등록된 '${productSpecLabel(product)}'을(를) 연결했습니다.`
-    );
-  };
+  const handleEditLine = useCallback((index: number) => {
+    setEditingIndex(index);
+  }, []);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingIndex(null);
+  }, []);
+
+  const pickProduct = useCallback(
+    (index: number, product: ProductOption) => {
+      updateLine(index, { productId: product.id, ...specFromProduct(product) });
+    },
+    [updateLine]
+  );
+
+  const handleProductCreated = useCallback(
+    (index: number, product: ProductOption, created: boolean) => {
+      setCreatedProducts((prev) => [...prev, product]);
+      pickProduct(index, product);
+      setEditingIndex((prev) => (prev === index ? null : prev));
+      setNotice(
+        created
+          ? `'${productSpecLabel(product)}'을(를) 상품 관리에 새로 등록했습니다(판매중지·0원 — 가격을 넣고 판매중으로 바꾸면 고객에게 보입니다).`
+          : `이미 등록된 '${productSpecLabel(product)}'을(를) 연결했습니다.`
+      );
+    },
+    [pickProduct]
+  );
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
@@ -213,9 +338,13 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
     }
 
     const uploaded = result.data.rows;
-    const keepExisting = lines.filter(isFilled);
+    const keptIndices = lines.flatMap((line, index) => (isFilled(line) ? [index] : []));
+    const keepExisting = keptIndices.map((index) => lines[index]);
+    const keptKeys = keptIndices.map((index) => lineKeys[index]);
 
     setLines([...keepExisting, ...uploaded.map((row) => row.input)]);
+    setLineKeys([...keptKeys, ...uploaded.map(() => makeLineKey())]);
+    setEditingIndex(null);
     setRowErrors(
       Object.fromEntries(
         uploaded.flatMap((row, offset) => (row.error ? [[keepExisting.length + offset, `엑셀 ${row.rowNo}행: ${row.error}`]] : []))
@@ -284,7 +413,9 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
     setExpectedOn("");
     setNote("");
     setLines([emptyLine()]);
+    setLineKeys([makeLineKey()]);
     setRowErrors({});
+    setEditingIndex(null);
     setOpen(false);
     setNotice(
       result.data && result.data.createdProducts > 0
@@ -399,66 +530,34 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
               </div>
 
               <div style={{ display: "grid", gap: "8px" }}>
-                {lines.map((line, index) => {
-                  const lineSpec = { category: line.category, breed: line.breed, subcategory: line.subcategory, grade: line.grade, origin: line.origin };
-                  // 상품이 몇 개가 등록돼 있든 상관없이 축종→부위→등급→원산지를 차례로 골라서 찾는다(전체 상품을 검색하는 목록이 아니다).
-                  const selectedLabel = line.productId ? labelById.get(line.productId) ?? specText(line) : null;
-
-                  return (
-                    <div key={index} style={{ border: `1px solid ${rowErrors[index] ? "#fca5a5" : "#e2e8f0"}`, borderRadius: "8px", padding: "8px", backgroundColor: rowErrors[index] ? "#fef2f2" : "#f8fafc" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 3fr) minmax(0, 1fr) minmax(0, 1fr)", gap: "6px" }}>
-                        {selectedLabel ? (
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: "8px",
-                              padding: "7px 9px",
-                              fontSize: "13px",
-                              fontWeight: 700,
-                              border: "1px solid #93c5fd",
-                              borderRadius: "6px",
-                              backgroundColor: "#eff6ff",
-                              color: "#0f172a",
-                            }}
-                          >
-                            <span>{selectedLabel}</span>
-                            <button
-                              type="button"
-                              onClick={() => updateLine(index, { productId: "" })}
-                              style={{ border: "none", background: "none", padding: 0, fontSize: "12px", fontWeight: 700, color: "#1d4ed8", cursor: "pointer" }}
-                            >
-                              바꾸기
-                            </button>
-                          </div>
-                        ) : (
-                          <div aria-hidden style={{ fontSize: "12px", color: "#94a3b8", alignSelf: "center" }}>
-                            아래에서 축종부터 골라주세요
-                          </div>
-                        )}
-                        <input aria-label={`${index + 1}번째 줄 수량`} inputMode="decimal" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} placeholder="수량(kg)" style={fieldStyle} autoComplete="off" />
-                        <input aria-label={`${index + 1}번째 줄 단가`} inputMode="numeric" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: event.target.value })} placeholder="단가(원/kg, 선택)" style={fieldStyle} autoComplete="off" />
-                      </div>
-                      {!line.productId && (
-                        <NewProductPanel
-                          categories={categories}
-                          subcategoriesByCategory={subcategoriesByCategory}
-                          initial={lineSpec}
-                          onCreated={(product, created) => handleProductCreated(index, product, created)}
-                        />
-                      )}
-                      {rowErrors[index] && <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#b91c1c" }}>{rowErrors[index]}</p>}
-                      {lines.length > 1 && (
-                        <button type="button" onClick={() => { setLines((prev) => prev.filter((_, i) => i !== index)); setRowErrors({}); }} style={{ marginTop: "6px", border: "none", background: "none", padding: 0, fontSize: "12px", color: "#64748b", cursor: "pointer" }}>
-                          이 줄 지우기
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                {lines.map((line, index) => (
+                  <PurchaseOrderLineRow
+                    key={lineKeys[index]}
+                    line={line}
+                    index={index}
+                    errorMessage={rowErrors[index]}
+                    canDelete={lines.length > 1}
+                    categories={categories}
+                    subcategoriesByCategory={subcategoriesByCategory}
+                    // 상품이 몇 개가 등록돼 있든 상관없이 축종→부위→등급→원산지를 차례로 골라서 찾는다(전체 상품을 검색하는 목록이 아니다).
+                    selectedLabel={line.productId ? labelById.get(line.productId) ?? specText(line) : null}
+                    isEditing={editingIndex === index}
+                    onUpdate={updateLine}
+                    onDelete={handleDeleteLine}
+                    onEdit={handleEditLine}
+                    onCancelEdit={handleCancelEdit}
+                    onProductCreated={handleProductCreated}
+                  />
+                ))}
                 {lines.length < PURCHASE_ORDER_MAX_LINES && (
-                  <button type="button" style={{ ...buttonStyle, justifySelf: "start" }} onClick={() => setLines((prev) => [...prev, emptyLine()])}>
+                  <button
+                    type="button"
+                    style={{ ...buttonStyle, justifySelf: "start" }}
+                    onClick={() => {
+                      setLines((prev) => [...prev, emptyLine()]);
+                      setLineKeys((prev) => [...prev, makeLineKey()]);
+                    }}
+                  >
                     + 줄 추가
                   </button>
                 )}
