@@ -37,10 +37,10 @@ describe("rejectionSummary", () => {
     expect(text).toContain("발주 50kg 중 이미 48.5kg 받았습니다");
   });
 
-  it("없는 물건은 발주서에 없다고 말한다", () => {
+  it("없는 물건은 전표에 없다고 말한다", () => {
     const text = rejectionSummary({ result: "REJECTED", reason: "UNLISTED", ordered: null, received: null, remaining: null, tolerance: null, excess: null, orderClosed: false });
 
-    expect(text).toContain("발주서에 없는 물건");
+    expect(text).toContain("전표에 없는 물건");
   });
 });
 

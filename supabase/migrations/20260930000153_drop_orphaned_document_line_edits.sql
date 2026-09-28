@@ -1,0 +1,12 @@
+-- 152번이 놓친 정리: inbound_document_line_edits (코드리뷰 발견, 2026-09-28)
+--
+-- 152번은 "document_id/line_id 칸에 REFERENCES 제약이 없어 CASCADE로 자동으로 안 딸려
+-- 온다"고 판단해 문서 테이블(inbound_document_lines/inbound_documents)만 지웠다. 그 판단은
+-- inbound_document_line_scans에는 맞지만, inbound_document_line_edits(126번, 전표 줄
+-- 수정 기록)는 실제로 두 컬럼 다 진짜 FK(ON DELETE CASCADE)였다 — 부모 테이블을 지우면서
+-- CASCADE로 그 FK 제약만 조용히 날아갔고, 테이블 자체와 그 안의 행은 그대로 남았다.
+-- 지금 있는 행은 이제 존재하지 않는 document_id/line_id를 가리키는 죽은 감사 기록이다.
+--
+-- 이 테이블을 쓰던 유일한 함수(update_inbound_document_line)도 이미 152번에서 지워졌으므로
+-- 이 테이블은 더 이상 어디서도 쓰이지 않는다. 완전히 지운다.
+DROP TABLE IF EXISTS public.inbound_document_line_edits CASCADE;

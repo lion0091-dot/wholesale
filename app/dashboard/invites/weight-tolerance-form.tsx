@@ -44,9 +44,24 @@ export function WeightToleranceForm({ initial }: { initial: WeightToleranceSetti
     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
       <div>
         <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>전표 무게 허용 오차</div>
-        <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px", lineHeight: 1.6 }}>
-          개체번호 줄처럼 무게로 세는 줄은, 찍은 박스 무게의 합이 전표 표기 무게의 이 범위 안이면 다 온 것으로 봅니다(기본 2%).
-          공급처 표기와 저울이 자주 어긋나면 넓히세요. 입고 검수 경고(±2%)와는 별개입니다.
+        <div
+          style={{
+            fontSize: "12px",
+            color: "#92400e",
+            backgroundColor: "#fffbeb",
+            border: "1px solid #fde68a",
+            borderRadius: "6px",
+            padding: "8px 10px",
+            marginTop: "6px",
+            lineHeight: 1.6,
+          }}
+        >
+          지금은 이 값을 저장해도 적용되는 곳이 없습니다. 전표를 올려 도착 여부를 대조하던 화면이 없어져서,
+          이 값을 읽던 판정 로직도 함께 사라졌습니다.
+        </div>
+        <div style={{ fontSize: "12px", color: "#64748b", marginTop: "6px", lineHeight: 1.6 }}>
+          (예전 설명) 개체번호 줄처럼 무게로 세는 줄은, 찍은 박스 무게의 합이 전표 표기 무게의 이 범위 안이면 다 온 것으로 봤습니다(기본 2%).
+          입고 검수 경고(±2%)와는 별개입니다.
         </div>
       </div>
 

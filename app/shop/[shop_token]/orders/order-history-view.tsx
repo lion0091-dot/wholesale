@@ -191,7 +191,7 @@ export function OrderHistoryView({
   };
 
   const handleEditOrder = (order: ShopOrder) => {
-    const { appliedCount } = applyOrderLinesToCart(order, catalog, cart);
+    const { appliedCount, skippedNames } = applyOrderLinesToCart(order, catalog, cart);
 
     if (appliedCount === 0) {
       setCartNotice("이 발주의 품목을 더 이상 담을 수 없어 수정할 수 없습니다. 공급사에 문의해주세요.");
@@ -199,7 +199,14 @@ export function OrderHistoryView({
     }
 
     setCartNotice(null);
-    router.push(`/shop/${shopToken}/cart?editOrder=${order.id}`);
+
+    // cartNotice는 이 화면의 로컬 상태라 router.push로 화면을 떠나면 뜨기도 전에 사라진다.
+    // 장바구니 화면이 읽을 수 있게 쿼리 파라미터로 넘긴다(handleReorder와 같은 이유).
+    const params = new URLSearchParams({ editOrder: order.id });
+    if (skippedNames.length > 0) {
+      params.set("skipped", skippedNames.join(", "));
+    }
+    router.push(`/shop/${shopToken}/cart?${params.toString()}`);
   };
 
   // 조회 구간(30일/3개월/전체) + 더보기 — 미인증 상태(history.requiresLink)에서는

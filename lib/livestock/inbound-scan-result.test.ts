@@ -184,7 +184,7 @@ describe("발주서 판정(마이그레이션 142)이 결과 카드에 미치는
     );
 
     expect(card.tone).toBe("red");
-    expect(card.title).toContain("발주서에 없는 물건");
+    expect(card.title).toContain("전표에 없는 물건");
   });
 
   it("발주서에 붙은 박스 — 초록 그대로, 받은 양과 남은 양을 덧붙인다", () => {
@@ -197,7 +197,7 @@ describe("발주서 판정(마이그레이션 142)이 결과 카드에 미치는
   it("발주서를 다 채운 박스 — 자동 마감을 알린다", () => {
     const card = buildScanResultCard({ ...ok, po: po({ received: 50, remaining: 0, orderClosed: true }) }, options);
 
-    expect(card.extras.map((extra) => extra.title)).toContain("발주서를 다 받아 자동으로 마감했습니다");
+    expect(card.extras.map((extra) => extra.title)).toContain("전표를 다 받아 자동으로 마감했습니다");
   });
 
   it("없는 물건을 받아 둔 박스 — 노랑", () => {
@@ -212,7 +212,7 @@ describe("발주서 판정(마이그레이션 142)이 결과 카드에 미치는
     const extra = card.extras.find((item) => item.title === "발주 수량을 넘었습니다");
 
     expect(extra?.detail).toContain("판매할 수 있습니다");
-    expect(extra?.detail).toContain("12.5kg는 발주서에 붙지 않았습니다");
+    expect(extra?.detail).toContain("12.5kg는 전표에 붙지 않았습니다");
   });
 
   it("거래처를 안 고르고 찍으면 거래처부터 고르라고 한다", () => {

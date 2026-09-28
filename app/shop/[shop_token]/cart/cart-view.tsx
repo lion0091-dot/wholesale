@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useShopCart } from "@/lib/shop/cart-store";
 import { lineSubtotal, quantityStepFor, validateCart } from "@/lib/shop/order-policy";
 import { toCartLines, type ShopCatalog } from "@/lib/shop/catalog-types";
@@ -24,12 +24,30 @@ export function CartView({ catalog }: CartViewProps) {
   );
   const negotiationEnabled = catalog.wholesaler.allow_price_negotiation;
   const minOrderAmount = Number(catalog.wholesaler.min_order_amount);
+  const router = useRouter();
   const searchParams = useSearchParams();
   const editOrderId = searchParams.get("editOrder");
-  const skippedNames = searchParams.get("skipped");
   const checkoutHref = editOrderId
     ? `/shop/${catalog.shopToken}/checkout?editOrder=${editOrderId}`
     : `/shop/${catalog.shopToken}/checkout`;
+
+  // 한 번 읽으면 URL에서 지운다 — 지우지 않으면 뒤로가기로 같은 URL(?skipped=...)에
+  // 돌아왔을 때 이미 지난 스킵 안내가 또 뜬다.
+  const [skippedNames, setSkippedNames] = useState<string | null>(null);
+
+  useEffect(() => {
+    const value = searchParams.get("skipped");
+
+    if (!value) return;
+
+    setSkippedNames(value);
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("skipped");
+    const query = params.toString();
+    router.replace(`/shop/${catalog.shopToken}/cart${query ? `?${query}` : ""}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 단가/재고는 매번 서버 카탈로그 기준으로 재계산한다 (공급사 단가 변경 즉시 반영)
   const lines = useMemo(
@@ -81,7 +99,7 @@ export function CartView({ catalog }: CartViewProps) {
               marginBottom: "12px",
             }}
           >
-            {skippedNames}은(는) 품절 또는 판매 중지되어 이번 재주문에서 빠졌습니다.
+            {skippedNames}은(는) 품절 또는 판매 중지되어 이번 {editOrderId ? "수정" : "재주문"}에서 빠졌습니다.
           </div>
         )}
         {!isLoaded ? (
