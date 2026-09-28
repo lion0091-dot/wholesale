@@ -194,15 +194,13 @@ describe("같은 전표 중복 업로드 막기", () => {
     expect((await saveWith(supplier, "A-100")).success).toBe(true);
   });
 
-  it("전표번호가 비었거나 공백뿐이면 저장이 거부되고 무엇을 하라고 알려 준다", async () => {
+  it("전표번호는 선택이다 — 비었거나 공백뿐이어도 저장되고, 번호가 없으면 중복 검사도 건너뛴다", async () => {
     await actAs(world.users.ownerA);
 
     for (const empty of [null, "", "   "]) {
-      const result = await saveWith(`번호필수-${world.runId}`, empty);
+      const result = await saveWith(`번호선택-${world.runId}`, empty);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("전표번호를 입력해주세요");
-      expect(result.error).toContain("전표 번호");
+      expect(result.success).toBe(true);
     }
   });
 
