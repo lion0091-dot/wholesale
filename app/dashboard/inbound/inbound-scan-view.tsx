@@ -907,7 +907,7 @@ export function InboundScanView({
     }
 
     if (!supplierId) {
-      setError("지금 온 거래처를 먼저 골라 주세요. 어느 거래처 물건인지 알아야 발주서와 맞춰 볼 수 있습니다.");
+      setError("지금 온 거래처를 먼저 골라 주세요. 어느 거래처 물건인지 알아야 전표와 맞춰 볼 수 있습니다.");
       supplierSelectRef.current?.focus();
       return;
     }
@@ -1424,9 +1424,9 @@ export function InboundScanView({
           </label>
           {suppliers.length === 0 ? (
             <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#991b1b" }}>
-              등록된 거래처가 없습니다. 발주 관리의 “거래처 관리”에서 먼저 등록해야 입고할 수 있습니다.{" "}
+              등록된 거래처가 없습니다. 전표관리의 “거래처 관리”에서 먼저 등록해야 입고할 수 있습니다.{" "}
               <a href="/dashboard/purchase-orders" style={{ color: "#1d4ed8", fontWeight: 700 }}>
-                발주 관리로
+                전표관리로
               </a>
             </p>
           ) : (

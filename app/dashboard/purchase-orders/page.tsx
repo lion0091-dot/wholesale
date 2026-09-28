@@ -7,7 +7,7 @@ import type { ProductOption } from "@/lib/purchase-orders/product-match";
 import { PurchaseOrderView, type PurchaseOrderRow, type SupplierRow } from "./purchase-order-view";
 
 export const metadata = {
-  title: "발주 관리 | 도매업체 통합관리시스템",
+  title: "전표관리 | 도매업체 통합관리시스템",
 };
 
 const RECENT_LIMIT = 60;
@@ -82,10 +82,10 @@ export default async function PurchaseOrdersPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <header>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>발주 관리</h1>
+        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>전표관리</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>
           공급처에 발주한 품목과 수량(예: 소 등심 1++ 국내산 50kg)을 적어 둡니다. 공급처는 아래 거래처 목록에서 고르고,
-          품목은 축종부터 부위·등급·원산지까지 차례로 골라서 정합니다(이미 등록된 상품이면 자동으로 연결되고, 없으면 그 자리에서 새로 등록됩니다) — 엑셀 양식을 내려받아 채워 올려도 됩니다. 물건이 도착하면 입고 스캔에서 고른 거래처를 보고 이 발주서와 자동으로 맞춰집니다.
+          품목은 축종부터 부위·등급·원산지까지 차례로 골라서 정합니다(이미 등록된 상품이면 자동으로 연결되고, 없으면 그 자리에서 새로 등록됩니다) — 엑셀 양식을 내려받아 채워 올려도 됩니다. 물건이 도착하면 입고 스캔에서 고른 거래처를 보고 이 전표와 자동으로 맞춰집니다.
         </p>
       </header>
 

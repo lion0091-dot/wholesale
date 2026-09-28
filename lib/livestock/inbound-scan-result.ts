@@ -104,12 +104,12 @@ function buildRejectedCard(data: ScanResultInput, options: ScanResultOptions): R
 
   return {
     tone: "red",
-    title: po?.reason === "UNLISTED" ? "받지 않았습니다 — 이 거래처 발주서에 없는 물건입니다" : "받지 않았습니다 — 발주 수량을 넘었습니다",
+    title: po?.reason === "UNLISTED" ? "받지 않았습니다 — 이 거래처 전표에 없는 물건입니다" : "받지 않았습니다 — 발주 수량을 넘었습니다",
     detail:
-      `${name}${po ? rejectionSummary(po) : "발주서 기준으로 받지 않았습니다."} 재고에는 넣지 않았고 거절 기록만 남겼습니다. ` +
+      `${name}${po ? rejectionSummary(po) : "전표 기준으로 받지 않았습니다."} 재고에는 넣지 않았고 거절 기록만 남겼습니다. ` +
       "이 박스는 공급처와 상의해 돌려보내세요. 받기로 했다면 발주 관리에서 품목·수량을 먼저 늘린 뒤 다시 찍으세요.",
     extras: [],
-    action: { label: "발주 관리로", href: "/dashboard/purchase-orders" },
+    action: { label: "전표관리로", href: "/dashboard/purchase-orders" },
   };
 }
 
@@ -124,11 +124,11 @@ function addPurchaseOrderNotice(card: ResultCard, data: ScanResultInput): void {
       po.ordered !== null && po.received !== null
         ? `발주 ${formatKg(po.ordered)}kg 중 ${formatKg(po.received)}kg 받았습니다` +
           (po.remaining !== null && po.remaining > 0 ? ` (남음 ${formatKg(po.remaining)}kg).` : ".")
-        : "발주서에 붙었습니다.";
+        : "전표에 붙었습니다.";
 
     card.extras.push({
       tone: "green",
-      title: po.orderClosed ? "발주서를 다 받아 자동으로 마감했습니다" : "발주서에 붙었습니다",
+      title: po.orderClosed ? "전표를 다 받아 자동으로 마감했습니다" : "전표에 붙었습니다",
       detail: progress,
     });
   } else if (po.result === "OVER_HELD") {
@@ -137,7 +137,7 @@ function addPurchaseOrderNotice(card: ResultCard, data: ScanResultInput): void {
     const numbers =
       po.ordered !== null && po.received !== null
         ? ` 발주 ${formatKg(po.ordered)}kg 중 ${formatKg(po.received)}kg 받았고` +
-          (po.excess !== null && po.excess > 0 ? `, ${formatKg(po.excess)}kg는 발주서에 붙지 않았습니다.` : ".")
+          (po.excess !== null && po.excess > 0 ? `, ${formatKg(po.excess)}kg는 전표에 붙지 않았습니다.` : ".")
         : "";
 
     card.extras.push({
@@ -150,7 +150,7 @@ function addPurchaseOrderNotice(card: ResultCard, data: ScanResultInput): void {
 
     card.extras.push({
       tone: "yellow",
-      title: "발주서에 없는 물건입니다",
+      title: "전표에 없는 물건입니다",
       detail: "설정(입고 기준)에 따라 받아 두었습니다. 사무실이 확인해서 정리합니다.",
     });
   }
@@ -251,7 +251,7 @@ export function buildMissingInputCard(field: "trace" | "weight" | "supplier"): R
     return {
       tone: "red",
       title: "지금 온 거래처를 먼저 고르세요",
-      detail: "어느 거래처 물건인지 알아야 발주서와 맞춰 볼 수 있습니다. 위 '지금 온 거래처' 칸에서 고르면 다음 박스에도 그대로 남습니다.",
+      detail: "어느 거래처 물건인지 알아야 전표와 맞춰 볼 수 있습니다. 위 '지금 온 거래처' 칸에서 고르면 다음 박스에도 그대로 남습니다.",
       extras: [],
       action: null,
     };

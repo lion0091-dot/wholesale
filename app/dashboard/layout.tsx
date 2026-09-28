@@ -42,7 +42,7 @@ const NAV_GROUPS: DashboardNavItem[][] = [
     },
   ],
   [
-    { label: "발주 관리", href: "/dashboard/purchase-orders", icon: "📝", ready: true },
+    { label: "전표관리", href: "/dashboard/purchase-orders", icon: "📝", ready: true },
     { label: "고객 주문", href: "/dashboard/orders", icon: "🧾", ready: true },
   ],
   [

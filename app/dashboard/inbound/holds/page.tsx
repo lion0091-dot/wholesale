@@ -122,8 +122,8 @@ export default async function InboundHoldsPage() {
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>보류함</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>
-          발주서에 없거나 발주 수량보다 많이 온 물건입니다. 이미 재고에 들어가 팔 수 있습니다 — 발주서를 사후에
-          만들어 정리하려면 아래에서 &quot;발주서 추가 생성&quot;을 누르세요.
+          전표에 없거나 발주 수량보다 많이 온 물건입니다. 이미 재고에 들어가 팔 수 있습니다 — 전표를 사후에
+          만들어 정리하려면 아래에서 &quot;전표 추가 생성&quot;을 누르세요.
         </p>
       </header>
 

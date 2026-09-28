@@ -419,8 +419,8 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
     setOpen(false);
     setNotice(
       result.data && result.data.createdProducts > 0
-        ? `발주서를 저장했습니다. 등록된 품목이 아니던 ${result.data.createdProducts}개는 상품 관리에 판매중지·0원으로 새로 등록했습니다(가격을 넣고 판매중으로 바꾸면 고객에게 보입니다).`
-        : "발주서를 저장했습니다."
+        ? `전표를 저장했습니다. 등록된 품목이 아니던 ${result.data.createdProducts}개는 상품 관리에 판매중지·0원으로 새로 등록했습니다(가격을 넣고 판매중으로 바꾸면 고객에게 보입니다).`
+        : "전표를 저장했습니다."
     );
     router.refresh();
   };
@@ -457,7 +457,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
   };
 
   const handleStatus = async (order: PurchaseOrderRow, action: "close" | "cancel" | "reopen") => {
-    if (action === "cancel" && !window.confirm(`${order.supplier_name} 발주서를 취소하시겠습니까?`)) return;
+    if (action === "cancel" && !window.confirm(`${order.supplier_name} 전표를 취소하시겠습니까?`)) return;
 
     setBusy(true);
     setError(null);
@@ -491,7 +491,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
         <section style={{ border: "1px solid #e2e8f0", borderRadius: "12px", padding: "14px", backgroundColor: "#fff" }}>
           {!open ? (
             <button type="button" style={primaryButtonStyle} onClick={() => setOpen(true)}>
-              + 새 발주서 작성
+              + 새 전표 작성
             </button>
           ) : (
             <div style={{ display: "grid", gap: "12px" }}>
@@ -570,7 +570,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
 
               <div style={{ display: "flex", gap: "8px" }}>
                 <button type="button" style={primaryButtonStyle} disabled={busy} onClick={() => void handleSave()}>
-                  {busy ? "처리 중..." : "발주서 저장"}
+                  {busy ? "처리 중..." : "전표 저장"}
                 </button>
                 <button type="button" style={buttonStyle} disabled={busy} onClick={() => { setOpen(false); setError(null); }}>
                   닫기
@@ -580,7 +580,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
           )}
         </section>
       ) : (
-        <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>발주서 작성과 수정은 사장님·매니저만 할 수 있습니다. 직원은 조회만 됩니다.</p>
+        <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>전표 작성과 수정은 사장님·매니저만 할 수 있습니다. 직원은 조회만 됩니다.</p>
       )}
 
       <SupplierPanel suppliers={suppliers} canManage={canManage} setError={setError} newSupplierSignal={newSupplierSignal} onCreated={(id) => setSupplierId(id)} />
@@ -593,7 +593,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
           </label>
         )}
         {orders.length === 0 ? (
-          <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>아직 작성한 발주서가 없습니다.</p>
+          <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>아직 작성한 전표가 없습니다.</p>
         ) : (
           orders.map((order) => {
             const total = order.purchase_order_lines.reduce((sum, line) => sum + Number(line.quantity), 0);

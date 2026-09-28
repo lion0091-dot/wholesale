@@ -71,7 +71,7 @@ async function resolveScope() {
   }
 
   if (!wholesalerId) {
-    throw new RbacError("공급사 업체 정보가 없어 발주서를 관리할 수 없습니다.");
+    throw new RbacError("공급사 업체 정보가 없어 전표를 관리할 수 없습니다.");
   }
 
   return { supabase, wholesalerId };
@@ -128,7 +128,7 @@ export async function parsePurchaseOrderFileAction(
     }
 
     if (parsed.rows.length > PURCHASE_ORDER_MAX_LINES) {
-      throw new RbacError(`한 발주서에는 ${PURCHASE_ORDER_MAX_LINES}줄까지 넣을 수 있습니다.`);
+      throw new RbacError(`한 전표에는 ${PURCHASE_ORDER_MAX_LINES}줄까지 넣을 수 있습니다.`);
     }
 
     // 오류 없는 줄은 등록된 상품과 스펙으로 맞춰 본다 — 맞는 상품이 있으면 화면에서 고른 것과 똑같이 연결된다.
@@ -200,7 +200,7 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
     }
 
     if (input.lines.length > PURCHASE_ORDER_MAX_LINES) {
-      throw new RbacError(`한 발주서에는 ${PURCHASE_ORDER_MAX_LINES}줄까지 넣을 수 있습니다.`);
+      throw new RbacError(`한 전표에는 ${PURCHASE_ORDER_MAX_LINES}줄까지 넣을 수 있습니다.`);
     }
 
     const linkedIds = input.lines.map((line) => line.productId).filter((id): id is string => Boolean(id));
@@ -289,7 +289,7 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
       .single();
 
     if (orderError || !order) {
-      throw new Error(orderError?.message ?? "발주서 저장에 실패했습니다.");
+      throw new Error(orderError?.message ?? "전표 저장에 실패했습니다.");
     }
 
     const { error: linesError } = await supabase.from("purchase_order_lines").insert(
@@ -381,7 +381,7 @@ async function ensureProductForSpec(
       unit: "kg",
       stock_quantity: 0,
       is_active: false,
-      description: "발주서 작성 중 등록됨 — 판매가를 넣고 판매중으로 바꾸면 고객에게 보입니다.",
+      description: "전표 작성 중 등록됨 — 판매가를 넣고 판매중으로 바꾸면 고객에게 보입니다.",
     })
     .select("id, name, category, subcategory, grade, breed, origin")
     .single();
@@ -468,7 +468,7 @@ export async function setPurchaseOrderStatusAction(
     }
 
     if (!data) {
-      throw new RbacError("권한이 없거나 해당 발주서를 찾을 수 없습니다.");
+      throw new RbacError("권한이 없거나 해당 전표를 찾을 수 없습니다.");
     }
 
     revalidatePath(REVALIDATE_PATH);

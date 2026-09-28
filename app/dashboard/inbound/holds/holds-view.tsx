@@ -35,7 +35,7 @@ interface Props {
 }
 
 const HOLD_BADGE: Record<HoldItem["poState"], { label: string; bg: string; color: string }> = {
-  UNLISTED_HELD: { label: "발주서에 없음", bg: "#fef3c7", color: "#92400e" },
+  UNLISTED_HELD: { label: "전표에 없음", bg: "#fef3c7", color: "#92400e" },
   OVER_HELD: { label: "발주 수량 초과", bg: "#fef3c7", color: "#92400e" },
 };
 
@@ -91,7 +91,7 @@ export function HoldsView({ holds, rejections, canManage }: Props) {
     }
 
     setNotice(
-      `발주서와 전표를 만들었습니다 (${formatKg(result.data!.amount)}kg). 발주 관리에서 확인할 수 있습니다.`
+      `전표를 만들었습니다 (${formatKg(result.data!.amount)}kg). 전표관리에서 확인할 수 있습니다.`
     );
     router.refresh();
   };
@@ -133,14 +133,14 @@ export function HoldsView({ holds, rejections, canManage }: Props) {
                   </span>
                   <span style={{ color: "#334155" }}>
                     {item.poState === "OVER_HELD"
-                      ? `전체 ${formatKg(item.weight)}kg 중 발주서에 못 붙은 ${formatKg(item.unassignedWeight)}kg`
+                      ? `전체 ${formatKg(item.weight)}kg 중 전표에 못 붙은 ${formatKg(item.unassignedWeight)}kg`
                       : `${formatKg(item.weight)}kg`}
                   </span>
                   <span style={{ color: "#94a3b8", fontSize: "12px" }}>{formatDateTime(item.createdAt)}</span>
 
                   {canManage && item.productId && item.unassignedWeight > 0 && (
                     <button type="button" style={primaryButton} disabled={busyScanId === item.scanId} onClick={() => void handleCreate(item)}>
-                      {busyScanId === item.scanId ? "만드는 중…" : "발주서 추가 생성"}
+                      {busyScanId === item.scanId ? "만드는 중…" : "전표 추가 생성"}
                     </button>
                   )}
                 </div>
@@ -151,7 +151,7 @@ export function HoldsView({ holds, rejections, canManage }: Props) {
 
         {!canManage && holds.length > 0 && (
           <p style={{ margin: "10px 0 0", fontSize: "12px", color: "#64748b" }}>
-            발주서 추가 생성은 사장님·매니저만 할 수 있습니다.
+            전표 추가 생성은 사장님·매니저만 할 수 있습니다.
           </p>
         )}
       </section>
@@ -171,7 +171,7 @@ export function HoldsView({ holds, rejections, canManage }: Props) {
                 <span>{item.productName ?? "상품 미상"}</span>
                 <span>{item.supplierName ?? "거래처 미상"}</span>
                 <span>{formatKg(item.weight)}kg</span>
-                <span style={{ color: "#991b1b" }}>{item.reason === "OVER" ? "발주 수량 초과로 거절" : "발주서에 없어 거절"}</span>
+                <span style={{ color: "#991b1b" }}>{item.reason === "OVER" ? "발주 수량 초과로 거절" : "전표에 없어 거절"}</span>
                 <span style={{ marginLeft: "auto" }}>{formatDateTime(item.createdAt)}</span>
               </div>
             ))}

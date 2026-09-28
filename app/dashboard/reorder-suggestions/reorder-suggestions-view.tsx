@@ -74,7 +74,7 @@ export function ReorderSuggestionsView({ rows }: Props) {
                   href="/dashboard/purchase-orders"
                   style={{ marginLeft: "auto", fontSize: "12px", fontWeight: 700, color: "#1d4ed8", textDecoration: "none" }}
                 >
-                  발주서 작성하러 가기 →
+                  전표 작성하러 가기 →
                 </Link>
               </div>
             );

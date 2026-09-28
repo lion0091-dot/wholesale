@@ -46,7 +46,7 @@ export function ReceivingPolicyForm({ initial, canManage }: Props) {
     <div style={{ display: "grid", gap: "12px" }}>
       <section style={cardStyle}>
         <h2 style={titleStyle}>발주보다 더 온 물건</h2>
-        <p style={hintStyle}>같은 거래처에 낸 열린 발주서 합계보다 얼마까지 더 받아도 되는지 정합니다.</p>
+        <p style={hintStyle}>같은 거래처에 낸 열린 전표 합계보다 얼마까지 더 받아도 되는지 정합니다.</p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center" }}>
           <label style={optionStyle}>
             <input type="radio" name="mode" checked={mode === "PERCENT"} disabled={!canManage} onChange={() => setMode("PERCENT")} />
@@ -72,7 +72,7 @@ export function ReceivingPolicyForm({ initial, canManage }: Props) {
       </section>
 
       <section style={cardStyle}>
-        <h2 style={titleStyle}>발주서에 없는 물건이 왔을 때</h2>
+        <h2 style={titleStyle}>전표에 없는 물건이 왔을 때</h2>
         <label style={optionStyle}>
           <input type="radio" name="unlisted" checked={unlisted === "REJECT"} disabled={!canManage} onChange={() => setUnlisted("REJECT")} />
           받지 않습니다.

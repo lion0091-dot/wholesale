@@ -584,7 +584,7 @@ export async function deleteProductAction(productId: string): Promise<ActionResu
 
     if (openLine) {
       throw new RbacError(
-        "아직 다 받지 않은 발주서에 이 상품이 들어 있어 삭제할 수 없습니다. 발주서를 마감하거나 취소한 뒤 다시 시도해주세요 — 대신 '보관'으로 목록에서 감출 수 있습니다."
+        "아직 다 받지 않은 전표에 이 상품이 들어 있어 삭제할 수 없습니다. 전표를 마감하거나 취소한 뒤 다시 시도해주세요 — 대신 '보관'으로 목록에서 감출 수 있습니다."
       );
     }
 
@@ -611,7 +611,7 @@ export async function deleteProductAction(productId: string): Promise<ActionResu
       // 확인과 삭제 사이(왕복)에 다른 요청이 같은 상품으로 발주서 줄을 새로 만든 경우를 여기서 잡는다.
       if (error.message.includes("PRODUCT_HAS_OPEN_PURCHASE_ORDER_LINE")) {
         throw new RbacError(
-          "아직 다 받지 않은 발주서에 이 상품이 들어 있어 삭제할 수 없습니다. 발주서를 마감하거나 취소한 뒤 다시 시도해주세요 — 대신 '보관'으로 목록에서 감출 수 있습니다."
+          "아직 다 받지 않은 전표에 이 상품이 들어 있어 삭제할 수 없습니다. 전표를 마감하거나 취소한 뒤 다시 시도해주세요 — 대신 '보관'으로 목록에서 감출 수 있습니다."
         );
       }
 

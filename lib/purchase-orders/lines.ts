@@ -7,7 +7,7 @@
 
 import { CATTLE_BREEDS, CATTLE_GRADES, ORIGIN_OPTIONS, specListRuleFor } from "./spec-options";
 
-export const PURCHASE_ORDER_SHEET = "발주서";
+export const PURCHASE_ORDER_SHEET = "전표";
 export const PURCHASE_ORDER_HEADERS = ["축종", "품종", "부위", "등급", "원산지", "수량(kg)", "단가(원/kg)"] as const;
 export const PURCHASE_ORDER_MAX_LINES = 300;
 

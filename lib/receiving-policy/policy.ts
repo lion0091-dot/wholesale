@@ -77,7 +77,7 @@ export function validateReceivingPolicy(input: ReceivingPolicyInput): PolicyVali
   }
 
   if (input.unlistedItemPolicy !== "REJECT" && input.unlistedItemPolicy !== "HOLD") {
-    return { ok: false, error: "발주서에 없는 물건 처리 방식을 골라주세요." };
+    return { ok: false, error: "전표에 없는 물건 처리 방식을 골라주세요." };
   }
 
   return {

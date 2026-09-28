@@ -188,7 +188,7 @@ export function rejectionSummary(po: ScanPurchaseOrder): string {
     return `발주 수량을 넘어 받지 않았습니다${numbers}.`;
   }
 
-  return "이 거래처의 발주서에 없는 물건이라 받지 않았습니다.";
+  return "이 거래처의 전표에 없는 물건이라 받지 않았습니다.";
 }
 
 /** 한꺼번에 여러 박스가 거절됐을 때 — 하나씩 다 늘어놓지 않고 사유별 건수만 짧게. */

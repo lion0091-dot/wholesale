@@ -535,10 +535,10 @@ export async function recordSplitScansAction(input: {
         const failedRollback = await voidRecordedScans(recorded, "박스 나눠서 입고 중 발주서 기준 거절로 취소");
 
         throw new RbacError(
-          `${index + 1}번째 줄: ${data.po ? rejectionSummary(data.po) : "발주서 기준으로 받지 않았습니다."}` +
+          `${index + 1}번째 줄: ${data.po ? rejectionSummary(data.po) : "전표 기준으로 받지 않았습니다."}` +
             (recorded.length > 0 ? ` 앞서 넣은 ${recorded.length}건은 취소했습니다. 이 줄을 빼고 다시 입력하세요.` : "") +
             (failedRollback.length > 0
-              ? ` (취소 실패 ${failedRollback.length}건 — 재고·발주서 화면에서 직접 확인 후 취소해주세요)`
+              ? ` (취소 실패 ${failedRollback.length}건 — 재고·전표 화면에서 직접 확인 후 취소해주세요)`
               : "")
         );
       }
@@ -550,7 +550,7 @@ export async function recordSplitScansAction(input: {
           `${index + 1}번째 줄 처리 중 실패했습니다: ${result.error ?? "알 수 없는 오류"}` +
             (recorded.length > 0 ? ` 앞서 넣은 ${recorded.length}건은 취소했으니 처음부터 다시 입력하세요.` : "") +
             (failedRollback.length > 0
-              ? ` (취소 실패 ${failedRollback.length}건 — 재고·발주서 화면에서 직접 확인 후 취소해주세요)`
+              ? ` (취소 실패 ${failedRollback.length}건 — 재고·전표 화면에서 직접 확인 후 취소해주세요)`
               : "")
         );
       }
@@ -949,7 +949,7 @@ export async function createPurchaseOrderFromUnlistedScanAction(
     const { supabase, canManagePurchase } = await resolveInboundScope();
 
     if (!canManagePurchase) {
-      throw new RbacError("발주서 추가 생성은 사장님·매니저만 할 수 있습니다.");
+      throw new RbacError("전표 추가 생성은 사장님·매니저만 할 수 있습니다.");
     }
 
     const { data, error } = await supabase.rpc("create_purchase_order_from_unlisted_scan", {
@@ -967,7 +967,7 @@ export async function createPurchaseOrderFromUnlistedScanAction(
         throw new RbacError("해당 박스를 찾을 수 없습니다.");
       }
       if (error.message.includes("FORBIDDEN")) {
-        throw new RbacError("발주서 추가 생성은 사장님·매니저만 할 수 있습니다.");
+        throw new RbacError("전표 추가 생성은 사장님·매니저만 할 수 있습니다.");
       }
       throw new Error(error.message);
     }

@@ -18,7 +18,7 @@ export async function GET() {
   const { data } = await supabase.from("product_categories").select("name").order("sort_order", { ascending: true });
   const categories = ((data ?? []) as Array<{ name: string }>).map((row) => row.name);
   const file = await buildPurchaseOrderTemplate(categories, await fetchSubcategoriesByCategory(supabase));
-  const koreanName = encodeURIComponent("공급처발주서_입력양식.xlsx");
+  const koreanName = encodeURIComponent("공급처전표_입력양식.xlsx");
 
   return new NextResponse(new Uint8Array(file), {
     headers: {
