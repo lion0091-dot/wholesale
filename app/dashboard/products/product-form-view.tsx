@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Product } from "@/types/database";
 import { createProductAction, updateProductAction } from "./actions";
-import { ORIGIN_OPTIONS } from "@/lib/products/origin-options";
+import { ORIGIN_OPTIONS, isDomesticOrigin } from "@/lib/products/origin-options";
 import { MarketPriceWidget } from "@/components/market-price-widget";
 import { ProductStockBreakdownWidget } from "@/components/product-stock-breakdown";
 import { CATTLE_BREEDS, composeIdentityName, identityDescription, identityFieldsFor } from "@/lib/products/identity-key";
@@ -380,6 +380,7 @@ export function ProductFormView({
   const [unit, setUnit] = useState(product?.unit ?? UNITS[0]);
   const [gradeValue, setGradeValue] = useState(product?.grade ?? "");
   const [breedValue, setBreedValue] = useState(product?.breed ?? "");
+  const [selectedOrigin, setSelectedOrigin] = useState(product?.origin ?? "");
 
   // 소처럼 정체성 키가 정해진 축종은 상품명을 적지 않는다 — 부위+등급으로 자동 조합된다(lib/products/identity-key.ts).
   // 등록 후에는 값이 이미 있는 부위·등급·원산지가 잠긴다(비어 있던 칸만 한 번 채울 수 있다).
@@ -391,6 +392,13 @@ export function ProductFormView({
   const partLocked = isEdit && partIsKey && Boolean(product?.subcategory?.trim());
   const gradeLocked = isEdit && gradeIsKey && Boolean(product?.grade?.trim());
   const breedLocked = isEdit && breedIsKey && Boolean(product?.breed?.trim());
+  // 품종·등급은 국내산 소에만 있는 개념(수입육은 정부 이력 API에 그 값 자체가 없다 —
+  // 2026-09-28 실제 조회로 확인, 수입육은 품종 NULL/등급 NULL로 부위+원산지만으로 구분한다).
+  // DB 유니크 인덱스·자동상품명·자동생성 함수는 NULL을 이미 올바르게 다루므로(COALESCE(…, '')),
+  // 여기 폼 필수 표시만 원산지에 맞춰 바꾸면 된다.
+  const originIsDomestic = isDomesticOrigin(selectedOrigin);
+  const breedRequired = breedIsKey && !isEdit && originIsDomestic;
+  const gradeRequired = gradeIsKey && !isEdit && originIsDomestic;
   const composedName = composeIdentityName(selectedCategory, selectedSubcategory, gradeValue, breedValue);
   const willRename =
     !isEdit ||
@@ -574,7 +582,7 @@ export function ProductFormView({
           {breedIsKey && (
             <div>
               <label htmlFor="breed" style={labelStyle}>
-                품종 *
+                {breedRequired ? "품종 *" : "품종 (국내산만 해당)"}
               </label>
               {breedLocked ? (
                 <input id="breed" name="breed" type="text" readOnly value={breedValue} style={readOnlyFieldStyle} />
@@ -582,7 +590,8 @@ export function ProductFormView({
                 <select
                   id="breed"
                   name="breed"
-                  required={!isEdit}
+                  required={breedRequired}
+                  disabled={!isEdit && !originIsDomestic}
                   value={breedValue}
                   onChange={(event) => setBreedValue(event.target.value)}
                   style={fieldStyle}
@@ -598,6 +607,11 @@ export function ProductFormView({
               {breedLocked && (
                 <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
                   등록 후에는 품종을 바꿀 수 없어요. 품종이 다르면 새 상품으로 등록해주세요.
+                </p>
+              )}
+              {!isEdit && !originIsDomestic && (
+                <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+                  수입육은 품종 개념이 없어 비워둡니다.
                 </p>
               )}
             </div>
@@ -631,7 +645,14 @@ export function ProductFormView({
               원산지 *
             </label>
             {hasIdentityKey && !isEdit ? (
-              <select id="origin" name="origin" required defaultValue="" style={fieldStyle}>
+              <select
+                id="origin"
+                name="origin"
+                required
+                value={selectedOrigin}
+                onChange={(event) => setSelectedOrigin(event.target.value)}
+                style={fieldStyle}
+              >
                 <option value="">원산지 선택</option>
                 {ORIGIN_OPTIONS.map((name) => (
                   <option key={name} value={name}>
@@ -661,14 +682,15 @@ export function ProductFormView({
 
           <div>
             <label htmlFor="grade" style={labelStyle}>
-              {gradeIsKey ? "등급 *" : "등급"}
+              {gradeIsKey ? (gradeRequired ? "등급 *" : "등급 (국내산만 해당)") : "등급"}
             </label>
             <input
               id="grade"
               name="grade"
               type="text"
-              required={gradeIsKey && !isEdit}
+              required={gradeRequired}
               readOnly={gradeLocked}
+              disabled={gradeIsKey && !isEdit && !originIsDomestic}
               value={gradeValue}
               onChange={(event) => setGradeValue(event.target.value)}
               placeholder="예: 1++, 1등급, 프라임"
@@ -678,6 +700,11 @@ export function ProductFormView({
             {gradeLocked && (
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
                 등록 후에는 등급을 바꿀 수 없어요. 등급이 다르면 새 상품으로 등록해주세요.
+              </p>
+            )}
+            {gradeIsKey && !isEdit && !originIsDomestic && (
+              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+                수입육은 등급 개념이 없어 비워둡니다.
               </p>
             )}
           </div>

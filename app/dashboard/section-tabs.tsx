@@ -32,6 +32,7 @@ const STOCK_TABS = [
 const INBOUND_TABS = [
   { label: "입고 스캔", href: "/dashboard/inbound", exact: true },
   { label: "보류함", href: "/dashboard/inbound/holds", desktopOnly: true },
+  { label: "수입육 조회", href: "/dashboard/inbound/imported-lookup", desktopOnly: true },
 ] as const;
 
 export function DashboardTabs() {

@@ -6,6 +6,7 @@
  */
 
 import { CATTLE_BREEDS, CATTLE_GRADES, ORIGIN_OPTIONS, specListRuleFor } from "./spec-options";
+import { isDomesticOrigin } from "@/lib/products/origin-options";
 
 export const PURCHASE_ORDER_SHEET = "전표";
 export const PURCHASE_ORDER_HEADERS = ["축종", "품종", "부위", "등급", "원산지", "수량(kg)", "단가(원/kg)"] as const;
@@ -75,8 +76,8 @@ export function validatePurchaseOrderLine(
   }
 
   const isCattle = category === "소";
-
-  if (isCattle) {
+  // 품종은 국내산 소에만 있는 개념(수입육 이력 API에 그 값 자체가 없다, 2026-09-28 확인) — 수입 원산지는 비워도 된다.
+  if (isCattle && isDomesticOrigin(origin)) {
     if (!breed) {
       return {
         ok: false,

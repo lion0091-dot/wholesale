@@ -12,6 +12,13 @@ export const ORIGIN_OPTIONS: readonly string[] = [
 
 export const OTHER_IMPORT_ORIGIN = "기타 수입산";
 
+export const DOMESTIC_ORIGIN = "국내산";
+
+/** 소의 품종·등급은 국내산에만 있는 개념(수입육 이력 API에 그 값 자체가 없음, 2026-09-28 확인)이라 이 판별로 폼 필수 여부를 가른다. */
+export function isDomesticOrigin(origin: string | null | undefined): boolean {
+  return (origin ?? "").trim() === DOMESTIC_ORIGIN;
+}
+
 const IMPORT_COUNTRIES = ORIGIN_OPTIONS.filter((name) => name !== "국내산" && name !== OTHER_IMPORT_ORIGIN).map((name) => name.replace(/산$/, ""));
 
 /**
