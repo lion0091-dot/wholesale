@@ -24,7 +24,9 @@ export function CartView({ catalog }: CartViewProps) {
   );
   const negotiationEnabled = catalog.wholesaler.allow_price_negotiation;
   const minOrderAmount = Number(catalog.wholesaler.min_order_amount);
-  const editOrderId = useSearchParams().get("editOrder");
+  const searchParams = useSearchParams();
+  const editOrderId = searchParams.get("editOrder");
+  const skippedNames = searchParams.get("skipped");
   const checkoutHref = editOrderId
     ? `/shop/${catalog.shopToken}/checkout?editOrder=${editOrderId}`
     : `/shop/${catalog.shopToken}/checkout`;
@@ -64,6 +66,22 @@ export function CartView({ catalog }: CartViewProps) {
           >
             ✏️ 기존 발주서를 수정하는 중입니다. 저장하면 새 발주가 아니라 이 발주서의 품목이
             바뀝니다.
+          </div>
+        )}
+        {skippedNames && (
+          <div
+            style={{
+              backgroundColor: "#fffbeb",
+              border: "1px solid #fde68a",
+              color: "#92400e",
+              fontSize: "13px",
+              lineHeight: 1.6,
+              padding: "10px 12px",
+              borderRadius: "8px",
+              marginBottom: "12px",
+            }}
+          >
+            {skippedNames}은(는) 품절 또는 판매 중지되어 이번 재주문에서 빠졌습니다.
           </div>
         )}
         {!isLoaded ? (

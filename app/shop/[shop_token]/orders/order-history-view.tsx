@@ -183,12 +183,11 @@ export function OrderHistoryView({
       return;
     }
 
-    setCartNotice(
-      skippedNames.length > 0
-        ? `${skippedNames.join(", ")}은(는) 품절 또는 판매 중지되어 이번 재주문에서 빠졌습니다.`
-        : null
-    );
-    router.push(`/shop/${shopToken}/cart`);
+    // cartNotice는 이 화면의 로컬 상태라 router.push로 화면을 떠나면 뜨기도 전에 사라진다.
+    // 장바구니 화면이 읽을 수 있게 쿼리 파라미터로 넘긴다.
+    const skippedQuery =
+      skippedNames.length > 0 ? `?skipped=${encodeURIComponent(skippedNames.join(", "))}` : "";
+    router.push(`/shop/${shopToken}/cart${skippedQuery}`);
   };
 
   const handleEditOrder = (order: ShopOrder) => {
