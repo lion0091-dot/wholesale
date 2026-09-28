@@ -16,7 +16,7 @@ import {
   labelStyle,
   shopPageStyle,
 } from "../shop-chrome";
-import { submitOrderAction } from "../actions";
+import { editOrderAction, loadEditableOrderAction, submitOrderAction } from "../actions";
 import { initiatePgPaymentAction } from "./pg/actions";
 import { isRetailerNamePlaceholder } from "@/lib/shop/retailer-placeholder";
 import type { PaymentMethod } from "@/types/database";
@@ -42,6 +42,8 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
   const { customer, wholesaler, shopToken } = catalog;
   const { entries, isLoaded, clear } = useShopCart(shopToken);
   const searchParams = useSearchParams();
+  const editOrderId = searchParams.get("editOrder");
+  const isEditMode = Boolean(editOrderId);
 
   const [restaurantName, setRestaurantName] = useState(customer.restaurantName ?? "");
   const [contactPhone, setContactPhone] = useState(customer.contactPhone ?? "");
@@ -52,6 +54,10 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
+  /** 수정 모드일 때만 쓴다 — 원래 발주서의 배송정보/결제방식/발주번호를 서버에서 다시 확인해 채운다. */
+  const [editLoadError, setEditLoadError] = useState<string | null>(null);
+  const [isEditLoaded, setIsEditLoaded] = useState(false);
+  const [editOrderNumber, setEditOrderNumber] = useState<string | null>(null);
 
   useEffect(() => {
     const pgError = searchParams.get("pgError");
@@ -60,6 +66,34 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!editOrderId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    loadEditableOrderAction(shopToken, editOrderId).then((result) => {
+      if (cancelled) return;
+
+      if (!result.success || !result.data) {
+        setEditLoadError(result.error ?? "발주서를 불러오지 못했습니다.");
+        return;
+      }
+
+      setDeliveryAddress(result.data.deliveryAddress);
+      setDeliveryNotes(result.data.deliveryNotes ?? "");
+      setPaymentMethod(result.data.paymentMethod);
+      setEditOrderNumber(result.data.orderNumber);
+      setIsEditLoaded(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editOrderId, shopToken]);
 
   const lines = useMemo(
     () => (isLoaded ? toCartLines(catalog, entries) : []),
@@ -89,11 +123,18 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
   }, [customer.allowedPaymentMethods, customer.creditLimit, pgAvailable]);
 
   useEffect(() => {
+    // 수정 모드는 원래 발주서의 결제방식을 그대로 유지한다 — 지금 고객에게 열린
+    // 결제수단 목록이 그 사이 바뀌었어도 화면 표시를 되돌리지 않는다(실제 제출값은
+    // 항상 서버가 저장된 payment_method를 그대로 쓰므로 여기는 표시용일 뿐이다).
+    if (isEditMode) {
+      return;
+    }
+
     if (!usableMethods.includes(paymentMethod)) {
       setPaymentMethod(usableMethods[0]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usableMethods]);
+  }, [usableMethods, isEditMode]);
 
   const handlePgSubmit = async () => {
     const initiated = await initiatePgPaymentAction({
@@ -148,6 +189,33 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
     setIsSubmitting(true);
 
     try {
+      if (isEditMode && editOrderId) {
+        const result = await editOrderAction({
+          shopToken,
+          orderId: editOrderId,
+          items: lines.map((line) => ({
+            productId: line.productId,
+            quantity: line.quantity,
+            requestedUnitPrice: line.requestedUnitPrice,
+          })),
+          deliveryAddress,
+          deliveryNotes,
+        });
+
+        if (result.success) {
+          setReceipt({
+            orderNumber: editOrderNumber ?? "",
+            totalAmount: result.totalAmount ?? totals.totalAmount,
+            itemsSummary: result.itemsSummary ?? "",
+            notificationId: result.notificationId,
+          });
+          clear();
+        } else {
+          setErrorMessage(result.error ?? "발주 수정에 실패했습니다.");
+        }
+        return;
+      }
+
       if (paymentMethod === "pg") {
         await handlePgSubmit();
         return;
@@ -182,7 +250,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
     } catch {
       setErrorMessage("발주서 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
-      if (paymentMethod !== "pg") {
+      if (paymentMethod !== "pg" || isEditMode) {
         setIsSubmitting(false);
       }
     }
@@ -198,12 +266,24 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
           <div style={{ ...cardStyle, padding: "28px 20px", textAlign: "center" }}>
             <div style={{ fontSize: "40px", marginBottom: "12px" }}>🎉</div>
             <h2 style={{ fontSize: "18px", fontWeight: 800, color: "#0f172a", marginBottom: "8px" }}>
-              발주서가 접수되었습니다!
+              {isEditMode ? "발주 내용이 수정되었습니다!" : "발주서가 접수되었습니다!"}
             </h2>
             <p style={{ fontSize: "13px", color: "#334155", lineHeight: 1.6, marginBottom: "18px" }}>
-              {wholesaler.business_name} 대표님께 카카오 알림톡이 발송되었습니다.
-              <br />
-              출고 확정 시 다시 안내드립니다.
+              {isEditMode ? (
+                "수정된 내용으로 발주서가 갱신되었습니다."
+              ) : (
+                <>
+                  {wholesaler.business_name} 대표님께 카카오 알림톡이 발송되었습니다.
+                  <br />
+                  출고 확정 시 다시 안내드립니다.
+                  {paymentMethod !== "pg" && (
+                    <>
+                      <br />
+                      공급사가 확인하기 전(접수대기 상태)까지는 발주 내역을 &ldquo;내 발주 내역&rdquo;에서 직접 수정할 수 있어요.
+                    </>
+                  )}
+                </>
+              )}
             </p>
 
             <div
@@ -236,7 +316,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
             </div>
 
             <Link
-              href={`/shop/${shopToken}`}
+              href={isEditMode ? `/shop/${shopToken}/orders` : `/shop/${shopToken}`}
               style={{
                 display: "block",
                 marginTop: "20px",
@@ -249,7 +329,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 textDecoration: "none",
               }}
             >
-              미니샵으로 돌아가기
+              {isEditMode ? "발주 내역으로 돌아가기" : "미니샵으로 돌아가기"}
             </Link>
           </div>
         </div>
@@ -311,9 +391,27 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
       <ShopHeader
         wholesaler={wholesaler}
         customer={customer}
-        title="발주서 작성"
+        title={isEditMode ? "발주 수정" : "발주서 작성"}
         backHref={`/shop/${shopToken}/cart`}
       />
+
+      {isEditMode && editLoadError && (
+        <div style={{ padding: "0 16px" }}>
+          <div
+            style={{
+              backgroundColor: "#fef2f2",
+              border: "1px solid #fecaca",
+              color: "#b91c1c",
+              fontSize: "13px",
+              lineHeight: 1.6,
+              padding: "12px",
+              borderRadius: "8px",
+            }}
+          >
+            {editLoadError}
+          </div>
+        </div>
+      )}
 
       <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
         {/* 발주 품목 확인 */}
@@ -416,7 +514,8 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
             <input
               id="restaurant-name"
               type="text"
-              required
+              required={!isEditMode}
+              disabled={isEditMode}
               value={restaurantName}
               onChange={(event) => setRestaurantName(event.target.value)}
               placeholder="예: 을지로 미트하우스"
@@ -431,13 +530,24 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
             <input
               id="contact-phone"
               type="tel"
-              required
+              required={!isEditMode}
+              disabled={isEditMode}
               value={contactPhone}
               onChange={(event) => setContactPhone(event.target.value)}
               placeholder="010-0000-0000"
               style={inputStyle}
             />
           </div>
+
+          {isEditMode && (
+            <p style={{ fontSize: "12px", color: "#475569", marginTop: "-8px" }}>
+              상호명·연락처는 발주 수정에서는 바꿀 수 없습니다.{" "}
+              <Link href="/my-shops" style={{ fontWeight: 700, color: "#475569" }}>
+                내 정보 수정
+              </Link>
+              에서 바꿀 수 있어요.
+            </p>
+          )}
 
           <div>
             <label style={labelStyle} htmlFor="delivery-address">
@@ -473,7 +583,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
             />
           </div>
 
-          {wholesaler.allow_price_negotiation && (
+          {!isEditMode && wholesaler.allow_price_negotiation && (
             <div>
               <label style={labelStyle} htmlFor="negotiation-note">
                 가격 관련 요청 (선택)
@@ -489,7 +599,15 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
             </div>
           )}
 
-          {usableMethods.length > 1 && (
+          {isEditMode ? (
+            <div>
+              <label style={labelStyle}>결제 방식</label>
+              <p style={{ fontSize: "13px", color: "#334155", padding: "10px", backgroundColor: "#f8fafc", borderRadius: "8px" }}>
+                {PAYMENT_METHOD_LABELS[paymentMethod]} — 발주 수정에서는 결제 방식을 바꿀 수 없습니다.
+              </p>
+            </div>
+          ) : (
+            usableMethods.length > 1 && (
             <div>
               <label style={labelStyle}>결제 방식</label>
               <div style={{ display: "flex", gap: "8px" }}>
@@ -536,9 +654,10 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 </p>
               )}
             </div>
+            )
           )}
 
-          {pgAvailable && (
+          {!isEditMode && pgAvailable && (
             <Script src="https://js.tosspayments.com/v1/payment" strategy="afterInteractive" />
           )}
 
@@ -553,8 +672,14 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               lineHeight: 1.6,
             }}
           >
-            ℹ️ 발주서 전송 즉시 <strong>{wholesaler.business_name}</strong> 대표님께 카카오 알림톡이 발송됩니다.
-            최종 단가는 공급사 확인 시점의 계약 단가로 확정됩니다.
+            {isEditMode ? (
+              <>ℹ️ 저장하면 새 발주가 아니라 기존 발주서({editOrderNumber ?? "..."})의 품목이 바뀝니다. 최종 단가는 저장 시점의 계약 단가로 다시 계산됩니다.</>
+            ) : (
+              <>
+                ℹ️ 발주서 전송 즉시 <strong>{wholesaler.business_name}</strong> 대표님께 카카오 알림톡이 발송됩니다.
+                최종 단가는 공급사 확인 시점의 계약 단가로 확정됩니다.
+              </>
+            )}
           </div>
 
           {errorMessage && (
@@ -574,26 +699,36 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
 
           <button
             type="submit"
-            disabled={isSubmitting || !validation.ok}
+            disabled={isSubmitting || !validation.ok || Boolean(isEditMode && (!isEditLoaded || editLoadError))}
             style={{
-              backgroundColor: isSubmitting || !validation.ok ? "#cbd5e1" : "#0f172a",
+              backgroundColor:
+                isSubmitting || !validation.ok || Boolean(isEditMode && (!isEditLoaded || editLoadError))
+                  ? "#cbd5e1"
+                  : "#0f172a",
               color: "#ffffff",
               padding: "14px",
               borderRadius: "8px",
               fontSize: "15px",
               fontWeight: 700,
               border: "none",
-              cursor: isSubmitting || !validation.ok ? "not-allowed" : "pointer",
+              cursor:
+                isSubmitting || !validation.ok || Boolean(isEditMode && (!isEditLoaded || editLoadError))
+                  ? "not-allowed"
+                  : "pointer",
               marginTop: "4px",
             }}
           >
             {isSubmitting
-              ? paymentMethod === "pg"
-                ? "결제창으로 이동 중..."
-                : "발주서 접수 및 알림톡 발송 중..."
-              : paymentMethod === "pg"
-                ? "결제하고 발주서 전송"
-                : "도매처로 발주서 최종 전송"}
+              ? isEditMode
+                ? "발주 수정 저장 중..."
+                : paymentMethod === "pg"
+                  ? "결제창으로 이동 중..."
+                  : "발주서 접수 및 알림톡 발송 중..."
+              : isEditMode
+                ? "수정 내용 저장"
+                : paymentMethod === "pg"
+                  ? "결제하고 발주서 전송"
+                  : "도매처로 발주서 최종 전송"}
           </button>
         </form>
       </div>

@@ -108,6 +108,16 @@ export function canRequestCancel(status: OrderStatus): boolean {
   return RETAILER_CANCELABLE_STATUSES.includes(status);
 }
 
+/**
+ * 바이어가 발주 품목·배송정보를 직접 다시 담아 수정할 수 있는 상태.
+ * 접수대기(공급사가 아직 확인 전)뿐이다 — 확정 이후엔 이미 준비가 시작됐을 수 있어
+ * 취소 요청처럼 공급사 승인을 거쳐야 한다. PG 결제는 이미 대금이 결제됐으므로
+ * 상태와 무관하게 별도로 막는다(호출부가 payment_method도 함께 확인해야 한다).
+ */
+export function canEditOrderItems(status: OrderStatus): boolean {
+  return status === "pending";
+}
+
 export interface StatusActionConfig {
   status: OrderStatus;
   label: string;

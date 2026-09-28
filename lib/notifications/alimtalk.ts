@@ -65,6 +65,16 @@ export interface OrderNotificationPayload {
   deliveryNotes?: string | null;
 }
 
+export interface OrderEditedNotificationPayload {
+  wholesalerId: string;
+  wholesalerName: string;
+  wholesalerPhone?: string;
+  restaurantName: string;
+  orderNumber: string;
+  itemsSummary: string;
+  totalAmount: number;
+}
+
 export interface CancelRequestNotificationPayload {
   wholesalerId: string;
   wholesalerName: string;
@@ -355,6 +365,35 @@ ${payload.deliveryNotes ? `■ 배송 요청사항: ${payload.deliveryNotes}
     wholesalerId: payload.wholesalerId,
     templateKey: "orderNew",
     templateTitle: "신규 발주 접수 알림",
+    formattedMessage,
+    targetPhone: payload.wholesalerPhone,
+  });
+}
+
+/**
+ * 도매업자 대상 '발주 내용 수정' 알림톡.
+ *
+ * 접수대기 상태의 발주서를 바이어가 직접 다시 담아 교체했을 때(발주 수정, editOrderAction)
+ * 트리거된다. 확정 이후엔 수정 자체가 불가능하므로 이 알림은 항상 "아직 확인 전" 발주서에만 간다.
+ */
+export async function sendOrderEditedNotificationToWholesaler(
+  payload: OrderEditedNotificationPayload
+): Promise<NotificationResult> {
+  const formattedMessage = `[발주 내용 수정 알림]
+
+${payload.wholesalerName} 대표님, 고객(소매)가 접수대기 중인 발주서의 내용을 직접 수정했습니다.
+
+■ 발주 번호: ${payload.orderNumber}
+■ 발주처(소매): ${payload.restaurantName}
+■ 수정된 발주 내역: ${payload.itemsSummary}
+■ 수정 후 총 발주 금액: ${payload.totalAmount.toLocaleString()}원
+
+아직 확인 전인 발주서라면 대시보드에서 최신 내용을 다시 확인한 뒤 처리해 주시기 바랍니다.`;
+
+  return dispatchAlimtalk({
+    wholesalerId: payload.wholesalerId,
+    templateKey: "orderEdited",
+    templateTitle: "발주 내용 수정 알림",
     formattedMessage,
     targetPhone: payload.wholesalerPhone,
   });

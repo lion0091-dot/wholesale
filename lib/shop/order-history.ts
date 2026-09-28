@@ -41,6 +41,7 @@ type OrderRow = {
   total_amount: number | string;
   delivery_address: string | null;
   delivery_notes: string | null;
+  payment_method: string;
   ordered_at: string;
   cancel_reason: string | null;
   cancel_requested_at: string | null;
@@ -52,11 +53,13 @@ type OrderRow = {
 type OrderItemRow = {
   id: string;
   order_id: string;
+  product_id: string;
   product_name: string;
   category: string | null;
   unit_price: number | string;
   quantity: number | string;
   subtotal_amount: number | string;
+  requested_unit_price: number | string | null;
 };
 
 export interface LoadShopOrderHistoryOptions {
@@ -98,7 +101,7 @@ export async function fetchShopOrderPage(
   let query = supabase
     .from("orders")
     .select(
-      "id, order_number, status, total_amount, delivery_address, delivery_notes, ordered_at, cancel_reason, cancel_requested_at, cancel_resolved_at, courier_code, tracking_number",
+      "id, order_number, status, total_amount, delivery_address, delivery_notes, payment_method, ordered_at, cancel_reason, cancel_requested_at, cancel_resolved_at, courier_code, tracking_number",
       { count: "exact" }
     )
     .eq("wholesaler_id", wholesalerId)
@@ -132,7 +135,7 @@ export async function fetchShopOrderPage(
 
   const { data: itemRows } = await supabase
     .from("order_items")
-    .select("id, order_id, product_name, category, unit_price, quantity, subtotal_amount")
+    .select("id, order_id, product_id, product_name, category, unit_price, quantity, subtotal_amount, requested_unit_price")
     .in(
       "order_id",
       rows.map((row) => row.id)
@@ -145,11 +148,13 @@ export async function fetchShopOrderPage(
 
     lines.push({
       id: item.id,
+      productId: item.product_id,
       category: item.category,
       productName: item.product_name,
       unitPrice: Number(item.unit_price),
       quantity: Number(item.quantity),
       subtotalAmount: Number(item.subtotal_amount),
+      requestedUnitPrice: item.requested_unit_price === null ? null : Number(item.requested_unit_price),
     });
 
     linesByOrder.set(item.order_id, lines);
@@ -162,6 +167,7 @@ export async function fetchShopOrderPage(
     totalAmount: Number(row.total_amount),
     deliveryAddress: row.delivery_address ?? "",
     deliveryNotes: row.delivery_notes,
+    paymentMethod: row.payment_method as ShopOrder["paymentMethod"],
     orderedAt: row.ordered_at,
     cancelReason: row.cancel_reason,
     cancelRequestedAt: row.cancel_requested_at,

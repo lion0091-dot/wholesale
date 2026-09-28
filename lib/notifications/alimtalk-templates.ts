@@ -10,6 +10,7 @@
 
 export type AlimtalkTemplateKey =
   | "orderNew"
+  | "orderEdited"
   | "cancelRequest"
   | "creditExceeded"
   | "receivablesReminder"
@@ -45,6 +46,19 @@ export const ALIMTALK_TEMPLATE_REFERENCE_TEXT: Record<
 ■ 배송 요청사항: #{배송요청사항}
 
 공급사(도매) 관리 대시보드에서 발주 상세 내역을 확인하시고 출고 준비를 진행해 주시기 바랍니다.`,
+  },
+  orderEdited: {
+    title: "발주 내용 수정 알림",
+    text: `[발주 내용 수정 알림]
+
+#{공급사명} 대표님, 고객(소매)가 접수대기 중인 발주서의 내용을 직접 수정했습니다.
+
+■ 발주 번호: #{발주번호}
+■ 발주처(소매): #{바이어상호}
+■ 수정된 발주 내역: #{발주내역}
+■ 수정 후 총 발주 금액: #{총금액}원
+
+아직 확인 전인 발주서라면 대시보드에서 최신 내용을 다시 확인한 뒤 처리해 주시기 바랍니다.`,
   },
   cancelRequest: {
     title: "주문 취소 요청 접수 알림",

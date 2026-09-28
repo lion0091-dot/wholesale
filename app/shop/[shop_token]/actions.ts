@@ -7,15 +7,17 @@ import {
   sendCancelRequestNotificationToWholesaler,
   sendCreditLimitExceededNotificationToRetailer,
   sendCreditLimitExceededNotificationToWholesaler,
+  sendOrderEditedNotificationToWholesaler,
   sendOrderNotificationToWholesaler,
 } from "@/lib/notifications/alimtalk";
-import { canRequestCancel } from "@/lib/orders/status";
+import { canEditOrderItems, canRequestCancel } from "@/lib/orders/status";
 import { isShopNotFoundError, loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
 import { fetchShopOrderPage } from "@/lib/shop/order-history";
 import { validateCancelReason, type ShopOrder } from "@/lib/shop/order-history-types";
 import { validateCart } from "@/lib/shop/order-policy";
 import { isRetailerNamePlaceholder } from "@/lib/shop/retailer-placeholder";
 import { createOrderWithItems, buildOrderNumber, discardUnfulfilledOrder } from "@/lib/orders/create-order";
+import { replacePendingOrderItems } from "@/lib/orders/edit-order";
 import { reconcileStalePgPaymentsForRetailer } from "@/lib/payments/pg-reconcile";
 import { fetchTrackingStatus, type TrackingResult } from "@/lib/verification/sweettracker";
 import { composeProductDisplayName } from "@/lib/products/display-name";
@@ -642,6 +644,225 @@ export async function loadShopOrderHistoryPageAction(
     return {
       success: false,
       error: error instanceof Error ? error.message : "주문 내역 조회 중 오류가 발생했습니다.",
+    };
+  }
+}
+
+// ====================================================================
+// 발주 수정 (접수대기 상태에 한해 바이어 본인이 품목을 다시 담아 교체) — 바이어
+// ====================================================================
+
+export interface LoadEditableOrderResult {
+  success: boolean;
+  error?: string;
+  data?: {
+    orderNumber: string;
+    deliveryAddress: string;
+    deliveryNotes: string | null;
+    paymentMethod: PaymentMethod;
+    items: CartEntryInput[];
+  };
+}
+
+/** 수정 화면(체크아웃) 진입 시 배송정보·결제방식·품목을 서버에서 다시 확인해 내려준다. */
+export async function loadEditableOrderAction(
+  shopToken: string,
+  orderId: string
+): Promise<LoadEditableOrderResult> {
+  try {
+    if (!UUID_PATTERN.test(shopToken ?? "") || !UUID_PATTERN.test(orderId ?? "")) {
+      return { success: false, error: "올바른 요청이 아닙니다." };
+    }
+
+    const supabase = await createClient();
+    const buyer = await requireLinkedBuyer(supabase, shopToken);
+
+    const { data: order } = await supabase
+      .from("orders")
+      .select("order_number, status, payment_method, delivery_address, delivery_notes")
+      .eq("id", orderId)
+      .eq("wholesaler_id", buyer.wholesalerId)
+      .eq("retailer_id", buyer.retailerId)
+      .maybeSingle();
+
+    if (!order) {
+      return { success: false, error: "해당 발주서를 찾을 수 없습니다." };
+    }
+
+    if (!canEditOrderItems(order.status as OrderStatus) || order.payment_method === "pg") {
+      return {
+        success: false,
+        error: "이미 공급사가 확인했거나 카드(PG) 결제 발주서라 직접 수정할 수 없습니다.",
+      };
+    }
+
+    const { data: itemRows } = await supabase
+      .from("order_items")
+      .select("product_id, quantity, requested_unit_price")
+      .eq("order_id", orderId);
+
+    return {
+      success: true,
+      data: {
+        orderNumber: order.order_number as string,
+        deliveryAddress: (order.delivery_address as string | null) ?? "",
+        deliveryNotes: (order.delivery_notes as string | null) ?? null,
+        paymentMethod: order.payment_method as PaymentMethod,
+        items: (itemRows ?? []).map((row) => ({
+          productId: row.product_id as string,
+          quantity: Number(row.quantity),
+          requestedUnitPrice:
+            row.requested_unit_price === null ? null : Number(row.requested_unit_price),
+        })),
+      },
+    };
+  } catch (error: unknown) {
+    if (error instanceof BuyerAuthError) {
+      return { success: false, error: error.message };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "발주서 조회 중 오류가 발생했습니다.",
+    };
+  }
+}
+
+export interface EditOrderInput {
+  shopToken: string;
+  orderId: string;
+  items: CartEntryInput[];
+  deliveryAddress: string;
+  deliveryNotes?: string;
+}
+
+export interface EditOrderResult {
+  success: boolean;
+  error?: string;
+  totalAmount?: number;
+  itemsSummary?: string;
+  requiresAuth?: boolean;
+  notificationId?: string;
+}
+
+/**
+ * 발주 품목 수정 최종 제출 — 접수대기·PG 아닌 발주서만.
+ *
+ * submitOrderAction과 동일하게 서버 카탈로그로 단가를 재해석하고 최소 주문 금액/재고를
+ * 검증한 뒤, 실제 교체는 단일 트랜잭션 RPC(replace_pending_order_items)에 맡긴다.
+ * 상호명/연락처/결제방식은 이 경로로 바꾸지 않는다 — 결제방식은 원래 값을 그대로 쓴다.
+ */
+export async function editOrderAction(input: EditOrderInput): Promise<EditOrderResult> {
+  try {
+    const deliveryAddress = input.deliveryAddress?.trim() ?? "";
+    const deliveryNotes = input.deliveryNotes?.trim() || null;
+
+    if (!deliveryAddress) {
+      return { success: false, error: "배송지 주소는 필수 입력 사항입니다." };
+    }
+
+    if (!UUID_PATTERN.test(input.shopToken ?? "") || !UUID_PATTERN.test(input.orderId ?? "")) {
+      return { success: false, error: "올바른 요청이 아닙니다." };
+    }
+
+    const supabase = await createClient();
+    const buyer = await requireLinkedBuyer(supabase, input.shopToken);
+
+    const { data: order } = await supabase
+      .from("orders")
+      .select("order_number, status, payment_method")
+      .eq("id", input.orderId)
+      .eq("wholesaler_id", buyer.wholesalerId)
+      .eq("retailer_id", buyer.retailerId)
+      .maybeSingle();
+
+    if (!order) {
+      return { success: false, error: "해당 발주서를 찾을 수 없습니다." };
+    }
+
+    if (!canEditOrderItems(order.status as OrderStatus) || order.payment_method === "pg") {
+      return {
+        success: false,
+        error: "이미 공급사가 확인했거나 카드(PG) 결제 발주서라 직접 수정할 수 없습니다.",
+      };
+    }
+
+    const catalog = await loadShopCatalog(input.shopToken);
+    const lines = toCartLines(catalog, input.items ?? []);
+    const validation = validateCart(lines, Number(catalog.wholesaler.min_order_amount));
+
+    if (!validation.ok) {
+      return { success: false, error: validation.violations[0].message };
+    }
+
+    const result = await replacePendingOrderItems(supabase, {
+      orderId: input.orderId,
+      lines,
+      totalAmount: validation.totals.totalAmount,
+      deliveryAddress,
+      deliveryNotes,
+    });
+
+    if (!result.ok) {
+      return { success: false, error: result.error };
+    }
+
+    const [firstLine] = lines;
+    const firstLineDisplayName = composeProductDisplayName(firstLine.category, firstLine.name);
+    const itemsSummary =
+      lines.length > 1
+        ? `${firstLineDisplayName} ${firstLine.quantity}${firstLine.unit} 외 ${lines.length - 1}건`
+        : `${firstLineDisplayName} ${firstLine.quantity}${firstLine.unit}`;
+
+    // 공급사가 대시보드를 안 열어봐도 알 수 있도록 수정 사실을 알림톡으로 알린다 —
+    // 확정 전 발주서만 수정 가능하므로 항상 "아직 확인 전" 상태에 대한 안내다.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("phone")
+      .eq("id", buyer.wholesalerProfileId)
+      .maybeSingle();
+
+    const notification = await sendOrderEditedNotificationToWholesaler({
+      wholesalerId: buyer.wholesalerId,
+      wholesalerName: buyer.wholesalerName,
+      wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,
+      restaurantName: buyer.restaurantName,
+      orderNumber: order.order_number as string,
+      itemsSummary,
+      totalAmount: validation.totals.totalAmount,
+    });
+
+    revalidatePath("/dashboard/orders");
+    revalidatePath(`/shop/${input.shopToken}`);
+    revalidatePath(`/shop/${input.shopToken}/orders`);
+
+    return {
+      success: true,
+      totalAmount: validation.totals.totalAmount,
+      itemsSummary,
+      notificationId: notification.messageId,
+    };
+  } catch (error: unknown) {
+    if (isShopNotFoundError(error)) {
+      return {
+        success: false,
+        error: "이 미니샵 링크가 더 이상 유효하지 않습니다. 공급사에 문의해주세요.",
+      };
+    }
+
+    if (error instanceof BuyerAuthError) {
+      return {
+        success: false,
+        error: error.message,
+        requiresAuth: error.code === "auth_required",
+      };
+    }
+
+    console.error("[Shop Order Edit ERROR]", error);
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "발주 수정 중 알 수 없는 오류가 발생했습니다.",
     };
   }
 }

@@ -13,6 +13,7 @@ vi.mock("@/lib/notifications/alimtalk", async (importOriginal) => {
   return {
     ...original,
     sendOrderNotificationToWholesaler: sent(),
+    sendOrderEditedNotificationToWholesaler: sent(),
     sendCancelRequestNotificationToWholesaler: sent(),
     sendCreditLimitExceededNotificationToWholesaler: sent(),
     sendCreditLimitExceededNotificationToRetailer: sent(),
@@ -23,16 +24,22 @@ import {
   sendCancelRequestNotificationToWholesaler,
   sendCreditLimitExceededNotificationToRetailer,
   sendCreditLimitExceededNotificationToWholesaler,
+  sendOrderEditedNotificationToWholesaler,
   sendOrderNotificationToWholesaler,
 } from "@/lib/notifications/alimtalk";
 import {
+  editOrderAction,
+  loadEditableOrderAction,
   loadShopOrderHistoryPageAction,
   requestOrderCancelAction,
   submitOrderAction,
+  type EditOrderInput,
   type SubmitOrderInput,
 } from "@/app/shop/[shop_token]/actions";
+import type { CartLine } from "@/lib/shop/order-policy";
 
 const orderNotify = vi.mocked(sendOrderNotificationToWholesaler);
+const orderEditedNotify = vi.mocked(sendOrderEditedNotificationToWholesaler);
 const cancelNotify = vi.mocked(sendCancelRequestNotificationToWholesaler);
 const creditNotifyWholesaler = vi.mocked(sendCreditLimitExceededNotificationToWholesaler);
 const creditNotifyRetailer = vi.mocked(sendCreditLimitExceededNotificationToRetailer);
@@ -61,6 +68,24 @@ async function ordersOf(retailerId: string) {
     .order("ordered_at", { ascending: true });
 
   return data ?? [];
+}
+
+async function orderRow(orderId: string) {
+  const { data } = await adminClient()
+    .from("orders")
+    .select("total_amount, status, payment_method, delivery_address, delivery_notes")
+    .eq("id", orderId)
+    .single();
+
+  return data;
+}
+
+function edit(overrides: Partial<EditOrderInput> & { orderId: string; items: EditOrderInput["items"] }) {
+  return editOrderAction({
+    shopToken: world.shopTokenA,
+    deliveryAddress: "서울시 테스트구 1번지",
+    ...overrides,
+  });
 }
 
 async function itemsOf(orderId: string) {
@@ -552,6 +577,213 @@ describe("requestOrderCancelAction", () => {
     expect(result).toEqual({ success: false, error: "해당 발주서를 찾을 수 없습니다." });
     expect((await ordersOf(other.retailerId))[0].status).toBe("pending");
     expect(cancelNotify).not.toHaveBeenCalled();
+  });
+});
+
+describe("loadEditableOrderAction", () => {
+  it("접수대기·PG 아닌 본인 발주서의 배송정보·결제방식·품목을 돌려준다", async () => {
+    const product = await newProduct();
+    const orderId = await world.createOrder({ product, quantity: 4, unitPrice: 15000 });
+
+    const result = await loadEditableOrderAction(world.shopTokenA, orderId);
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({ paymentMethod: "prepaid" });
+    expect(result.data!.items).toEqual([{ productId: product.id, quantity: 4, requestedUnitPrice: null }]);
+  });
+
+  it("확정·PG·다른 고객의 발주서는 거절한다", async () => {
+    const product = await newProduct();
+    const confirmed = await world.createOrder({ product, status: "confirmed" });
+    const pg = await world.createOrder({ product, paymentMethod: "pg" });
+    const other = await world.createRetailer();
+    const theirs = await world.createOrder({ product });
+
+    await adminClient().from("orders").update({ retailer_id: other.retailerId }).eq("id", theirs);
+
+    expect((await loadEditableOrderAction(world.shopTokenA, confirmed)).success).toBe(false);
+    expect((await loadEditableOrderAction(world.shopTokenA, pg)).success).toBe(false);
+    expect((await loadEditableOrderAction(world.shopTokenA, theirs)).error).toContain("찾을 수 없습니다");
+  });
+});
+
+describe("editOrderAction — 정상 수정", () => {
+  it("접수대기 발주서의 수량·배송지를 바꾸면 같은 발주서(주문번호 유지)가 갱신된다", async () => {
+    const product = await newProduct({ stock_quantity: 20 });
+    const orderId = await world.createOrder({ product, quantity: 4, unitPrice: 15000 });
+
+    const result = await edit({
+      orderId,
+      items: [{ productId: product.id, quantity: 6 }],
+      deliveryAddress: "새 배송지 123",
+      deliveryNotes: "문 앞",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.totalAmount).toBe(90000);
+
+    const row = await orderRow(orderId);
+
+    expect(row).toMatchObject({ total_amount: 90000, delivery_address: "새 배송지 123", delivery_notes: "문 앞" });
+    expect(await itemsOf(orderId)).toEqual([{ productId: product.id, unitPrice: 15000, quantity: 6, subtotal: 90000, isHotDeal: false }]);
+
+    // 공급사가 대시보드를 안 열어봐도 알 수 있도록 수정 알림톡이 간다.
+    expect(orderEditedNotify).toHaveBeenCalledTimes(1);
+    expect(orderEditedNotify.mock.calls[0][0]).toMatchObject({ wholesalerId: world.wholesalerA, totalAmount: 90000 });
+  });
+
+  it("서버 카탈로그로 단가를 재계산한다 — 클라이언트가 끼워 보낸 값은 무시된다", async () => {
+    const product = await newProduct({ stock_quantity: 20, base_price: 20000 });
+    const orderId = await world.createOrder({ product, quantity: 2, unitPrice: 20000 });
+
+    const tampered = { productId: product.id, quantity: 3, unitPrice: 1 } as never;
+    const result = await edit({ orderId, items: [tampered] });
+
+    expect(result.success).toBe(true);
+    expect(result.totalAmount).toBe(60000);
+  });
+});
+
+describe("editOrderAction — 권한·상태 게이트", () => {
+  it("다른 고객의 발주서는 '찾을 수 없다'로 거절되고 바뀌지 않는다", async () => {
+    const product = await newProduct();
+    const other = await world.createRetailer();
+    const theirs = await world.createOrder({ product, quantity: 4, unitPrice: 15000 });
+
+    await adminClient().from("orders").update({ retailer_id: other.retailerId }).eq("id", theirs);
+
+    const result = await edit({ orderId: theirs, items: [{ productId: product.id, quantity: 1 }] });
+
+    expect(result).toEqual({ success: false, error: "해당 발주서를 찾을 수 없습니다." });
+    expect((await orderRow(theirs))?.total_amount).toBe(60000);
+  });
+
+  it("이미 확정된 발주서는 수정할 수 없다", async () => {
+    const product = await newProduct();
+    const orderId = await world.createOrder({ product, status: "confirmed", quantity: 4, unitPrice: 15000 });
+
+    const result = await edit({ orderId, items: [{ productId: product.id, quantity: 1 }] });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("직접 수정할 수 없습니다");
+    expect((await orderRow(orderId))?.total_amount).toBe(60000);
+    expect(orderEditedNotify).not.toHaveBeenCalled();
+  });
+
+  it("PG 결제 발주서는 수정할 수 없다", async () => {
+    const product = await newProduct();
+    const orderId = await world.createOrder({ product, paymentMethod: "pg", quantity: 4, unitPrice: 15000 });
+
+    const result = await edit({ orderId, items: [{ productId: product.id, quantity: 1 }] });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("직접 수정할 수 없습니다");
+  });
+});
+
+describe("editOrderAction — 외상 미수금 재조정", () => {
+  // world.createOrder는 항상 world.retailerR 소유로 만들어져(harness.ts) 커스텀 거래처를
+  // 못 쓴다 — 실제 submit() 경로로 buyer 소유 주문을 만든 뒤 그 주문을 수정한다.
+  it("총액이 늘면 기존 금액을 되돌린 뒤 새 금액만큼만 미수금이 늘어난다", async () => {
+    const product = await newProduct({ stock_quantity: 50 });
+    const buyer = await world.createRetailer({ creditLimit: 100000, outstanding: 0, allowedPaymentMethods: ["prepaid", "on_credit"] });
+
+    await actAs(buyer.user);
+    const created = await submit({ items: [{ productId: product.id, quantity: 4 }], paymentMethod: "on_credit" });
+    const [order] = (await ordersOf(buyer.retailerId)).filter((row) => row.order_number === created.orderNumber);
+
+    expect(await relationOf(buyer.relationshipId)).toBe(60000);
+
+    const result = await edit({ orderId: String(order.id), items: [{ productId: product.id, quantity: 5 }] });
+
+    expect(result.success).toBe(true);
+    expect(result.totalAmount).toBe(75000);
+    expect(await relationOf(buyer.relationshipId)).toBe(75000); // 60000 - 60000(되돌림) + 75000
+  });
+
+  it("수정한 금액이 한도를 넘으면 전체가 롤백된다(품목·미수금 모두 원래대로)", async () => {
+    const product = await newProduct({ stock_quantity: 50 });
+    const buyer = await world.createRetailer({ creditLimit: 100000, outstanding: 0, allowedPaymentMethods: ["prepaid", "on_credit"] });
+
+    await actAs(buyer.user);
+    const created = await submit({ items: [{ productId: product.id, quantity: 4 }], paymentMethod: "on_credit" });
+    const [order] = (await ordersOf(buyer.retailerId)).filter((row) => row.order_number === created.orderNumber);
+    const orderId = String(order.id);
+
+    const result = await edit({ orderId, items: [{ productId: product.id, quantity: 8 }] }); // 120,000 > 100,000 한도
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("여신 한도");
+    expect(await relationOf(buyer.relationshipId)).toBe(60000);
+    expect((await orderRow(orderId))?.total_amount).toBe(60000);
+    expect(await itemsOf(orderId)).toEqual([{ productId: product.id, unitPrice: 15000, quantity: 4, subtotal: 60000, isHotDeal: false }]);
+  });
+});
+
+describe("editOrderAction — 핫딜 한도 재조정", () => {
+  it("수량을 줄이면 반환된 한도만큼만 다시 소진하고, 늘리면 그만큼 더 소진한다", async () => {
+    const hot = await newProduct({ hot_deal_active: true, hot_deal_price: 20000, hot_deal_quantity_limit: 10, hot_deal_quantity_sold: 0, stock_quantity: 50 });
+    const created = await submit({ items: [{ productId: hot.id, quantity: 5 }] });
+    const [order] = (await ordersOf(world.retailerR)).filter((row) => row.order_number === created.orderNumber);
+
+    expect((await productRow(hot.id)).hotSold).toBe(5);
+
+    const shrunk = await edit({ orderId: String(order.id), items: [{ productId: hot.id, quantity: 3 }] });
+
+    expect(shrunk.success).toBe(true);
+    expect((await productRow(hot.id)).hotSold).toBe(3);
+    expect((await itemsOf(String(order.id)))[0]).toMatchObject({ quantity: 3, isHotDeal: true, unitPrice: 20000 });
+
+    const grown = await edit({ orderId: String(order.id), items: [{ productId: hot.id, quantity: 7 }] });
+
+    expect(grown.success).toBe(true);
+    expect((await productRow(hot.id)).hotSold).toBe(7);
+  });
+
+  it("한도를 초과하는 수정은 전체가 롤백되고 소진량이 그대로 남는다", async () => {
+    // 화면 카탈로그는 "지금 남은 한도"까지만 담게 해서 에디터가 스스로 이 상황을 만들 수
+    // 없으므로(정상 UX 방어), RPC 자체의 원자성(초과 시 전체 롤백)은 replacePendingOrderItems를
+    // 직접 호출해 한도 검사를 우회한 입력으로 확인한다.
+    const hot = await newProduct({ hot_deal_active: true, hot_deal_price: 20000, hot_deal_quantity_limit: 10, hot_deal_quantity_sold: 0, stock_quantity: 50 });
+    const created = await submit({ items: [{ productId: hot.id, quantity: 3 }] });
+    const [order] = (await ordersOf(world.retailerR)).filter((row) => row.order_number === created.orderNumber);
+    const orderId = String(order.id);
+
+    expect((await productRow(hot.id)).hotSold).toBe(3);
+
+    // 다른 곳에서 이미 6개를 더 소진한 상태를 흉내낸다(이 주문의 3개 포함 총 9개 소진 중).
+    await adminClient().from("products").update({ hot_deal_quantity_sold: 9 }).eq("id", hot.id);
+
+    const { createClient } = await import("@/lib/supabase/server");
+    const { replacePendingOrderItems } = await import("@/lib/orders/edit-order");
+    const supabase = await createClient();
+    const line: CartLine = {
+      productId: hot.id,
+      name: hot.name,
+      category: "돼지",
+      subcategory: null,
+      unit: "kg",
+      unitPrice: 20000,
+      basePrice: 20000,
+      quantity: 5, // 반환 6 + 새 5 = 11 > 10
+      stockQuantity: 50,
+      isCustomPrice: false,
+      isHotDeal: true,
+      requestedUnitPrice: null,
+    };
+
+    const result = await replacePendingOrderItems(supabase, {
+      orderId,
+      lines: [line],
+      totalAmount: 100000,
+      deliveryAddress: "서울시 테스트구 1번지",
+      deliveryNotes: null,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toContain("핫딜 한도");
+    expect((await productRow(hot.id)).hotSold).toBe(9);
+    expect((await itemsOf(orderId))[0]).toMatchObject({ quantity: 3 });
   });
 });
 

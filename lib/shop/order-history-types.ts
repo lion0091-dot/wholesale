@@ -6,7 +6,7 @@
  * 실제 데이터 로딩은 서버 전용 모듈 `@/lib/shop/order-history`가 담당한다.
  */
 
-import type { OrderStatus } from "@/types/database";
+import type { OrderStatus, PaymentMethod } from "@/types/database";
 
 /** 취소 사유 입력 길이 제한 (알림톡 템플릿 가변 영역 기준) */
 export const CANCEL_REASON_MIN_LENGTH = 5;
@@ -14,11 +14,15 @@ export const CANCEL_REASON_MAX_LENGTH = 200;
 
 export interface ShopOrderLine {
   id: string;
+  /** 재주문/수정 시 장바구니에 다시 담기 위한 상품ID */
+  productId: string;
   category: string | null;
   productName: string;
   unitPrice: number;
   quantity: number;
   subtotalAmount: number;
+  /** 발주 시점에 고객이 제안한 희망 단가(네고). 재주문/수정 시 장바구니에 그대로 이어 담는다. */
+  requestedUnitPrice: number | null;
 }
 
 export interface ShopOrder {
@@ -28,6 +32,8 @@ export interface ShopOrder {
   totalAmount: number;
   deliveryAddress: string;
   deliveryNotes: string | null;
+  /** 접수대기(pending)·PG 아닌 발주서만 "수정" 가능 여부 판단에 쓴다. */
+  paymentMethod: PaymentMethod;
   orderedAt: string;
   cancelReason: string | null;
   cancelRequestedAt: string | null;

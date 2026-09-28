@@ -18,6 +18,7 @@ import type { ActionResult } from "@/app/actions/invite";
 
 export interface AlimtalkTemplateCodes {
   orderNew?: string;
+  orderEdited?: string;
   cancelRequest?: string;
   creditExceeded?: string;
   receivablesReminder?: string;
@@ -57,6 +58,7 @@ function toTemplateCodes(value: unknown): AlimtalkTemplateCodes {
 
   return {
     orderNew: typeof raw.orderNew === "string" ? raw.orderNew : undefined,
+    orderEdited: typeof raw.orderEdited === "string" ? raw.orderEdited : undefined,
     cancelRequest: typeof raw.cancelRequest === "string" ? raw.cancelRequest : undefined,
     creditExceeded: typeof raw.creditExceeded === "string" ? raw.creditExceeded : undefined,
     receivablesReminder:

@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ORDER_STATUS_BADGES, canRequestCancel, formatOrderedAt } from "@/lib/orders/status";
+import { useRouter } from "next/navigation";
+import { ORDER_STATUS_BADGES, canEditOrderItems, canRequestCancel, formatOrderedAt } from "@/lib/orders/status";
 import { ORDER_HISTORY_RANGE_OPTIONS } from "@/lib/orders/history-range";
 import { useOrderHistoryPagination } from "@/lib/orders/use-order-history-pagination";
-import type { ShopCatalog } from "@/lib/shop/catalog-types";
+import { useShopCart } from "@/lib/shop/cart-store";
+import { normalizeQuantity } from "@/lib/shop/order-policy";
+import { findCatalogItem, type ShopCatalog } from "@/lib/shop/catalog-types";
 import {
   CANCEL_REASON_MAX_LENGTH,
   describeCancelProgress,
@@ -105,6 +108,53 @@ const REASON_PRESETS = [
   "납품 일정이 변경되었습니다.",
 ];
 
+interface ApplyOrderLinesResult {
+  appliedCount: number;
+  skippedNames: string[];
+}
+
+/**
+ * 발주 품목을 현재 카탈로그 기준으로 다시 검증하며 장바구니에 담는다(재주문/수정 공용).
+ * 품절·판매중지·삭제된 상품은 건너뛴다 — 단가는 여기서 정하지 않고 항상 체크아웃 시점의
+ * 서버 카탈로그가 최종 결정한다(다른 발주 경로와 동일 원칙).
+ */
+function applyOrderLinesToCart(
+  order: ShopOrder,
+  catalog: ShopCatalog,
+  cart: ReturnType<typeof useShopCart>
+): ApplyOrderLinesResult {
+  cart.clear();
+
+  let appliedCount = 0;
+  const skippedNames: string[] = [];
+
+  for (const line of order.lines) {
+    const item = findCatalogItem(catalog, line.productId);
+
+    if (!item || item.product.order_stopped || item.orderableQuantity <= 0) {
+      skippedNames.push(line.productName);
+      continue;
+    }
+
+    const quantity = normalizeQuantity(line.quantity, item.product.unit, item.orderableQuantity);
+
+    if (quantity <= 0) {
+      skippedNames.push(line.productName);
+      continue;
+    }
+
+    cart.setQuantity(line.productId, quantity, item.product.unit, item.orderableQuantity);
+
+    if (line.requestedUnitPrice) {
+      cart.setRequestedPrice(line.productId, line.requestedUnitPrice);
+    }
+
+    appliedCount += 1;
+  }
+
+  return { appliedCount, skippedNames };
+}
+
 export function OrderHistoryView({
   catalog,
   history,
@@ -113,6 +163,8 @@ export function OrderHistoryView({
   statementExternalOpenHrefByOrderId,
 }: OrderHistoryViewProps) {
   const { wholesaler, customer, shopToken } = catalog;
+  const router = useRouter();
+  const cart = useShopCart(shopToken);
 
   /** 취소 사유 입력창이 열린 주문 ID */
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
@@ -120,6 +172,36 @@ export function OrderHistoryView({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submittingOrderId, setSubmittingOrderId] = useState<string | null>(null);
   const [completedOrderId, setCompletedOrderId] = useState<string | null>(null);
+  /** 재주문/수정 시 일부 품목이 빠졌을 때의 안내(품절·판매중지 등) */
+  const [cartNotice, setCartNotice] = useState<string | null>(null);
+
+  const handleReorder = (order: ShopOrder) => {
+    const { appliedCount, skippedNames } = applyOrderLinesToCart(order, catalog, cart);
+
+    if (appliedCount === 0) {
+      setCartNotice("이 발주의 품목을 더 이상 담을 수 없습니다(품절 또는 판매 중지).");
+      return;
+    }
+
+    setCartNotice(
+      skippedNames.length > 0
+        ? `${skippedNames.join(", ")}은(는) 품절 또는 판매 중지되어 이번 재주문에서 빠졌습니다.`
+        : null
+    );
+    router.push(`/shop/${shopToken}/cart`);
+  };
+
+  const handleEditOrder = (order: ShopOrder) => {
+    const { appliedCount } = applyOrderLinesToCart(order, catalog, cart);
+
+    if (appliedCount === 0) {
+      setCartNotice("이 발주의 품목을 더 이상 담을 수 없어 수정할 수 없습니다. 공급사에 문의해주세요.");
+      return;
+    }
+
+    setCartNotice(null);
+    router.push(`/shop/${shopToken}/cart?editOrder=${order.id}`);
+  };
 
   // 조회 구간(30일/3개월/전체) + 더보기 — 미인증 상태(history.requiresLink)에서는
   // 애초에 조회할 데이터가 없으므로 아래 상태는 그 경우엔 쓰이지 않는다.
@@ -265,6 +347,22 @@ export function OrderHistoryView({
             >
               상품 보러가기 →
             </Link>
+          </div>
+        )}
+
+        {cartNotice && (
+          <div
+            style={{
+              backgroundColor: "#fffbeb",
+              border: "1px solid #fde68a",
+              color: "#92400e",
+              fontSize: "13px",
+              lineHeight: 1.6,
+              padding: "10px 12px",
+              borderRadius: "8px",
+            }}
+          >
+            {cartNotice}
           </div>
         )}
 
@@ -452,6 +550,49 @@ export function OrderHistoryView({
                   </>
                 )}
               </p>
+
+              <div style={{ marginTop: "10px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => handleReorder(order)}
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: "#334155",
+                    border: "1px solid #cbd5e1",
+                    backgroundColor: "#ffffff",
+                    borderRadius: "6px",
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  🔁 재주문
+                </button>
+                {canEditOrderItems(order.status) && order.paymentMethod !== "pg" && (
+                  <button
+                    type="button"
+                    onClick={() => handleEditOrder(order)}
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: "#1e40af",
+                      border: "1px solid #bfdbfe",
+                      backgroundColor: "#eff6ff",
+                      borderRadius: "6px",
+                      padding: "6px 10px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✏️ 발주 수정
+                  </button>
+                )}
+              </div>
+
+              {canEditOrderItems(order.status) && order.paymentMethod !== "pg" && (
+                <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+                  {`"${badge.label}" 상태일 때만 직접 수정할 수 있어요. 공급사가 확인하면 수정 버튼이 사라져요.`}
+                </p>
+              )}
 
               {/* 취소 요청 진행 상황 (요청 / 반려 / 취소 확정) */}
               {progress && (

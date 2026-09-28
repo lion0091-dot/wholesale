@@ -36,6 +36,7 @@ const labelStyle: React.CSSProperties = {
 
 const TEMPLATE_KEYS: AlimtalkTemplateKey[] = [
   "orderNew",
+  "orderEdited",
   "cancelRequest",
   "creditExceeded",
   "receivablesReminder",

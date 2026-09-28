@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useShopCart } from "@/lib/shop/cart-store";
 import { lineSubtotal, quantityStepFor, validateCart } from "@/lib/shop/order-policy";
 import { toCartLines, type ShopCatalog } from "@/lib/shop/catalog-types";
@@ -23,6 +24,10 @@ export function CartView({ catalog }: CartViewProps) {
   );
   const negotiationEnabled = catalog.wholesaler.allow_price_negotiation;
   const minOrderAmount = Number(catalog.wholesaler.min_order_amount);
+  const editOrderId = useSearchParams().get("editOrder");
+  const checkoutHref = editOrderId
+    ? `/shop/${catalog.shopToken}/checkout?editOrder=${editOrderId}`
+    : `/shop/${catalog.shopToken}/checkout`;
 
   // 단가/재고는 매번 서버 카탈로그 기준으로 재계산한다 (공급사 단가 변경 즉시 반영)
   const lines = useMemo(
@@ -44,6 +49,23 @@ export function CartView({ catalog }: CartViewProps) {
       />
 
       <div style={{ padding: "16px" }}>
+        {editOrderId && (
+          <div
+            style={{
+              backgroundColor: "#eff6ff",
+              border: "1px solid #bfdbfe",
+              color: "#1e40af",
+              fontSize: "13px",
+              lineHeight: 1.6,
+              padding: "10px 12px",
+              borderRadius: "8px",
+              marginBottom: "12px",
+            }}
+          >
+            ✏️ 기존 발주서를 수정하는 중입니다. 저장하면 새 발주가 아니라 이 발주서의 품목이
+            바뀝니다.
+          </div>
+        )}
         {!isLoaded ? (
           <p style={{ fontSize: "13px", color: "#334155", textAlign: "center", padding: "40px 0" }}>
             장바구니를 불러오는 중...
@@ -344,7 +366,7 @@ export function CartView({ catalog }: CartViewProps) {
         >
           {validation.ok ? (
             <Link
-              href={`/shop/${catalog.shopToken}/checkout`}
+              href={checkoutHref}
               style={{
                 display: "block",
                 textAlign: "center",
