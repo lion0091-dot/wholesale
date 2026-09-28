@@ -758,7 +758,7 @@ function SupplierPanel({
               <strong style={{ fontSize: "14px", color: "#0f172a" }}>{supplier.name}</strong>
               {!supplier.is_active && <span style={{ fontSize: "11px", backgroundColor: "#f1f5f9", color: "#64748b", borderRadius: "4px", padding: "2px 6px" }}>사용 중지</span>}
               <span style={{ fontSize: "12px", color: "#64748b" }}>
-                {[supplier.phone, supplier.aliases.length > 0 ? `명세서 표기: ${supplier.aliases.join(", ")}` : null, supplier.note].filter(Boolean).join(" · ")}
+                {[supplier.phone, supplier.aliases.length > 0 ? `다른 이름: ${supplier.aliases.join(", ")}` : null, supplier.note].filter(Boolean).join(" · ")}
               </span>
               {canManage && (
                 <span style={{ display: "flex", gap: "6px", marginLeft: "auto" }}>
@@ -803,7 +803,7 @@ function SupplierForm({
         <input aria-label="거래처 이름" autoFocus value={form.name} maxLength={80} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="거래처 이름 *" style={fieldStyle} autoComplete="off" />
         <input aria-label="연락처" value={form.phone} maxLength={30} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="연락처 (선택)" style={fieldStyle} autoComplete="off" />
       </div>
-      <input aria-label="명세서에 다르게 적히는 이름" value={form.aliases} onChange={(event) => setForm({ ...form, aliases: event.target.value })} placeholder="명세서에 다르게 적히는 이름 (쉼표로 구분, 선택)" style={fieldStyle} autoComplete="off" />
+      <input aria-label="다른 이름으로도 불리는 경우" value={form.aliases} onChange={(event) => setForm({ ...form, aliases: event.target.value })} placeholder="다른 이름으로도 불리는 경우 (쉼표로 구분, 선택)" style={fieldStyle} autoComplete="off" />
       <input aria-label="메모" value={form.note} maxLength={500} onChange={(event) => setForm({ ...form, note: event.target.value })} placeholder="메모 (선택)" style={fieldStyle} autoComplete="off" />
       <div style={{ display: "flex", gap: "6px" }}>
         <button type="button" style={primaryButtonStyle} disabled={busy} onClick={onSave}>{busy ? "저장 중..." : "저장"}</button>

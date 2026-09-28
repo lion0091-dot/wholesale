@@ -107,7 +107,7 @@ function buildRejectedCard(data: ScanResultInput, options: ScanResultOptions): R
     title: po?.reason === "UNLISTED" ? "받지 않았습니다 — 이 거래처 전표에 없는 물건입니다" : "받지 않았습니다 — 발주 수량을 넘었습니다",
     detail:
       `${name}${po ? rejectionSummary(po) : "전표 기준으로 받지 않았습니다."} 재고에는 넣지 않았고 거절 기록만 남겼습니다. ` +
-      "이 박스는 공급처와 상의해 돌려보내세요. 받기로 했다면 발주 관리에서 품목·수량을 먼저 늘린 뒤 다시 찍으세요.",
+      "이 박스는 공급처와 상의해 돌려보내세요. 받기로 했다면 전표관리에서 품목·수량을 먼저 늘린 뒤 다시 찍으세요.",
     extras: [],
     action: { label: "전표관리로", href: "/dashboard/purchase-orders" },
   };
