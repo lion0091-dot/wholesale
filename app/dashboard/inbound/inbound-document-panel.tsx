@@ -1760,7 +1760,9 @@ const labelStyle: React.CSSProperties = {
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
-  border: "1px solid #cbd5f5",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderColor: "#cbd5f5",
   borderRadius: "8px",
   padding: "8px 10px",
   fontSize: "13px",
