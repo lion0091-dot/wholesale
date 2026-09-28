@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rejectionBatchSummary, rejectionSummary, scanPurchaseOrderFromDb } from "./scan-purchase-order";
+import { holdSummary, rejectionBatchSummary, rejectionSummary, scanPurchaseOrderFromDb } from "./scan-purchase-order";
 
 describe("scanPurchaseOrderFromDb", () => {
   it("DB가 돌려준 판정 JSON을 화면용 모양으로 바꾼다", () => {
@@ -41,6 +41,27 @@ describe("rejectionSummary", () => {
     const text = rejectionSummary({ result: "REJECTED", reason: "UNLISTED", ordered: null, received: null, remaining: null, tolerance: null, excess: null, orderClosed: false });
 
     expect(text).toContain("전표에 없는 물건");
+  });
+});
+
+describe("holdSummary", () => {
+  it("발주 초과 보류는 발주량·받은 양·못 붙은 무게를 말한다", () => {
+    const text = holdSummary({ result: "OVER_HELD", reason: null, ordered: 50, received: 62, remaining: null, tolerance: null, excess: 12, orderClosed: false });
+
+    expect(text).toContain("보류함에 들어갔습니다");
+    expect(text).toContain("발주 50kg 중 62kg 받았고");
+    expect(text).toContain("12kg는 전표에 붙지 않았습니다");
+  });
+
+  it("전표에 없는 물건 보류는 전표에 없다고 말한다", () => {
+    const text = holdSummary({ result: "UNLISTED_HELD", reason: null, ordered: null, received: null, remaining: null, tolerance: null, excess: null, orderClosed: false });
+
+    expect(text).toContain("전표에 없는 물건이라 보류함에 들어갔습니다");
+  });
+
+  it("ASSIGNED·REJECTED는 빈 문자열", () => {
+    expect(holdSummary({ result: "ASSIGNED", reason: null, ordered: 1, received: 1, remaining: 0, tolerance: null, excess: null, orderClosed: false })).toBe("");
+    expect(holdSummary({ result: "REJECTED", reason: "OVER", ordered: null, received: null, remaining: null, tolerance: null, excess: null, orderClosed: false })).toBe("");
   });
 });
 

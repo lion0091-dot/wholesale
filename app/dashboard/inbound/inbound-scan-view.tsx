@@ -9,7 +9,7 @@ import {
   buildScanResultCard,
   type ResultCard,
 } from "@/lib/livestock/inbound-scan-result";
-import { rejectionSummary } from "@/lib/livestock/scan-purchase-order";
+import { holdSummary, rejectionSummary } from "@/lib/livestock/scan-purchase-order";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -800,12 +800,20 @@ export function InboundScanView({
       return;
     }
 
+    // 보류(전표에 없거나 발주 초과)로 들어간 경우 — 재고엔 들어가지만 "지정했습니다"만
+    // 띄우면 정상 입고처럼 보여서 사무실이 놓칠 수 있으니 반드시 알린다.
+    const po = result.data?.po;
+    const held = po && (po.result === "UNLISTED_HELD" || po.result === "OVER_HELD") ? holdSummary(po) : null;
+
     // 고른 상품의 부위가 이력의 부위와 다르면 알려준다 — 여기서 잘못 고르면
     // 출고 때도 안 걸리고 식당에 다른 고기가 간다.
     if (result.data?.partMismatch) {
       setError(
-        `⚠️ 이 박스의 이력 부위는 '${result.data.tracePart}'인데 고르신 상품은 '${result.data.productPart}'입니다. 맞는지 확인해주세요.`
+        `⚠️ 이 박스의 이력 부위는 '${result.data.tracePart}'인데 고르신 상품은 '${result.data.productPart}'입니다. 맞는지 확인해주세요.` +
+          (held ? ` 그리고 ${held}` : "")
       );
+    } else if (held) {
+      setNotice(`상품을 지정했습니다. ${held}`);
     } else {
       setNotice("상품을 지정했습니다. 같은 부위는 다음부터 자동으로 연결됩니다.");
     }
@@ -842,15 +850,19 @@ export function InboundScanView({
       return;
     }
 
+    const po = result.data?.po;
+    const held = po && (po.result === "UNLISTED_HELD" || po.result === "OVER_HELD") ? holdSummary(po) : null;
+
     if (result.data?.partMismatch) {
       setError(
-        `⚠️ 이 박스의 이력 부위는 '${result.data.tracePart}'인데 고르신 상품은 '${result.data.productPart}'입니다. 맞는지 확인해주세요.`
+        `⚠️ 이 박스의 이력 부위는 '${result.data.tracePart}'인데 고르신 상품은 '${result.data.productPart}'입니다. 맞는지 확인해주세요.` +
+          (held ? ` 그리고 ${held}` : "")
       );
     } else {
       setNotice(
         `상품을 지정하고 주문에 ${result.data?.taken ?? 0}${
           products.find((product) => product.id === orderTargetProductId)?.unit ?? "kg"
-        }만큼 바로 배정했습니다.`
+        }만큼 바로 배정했습니다.` + (held ? ` 다만 ${held}` : "")
       );
     }
 

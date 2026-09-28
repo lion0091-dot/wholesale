@@ -191,6 +191,25 @@ export function rejectionSummary(po: ScanPurchaseOrder): string {
   return "이 거래처의 전표에 없는 물건이라 받지 않았습니다.";
 }
 
+/** 보류(UNLISTED_HELD/OVER_HELD) 한 줄 요약 — "상품 지정" 경로도 직접 스캔 경로(inbound-scan-result.ts)와 같은 말을 쓴다. */
+export function holdSummary(po: ScanPurchaseOrder): string {
+  if (po.result === "OVER_HELD") {
+    const numbers =
+      po.ordered !== null && po.received !== null
+        ? ` 발주 ${formatKg(po.ordered)}kg 중 ${formatKg(po.received)}kg 받았고` +
+          (po.excess !== null && po.excess > 0 ? `, ${formatKg(po.excess)}kg는 전표에 붙지 않았습니다.` : ".")
+        : "";
+
+    return `발주 수량을 넘어 보류함에 들어갔습니다.${numbers} 사무실이 확인해서 정리합니다.`;
+  }
+
+  if (po.result === "UNLISTED_HELD") {
+    return "이 거래처의 전표에 없는 물건이라 보류함에 들어갔습니다. 사무실이 확인해서 정리합니다.";
+  }
+
+  return "";
+}
+
 /** 한꺼번에 여러 박스가 거절됐을 때 — 하나씩 다 늘어놓지 않고 사유별 건수만 짧게. */
 export function rejectionBatchSummary(reasons: ReadonlyArray<ScanPurchaseOrder["reason"]>): string {
   const overCount = reasons.filter((reason) => reason === "OVER").length;
