@@ -7,8 +7,6 @@ export interface RetroactivePurchaseOrderResult {
   lineId: string;
   /** 새 발주서 줄에 실린 무게(kg) — 이미 다른 발주서에 채워진 만큼을 뺀 나머지. */
   amount: number;
-  /** 보류함 경로에서만: 같이 만들어진 전표 id. 전표 대조 경로는 이미 전표가 있어 null. */
-  documentId: string | null;
 }
 
 export function retroactivePurchaseOrderFromDb(raw: unknown): RetroactivePurchaseOrderResult {
@@ -18,6 +16,5 @@ export function retroactivePurchaseOrderFromDb(raw: unknown): RetroactivePurchas
     orderId: String(row.order_id ?? ""),
     lineId: String(row.line_id ?? ""),
     amount: Number(row.amount ?? 0),
-    documentId: row.document_id ? String(row.document_id) : null,
   };
 }

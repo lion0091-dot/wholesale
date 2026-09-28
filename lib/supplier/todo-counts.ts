@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { INBOUND_ANCHORS } from "@/lib/livestock/inbound-next-step";
 
-export type TodoKey = "newOrders" | "cancelRequests" | "needsCheckBoxes" | "openDocuments" | "lateBoxes";
+export type TodoKey = "newOrders" | "cancelRequests" | "needsCheckBoxes";
 
 export type TodoCounts = Record<TodoKey, number>;
 
@@ -14,10 +14,6 @@ export const TODO_ITEMS: Array<{ key: TodoKey; label: string; href: string; offi
   { key: "newOrders", label: "새 발주 (접수 대기)", href: "/dashboard/orders" },
   { key: "cancelRequests", label: "취소 요청", href: "/dashboard/orders" },
   { key: "needsCheckBoxes", label: "확인 필요 박스", href: `/dashboard/inbound${INBOUND_ANCHORS.nextStep}` },
-  // 전표 대조는 사무실 PC 일이다 — 폰(현장)에는 전표입력 화면으로 가는 길이 없으므로 폰에서는 목록·합계에서 뺀다.
-  { key: "openDocuments", label: "대조 중인 전표", href: "/dashboard/inbound/statements", officeOnly: true },
-  // 마감된 전표에는 박스를 이을 수 없어 뒤늦게 온 박스가 조용히 남는다 — 사무실이 전표를 다시 열어 이어야 한다.
-  { key: "lateBoxes", label: "마감된 전표 뒤에 온 박스", href: "/dashboard/inbound/statements", officeOnly: true },
 ];
 
 /** 이 화면에서 보여줄 항목 — 폰이면 사무실 전용 항목을 뺀다. */
@@ -36,7 +32,7 @@ export function totalTodo(counts: TodoCounts, isMobile = false): number {
 export async function fetchTodoCounts(supabase: SupabaseClient, wholesalerId: string): Promise<TodoCounts> {
   const head = { count: "exact", head: true } as const;
 
-  const [newOrders, cancelRequests, needsCheckBoxes, openDocuments, lateBoxes] = await Promise.all([
+  const [newOrders, cancelRequests, needsCheckBoxes] = await Promise.all([
     supabase.from("orders").select("id", head).eq("wholesaler_id", wholesalerId).eq("status", "pending"),
     supabase.from("orders").select("id", head).eq("wholesaler_id", wholesalerId).eq("status", "cancel_requested"),
     supabase
@@ -44,15 +40,11 @@ export async function fetchTodoCounts(supabase: SupabaseClient, wholesalerId: st
       .select("id", head)
       .eq("wholesaler_id", wholesalerId)
       .in("status", ["EXCEPTION", "PENDING_MAPPING"]),
-    supabase.from("inbound_documents").select("id", head).eq("wholesaler_id", wholesalerId).eq("status", "PENDING"),
-    supabase.rpc("list_unlinked_boxes_for_documents", { p_wholesaler_id: wholesalerId }),
   ]);
 
   return {
     newOrders: newOrders.count ?? 0,
     cancelRequests: cancelRequests.count ?? 0,
     needsCheckBoxes: needsCheckBoxes.count ?? 0,
-    openDocuments: openDocuments.count ?? 0,
-    lateBoxes: Array.isArray(lateBoxes.data) ? lateBoxes.data.filter((row: { document_status: string }) => row.document_status === "CLOSED").length : 0,
   };
 }

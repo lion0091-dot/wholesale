@@ -10,8 +10,6 @@ import {
   MtraceNotConfiguredError,
 } from "@/lib/livestock/mtrace-client";
 import { cacheTraceRecord } from "@/lib/livestock/master-cache";
-import { autoCloseDocuments, autoCloseDocumentsForScan } from "@/lib/livestock/auto-close";
-import { autoLinkNumberlessScan } from "@/lib/livestock/auto-link-numberless";
 import {
   loadScanPurchaseOrder,
   rejectionSummary,
@@ -70,10 +68,6 @@ export interface ScanResult {
   purchaseSupplier: string | null;
   /** 이력 정보로 상품을 새로 만든 경우 — 화면에서 "가격을 넣어달라"고 안내한다. */
   autoCreated: { productName: string; needsPrice: boolean } | null;
-  /** 이 박스로 전표가 모두 채워져 저절로 마감됐다. */
-  autoClosedDocument: boolean;
-  /** 이 번호가 이미 마감된 전표에 있어서 박스가 이어지지 못했다(사무실이 다시 열어야 함). */
-  matchedClosedDocument: boolean;
   /**
    * status가 EXCEPTION일 때만 의미 있다. "API_ERROR"(조회 자체를 못 함 — 인증키
    * 미설정 등)와 "NOT_FOUND"(조회는 됐지만 그 번호가 없음)는 화면에서 완전히
@@ -83,12 +77,6 @@ export interface ScanResult {
   failDetail: string | null;
   /** true면 인증키 미설정이 원인 — 재시도해도 절대 통과하지 않는다. */
   failIsNotConfigured: boolean;
-  /**
-   * 바코드 상품코드(GTIN) 학습과 전표 줄이 서로 다른 상품을 가리켰다. 입고는 GTIN 쪽으로
-   * 했다(품목 자체에 붙은 코드라 더 구체적) — 하지만 조용히 넘기지 않고 화면이 알린다.
-   * 전표를 잘못 골랐거나 GTIN 학습이 옛 상품에 묶여 있는 것 중 하나다.
-   */
-  productConflict: { gtinProductId: string; documentProductId: string } | null;
 }
 
 export interface DuplicateWarning {
@@ -221,41 +209,15 @@ async function lookupTrace(supabase: Client, traceNo: string): Promise<TraceLook
   return { failReason, failDetail, failIsNotConfigured };
 }
 
-/**
- * 현장이 "스캔 종료"를 눌렀어도 그 전표의 박스가 또 찍혔으면 아직 찍는 중이다 — 종료 표시를 저절로 푼다
- * (사람이 '스캔 다시 시작'을 누르지 않아도 사무실 카드가 '찍는 중'으로 돌아간다). 마감된 전표는 건드리지 않는다.
- */
-async function resumeScanIfFinished(supabase: Client, scanId: string): Promise<void> {
-  try {
-    const { data: link } = await supabase.from("inbound_document_line_scans").select("line_id").eq("scan_id", scanId).maybeSingle();
-
-    if (!link) return;
-
-    const { data: line } = await supabase.from("inbound_document_lines").select("document_id").eq("id", link.line_id).maybeSingle();
-
-    if (!line) return;
-
-    const { data: doc } = await supabase.from("inbound_documents").select("id, status, scan_finished_at").eq("id", line.document_id).maybeSingle();
-
-    if (doc && doc.status === "PENDING" && doc.scan_finished_at) {
-      await supabase.rpc("set_documents_scan_finished", { p_document_ids: [doc.id], p_finished: false });
-    }
-  } catch (error) {
-    console.error("[inbound] 스캔 종료 표시 해제 실패:", error instanceof Error ? error.message : error);
-  }
-}
-
 interface FinishedScan {
   status: string;
   productId: string | null;
   autoCreated: { productName: string; needsPrice: boolean } | null;
-  autoClosedDocument: boolean;
-  matchedClosedDocument: boolean;
 }
 
 /**
  * 박스를 기록(또는 번호 교체)한 직후의 뒷처리. 실패해도 입고 자체는 이미 끝났으므로 어느 단계도 흐름을 막지 않는다.
- * ① 전표 줄에 붙이기(대조용, 재고와 무관 — 118) ② 바코드 상품코드 기록 ③ 상품 자동 생성 ④ 부위로 마저 붙이기 ⑤ 자동 마감.
+ * ① 바코드 상품코드 기록 ② 상품 자동 생성.
  */
 async function finishRecordedScan(
   supabase: Client,
@@ -263,18 +225,6 @@ async function finishRecordedScan(
 ): Promise<FinishedScan> {
   let status = input.status;
   let productId: string | null = null;
-
-  let linkedLineId: string | null = null;
-
-  const { data: linkedLine, error: linkError } = await supabase.rpc("auto_link_scan_to_document_line", {
-    p_scan_id: input.scanId,
-  });
-
-  linkedLineId = (linkedLine as string | null) ?? null;
-
-  if (linkError) {
-    console.error("[inbound] 전표 줄 자동 배정 실패:", linkError.message);
-  }
 
   // 나중에 사람이 상품을 지정할 때 학습하려면 그 박스의 상품코드를 알아야 한다.
   if (input.gtin) {
@@ -312,42 +262,12 @@ async function finishRecordedScan(
       const { data: afterCreate } = await supabase.from("inbound_scans").select("status").eq("id", input.scanId).maybeSingle();
 
       if (afterCreate?.status === "VOIDED") {
-        return { status: "REJECTED", productId, autoCreated, autoClosedDocument: false, matchedClosedDocument: false };
+        return { status: "REJECTED", productId, autoCreated };
       }
     }
   }
 
-  // 번호만으로 줄이 안 정해졌으면 부위로 마저 붙인다(쪼갠 전표의 줄 고르기, 번호 없는 줄의 무게·축종·부위 대조).
-  // 상품 자동 생성 뒤에 해야 상품의 부위까지 쓸 수 있다.
-  if (!linkedLineId) {
-    await autoLinkNumberlessScan(supabase, input.scanId);
-  }
-
-  await resumeScanIfFinished(supabase, input.scanId);
-
-  // 이 박스로 전표의 모든 줄이 채워졌고 문제 박스도 없으면 사람이 할 일이 없으니 마감해 둔다.
-  const autoClosedDocument = (await autoCloseDocumentsForScan(supabase, input.scanId)).length > 0;
-
-  // 어느 줄에도 안 이어졌는데 그 번호가 이미 마감된 전표에 있으면 사무실이 알아야 한다(뒤에 온 박스가 조용히 남지 않게).
-  let matchedClosedDocument = false;
-
-  if (!autoClosedDocument) {
-    const { data: scanRow } = await supabase.from("inbound_scans").select("trace_no").eq("id", input.scanId).maybeSingle();
-    const { data: linkRow } = await supabase.from("inbound_document_line_scans").select("line_id").eq("scan_id", input.scanId).maybeSingle();
-
-    if (scanRow && !linkRow) {
-      const { data: closedMatch } = await supabase
-        .from("inbound_document_lines")
-        .select("id, inbound_documents!inner(status)")
-        .eq("inbound_documents.status", "CLOSED")
-        .or(`trace_no.eq.${scanRow.trace_no},lot_no.eq.${scanRow.trace_no}`)
-        .limit(1);
-
-      matchedClosedDocument = (closedMatch ?? []).length > 0;
-    }
-  }
-
-  return { status, productId, autoCreated, autoClosedDocument, matchedClosedDocument };
+  return { status, productId, autoCreated };
 }
 
 /**
@@ -426,36 +346,13 @@ export async function recordScanAction(input: {
     const { failReason, failDetail, failIsNotConfigured } = await lookupTrace(supabase, traceNo);
 
     // 3) 상품을 자동으로 정할 수 있는지 본다. 사람이 직접 고른 값이 없을 때만.
-    //
-    //    순서: 바코드 상품코드 → 전표 줄.
-    //    상품코드(GTIN)가 더 정확하다 — 품목 자체에 붙은 코드라 같은 소에서 나온
-    //    등심과 안심을 구분한다. 전표는 이력번호 단위라, 한 마리가 여러 부위로
-    //    쪼개져 여러 줄에 걸쳐 있으면 어느 줄인지 알 수 없다(그 경우 DB 함수가
-    //    NULL을 돌려줘 되묻는다).
+    //    바코드 상품코드(GTIN)가 이미 학습돼 있으면 그 상품으로.
     let autoProductId: string | null = null;
-    let productConflict: ScanResult["productConflict"] = null;
 
-    if (!input.productId) {
-      let fromGtin: string | null = null;
+    if (!input.productId && gtin) {
+      const { data: mapped } = await supabase.rpc("lookup_product_by_gtin", { p_gtin: gtin });
 
-      if (gtin) {
-        const { data: mapped } = await supabase.rpc("lookup_product_by_gtin", { p_gtin: gtin });
-
-        fromGtin = (mapped as string | null) ?? null;
-      }
-
-      // 전표를 먼저 올려둔 물건은 여기서 확정된다 — 찍기만 하면 끝난다.
-      // GTIN이 있어도 전표를 같이 본다 — 둘이 다른 상품이면 GTIN을 따르되 그 사실을 알린다.
-      const { data: fromDocument } = await supabase.rpc("lookup_product_by_document_trace", {
-        p_trace_no: traceNo,
-      });
-      const documentProductId = (fromDocument as string | null) ?? null;
-
-      autoProductId = fromGtin ?? documentProductId;
-
-      if (fromGtin && documentProductId && fromGtin !== documentProductId) {
-        productConflict = { gtinProductId: fromGtin, documentProductId };
-      }
+      autoProductId = (mapped as string | null) ?? null;
     }
 
     // 4) 스캔 기록 (스캔 + 원장 + 재고 + 예외가 한 트랜잭션)
@@ -502,14 +399,13 @@ export async function recordScanAction(input: {
 
     const row = data as Record<string, unknown>;
 
-    // 전표 줄 붙이기·상품 코드 기록·상품 자동 생성·자동 마감을 한 묶음으로 처리한다.
-    // 발주서 기준으로 이미 거절된 박스(취소됨)는 이어 붙일 것이 없다.
+    // 상품 코드 기록·상품 자동 생성을 처리한다. 발주서 기준으로 이미 거절된 박스(취소됨)는 처리할 것이 없다.
     const finished =
       row.status === "REJECTED"
-        ? { status: "REJECTED", productId: null, autoCreated: null, autoClosedDocument: false, matchedClosedDocument: false }
+        ? { status: "REJECTED", productId: null, autoCreated: null }
         : row.scan_id
           ? await finishRecordedScan(supabase, { scanId: String(row.scan_id), status: String(row.status), gtin })
-          : { status: String(row.status), productId: null, autoCreated: null, autoClosedDocument: false, matchedClosedDocument: false };
+          : { status: String(row.status), productId: null, autoCreated: null };
 
     row.status = finished.status;
     if (finished.productId) row.product_id = finished.productId;
@@ -517,8 +413,6 @@ export async function recordScanAction(input: {
     const po = input.supplierId && row.scan_id ? await loadScanPurchaseOrder(supabase, String(row.scan_id)) : null;
 
     const autoCreated = finished.autoCreated;
-    const autoClosedDocument = finished.autoClosedDocument;
-    const matchedClosedDocument = finished.matchedClosedDocument;
 
     revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/products");
@@ -547,14 +441,11 @@ export async function recordScanAction(input: {
         purchaseAmount: toNumberOrNull(row.purchase_amount),
         purchaseSupplier: (row.purchase_supplier as string | null) ?? null,
         autoCreated,
-        autoClosedDocument,
-        matchedClosedDocument,
         // record_inbound_scan의 JSONB 반환값에는 안 실려 있다 — 위에서 API 호출
         // 직후 이미 계산해둔 로컬 값을 그대로 돌려준다(DB 왕복 불필요).
         failReason: row.status === "EXCEPTION" ? failReason : null,
         failDetail: row.status === "EXCEPTION" ? failDetail : null,
         failIsNotConfigured: row.status === "EXCEPTION" && failIsNotConfigured,
-        productConflict,
       },
     };
   } catch (error) {
@@ -684,7 +575,6 @@ export interface ReplaceTraceResult {
   /** 번호를 실제로 바꾸거나 다시 기록했는가. false면 재조회했지만 여전히 못 찾아 그대로 뒀다. */
   changed: boolean;
   autoCreatedProductName: string | null;
-  autoClosedDocument: boolean;
   failReason: "API_ERROR" | "NOT_FOUND" | null;
   failDetail: string | null;
   failIsNotConfigured: boolean;
@@ -719,7 +609,6 @@ async function replaceTrace(
         po: null,
         changed: false,
         autoCreatedProductName: null,
-        autoClosedDocument: false,
         failReason: lookup.failReason,
         failDetail: lookup.failDetail,
         failIsNotConfigured: lookup.failIsNotConfigured,
@@ -753,10 +642,10 @@ async function replaceTrace(
 
   const row = (data ?? {}) as Record<string, unknown>;
   const newScanId = String(row.scan_id);
-  // 발주서 기준으로 이미 거절된 박스(취소됨)는 이어 붙일 것이 없다.
+  // 발주서 기준으로 이미 거절된 박스(취소됨)는 처리할 것이 없다.
   const finished =
     row.status === "REJECTED"
-      ? { status: "REJECTED", productId: null, autoCreated: null, autoClosedDocument: false, matchedClosedDocument: false }
+      ? { status: "REJECTED", productId: null, autoCreated: null }
       : await finishRecordedScan(supabase, {
           scanId: newScanId,
           status: String(row.status),
@@ -777,7 +666,6 @@ async function replaceTrace(
       po,
       changed: true,
       autoCreatedProductName: finished.autoCreated?.productName ?? null,
-      autoClosedDocument: finished.autoClosedDocument,
       failReason: finished.status === "EXCEPTION" ? lookup.failReason : null,
       failDetail: finished.status === "EXCEPTION" ? lookup.failDetail : null,
       failIsNotConfigured: finished.status === "EXCEPTION" && lookup.failIsNotConfigured,
@@ -920,8 +808,6 @@ export async function resolveMappingAction(
       }
     }
 
-    await autoCloseDocumentsForScan(supabase, scanId);
-
     revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/products");
 
@@ -1022,35 +908,10 @@ export async function resolveMappingToOrderAction(
   }
 }
 
-export interface VoidScanResult {
-  /** 이 박스가 이어져 있던 전표가 이미 마감돼 있어서 다시 열었다(안 온 줄이 생겨 사무실이 알아야 한다). 다시 열자마자 저절로 재마감되면 false. */
-  reopenedDocument: boolean;
-}
-
-/** 박스가 이어진 전표가 마감 상태면 그 전표 id. 취소하면 이어짐이 풀리므로 취소 전에 미리 봐 둔다. */
-async function closedDocumentOfScan(supabase: Client, scanId: string): Promise<string | null> {
-  const { data: link } = await supabase.from("inbound_document_line_scans").select("line_id").eq("scan_id", scanId).maybeSingle();
-
-  if (!link) return null;
-
-  const { data: line } = await supabase.from("inbound_document_lines").select("document_id").eq("id", link.line_id).maybeSingle();
-
-  if (!line) return null;
-
-  const { data: doc } = await supabase.from("inbound_documents").select("id, status").eq("id", line.document_id).maybeSingle();
-
-  return doc?.status === "CLOSED" ? String(doc.id) : null;
-}
-
-/**
- * 오스캔 취소 — 삭제가 아니라 역분개로 처리된다.
- * 마감된 전표의 박스를 취소하면 그 줄이 "안 온 것"이 되는데 전표는 마감 그대로라 아무도 모르게 어긋난다 —
- * 그래서 전표를 저절로 다시 열고, 그래도 다 채워진 상태(더 온 박스를 취소한 경우)면 곧바로 다시 마감한다.
- */
-export async function voidScanAction(scanId: string, reason?: string): Promise<ActionResult<VoidScanResult>> {
+/** 오스캔 취소 — 삭제가 아니라 역분개로 처리된다. */
+export async function voidScanAction(scanId: string, reason?: string): Promise<ActionResult<undefined>> {
   try {
     const { supabase } = await resolveInboundScope();
-    const closedDocumentId = await closedDocumentOfScan(supabase, scanId);
 
     const { error } = await supabase.rpc("void_inbound_scan", {
       p_scan_id: scanId,
@@ -1068,24 +929,10 @@ export async function voidScanAction(scanId: string, reason?: string): Promise<A
       throw new Error(error.message);
     }
 
-    let reopenedDocument = false;
-
-    if (closedDocumentId) {
-      const { error: reopenError } = await supabase.rpc("reopen_inbound_document", { p_document_id: closedDocumentId });
-
-      if (reopenError) {
-        console.error("[inbound] 취소 뒤 전표 다시 열기 실패:", reopenError.message);
-      } else {
-        reopenedDocument = (await autoCloseDocuments(supabase, [closedDocumentId])).length === 0;
-      }
-    }
-
-    await autoCloseDocumentsForScan(supabase, scanId);
-
     revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/products");
 
-    return { success: true, data: { reopenedDocument } };
+    return { success: true };
   } catch (error) {
     return toResult(error);
   }
@@ -1115,9 +962,6 @@ export async function createPurchaseOrderFromUnlistedScanAction(
       }
       if (error.message.includes("SCAN_NOT_HOLD")) {
         throw new RbacError("이미 처리된 박스입니다. 화면을 새로고침해주세요.");
-      }
-      if (error.message.includes("SCAN_ALREADY_ON_DOCUMENT")) {
-        throw new RbacError("이 박스는 이미 전표에 이어져 있습니다. 전표 대조 화면에서 처리해주세요.");
       }
       if (error.message.includes("SCAN_NOT_FOUND")) {
         throw new RbacError("해당 박스를 찾을 수 없습니다.");

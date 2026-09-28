@@ -25,7 +25,7 @@ async function readCounts(): Promise<TodoCounts | null> {
 }
 
 describe("종 배지 집계", () => {
-  it("발주·취소요청·확인 필요 박스·대조 중 전표를 상태별로 센다", async () => {
+  it("발주·취소요청·확인 필요 박스를 상태별로 센다", async () => {
     await actAs(world.users.ownerA);
     const before = await readCounts();
 
@@ -38,8 +38,6 @@ describe("종 배지 집계", () => {
     await world.createOrder({ product, status: "pending" });
     await world.createOrder({ product, status: "cancel_requested" });
     await world.createOrder({ product, status: "confirmed" });
-    await world.createDocumentLine({ traceNo: world.newTraceNo(), status: "PENDING" });
-    await world.createDocumentLine({ traceNo: world.newTraceNo(), status: "CLOSED" });
 
     const scanTrace = world.newTraceNo();
     const { error } = await admin.from("inbound_scans").insert({
@@ -60,8 +58,6 @@ describe("종 배지 집계", () => {
       newOrders: before!.newOrders + 2,
       cancelRequests: before!.cancelRequests + 1,
       needsCheckBoxes: before!.needsCheckBoxes + 1,
-      openDocuments: before!.openDocuments + 1,
-      lateBoxes: before!.lateBoxes,
     });
 
     await admin.from("inbound_scans").delete().eq("trace_no", scanTrace);

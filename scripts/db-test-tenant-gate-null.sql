@@ -67,11 +67,6 @@ insert into public.wholesaler_retailers (wholesaler_id,retailer_id,status)
 insert into public.products (id,wholesaler_id,name,category,subcategory,origin,grade,base_price,unit,stock_quantity) values
  ('c9999999-0000-0000-0000-000000000001','a9999999-0000-0000-0000-000000000001','한우 등심','소','등심','국내산','1++',68000,'kg',10),
  ('c9999999-0000-0000-0000-000000000002','a9999999-0000-0000-0000-000000000002','B사 삼겹','돼지','삼겹살','국내산',null,20000,'kg',0);
--- A사 명세서 1장 + 줄 1개(소문자 로트번호 — 대소문자 정규화 검증용)
-insert into public.inbound_documents (id,wholesaler_id,supplier_name,status,created_by) values
- ('f9999999-0000-0000-0000-000000000001','a9999999-0000-0000-0000-000000000001','○○도축장','PENDING','99999999-0000-0000-0000-000000000001');
-insert into public.inbound_document_lines (document_id,line_no,item_name,product_id,trace_no,part_name) values
- ('f9999999-0000-0000-0000-000000000001',1,'한우 등심','c9999999-0000-0000-0000-000000000001','l99999999900001','등심');
 -- "주문에 바로 배정" 검증용 확보대기 주문 (등심 5kg)
 insert into public.orders (id,wholesaler_id,retailer_id,order_number,total_amount,status,delivery_address) values
  ('e9999999-0000-0000-0000-000000000009','a9999999-0000-0000-0000-000000000001','d9999999-0000-0000-0000-000000000001','ORD-GATE-1',340000,'awaiting_stock','서울');
@@ -127,17 +122,7 @@ insert into results (who,what,expected,result) values
  ('A직원','set_product_purchase_price','DENIED: FORBIDDEN',
    pg_temp.try($q$select public.set_product_purchase_price('c9999999-0000-0000-0000-000000000001', 1)$q$)),
  ('A직원','bulk_update_product_prices','DENIED: FORBIDDEN',
-   pg_temp.try($q$select public.bulk_update_product_prices('[]'::jsonb)$q$)),
- ('A직원','명세서 완전삭제(RLS DELETE, #7) → 0행','0',
-   pg_temp.val($q$with d as (delete from public.inbound_documents where id='f9999999-0000-0000-0000-000000000001' returning 1) select count(*)::text from d$q$)),
- ('A직원','명세서 줄에 B사 상품 넣기(#8)','DENIED: new row violates row-level security policy for table "inbound_document_lines"',
-   pg_temp.try($q$insert into public.inbound_document_lines (document_id,line_no,item_name,product_id) values ('f9999999-0000-0000-0000-000000000001',2,'x','c9999999-0000-0000-0000-000000000002')$q$)),
- ('A직원','명세서 줄에 자기 상품 넣기(#8)','ALLOWED',
-   pg_temp.try($q$insert into public.inbound_document_lines (document_id,line_no,item_name,product_id) values ('f9999999-0000-0000-0000-000000000001',3,'y','c9999999-0000-0000-0000-000000000001')$q$)),
- ('A직원','lookup_document_part_name(자기 업체)','등심',
-   pg_temp.val($q$select public.lookup_document_part_name('a9999999-0000-0000-0000-000000000001','L99999999900001')$q$)),
- ('A직원','lookup_product_by_document_trace(대문자로 조회, #10)','c9999999-0000-0000-0000-000000000001',
-   pg_temp.val($q$select public.lookup_product_by_document_trace('L99999999900001')::text$q$));
+   pg_temp.try($q$select public.bulk_update_product_prices('[]'::jsonb)$q$));
 
 -- ========== 3. B사 직원 — 남의 업체 것은 존재조차 안 알려준다 ==========
 set request.jwt.claim.sub = '99999999-0000-0000-0000-000000000007';
@@ -145,9 +130,7 @@ insert into results (who,what,expected,result) values
  ('B직원','adjust_product_stock(A사 상품)','DENIED: PRODUCT_NOT_FOUND',
    pg_temp.try($q$select public.adjust_product_stock('c9999999-0000-0000-0000-000000000001', 0, 'STOCKTAKE')$q$)),
  ('B직원','update_inbound_purchase(A사 박스)','DENIED: SCAN_NOT_FOUND',
-   pg_temp.try($q$select public.update_inbound_purchase((select scan_id from seed), 1)$q$)),
- ('B직원','lookup_document_part_name(A사 명세서, #9)','<null>',
-   pg_temp.val($q$select public.lookup_document_part_name('a9999999-0000-0000-0000-000000000001','L99999999900001')$q$));
+   pg_temp.try($q$select public.update_inbound_purchase((select scan_id from seed), 1)$q$));
 
 -- ========== 4. A사 매니저 — 관리 행위 허용 ==========
 set request.jwt.claim.sub = '99999999-0000-0000-0000-000000000005';
@@ -198,11 +181,7 @@ insert into results (who,what,expected,result) values
  ('A사장','EXCEL 행 첫 입고','ALLOWED',
    pg_temp.try($q$select public.record_inbound_scan('009999999901', 5.000, 'EXCEL', 'c9999999-0000-0000-0000-000000000001', p_import_row_id => 'e9999999-0000-0000-0000-000000000001', p_confirm_duplicate => true)$q$)),
  ('A사장','EXCEL 같은 행 두 번째 입고(다른 창)','DENIED: duplicate key value violates unique constraint "idx_inbound_scans_import_row_unique"',
-   pg_temp.try($q$select public.record_inbound_scan('009999999901', 5.000, 'EXCEL', 'c9999999-0000-0000-0000-000000000001', p_import_row_id => 'e9999999-0000-0000-0000-000000000001', p_confirm_duplicate => true)$q$)),
- ('A사장','취소 안 한 명세서 완전삭제 → 거부(106)','DENIED: DOCUMENT_NOT_DISCARDED',
-   pg_temp.try($q$delete from public.inbound_documents where id='f9999999-0000-0000-0000-000000000001'$q$)),
- ('A사장','취소 처리 후 명세서 완전삭제(RLS DELETE, owner는 허용, #7) → 1행','1',
-   pg_temp.val($q$update public.inbound_documents set status='DISCARDED' where id='f9999999-0000-0000-0000-000000000001'; with d as (delete from public.inbound_documents where id='f9999999-0000-0000-0000-000000000001' returning 1) select count(*)::text from d$q$));
+   pg_temp.try($q$select public.record_inbound_scan('009999999901', 5.000, 'EXCEL', 'c9999999-0000-0000-0000-000000000001', p_import_row_id => 'e9999999-0000-0000-0000-000000000001', p_confirm_duplicate => true)$q$));
 
 -- ========== 결과 ==========
 reset role;

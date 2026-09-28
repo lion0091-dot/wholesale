@@ -1,4 +1,4 @@
--- 3. 입고 통합테스트 — DB 레벨(스캔 상태 판정, 중복, 실중량 ±2%, 취소, 직접 쓰기 차단, 명세서 사전조회 상태기계, 엑셀 대량 입고)
+-- 3. 입고 통합테스트 — DB 레벨(스캔 상태 판정, 중복, 실중량 ±2%, 취소, 직접 쓰기 차단, 엑셀 대량 입고)
 --    출고·주문 확정 차감은 db-test-order-stock-regression 이 다룬다.
 --
 -- 실행(로컬 Docker DB, 전부 롤백):
@@ -105,26 +105,10 @@ select public.upsert_master_livestock('L94000000000001','group','mtrace_livestoc
 -- 축종조차 없는 이상 응답(자동생성 불가 판정용)
 insert into public.master_livestock (trace_no,trace_kind,source,raw_payload) values ('009400000005','individual','mtrace_livestock','{}'::jsonb);
 
--- A사 명세서 D1(대기) — 사전조회 상태기계·문서 기반 상품 확정 검증용
-insert into public.inbound_documents (id,wholesaler_id,supplier_name,status,created_by) values
- ('f4999999-0000-0000-0000-000000000001','a4999999-0000-0000-0000-000000000001','△△도축장','PENDING','94999999-0000-0000-0000-000000000001'),
- ('f4999999-0000-0000-0000-000000000002','a4999999-0000-0000-0000-000000000001','취소된 서류','DISCARDED','94999999-0000-0000-0000-000000000001'),
- ('f4999999-0000-0000-0000-000000000003','a4999999-0000-0000-0000-000000000001','취소 안 한 서류','PENDING','94999999-0000-0000-0000-000000000001'),
- ('f4999999-0000-0000-0000-000000000009','a4999999-0000-0000-0000-000000000002','B사 서류','PENDING','94999999-0000-0000-0000-000000000005');
-insert into public.inbound_document_lines (id,document_id,line_no,item_name,product_id,trace_no,part_name,prelookup_status,prelookup_error) values
- ('14999999-0000-0000-0000-000000000001','f4999999-0000-0000-0000-000000000001',1,'목살','c4999999-0000-0000-0000-000000000002','L94000000000002','목살','PENDING',null),
- ('14999999-0000-0000-0000-000000000002','f4999999-0000-0000-0000-000000000001',2,'목살','c4999999-0000-0000-0000-000000000002','L94000000000003','목살','PENDING',null),
- ('14999999-0000-0000-0000-000000000003','f4999999-0000-0000-0000-000000000001',3,'삼겹','c4999999-0000-0000-0000-000000000003','L94000000000003','삼겹살',null,null),
- ('14999999-0000-0000-0000-000000000004','f4999999-0000-0000-0000-000000000001',4,'갈비','c4999999-0000-0000-0000-000000000004','L94000000000005','갈비','PENDING',null),
- ('14999999-0000-0000-0000-000000000005','f4999999-0000-0000-0000-000000000001',5,'미등록',null,'009400000099',null,'FAILED','정부 이력조회에서 확인되지 않음'),
- ('14999999-0000-0000-0000-000000000006','f4999999-0000-0000-0000-000000000001',6,'목살(로트)',null,'L94000000000001','목살','DONE',null),
- ('14999999-0000-0000-0000-000000000007','f4999999-0000-0000-0000-000000000002',1,'목살','c4999999-0000-0000-0000-000000000002','L94000000000004','목살','DONE',null);
-
 set role authenticated; set request.jwt.claim.role = 'authenticated'; set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000001';
 
 -- ========== 3-A. 스캔 기본 흐름 ==========
 insert into results (who,what,expected,result) values
- ('A사장','명세서 줄만 저장된 상태 → 재고 0·원장 0 (설계 원칙: 서류로는 재고 안 잡힘)','0|0', pg_temp.val($q$select stock_quantity::int||'|'||(select count(*) from public.stock_ledger where product_id='c4999999-0000-0000-0000-000000000002') from public.products where id='c4999999-0000-0000-0000-000000000002'$q$)),
  ('A사장','이력 있음+상품 지정 8.000kg → NORMAL','NORMAL', pg_temp.scan('S1', $q$select public.record_inbound_scan('009400000001', 8.000, 'BARCODE_SCAN', 'c4999999-0000-0000-0000-000000000001')$q$)),
  ('A사장','  └ 재고 8.000·원장 INBOUND 1건·잔량=중량','8.000|1|8.000', pg_temp.val($q$select p.stock_quantity::text||'|'||(select count(*) from public.stock_ledger where inbound_scan_id=(select id from ids where key='S1') and event_type='INBOUND')||'|'||s.remaining_weight::text from public.products p, public.inbound_scans s where p.id='c4999999-0000-0000-0000-000000000001' and s.id=(select id from ids where key='S1')$q$)),
  ('A사장','이력 없음(가짜 번호) → EXCEPTION, 재고 안 잡힘','EXCEPTION', pg_temp.scan('S2', $q$select public.record_inbound_scan('009400009999', 5.000, 'BARCODE_SCAN')$q$)),
@@ -141,10 +125,10 @@ insert into results (who,what,expected,result) values
  ('A사장','  └ 매핑 학습됨(소/채끝/1+) → 다음 채끝 스캔은 바로 NORMAL','NORMAL', pg_temp.scan('S5b', $q$select public.record_inbound_scan('009400000012', 4.000, 'BARCODE_SCAN')$q$)),
  ('A사장','  └ 같은 상품에 붙음','true', pg_temp.val($q$select ((select product_id from public.inbound_scans where id=(select id from ids where key='S5b')) = (select product_id from public.inbound_scans where id=(select id from ids where key='S5')))::text$q$)),
  ('A사장','자동생성을 확정된 건에 또 호출 → 거부','DENIED: SCAN_ALREADY_RESOLVED', pg_temp.try($q$select public.autocreate_product_for_scan((select id from ids where key='S5'))$q$)),
- ('A사장','로트(부위 없음)+명세서 줄에 부위 있음 → PENDING_MAPPING','PENDING_MAPPING', pg_temp.scan('S6', $q$select public.record_inbound_scan('l94000000000001', 10.000, 'MANUAL')$q$)),
+ ('A사장','로트(부위 없음)+이력조회에도 부위 없음 → PENDING_MAPPING','PENDING_MAPPING', pg_temp.scan('S6', $q$select public.record_inbound_scan('l94000000000001', 10.000, 'MANUAL')$q$)),
  ('A사장','  └ 소문자 로트번호가 대문자로 정규화됨','L94000000000001', pg_temp.val($q$select payload->>'trace_no' from ids where key='S6'$q$)),
- ('A사장','  └ 자동생성이 명세서 부위(목살)로 기존 "돼지 목살"을 재사용','false|돼지 목살|false', pg_temp.val($q$select (r->>'created')||'|'||(r->>'product_name')||'|'||(r->>'part_missing') from public.autocreate_product_for_scan((select id from ids where key='S6')) r$q$)),
- ('A사장','  └ 돼지 목살 재고 10.000','10.000', pg_temp.val($q$select stock_quantity::text from public.products where id='c4999999-0000-0000-0000-000000000002'$q$)),
+ ('A사장','  └ 부위를 못 채워 새 상품을 "(부위 미지정)"으로 만든다(명세서 보조 경로 제거됨)','true|true', pg_temp.val($q$select (r->>'created')||'|'||(r->>'part_missing') from public.autocreate_product_for_scan((select id from ids where key='S6')) r$q$)),
+ ('A사장','  └ 새 상품 재고 10.000','10.000', pg_temp.val($q$select p.stock_quantity::text from ids i join public.inbound_scans s on s.id=i.id join public.products p on p.id=s.product_id where i.key='S6'$q$)),
  ('A사장','축종조차 없는 이력 → PENDING_MAPPING','PENDING_MAPPING', pg_temp.scan('S8', $q$select public.record_inbound_scan('009400000005', 3.000, 'MANUAL')$q$)),
  ('A사장','  └ 자동생성 불가 판정(축종 없음), 스캔은 PENDING_MAPPING 유지','INSUFFICIENT_TRACE_INFO|PENDING_MAPPING', pg_temp.val($q$select (select public.autocreate_product_for_scan(i.id)->>'reason' from ids i where i.key='S8')||'|'||(select s.status from ids i join public.inbound_scans s on s.id=i.id where i.key='S8')$q$)),
  ('A사장','중량 0 → 거부','DENIED: INVALID_WEIGHT', pg_temp.try($q$select public.record_inbound_scan('009400000006', 0, 'MANUAL')$q$)),
@@ -216,47 +200,6 @@ insert into results (who,what,expected,result) values
  ('A직원','직원은 자기 회사 스캔·예외로그 조회 가능','true|true', pg_temp.val($q$select (count(*) > 0)::text||'|'||((select count(*) from public.livestock_exception_log where wholesaler_id='a4999999-0000-0000-0000-000000000001') > 0)::text from public.inbound_scans where wholesaler_id='a4999999-0000-0000-0000-000000000001'$q$)),
  ('A직원','직원이 박스 취소 → 허용(현장 작업)','VOIDED', pg_temp.val($q$select public.void_inbound_scan((select id from ids where key='D5'), '직원 취소')->>'status'$q$));
 set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000001';
-
--- ========== 3-F. 명세서 — 문서 기반 상품 확정 + 사전조회 상태기계 ==========
-insert into results (who,what,expected,result) values
- ('A사장','한 상품에만 적힌 로트번호 → 그 상품으로 자동 확정','c4999999-0000-0000-0000-000000000002', pg_temp.val($q$select public.lookup_product_by_document_trace('l94000000000002')::text$q$)),
- ('A사장','두 상품(목살·삼겹) 줄에 걸친 로트번호 → NULL(되묻는다)','<null>', pg_temp.val($q$select public.lookup_product_by_document_trace('L94000000000003')::text$q$)),
- ('A사장','취소된 서류의 번호 → NULL','<null>', pg_temp.val($q$select public.lookup_product_by_document_trace('L94000000000004')::text$q$)),
- ('A사장','보관된 상품 줄의 번호 → NULL','<null>', pg_temp.val($q$select public.lookup_product_by_document_trace('L94000000000005')::text$q$)),
- ('A사장','명세서 부위 조회: 하나로 좁혀짐(목살) / 두 부위 걸침 → NULL','목살|<null>', pg_temp.val($q$select coalesce(public.lookup_document_part_name('a4999999-0000-0000-0000-000000000001','L94000000000002'),'<null>')||'|'||coalesce(public.lookup_document_part_name('a4999999-0000-0000-0000-000000000001','L94000000000003'),'<null>')$q$)),
- ('A사장','사전조회 대기 줄 3건(1·2·4번), 같은 번호 두 번째 줄(3번)은 대상 아님','3|<null>', pg_temp.val($q$select (select count(*) from public.inbound_document_lines where document_id='f4999999-0000-0000-0000-000000000001' and prelookup_status='PENDING')||'|'||coalesce((select prelookup_status from public.inbound_document_lines where id='14999999-0000-0000-0000-000000000003'),'<null>')$q$)),
- ('A사장','[취소] 서류 취소 → 1행, 대기 줄 3건 → FAILED+표식','1|3', pg_temp.rows($q$update public.inbound_documents set status='DISCARDED' where id='f4999999-0000-0000-0000-000000000001' and wholesaler_id='a4999999-0000-0000-0000-000000000001'$q$)||'|'||pg_temp.rows($q$update public.inbound_document_lines set prelookup_status='FAILED', prelookup_error='서류 취소로 조회를 건너뜀' where document_id='f4999999-0000-0000-0000-000000000001' and prelookup_status='PENDING'$q$)),
- ('A사장','  └ 취소 뒤 재개 로직이 붙잡을 대기 줄 0건','0', pg_temp.val($q$select count(*)::text from public.inbound_document_lines where prelookup_status='PENDING'$q$)),
- ('A사장','  └ 취소된 서류 번호로는 자동 확정 안 됨','<null>', pg_temp.val($q$select public.lookup_product_by_document_trace('L94000000000002')::text$q$)),
- ('A사장','[복원] 서류 복원 → 1행, 표식 줄만 PENDING(3건), 진짜 실패 줄(5번)은 FAILED 유지','1|3|FAILED', pg_temp.rows($q$update public.inbound_documents set status='PENDING' where id='f4999999-0000-0000-0000-000000000001' and wholesaler_id='a4999999-0000-0000-0000-000000000001'$q$)||'|'||pg_temp.rows($q$update public.inbound_document_lines set prelookup_status='PENDING', prelookup_error=null where document_id='f4999999-0000-0000-0000-000000000001' and prelookup_status='FAILED' and prelookup_error='서류 취소로 조회를 건너뜀'$q$)||'|'||pg_temp.val($q$select prelookup_status from public.inbound_document_lines where id='14999999-0000-0000-0000-000000000005'$q$)),
- ('A사장','  └ 복원 뒤 자동 확정 다시 됨','c4999999-0000-0000-0000-000000000002', pg_temp.val($q$select public.lookup_product_by_document_trace('L94000000000002')::text$q$)),
- ('A사장','[동시 처리] 같은 줄 DONE 기록 두 번 → 첫 번째 1행, 두 번째 0행(PENDING 가드)','1|0', pg_temp.rows($q$update public.inbound_document_lines set prelookup_status='DONE', prelookup_error=null where id='14999999-0000-0000-0000-000000000001' and prelookup_status='PENDING'$q$)||'|'||pg_temp.rows($q$update public.inbound_document_lines set prelookup_status='FAILED', prelookup_error='늦게 온 실패' where id='14999999-0000-0000-0000-000000000001' and prelookup_status='PENDING'$q$)),
- ('A사장','  └ 먼저 쓴 DONE이 남음','DONE|<null>', pg_temp.val($q$select prelookup_status||'|'||coalesce(prelookup_error,'<null>') from public.inbound_document_lines where id='14999999-0000-0000-0000-000000000001'$q$)),
- ('A사장','[재시도] 실패 줄만 PENDING으로 → 1행(5번)','1', pg_temp.rows($q$update public.inbound_document_lines set prelookup_status='PENDING', prelookup_error=null where document_id='f4999999-0000-0000-0000-000000000001' and prelookup_status='FAILED'$q$)),
- ('A사장','사전조회 상태에 새 값(CANCELLED) → 거부(CHECK)','DENIED', pg_temp.try($q$update public.inbound_document_lines set prelookup_status='CANCELLED' where id='14999999-0000-0000-0000-000000000002'$q$)),
- ('A사장','명세서 줄 표기중량 0 / 단가 음수 → 거부(CHECK)','DENIED|DENIED', left(pg_temp.try($q$update public.inbound_document_lines set labeled_weight=0 where id='14999999-0000-0000-0000-000000000002'$q$),6)||'|'||left(pg_temp.try($q$update public.inbound_document_lines set unit_price=-1 where id='14999999-0000-0000-0000-000000000002'$q$),6)),
- ('A사장','없는 문서 ID 취소 → 0행','0', pg_temp.rows($q$update public.inbound_documents set status='DISCARDED' where id='f4999999-0000-0000-0000-000000000099' and wholesaler_id='a4999999-0000-0000-0000-000000000001'$q$)),
- ('A사장','서류 상태에 정해진 값 밖 → 거부(CHECK)','DENIED', pg_temp.try($q$update public.inbound_documents set status='ARCHIVED' where id='f4999999-0000-0000-0000-000000000003'$q$));
-set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000002';
-insert into results (who,what,expected,result) values
- ('A직원','직원이 서류 취소 처리 → 허용(1행)','1', pg_temp.rows($q$update public.inbound_documents set status='DISCARDED' where id='f4999999-0000-0000-0000-000000000003' and wholesaler_id='a4999999-0000-0000-0000-000000000001'$q$)),
- ('A직원','직원이 취소된 서류 완전삭제 → 0행(관리자만, 098)','0', pg_temp.rows($q$delete from public.inbound_documents where id='f4999999-0000-0000-0000-000000000002'$q$)),
- ('A직원','직원이 서류 복원 → 허용(1행)','1', pg_temp.rows($q$update public.inbound_documents set status='PENDING' where id='f4999999-0000-0000-0000-000000000003' and wholesaler_id='a4999999-0000-0000-0000-000000000001'$q$));
-set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000005';
-insert into results (who,what,expected,result) values
- ('B사장','A사 서류·줄 조회 → 0건','0|0', pg_temp.val($q$select (select count(*) from public.inbound_documents where wholesaler_id='a4999999-0000-0000-0000-000000000001')||'|'||(select count(*) from public.inbound_document_lines where document_id='f4999999-0000-0000-0000-000000000001')$q$)),
- ('B사장','A사 서류에 줄 추가 → 거부','DENIED', pg_temp.try($q$insert into public.inbound_document_lines (document_id,line_no,item_name) values ('f4999999-0000-0000-0000-000000000001',99,'끼워넣기')$q$)),
- ('B사장','A사 서류 취소·삭제 → 0행','0|0', pg_temp.rows($q$update public.inbound_documents set status='DISCARDED' where id='f4999999-0000-0000-0000-000000000001'$q$)||'|'||pg_temp.rows($q$delete from public.inbound_documents where id='f4999999-0000-0000-0000-000000000002'$q$)),
- ('B사장','A사 번호로 문서 기반 확정 조회 → NULL(자기 서류만 봄)','<null>', pg_temp.val($q$select public.lookup_product_by_document_trace('L94000000000002')::text$q$)),
- ('B사장','A사 명세서 부위 조회 → NULL(098)','<null>', pg_temp.val($q$select coalesce(public.lookup_document_part_name('a4999999-0000-0000-0000-000000000001','L94000000000002'),'<null>')$q$));
-set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000001';
-insert into results (who,what,expected,result) values
- ('A사장','취소된 서류 완전삭제 → 1행(줄은 CASCADE)','1|0', pg_temp.rows($q$delete from public.inbound_documents where id='f4999999-0000-0000-0000-000000000002'$q$)||'|'||pg_temp.val($q$select count(*)::text from public.inbound_document_lines where id='14999999-0000-0000-0000-000000000007'$q$)),
- ('A사장','취소 안 한 서류 완전삭제 → 거부(106, 먼저 취소 필요)','DENIED: DOCUMENT_NOT_DISCARDED', pg_temp.try($q$delete from public.inbound_documents where id='f4999999-0000-0000-0000-000000000003'$q$)),
- ('A사장','  └ 취소 처리 뒤 삭제 → 1행','1|1', pg_temp.rows($q$update public.inbound_documents set status='DISCARDED' where id='f4999999-0000-0000-0000-000000000003'$q$)||'|'||pg_temp.rows($q$delete from public.inbound_documents where id='f4999999-0000-0000-0000-000000000003'$q$));
-set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000006';
-insert into results (who,what,expected,result) values
- ('관리자','super_admin은 취소 안 한 서류도 삭제 가능(정리 작업용 통과 조건)','1', pg_temp.rows($q$delete from public.inbound_documents where id='f4999999-0000-0000-0000-000000000001'$q$));
 
 -- ========== 3-G. 엑셀 대량 입고 ==========
 set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000002';

@@ -1,18 +1,16 @@
 "use client";
 
-import { INBOUND_ANCHORS, describeRemaining } from "@/lib/livestock/inbound-next-step";
+import { INBOUND_ANCHORS } from "@/lib/livestock/inbound-next-step";
 import { TraceNoFixer } from "./trace-no-fixer";
-import { setDocumentsScanFinishedAction } from "./document-actions";
 import { HIGHLIGHT_BUTTON, HIGHLIGHT_FIELD, ResultCardView, StepCard, type StepCardStep } from "./step-card";
 import {
   buildFailureCard,
   buildMissingInputCard,
   buildScanResultCard,
-  withDocumentContext,
   type ResultCard,
 } from "@/lib/livestock/inbound-scan-result";
 import { rejectionSummary } from "@/lib/livestock/scan-purchase-order";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { composeProductDisplayName } from "@/lib/products/display-name";
@@ -124,31 +122,13 @@ function hasCameraScan(): boolean {
 
 interface Props {
   initialScans: InboundScanRow[];
-  /** 대기(PENDING) 전표와 현장 스캔 종료 표시 여부. */
-  scanDocuments: Array<{ id: string; scanFinished: boolean }>;
-  /** 전표 기준으로 아직 안 들어온 박스 수(수량 반영). 단계 안내 카드에 쓴다. */
-  remainingBoxCount: number;
-  /** 위 수 중 무게 기준 줄의 몫 — 문구가 박스와 무게 줄을 나눠 말한다. */
-  remainingWeightLines?: number;
   /**
-   * 스캔 id → 필수항목 체크리스트. 서버에서 공공조회·전표를 붙여 만든다.
+   * 스캔 id → 필수항목 체크리스트. 서버에서 공공조회를 붙여 만든다.
    * 방금 찍어서 아직 서버 데이터가 없는 줄은 여기 없고, 새로고침되면 채워진다.
    */
   scanRequirements: Record<string, ScanRequirementReport>;
   products: ScanProductOption[];
   shippableOrders: ShippableOrderOption[];
-  /**
-   * 대기중(PENDING) 전표 줄에 적힌 이력번호 전체(대문자). "박스 나눠서 입고"에서
-   * 줄마다 쓴 번호가 여기 없으면 전표와 대조되지 않는다는 경고 배너를 띄운다.
-   * 전표 자체가 없으면(빈 배열) 대조할 게 없으니 배너를 안 띄운다.
-   */
-  pendingDocumentTraceNos: string[];
-  /**
-   * 전표에는 있는데 아직 스캔되지 않은 줄 — "전표 대기 품목" 목록에 띄워
-   * 탭하면 이력번호 입력칸에 채워준다(2026-09-24, 사장님 지침: 바코드가 지저분하거나
-   * 로트번호를 손으로 옮겨 적어야 할 때의 보조 수단 — 스캔 자체를 대체하지 않는다).
-   */
-  awaitingDocumentLines: AwaitingDocumentLine[];
   /** 이 업체가 그동안 직접 입력한 위치 이름 — 고정 목록 대신 제안용으로 쓴다. */
   storageLocationSuggestions: string[];
   /** 보관(감춤)돼 목록에서 빠진 상품 수 — 지정할 상품이 없을 때 보관을 풀라고 안내한다. */
@@ -157,15 +137,6 @@ interface Props {
   canEditPurchasePrice: boolean;
   /** "지금 온 거래처"로 고를 수 있는 거래처(사용 중인 것만). 발주 관리의 거래처 관리에서 만든다. */
   suppliers: Array<{ id: string; name: string }>;
-}
-
-export interface AwaitingDocumentLine {
-  id: string;
-  traceNo: string;
-  itemName: string | null;
-  labeledWeight: number | null;
-  unitPrice: number | null;
-  supplierName: string | null;
 }
 
 const SUPPLIER_STORAGE_KEY = "inbound:current-supplier";
@@ -177,33 +148,18 @@ const SHOW_DEV_SAMPLES = process.env.NEXT_PUBLIC_SHOW_DEV_SAMPLES === "true";
 const SOURCE_STYLE: Record<string, { label: string; bg: string; fg: string }> = {
   SCAN: { label: "스캔", bg: "#e0f2fe", fg: "#075985" },
   TRACE_API: { label: "이력조회", bg: "#dcfce7", fg: "#166534" },
-  DOCUMENT: { label: "전표", bg: "#ede9fe", fg: "#5b21b6" },
   PRODUCT: { label: "상품", bg: "#f1f5f9", fg: "#475569" },
 };
 
 /**
- * 입고 한 건이 플랫폼 기준을 채웠는지 항목별로 뿌린다.
- *
- * 빠진 것만 보여주지 않고 **채워진 값과 그 출처까지** 보여준다 — 공공조회와
- * 전표 중 어느 쪽에서 온 값인지 알아야 틀렸을 때 어디를 고칠지 알 수 있고,
- * 양쪽이 어긋나는 경우도 드러나야 하기 때문이다(사장님 요청).
- */
-/**
- * 박스 옆 대조 요약 — 칸 표는 기본으로 접고, 이력조회와 전표가 어긋난 항목(등급 불일치 등)만 한 줄로 남긴다.
+ * 박스 옆 대조 요약 — 칸 표는 기본으로 접는다.
  * 칸 표를 늘 펼쳐 두면 박스마다 화면 반 장을 차지해 정작 볼 것이 묻힌다.
  */
 function ScanRequirementSummary({ report }: { report: ScanRequirementReport }) {
   const [open, setOpen] = useState(false);
-  const conflicts = report.fields.filter((field) => field.conflict);
 
   return (
     <div style={{ width: "100%", marginTop: "2px" }}>
-      {!open &&
-        conflicts.map((field) => (
-          <p key={`conflict-${field.key}`} style={{ margin: "2px 0 0", fontSize: "11px", color: "#b45309" }}>
-            {field.conflict} — 어느 쪽이 맞는지 확인이 필요합니다.
-          </p>
-        ))}
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -229,7 +185,7 @@ function ScanRequirementList({ report }: { report: ScanRequirementReport }) {
           return (
             <span
               key={field.key}
-              title={field.conflict ?? field.hint ?? undefined}
+              title={field.hint ?? undefined}
               style={{
                 fontSize: "11px",
                 borderRadius: "5px",
@@ -260,22 +216,7 @@ function ScanRequirementList({ report }: { report: ScanRequirementReport }) {
             </span>
           );
         })}
-
-        {!report.documentMatched ? (
-          <span style={{ fontSize: "11px", color: "#94a3b8" }}>전표 연결 안 됨</span>
-        ) : null}
       </div>
-
-      {report.fields
-        .filter((field) => field.conflict)
-        .map((field) => (
-          <p
-            key={`conflict-${field.key}`}
-            style={{ margin: "4px 0 0", fontSize: "11px", color: "#b45309" }}
-          >
-            {field.conflict} — 어느 쪽이 맞는지 확인이 필요합니다.
-          </p>
-        ))}
 
       {report.fields
         .filter((field) => !field.value && field.level === "REQUIRED" && field.hint)
@@ -293,14 +234,9 @@ function ScanRequirementList({ report }: { report: ScanRequirementReport }) {
 
 export function InboundScanView({
   initialScans,
-  scanDocuments,
-  remainingBoxCount,
-  remainingWeightLines = 0,
   products,
   shippableOrders,
   scanRequirements,
-  pendingDocumentTraceNos,
-  awaitingDocumentLines,
   storageLocationSuggestions,
   archivedProductCount = 0,
   canEditPurchasePrice,
@@ -338,8 +274,6 @@ export function InboundScanView({
     setResultCard({ card: buildMissingInputCard("supplier"), scanId: null });
     supplierSelectRef.current?.focus();
   };
-
-  const documentTraceNoSet = useMemo(() => new Set(pendingDocumentTraceNos), [pendingDocumentTraceNos]);
 
   // 상품 확인 필요/이력 확인 필요 행 중 "특정 주문으로 바로 보내기" 패널을 펼친 스캔 id.
   const [orderTargetScanId, setOrderTargetScanId] = useState<string | null>(null);
@@ -418,19 +352,6 @@ export function InboundScanView({
   useEffect(() => {
     setRows(initialScans);
   }, [initialScans]);
-
-  // 전표의 마지막 박스를 찍어 남은 박스가 0이 되면 화면 맨 위 "지금 할 일" 카드(마감 안내)로 시선을 옮긴다.
-  const previousRemainingRef = useRef(remainingBoxCount);
-
-  useEffect(() => {
-    if (previousRemainingRef.current > 0 && remainingBoxCount === 0) {
-      document
-        .getElementById(INBOUND_ANCHORS.nextStep.slice(1))
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-
-    previousRemainingRef.current = remainingBoxCount;
-  }, [remainingBoxCount]);
 
   const submitScan = useCallback(
     async (
@@ -626,18 +547,6 @@ export function InboundScanView({
 
     event.preventDefault();
     processTraceInput(traceNo, "BARCODE_SCAN");
-  };
-
-  /**
-   * 전표 대기 품목을 탭했을 때 — 바코드가 안 찍히거나 로트번호를 손으로
-   * 옮겨 적어야 할 때의 보조 수단. 이력번호 입력칸만 채우고 실제 등록은
-   * 여전히 사람이 실중량을 입력하고 확정해야 한다(스캔을 대신하지 않는다).
-   */
-  const handleUseAwaitingLine = (line: AwaitingDocumentLine) => {
-    setTraceNo(line.traceNo);
-    setError(null);
-    setNotice(`"${line.traceNo}"를 입력칸에 채웠습니다 — 실중량을 확인하고 Enter를 눌러주세요.`);
-    weightInputRef.current?.focus();
   };
 
   // 보관 위치 지정(선택) — 입고 시점이 아니어도 나중에 언제든 채울 수 있다.
@@ -1066,11 +975,7 @@ export function InboundScanView({
     }
 
     setResultCard(null);
-    setNotice(
-      result.data?.reopenedDocument
-        ? "취소했습니다. 마감돼 있던 전표에서 이 박스가 빠져 전표를 다시 열었습니다 — 같은 박스를 다시 찍으면 그 줄에 다시 이어집니다."
-        : "방금 찍은 박스를 취소했습니다."
-    );
+    setNotice("방금 찍은 박스를 취소했습니다.");
     router.refresh();
   };
 
@@ -1083,51 +988,6 @@ export function InboundScanView({
 
     if (!result.success) {
       setError(result.error ?? "취소에 실패했습니다.");
-      return;
-    }
-
-    if (result.data?.reopenedDocument) {
-      setNotice("취소했습니다. 마감돼 있던 전표에서 이 박스가 빠져 전표를 다시 열었습니다 — 같은 박스를 다시 찍으면 그 줄에 다시 이어집니다.");
-    }
-
-    router.refresh();
-  };
-
-  // 결과 카드에 전표 대조를 덧붙인다 — 새로고침으로 대조 결과가 들어온 뒤에 "전표에 없는 번호"가 뜬다.
-  const shownResultCard = resultCard
-    ? resultCard.scanId
-      ? withDocumentContext(resultCard.card, {
-          hasPendingDocument: pendingDocumentTraceNos.length > 0,
-          documentMatched: scanRequirements[resultCard.scanId]?.documentMatched ?? null,
-        })
-      : resultCard.card
-    : null;
-
-  // 현장 "스캔 종료" — 박스가 끝내 다 안 올 때 사무실이 마감으로 넘어가도록 알린다(재고·대조와 무관한 표시).
-  const scanAllFinished = scanDocuments.length > 0 && scanDocuments.every((doc) => doc.scanFinished);
-  const [finishingScan, setFinishingScan] = useState(false);
-
-  const handleScanFinished = async (finished: boolean) => {
-    if (
-      finished &&
-      !window.confirm(
-        `전표에서 아직 안 들어온 것(${describeRemaining(remainingBoxCount, remainingWeightLines)})은 안 온 것으로 알리고 스캔을 종료합니다. 사무실이 확인 후 마감합니다.\n\n종료할까요?`
-      )
-    ) {
-      return;
-    }
-
-    setFinishingScan(true);
-
-    const result = await setDocumentsScanFinishedAction(
-      scanDocuments.filter((doc) => doc.scanFinished !== finished).map((doc) => doc.id),
-      finished
-    );
-
-    setFinishingScan(false);
-
-    if (!result.success) {
-      setResultCard({ card: buildFailureCard(result.error ?? "처리하지 못했습니다."), scanId: null });
       return;
     }
 
@@ -1168,17 +1028,14 @@ export function InboundScanView({
     (row) => !row.isSample && (row.status === "PENDING_MAPPING" || row.status === "EXCEPTION")
   );
 
-  // 카드가 안내하는 단계의 칸·버튼을 같은 색으로 강조한다. 전표 박스를 다 찍은 뒤엔 강조할 칸이 없다.
-  const scanAllArrived = remainingBoxCount === 0 && pendingDocumentTraceNos.length > 0;
+  // 카드가 안내하는 단계의 칸·버튼을 같은 색으로 강조한다.
   const activeScanField: "trace" | "weight" | "submit" | null =
     fieldError
       ? fieldError
       : pending.length > 0
       ? null
       : !traceNo.trim()
-        ? scanAllArrived
-          ? null
-          : "trace"
+        ? "trace"
         : !weight.trim()
           ? "weight"
           : "submit";
@@ -1188,34 +1045,15 @@ export function InboundScanView({
 
   // 지금 할 단계 안내 — 바코드 → 실중량 → 등록 순서를 카드가 말해 준다.
   const baseScanStep: StepCardStep =
-    remainingBoxCount > 0 && scanAllFinished
-      ? {
-          title: "스캔 종료를 알렸습니다",
-          detail:
-            "안 온 박스는 사무실이 확인합니다. 박스가 더 오면 그냥 찍으세요 — 저절로 다시 시작됩니다.",
-        }
-      : pending.length > 0
+    pending.length > 0
       ? { title: "등록 중입니다", detail: "이력번호를 조회하고 있습니다. 잠시만 기다려 주세요." }
       : !traceNo.trim()
-        ? remainingBoxCount === 0 && pendingDocumentTraceNos.length > 0
-          ? {
-              title: "전표의 박스를 모두 찍었습니다",
-              detail: "다 찍었습니다. 사무실이 마감합니다.",
-              link: { label: "다음 할 일 보기", href: INBOUND_ANCHORS.nextStep },
-            }
-          : {
-              title: "박스 등록 1단계: 박스의 바코드를 찍으세요",
-              detail:
-                "바코드를 찍으면 이력번호가 채워집니다. 방금 잘못 찍었으면 결과 카드의 '방금 찍은 박스 취소'를 누르세요." +
-                (awaitingDocumentLines.length > 0
-                  ? " 안 찍히면 아래 \"전표 대기 품목\"을 눌러 번호를 채우세요."
-                  : " 안 찍히면 박스 라벨의 번호를 직접 입력하세요.") +
-                (remainingBoxCount > 0 ? ` 아직 안 들어온 것: ${describeRemaining(remainingBoxCount, remainingWeightLines)}.` : ""),
-              link:
-                awaitingDocumentLines.length > 0
-                  ? { label: "전표 대기 품목 보기", href: "#inbound-awaiting" }
-                  : { label: "입고 내역 열기 (지난 박스 취소)", href: INBOUND_ANCHORS.history },
-            }
+        ? {
+            title: "박스 등록 1단계: 박스의 바코드를 찍으세요",
+            detail:
+              "바코드를 찍으면 이력번호가 채워집니다. 방금 잘못 찍었으면 결과 카드의 '방금 찍은 박스 취소'를 누르세요. 안 찍히면 박스 라벨의 번호를 직접 입력하세요.",
+            link: { label: "입고 내역 열기 (지난 박스 취소)", href: INBOUND_ANCHORS.history },
+          }
         : !weight.trim()
           ? {
               title: "박스 등록 2단계: 저울에 잰 실중량(kg)을 입력하세요",
@@ -1228,7 +1066,7 @@ export function InboundScanView({
             };
 
   // 확인이 필요한 박스가 있으면 맨 위 "지금 할 일" 카드가 그것을 먼저 하라고 말한다 — 이 카드는 그 뒤에 새 박스를 등록하는 순서만 말한다.
-  const scanIdle = !traceNo.trim() && pending.length === 0 && !(remainingBoxCount > 0 && scanAllFinished);
+  const scanIdle = !traceNo.trim() && pending.length === 0;
   const scanStep: StepCardStep =
     scanIdle && needsCheckRows.length > 0
       ? {
@@ -1571,26 +1409,12 @@ export function InboundScanView({
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <StepCard who="현장" step={scanStep} />
 
-      {shownResultCard ? (
+      {resultCard ? (
         <ResultCardView
-          card={shownResultCard}
+          card={resultCard.card}
           onDismiss={() => setResultCard(null)}
           onUndo={resultCard?.scanId ? () => void undoLastScan(resultCard.scanId as string) : undefined}
         />
-      ) : null}
-
-      {remainingBoxCount > 0 && scanDocuments.length > 0 ? (
-        <div id="inbound-scan-finish" style={{ display: "flex", justifyContent: "flex-end", scrollMarginTop: "12px" }}>
-          {scanAllFinished ? (
-            <button type="button" disabled={finishingScan} onClick={() => void handleScanFinished(false)} style={buttonStyle}>
-              {finishingScan ? "처리 중…" : "스캔 다시 시작"}
-            </button>
-          ) : (
-            <button type="button" disabled={finishingScan} onClick={() => void handleScanFinished(true)} style={buttonStyle}>
-              {finishingScan ? "처리 중…" : `스캔 종료 (안 온 것: ${describeRemaining(remainingBoxCount, remainingWeightLines)})`}
-            </button>
-          )}
-        </div>
       ) : null}
 
       <section id="inbound-scan-form" style={{ ...panelStyle, scrollMarginTop: "12px" }}>
@@ -1829,52 +1653,6 @@ export function InboundScanView({
         )}
       </section>
 
-      {awaitingDocumentLines.length > 0 && (
-        <section id="inbound-awaiting" style={{ ...panelStyle, scrollMarginTop: "12px" }}>
-          <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>
-            전표 대기 품목 <span style={{ color: "#94a3b8", fontWeight: 400 }}>아직 안 들어온 것</span>
-          </div>
-          <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 10px" }}>
-            바코드가 잘 안 찍히거나 로트번호를 옮겨 적어야 할 때, 아래에서 탭하면 이력번호 칸에
-            채워집니다. 현장용입니다 — 손에 든 박스와 같은 물건을 고르세요(순서는 상관없습니다). 사무실은 누를 필요가 없습니다. 실제 등록은
-            실중량을 확인하고 눌러야 끝납니다.
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            {awaitingDocumentLines.map((line) => (
-              <button
-                key={line.id}
-                type="button"
-                onClick={() => handleUseAwaitingLine(line)}
-                style={{
-                  ...rowStyle,
-                  cursor: "pointer",
-                  textAlign: "left",
-                  border: "1px dashed #cbd5e1",
-                  display: "flex",
-                  gap: "8px",
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                }}
-              >
-                <span style={{ fontWeight: 600 }}>{line.itemName ?? "품목명 없음"}</span>
-                <span style={{ fontFamily: "monospace", fontSize: "12px", color: "#475569" }}>
-                  {line.traceNo}
-                </span>
-                {line.labeledWeight !== null && (
-                  <span style={{ fontSize: "12px", color: "#64748b" }}>{line.labeledWeight}kg</span>
-                )}
-                {line.unitPrice !== null && (
-                  <span style={{ fontSize: "12px", color: "#64748b" }}>{formatWon(line.unitPrice)}</span>
-                )}
-                {line.supplierName && (
-                  <span style={{ fontSize: "11px", color: "#94a3b8" }}>{line.supplierName}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
       {splitMode && (
         <section style={panelStyle}>
           <div style={{ marginBottom: "10px" }}>
@@ -1887,43 +1665,6 @@ export function InboundScanView({
             공급자가 서로 다른 상품을 한 박스에 코드 하나로 묶어 보낸 경우입니다. 코드는 한 번만
             입력하고, 박스를 열어 실제로 들어있는 상품마다 무게를 나눠 입력해주세요.
           </p>
-
-          {(() => {
-            // 대기중 전표가 있을 때만 대조한다 — 전표 자체가 없는 공급처는 대조할
-            // 대상이 없으니 경고를 안 띄운다(사장님 확정).
-            if (documentTraceNoSet.size === 0) return null;
-
-            const boxCode = (parseBarcode(splitTraceNo).traceNo ?? splitTraceNo.trim()).toUpperCase();
-
-            const unmatchedRowNumbers = splitRows
-              .map((row, index) => {
-                if (!row.productId || !(Number.parseFloat(row.weight) > 0)) return null;
-
-                const rowParsed = parseBarcode(row.traceNo ?? "");
-                const effectiveTrace = (
-                  (rowParsed.traceNo ?? (row.traceNo ?? "").trim()) || boxCode
-                ).toUpperCase();
-
-                return effectiveTrace && !documentTraceNoSet.has(effectiveTrace) ? index + 1 : null;
-              })
-              .filter((value): value is number => value !== null);
-
-            if (unmatchedRowNumbers.length === 0) return null;
-
-            return (
-              <p
-                style={{
-                  ...messageStyle,
-                  backgroundColor: "#fffbeb",
-                  color: "#92400e",
-                  marginBottom: "10px",
-                }}
-              >
-                ⚠ {unmatchedRowNumbers.join(", ")}번 줄의 이력번호가 업로드된 전표에서 확인되지
-                않았습니다. 실제로 맞는 번호인지 다시 확인해주세요.
-              </p>
-            );
-          })()}
 
           <input
             value={splitTraceNo}

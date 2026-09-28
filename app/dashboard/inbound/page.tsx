@@ -20,7 +20,7 @@ export const metadata = {
   title: "입고 스캔 | 도매업체 통합관리시스템",
 };
 
-/** 현장이 쓰는 입고 화면 — 전표 올리기·대조·마감은 전표입력(/dashboard/inbound/statements). */
+/** 현장이 쓰는 입고 화면. */
 export default async function InboundPage() {
   const scope = await getSupplierScope();
 
@@ -28,7 +28,7 @@ export default async function InboundPage() {
     return <AdminScopeNotice />;
   }
 
-  const data = await loadInboundData(scope, { scanDetails: true });
+  const data = await loadInboundData(scope);
   const configured = configuredTraceSources();
 
   // "지금 온 거래처"로 고를 수 있는 거래처(발주 관리의 거래처 관리에서 만든 사용 중인 것).
@@ -82,16 +82,9 @@ export default async function InboundPage() {
 
       <InboundScanView
         initialScans={data.scans}
-        remainingBoxCount={data.remainingBoxCount}
-        remainingWeightLines={data.remainingWeightLines}
-        scanDocuments={data.documents
-          .filter((doc) => doc.status === "PENDING")
-          .map((doc) => ({ id: doc.id, scanFinished: doc.scanFinished }))}
         products={data.products}
         shippableOrders={data.shippableOrders}
         scanRequirements={data.scanRequirements}
-        pendingDocumentTraceNos={data.pendingDocumentTraceNos}
-        awaitingDocumentLines={data.awaitingDocumentLines}
         storageLocationSuggestions={data.storageLocationSuggestions}
         archivedProductCount={data.archivedProductCount}
         canEditPurchasePrice={data.canManage}

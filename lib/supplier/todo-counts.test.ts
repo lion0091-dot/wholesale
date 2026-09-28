@@ -6,8 +6,6 @@ const counts = (overrides: Partial<TodoCounts> = {}): TodoCounts => ({
   newOrders: 0,
   cancelRequests: 0,
   needsCheckBoxes: 0,
-  openDocuments: 0,
-  lateBoxes: 0,
   ...overrides,
 });
 
@@ -17,7 +15,7 @@ describe("종 배지 합계", () => {
   });
 
   it("모든 항목을 더한다", () => {
-    expect(totalTodo(counts({ newOrders: 3, cancelRequests: 1, needsCheckBoxes: 2, openDocuments: 4, lateBoxes: 2 }))).toBe(12);
+    expect(totalTodo(counts({ newOrders: 3, cancelRequests: 1, needsCheckBoxes: 2 }))).toBe(6);
   });
 
   it("목록 키가 카운트 키와 하나도 빠지거나 겹치지 않는다", () => {
@@ -28,15 +26,11 @@ describe("종 배지 합계", () => {
 });
 
 describe("폰 화면의 종 배지", () => {
-  it("폰에서는 사무실 전용 항목(대조 중인 전표)을 목록과 합계에서 뺀다", async () => {
-    const { visibleTodoItems } = await import("./todo-counts");
-    const all = counts({ newOrders: 1, openDocuments: 4, lateBoxes: 2 });
+  it("사무실 전용 항목이 없으면 PC·폰 목록이 같다", () => {
+    const all = counts({ newOrders: 1, cancelRequests: 2, needsCheckBoxes: 3 });
 
-    expect(visibleTodoItems(true).map((item) => item.key)).not.toContain("openDocuments");
-    expect(visibleTodoItems(true).map((item) => item.key)).not.toContain("lateBoxes");
-    expect(visibleTodoItems(false).map((item) => item.key)).toContain("openDocuments");
-    expect(totalTodo(all, true)).toBe(1);
-    expect(totalTodo(all, false)).toBe(7);
+    expect(visibleTodoItems(true).map((item) => item.key)).toEqual(visibleTodoItems(false).map((item) => item.key));
+    expect(totalTodo(all, true)).toBe(totalTodo(all, false));
   });
 });
 
@@ -55,9 +49,6 @@ describe("종 배지 링크 — 눌렀을 때 도착하는 자리", () => {
       expect(pc.find((entry) => entry.key === item.key)?.href, item.key).toBe(item.href);
     }
 
-    // 항목의 링크는 고정 문자열이고, 같은 링크를 쓰는 항목은 발주 관리처럼 같은 화면을 가리키는 경우뿐이다.
-    expect(new Set(TODO_ITEMS.map((item) => item.href)).size).toBeGreaterThanOrEqual(3);
     expect(TODO_ITEMS.every((item) => item.href.startsWith("/dashboard/"))).toBe(true);
   });
 });
-

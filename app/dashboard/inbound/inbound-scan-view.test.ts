@@ -12,7 +12,6 @@ vi.mock("./actions", () => ({
   setScanStorageLocationAction: async () => ({ success: true }),
   getScanLocationPhotoUrlAction: async () => ({ success: true }),
 }));
-vi.mock("./document-actions", () => ({ setDocumentsScanFinishedAction: async () => ({ success: true }) }));
 vi.mock("./trace-no-fixer", () => ({ TraceNoFixer: () => null }));
 
 import { InboundScanView, type InboundScanRow } from "./inbound-scan-view";
@@ -42,14 +41,9 @@ const render = (scans: InboundScanRow[], products: Array<{ id: string; name: str
   renderToStaticMarkup(
     createElement(InboundScanView, {
       initialScans: scans,
-      scanDocuments: [],
-      remainingBoxCount: 0,
-      remainingWeightLines: 0,
       products,
       shippableOrders: [],
       scanRequirements: scanRequirements as never,
-      pendingDocumentTraceNos: [],
-      awaitingDocumentLines: [],
       storageLocationSuggestions: [],
       canEditPurchasePrice: true,
       suppliers: [{ id: "sup-1", name: "공급처가" }],
@@ -116,12 +110,10 @@ describe("입고 스캔 화면 구조 — 스캔과 입고 처리에 집중한�
   it("확인 필요 박스 행에는 (대조표 데이터가 있어도) 칸 표·필수 항목 안내가 나오지 않는다", () => {
     const report = {
       fields: [
-        { key: "grade", label: "등급", value: "1+", source: "TRACE", level: "RECOMMENDED", conflict: "등급: 이력조회 1+ / 전표 1++", hint: null },
-        { key: "origin", label: "원산지", value: null, source: null, level: "REQUIRED", conflict: null, hint: "원산지가 없습니다" },
+        { key: "grade", label: "등급", value: "1+", source: "TRACE_API", level: "RECOMMENDED", hint: null },
+        { key: "origin", label: "원산지", value: null, source: null, level: "REQUIRED", hint: "원산지가 없습니다" },
       ],
       missingRequired: 1,
-      conflictCount: 1,
-      documentMatched: true,
     };
     const ok = row("ok-1", "NORMAL", "000000000001");
     const voided = row("void-1", "VOIDED", "000000000004");

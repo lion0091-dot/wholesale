@@ -43,46 +43,11 @@
 - **입고 중**(노랑): 일부만 받은 진행 중 발주서.
 - **진행 중**(파랑): 아직 하나도 안 받음.
 
-## 전표 ↔ 발주서 연결 (마이그레이션 143)
+## 전표 ↔ 발주서 연결 — 걷어냄 (2026-09-28, 마이그레이션 152)
 
-**사장님 원칙(2026-09-29):** 거래명세표(전표)는 공급처의 주장이라 틀릴 수 있고, 실물 확정은 입고 스캔뿐이다. 전표를 상품과 대조해 먼저 전표에 기록하고, 그 전표로 발주서를 정리한다. 발주에 없이 추가로 들어온 상품은 입고 기준대로 받고("일단 받고"일 때만) "미발주 상품"으로 재고에 남긴다.
+명세서(전표) 구조화·대조 화면 기능 전체를 사장님 결정으로 제거했다(종이 원본을 실물로 보관하므로 디지털 구조화가 불필요). 이에 따라 이 절이 설명하던 "전표 대조 화면" 진입점과 `inbound_documents`/`inbound_document_lines` 테이블, `create_purchase_order_from_document_scan`·`set_document_supplier` 함수는 모두 삭제됐다.
 
-**"대표의 의사결정" 원칙(사장님 2026-09-29):** 발주서가 기준이므로, 실물이 발주서에 없다고 해서 시스템이 조용히 발주서를 만들거나 고치지 않는다. **owner/manager가 "발주서 추가 생성" 버튼을 직접 눌러야만** 발주서가 사후에 만들어진다.
-
-### 진입점 둘
-
-1. **전표 대조 화면**(`/dashboard/inbound/documents/[id]`) — 전표에 거래처(`inbound_documents.supplier_id`)를 한 번 골라 두면(문서당 한 번), 그 전표에 이어진 박스 중 발주서에 못 붙은 만큼(`scan_unassigned_weight`)에 "발주서 추가 생성" 버튼이 뜬다. 전표는 이미 있으니 새로 안 만들고 발주서만 사후 등록한다(`create_purchase_order_from_document_scan`).
-2. **보류함 화면**(`/dashboard/inbound/holds`, 새 화면) — 발주서에 없는 물건(`UNLISTED_HELD`)·초과로 받은 물건(`OVER_HELD`)으로 재고엔 들어갔지만 전표가 없는 박스 목록. "발주서 추가 생성"을 누르면 발주서와 **전표를 둘 다** 만든다(`create_purchase_order_from_unlisted_scan`). 받지 않은 물건(`inbound_rejections`) 최근 이력도 읽기 전용으로 같이 보여준다.
-
-두 진입점 모두 공용 내부 함수 `create_retroactive_purchase_order(scan_id, supplier_id, ordered_on)`를 쓴다: 이미 실물이 다 온 것을 사후에 기록하는 것이라 새 발주서는 그 자리에서 바로 자동 마감(발주종결)된다.
-
-### 잠긴 결정
-
-- 전표에 거래처를 붙이는 건 `set_document_supplier` — owner/manager만, 대조 중이든 마감이든 상관없이 바꿀 수 있다.
-- "발주서 추가 생성"은 owner/manager만(`can_manage_wholesaler`, TS 액션에서도 이중 확인). 직원은 못 누른다.
-- 보류함 경로는 스캔에 이미 전표가 이어져 있으면 거부한다(`SCAN_ALREADY_ON_DOCUMENT`) — 그럴 땐 전표 대조 화면에서 처리한다.
-- 새로 만든 발주서 줄의 수량은 "발주서에 아직 안 붙은 무게"만큼이다(`scan_unassigned_weight` = 스캔 무게 − 이미 다른 발주서 줄에 채워진 무게). `UNLISTED_HELD`는 전체, `OVER_HELD`는 넘친 만큼만.
-- 스펙(축종·부위·등급·원산지·품종)은 스캔이 붙은 상품에서 그대로 복사한다.
-
-### 함수
-
-- `scan_unassigned_weight(scan_id)` — 내부 헬퍼.
-- `create_retroactive_purchase_order(scan_id, supplier_id, ordered_on)` — 공용 내부, `can_manage_wholesaler` 게이트.
-- `create_purchase_order_from_document_scan(scan_id)` — 진입점 1. `authenticated`.
-- `create_purchase_order_from_unlisted_scan(scan_id)` — 진입점 2. `authenticated`.
-- `set_document_supplier(document_id, supplier_id)` — `authenticated`.
-
-### 검증
-
-- `scripts/db-test-document-purchase-order-link.sql` — 로컬 통과(등록·초과분만 등록·멱등 가드·권한(FORBIDDEN)·격리·전표 거래처 없음/미이음 가드).
-- `tests/integration/document-purchase-order-link.itest.ts` — 5건 통과(액션 이음새, 직원 거부, 보류함/전표 경로 교차 가드).
-- `lib/livestock/retroactive-purchase-order.test.ts` — 결과 파싱 단위 테스트.
-- 화면 클릭 검증 안 함. 라이브 미적용.
-
-### 남은 과제
-
-- 전표 대조 화면의 거래처 선택은 대조 화면에서만 가능하다 — 전표 올리기/직접 입력 화면(29단계 A, `inbound-document-panel.tsx`)에는 추가하지 않기로 확정(2026-09-27, 사장님): 전표는 상품과 먼저 대조한 뒤 정리하므로 업로드 시점엔 거래처가 필요 없고, 자유입력 공급처 이름 칸과 중복 선택이 되며, 1800줄대 위험 파일을 건드릴 이유가 없음.
-- 보류함 화면은 데스크톱 전용 탭(사무 화면 원칙).
+**보류함 진입점은 그대로 남는다.** `/dashboard/inbound/holds`에서 "발주서 추가 생성"을 누르면 `create_purchase_order_from_unlisted_scan`이 발주서만 사후 등록한다(전표는 더 이상 같이 만들지 않는다). owner/manager만 누를 수 있는 "대표의 의사결정" 원칙은 그대로 유지된다.
 
 ## 배포 순서
 

@@ -59,33 +59,6 @@ export const INBOUND_SAMPLE_KINDS = {
     productName: null,
     note: "고객 주문 때문에 공급자가 특별히 만들어 온 묶음 — \"주문에 바로 배정\" 기능의 대상입니다.",
   },
-  GRADE_ORIGIN_MISMATCH: {
-    label: "⑤ 원산지·등급 불일치 (이력조회 vs 전표)",
-    traceNo: "002199912345",
-    weight: 6.4,
-    status: "NORMAL",
-    productName: "소고기 척아이 1+",
-    note: "이력조회 결과와 올라온 전표의 등급·원산지가 서로 다른 경우 — 체크리스트에 충돌 경고가 뜹니다.",
-    requirementFacts: {
-      traceNo: "002199912345",
-      productId: "sample-product",
-      productName: "소고기 척아이 1+",
-      productOrigin: "호주산",
-      weight: 6.4,
-      labeledWeight: 6.5,
-      purchaseUnitPrice: 18000,
-      purchaseSupplier: "성진축산",
-      traceFound: true,
-      apiGrade: "1++",
-      apiOrigin: "국내산",
-      documentMatched: true,
-      documentSupplier: "성진축산",
-      documentGrade: "1+",
-      documentOrigin: "호주산",
-      documentUnitPrice: 18000,
-      documentLabeledWeight: 6.5,
-    },
-  },
 } satisfies Record<string, InboundSampleKind>;
 
 export type InboundSampleKey = keyof typeof INBOUND_SAMPLE_KINDS;

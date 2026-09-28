@@ -64,10 +64,12 @@
 - [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) — 이력번호 바코드/카메라 스캔 → 공공 API 대조 검증 → 박스 단위 입고. 스택 결정(별도 백엔드 대신 기존 Next.js+Supabase에 얹음, RLS가 이유), 잠긴 설계 결정 8가지(재고 단위는 이력번호가 아닌 박스, 원장 파생 재고, `products` 스키마 무변경, 출고 박스 단위 추적, Hobby 크론 제약 우회), 입고 9종 + 출고 6종 로컬 DB 테스트 통과. **출고 자동 차감까지 완료** — 주문 확정 시 `orders` 트리거가 선입선출로 박스에서 차감하고 취소 시 원복, 재고 부족이면 확정 자체를 막는다. 원장 첫 편입 시 기존 수동 재고를 `OPENING_BALANCE`로 이관해 증발을 막는다. 공공 API 인증키 미발급이라 실호출 전무, npm 프록시 차단으로 타입체크 미실행.
 
 
-## 명세서 번호 표기 경우의 수 대응 (2026-09-25, 29단계 보강)
+## 명세서 번호 표기 경우의 수 대응 (2026-09-25, 29단계 보강) — 기능 전체 제거됨 (2026-09-28)
 
-- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) 맨 아래 "29단계 보강" 절 — 하이픈·0 탈락·과학표기·`로트/LOT` 헤더·한 칸에 번호 여럿(줄 나눔, 합계는 첫 줄)·부속 줄 합치기·**묶음번호 열+개체번호 열 두 칸**(`inbound_document_lines.lot_no`, 마이그레이션 115, 사전조회가 로트 구성원 대조). 묶음번호만 있는 명세서는 여전히 `trace_no`(재고 단위 = 로트). 116: 명세서는 로트·박스는 개체번호(또는 반대)일 때 `master_livestock.raw_payload`의 구성원 목록으로 잇는 다리(`document_lines_matching_trace`, 대기 목록·근거 대조 RPC 2개). **명세서 줄을 번호로 찾는 새 쿼리는 직접 `trace_no =`를 쓰지 말고 `document_lines_matching_trace()`를 쓴다.** 117: 명세서 저장 시 먼저 찍힌 미확정·예외 박스를 거슬러 확정(`relink_pending_scans_to_documents`), 스캔 시 GTIN 학습과 명세서가 다른 상품이면 `productConflict`로 알림. 115~117 라이브 미적용(113·114도), 실제 파일 미검증.
-- [docs/inbound-document-reconciliation-spec.md](docs/inbound-document-reconciliation-spec.md) — **29단계 B(사무실 대조 화면) 스펙, Sonnet 구현용.** DB 뼈대는 118(`inbound_document_line_scans` 연결표, 줄 상태 계산, 자동 배정은 하나일 때만, 중복 창 우회, 마감/다시 열기)로 완료·로컬 테스트 7건 통과. 잠긴 결정: 재고는 여전히 스캔이 만든다, 애매한 배정은 사무실에서(사장님 2026-09-25). 화면·액션·테스트 미구현. 118 라이브 미적용.
+**명세서(전표) 구조화·자동추출·대조 화면 기능 전체를 사장님 결정으로 걷어냈다**(마이그레이션 152, 2026-09-28). 종이 원본을 실물로 보관할 것이므로 디지털 구조화가 재고 정확도에 불필요하다는 판단 — 재고·매입금액은 이미 박스 스캔(24단계) 기준으로만 계산됐다. `inbound_documents`/`inbound_document_lines`/`supplier_document_formats` 테이블, 관련 함수·화면(`/dashboard/inbound/statements`, `/dashboard/inbound/documents/[id]`)·테스트가 전부 삭제됐다. 아래 두 항목은 과거 기록이다. 남은 것: 발주서-스캔 대조(142)와 보류함(발주서 추가 생성만, [docs/purchase-order-receiving.md](docs/purchase-order-receiving.md) 참고).
+
+- [docs/livestock-inbound-tracking.md](docs/livestock-inbound-tracking.md) 맨 아래 "29단계 보강" 절 [과거 기록] — 하이픈·0 탈락·과학표기·`로트/LOT` 헤더·한 칸에 번호 여럿(줄 나눔, 합계는 첫 줄)·부속 줄 합치기·**묶음번호 열+개체번호 열 두 칸**(`inbound_document_lines.lot_no`, 마이그레이션 115, 사전조회가 로트 구성원 대조). 묶음번호만 있는 명세서는 여전히 `trace_no`(재고 단위 = 로트). 116: 명세서는 로트·박스는 개체번호(또는 반대)일 때 `master_livestock.raw_payload`의 구성원 목록으로 잇는 다리(`document_lines_matching_trace`, 대기 목록·근거 대조 RPC 2개). **명세서 줄을 번호로 찾는 새 쿼리는 직접 `trace_no =`를 쓰지 말고 `document_lines_matching_trace()`를 쓴다.** 117: 명세서 저장 시 먼저 찍힌 미확정·예외 박스를 거슬러 확정(`relink_pending_scans_to_documents`), 스캔 시 GTIN 학습과 명세서가 다른 상품이면 `productConflict`로 알림. 115~117 라이브 미적용(113·114도), 실제 파일 미검증.
+- ~~docs/inbound-document-reconciliation-spec.md~~ — **29단계 B(사무실 대조 화면) 스펙, 문서 자체가 삭제됨.** [과거 기록] DB 뼈대는 118(`inbound_document_line_scans` 연결표, 줄 상태 계산, 자동 배정은 하나일 때만, 중복 창 우회, 마감/다시 열기)로 완료·로컬 테스트 7건 통과했으나, 화면·액션은 결국 안 만든 채로 기능 자체가 제거됐다.
 
 ## 보안 점검 — 권한 게이트 NULL 비교 버그 수정 (2026-09-24, 별도 발견)
 
@@ -124,7 +126,7 @@ Claude Max 요금제는 잔량 조회 API가 없어 실시간 동적 라우팅�
 
 ## 축종별 상품 정체성 키 (소 구현됨, 별도 기능)
 
-- [docs/product-identity-by-species.md](docs/product-identity-by-species.md) — 소 = 축종+부위+등급+원산지가 키(중복 등록 거부·등록 후 잠금, 상품명은 "부위 등급" 자동 조합, 축종은 화면 [소] 태그). 돼지(축종+부위+원산지)·닭/오리(축종만)는 결정 대기 — `lib/products/identity-key.ts` 표에 한 줄 추가하면 됨. 입고 자동 생성(마이그레이션 113)도 같은 규칙 + 명세서 기반 등급 채움. 이력번호 12자리 첫 자리가 축종코드(소0·돼지1·닭2·계란3·오리5). 소 외 축종은 이력번호 파싱 출처(농장·도축장)+명세서 부위가 키(마이그레이션 114, `products.trace_key`, 자동 생성 경로만). 113·114·121 라이브 적용됨(121 = 소 DB 유니크 인덱스, 세트 상품은 단위 "세트"로 제외 — 상세는 docs 문서).
+- [docs/product-identity-by-species.md](docs/product-identity-by-species.md) — 소 = 축종+부위+등급+원산지가 키(중복 등록 거부·등록 후 잠금, 상품명은 "부위 등급" 자동 조합, 축종은 화면 [소] 태그). 돼지(축종+부위+원산지)·닭/오리(축종만)는 결정 대기 — `lib/products/identity-key.ts` 표에 한 줄 추가하면 됨. 입고 자동 생성(마이그레이션 113)도 같은 규칙. 이력번호 12자리 첫 자리가 축종코드(소0·돼지1·닭2·계란3·오리5). 소 외 축종은 이력번호 파싱 출처(농장·도축장)가 키(마이그레이션 114, `products.trace_key`, 자동 생성 경로만) — 명세서 기반 부위 보조 채움(114 당시)은 152(2026-09-28)로 제거됨, 지금은 이력조회 값만 쓴다. 113·114·121 라이브 적용됨(121 = 소 DB 유니크 인덱스, 세트 상품은 단위 "세트"로 제외 — 상세는 docs 문서).
 
 ## 검증 규칙 — 배포 전 점검 방식 (2026-09-26 확정, 별도 규칙)
 
@@ -132,4 +134,4 @@ Claude Max 요금제는 잔량 조회 API가 없어 실시간 동적 라우팅�
 
 ## 입고 ↔ 발주서 연결 (2026-09-28, 별도 기능)
 
-- [docs/purchase-order-receiving.md](docs/purchase-order-receiving.md) — 입고 박스를 "지금 온 거래처"의 열린 발주서 줄과 맞춰 입고 기준(141)으로 받을지 판정(마이그 142, 라이브 적용·배포 완료). 초과 박스도 "일단 받고 사무실 확인"(over_item_policy HOLD) 선택지 있음. 발주 상태 용어: 자동 마감 "발주종결", 사람이 손으로 닫는 "강제종결". 전표↔발주서 연결(마이그 143, 라이브 적용·배포 완료) — 전표에 거래처를 붙이면(전표 대조 화면) 그 전표·보류함 화면(`/dashboard/inbound/holds`, 신규)에서 owner/manager가 "발주서 추가 생성"을 직접 눌러야만 발주서가 사후에 만들어진다(대표의 의사결정 원칙, 자동 생성 없음). 실화면 클릭 검증 전무.
+- [docs/purchase-order-receiving.md](docs/purchase-order-receiving.md) — 입고 박스를 "지금 온 거래처"의 열린 발주서 줄과 맞춰 입고 기준(141)으로 받을지 판정(마이그 142, 라이브 적용·배포 완료). 초과 박스도 "일단 받고 사무실 확인"(over_item_policy HOLD) 선택지 있음. 발주 상태 용어: 자동 마감 "발주종결", 사람이 손으로 닫는 "강제종결". 전표↔발주서 연결(마이그 143)은 152(2026-09-28)로 전표 쪽만 걷어냈다 — 보류함 화면(`/dashboard/inbound/holds`)에서 owner/manager가 "발주서 추가 생성"을 누르면 이제 발주서만 사후 등록된다(전표는 더 이상 같이 안 만든다, 대표의 의사결정 원칙은 유지). 실화면 클릭 검증 전무.

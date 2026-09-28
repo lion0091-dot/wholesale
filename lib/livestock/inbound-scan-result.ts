@@ -28,14 +28,6 @@ export interface ScanResultInput {
   failReason: "API_ERROR" | "NOT_FOUND" | null;
   failDetail: string | null;
   failIsNotConfigured: boolean;
-  productConflict: { gtinProductId: string; documentProductId: string } | null;
-  /** 이 박스로 전표의 모든 물건이 채워져 전표가 저절로 마감됐다. */
-  autoClosedDocument?: boolean;
-  /**
-   * 이 번호가 이미 마감된 전표의 줄에 있는데 박스는 어느 줄에도 안 이어졌다 — 마감된 전표에는 이을 수 없어서다.
-   * 한 마리가 여러 박스로 오는데 전표에 무게·수량이 없으면 첫 박스에서 "다 왔다"고 마감되고 뒤 박스가 이렇게 남는다.
-   */
-  matchedClosedDocument?: boolean;
 }
 
 export interface ScanResultOptions {
@@ -171,25 +163,6 @@ export function buildScanResultCard(data: ScanResultInput, options: ScanResultOp
 
   addPurchaseOrderNotice(card, data);
 
-  if (data.autoClosedDocument) {
-    card.extras.push({
-      tone: "green",
-      title: "전표를 저절로 마감했습니다",
-      detail: "전표의 모든 물건이 도착해서 사무실이 따로 마감할 필요가 없습니다.",
-    });
-  }
-
-  if (data.matchedClosedDocument) {
-    if (card.tone === "green") card.tone = "yellow";
-
-    card.extras.push({
-      tone: "yellow",
-      title: "이미 마감된 전표에 있는 번호입니다",
-      detail:
-        "입고는 기록됐지만 마감된 전표에는 이어지지 않았습니다. 같은 번호의 박스가 더 온 것이면 사무실에서 그 전표를 '다시 열기' 하고 이 박스를 이은 뒤, 더 온 이유를 적고 마감하세요.",
-    });
-  }
-
   return card;
 }
 
@@ -229,17 +202,6 @@ function buildCardWithoutClosedNotice(data: ScanResultInput, options: ScanResult
         `표기 ${data.labeledWeight}kg / 실측 ${options.actualWeight}kg — ` +
         `${options.formatVariance(data.weightVariance, data.varianceRatio)}. ` +
         "입고는 실중량으로 기록했습니다. 매입처에 확인하세요.",
-    });
-  }
-
-  if (data.productConflict) {
-    issues.push({
-      tone: "yellow",
-      title: "바코드 상품과 전표 상품이 다릅니다",
-      detail:
-        `바코드 상품코드는 '${options.productName(data.productConflict.gtinProductId)}', ` +
-        `전표는 '${options.productName(data.productConflict.documentProductId)}'입니다. ` +
-        "바코드 기준으로 입고했습니다. 아래 목록에서 어느 쪽이 맞는지 확인하세요.",
     });
   }
 
@@ -316,41 +278,4 @@ export function buildFailureCard(message: string): ResultCard {
     extras: [],
     action: null,
   };
-}
-
-/** 전표 대조 결과를 결과 카드에 덧붙인다 — 전표에 없는 번호이거나, 전표 없이 입고한 경우. */
-export function withDocumentContext(
-  card: ResultCard,
-  context: { hasPendingDocument: boolean; documentMatched: boolean | null },
-): ResultCard {
-  if (context.hasPendingDocument && context.documentMatched === false) {
-    return {
-      ...card,
-      tone: card.tone === "green" ? "yellow" : card.tone,
-      extras: [
-        ...card.extras,
-        {
-          tone: "yellow",
-          title: "전표에 없는 번호입니다",
-          detail: "이 박스는 대기 중인 전표의 어느 줄과도 이어지지 않았습니다. 입고는 그대로 기록됐고, 대조 화면에서 확인할 수 있습니다.",
-        },
-      ],
-    };
-  }
-
-  if (!context.hasPendingDocument && card.tone === "green") {
-    return {
-      ...card,
-      extras: [
-        ...card.extras,
-        {
-          tone: "green",
-          title: "전표 없이 입고했습니다",
-          detail: "나중에 이 공급처의 전표를 올리면 이 박스가 자동으로 이어집니다.",
-        },
-      ],
-    };
-  }
-
-  return card;
 }

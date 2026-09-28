@@ -1,12 +1,11 @@
 /**
- * 입고 스캔 분기 테스트 — 현장이 박스를 찍는 한 번의 동작에서 갈라지는 지점(입력 경계·중복·동시·전표 상호작용·취소·분할)을
- * 사람이 손대지 않아도 끝까지 이어지는지 본다. 이력조회/상품 결정/전표 대조의 세부는 inbound·scenarios·sample-documents가 이미 한다.
+ * 입고 스캔 분기 테스트 — 현장이 박스를 찍는 한 번의 동작에서 갈라지는 지점(입력 경계·중복·동시·취소·분할)을
+ * 사람이 손대지 않아도 끝까지 이어지는지 본다. 이력조회/상품 결정의 세부는 inbound·scenarios가 이미 한다.
  * 케이스 목록은 docs/inbound-scenario-tests.md "입고 스캔 분기" 절.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { actAs, adminClient, seedWorld, type World, type WorldProduct } from "./harness";
 import { recordScanAction, recordSplitScansAction, voidScanAction, type ScanResult } from "@/app/dashboard/inbound/actions";
-import { closeInboundDocumentAction, setDocumentsScanFinishedAction } from "@/app/dashboard/inbound/document-actions";
 
 let world: World;
 
@@ -49,12 +48,6 @@ async function ledgerSum(productId: string): Promise<number> {
   return ((data ?? []) as Array<{ qty_delta: number }>).reduce((sum, row) => sum + Number(row.qty_delta), 0);
 }
 
-async function docRow(documentId: string) {
-  const { data } = await adminClient().from("inbound_documents").select("status, scan_finished_at").eq("id", documentId).single();
-
-  return data as { status: string; scan_finished_at: string | null };
-}
-
 async function scan(traceNo: string, weight: number, extra: Partial<Parameters<typeof recordScanAction>[0]> = {}) {
   await world.seedTrace(traceNo, { part: "등심" });
 
@@ -70,9 +63,7 @@ describe("입력 경계 — 이상한 값이 와도 친절한 안내로 끝나�
     const product = await newProduct();
     const trace = world.newTraceNo();
 
-    await world.createDocumentLine({ traceNo: trace, product });
-
-    const data = await scan(trace, 8, { labeledWeight: 0 });
+    const data = await scan(trace, 8, { labeledWeight: 0, productId: product.id });
 
     expect(data.status).toBe("NORMAL");
     expect(data.labeledWeight).toBeNull();
@@ -83,7 +74,6 @@ describe("입력 경계 — 이상한 값이 와도 친절한 안내로 끝나�
     const product = await newProduct();
     const trace = world.newTraceNo();
 
-    await world.createDocumentLine({ traceNo: trace, product });
     await world.seedTrace(trace, { part: "등심" });
 
     const result = await recordScanAction({ traceNo: trace, weight: 100_000_000, scanType: "BARCODE_SCAN" });
@@ -99,9 +89,7 @@ describe("입력 경계 — 이상한 값이 와도 친절한 안내로 끝나�
     const product = await newProduct();
     const trace = world.newTraceNo();
 
-    await world.createDocumentLine({ traceNo: trace, product });
-
-    const data = await scan(trace, 12.3456);
+    const data = await scan(trace, 12.3456, { productId: product.id });
     const [box] = await scansOf(trace);
 
     expect(Number(box.weight)).toBeCloseTo(12.346, 3);
@@ -112,14 +100,13 @@ describe("입력 경계 — 이상한 값이 와도 친절한 안내로 끝나�
     expect(await stockOf(product.id)).toBeCloseTo(0, 6);
   });
 
-  it("소문자로 온 묶음번호(l+14자리)도 대문자로 저장되어 전표 줄과 이어진다", async () => {
+  it("소문자로 온 묶음번호(l+14자리)도 대문자로 정규화돼 저장된다", async () => {
     const product = await newProduct();
     const lot = `L${String(Date.now()).padStart(14, "0").slice(-14)}`;
 
-    await world.createDocumentLine({ traceNo: lot, product });
     await world.seedTrace(lot, { part: "등심", traceKind: "group" });
 
-    const result = await recordScanAction({ traceNo: lot.toLowerCase(), weight: 20, scanType: "BARCODE_SCAN" });
+    const result = await recordScanAction({ traceNo: lot.toLowerCase(), weight: 20, scanType: "BARCODE_SCAN", productId: product.id });
 
     expect(result.success, result.error).toBe(true);
     expect((result.data as ScanResult).traceNo).toBe(lot);
@@ -132,11 +119,10 @@ describe("중복·동시 — 같은 박스를 두 번 찍어도 재고가 두 �
     const product = await newProduct();
     const trace = world.newTraceNo();
 
-    await world.createDocumentLine({ traceNo: trace, product, quantity: 1 });
     await world.seedTrace(trace, { part: "등심" });
 
     const results = await Promise.all(
-      Array.from({ length: 5 }, () => recordScanAction({ traceNo: trace, weight: 7, scanType: "BARCODE_SCAN" }))
+      Array.from({ length: 5 }, () => recordScanAction({ traceNo: trace, weight: 7, scanType: "BARCODE_SCAN", productId: product.id }))
     );
 
     expect(results.every((result) => result.success)).toBe(true);
@@ -149,13 +135,11 @@ describe("중복·동시 — 같은 박스를 두 번 찍어도 재고가 두 �
     const product = await newProduct();
     const trace = world.newTraceNo();
 
-    await world.createDocumentLine({ traceNo: trace, product });
-
-    const first = await scan(trace, 9);
+    const first = await scan(trace, 9, { productId: product.id });
 
     expect((await voidScanAction(first.scanId)).success).toBe(true);
 
-    const again = await scan(trace, 9);
+    const again = await scan(trace, 9, { productId: product.id });
 
     expect(again.status).toBe("NORMAL");
     expect(await stockOf(product.id)).toBeCloseTo(9);
@@ -168,73 +152,6 @@ describe("중복·동시 — 같은 박스를 두 번 찍어도 재고가 두 �
     await scan(trace, 4.5);
 
     expect((await scansOf(trace)).filter((row) => row.status !== "VOIDED")).toHaveLength(2);
-  });
-});
-
-describe("스캔 종료·마감 — 현장이 다시 찍거나 취소해도 사람이 '다시 시작'·'다시 열기'를 누를 필요가 없다", () => {
-  async function threeLineDocument() {
-    const product = await newProduct();
-    const [t1, t2, t3] = [world.newTraceNo(), world.newTraceNo(), world.newTraceNo()];
-    const first = await world.createDocumentLine({ traceNo: t1, product, quantity: 1 });
-
-    await world.createDocumentLine({ traceNo: t2, product, quantity: 1, documentId: first.documentId });
-    await world.createDocumentLine({ traceNo: t3, product, quantity: 1, documentId: first.documentId });
-
-    return { product, t1, t2, t3, documentId: first.documentId };
-  }
-
-  it("스캔 종료를 눌렀어도 그 전표의 박스를 더 찍으면 종료 표시가 저절로 풀려 사무실이 '아직 찍는 중'으로 본다", async () => {
-    const { t1, t2, documentId } = await threeLineDocument();
-
-    await scan(t1, 5);
-    expect(await setDocumentsScanFinishedAction([documentId], true)).toEqual({ success: true, data: { changed: 1 } });
-    expect((await docRow(documentId)).scan_finished_at).not.toBeNull();
-
-    await scan(t2, 5);
-
-    const doc = await docRow(documentId);
-
-    expect(doc.status).toBe("PENDING");
-    expect(doc.scan_finished_at).toBeNull();
-  });
-
-  it("스캔 종료 뒤 찍은 박스가 어느 전표 줄과도 안 이어지면 종료 표시는 그대로다", async () => {
-    const { t1, documentId } = await threeLineDocument();
-
-    await scan(t1, 5);
-    await setDocumentsScanFinishedAction([documentId], true);
-    await scan(world.newTraceNo(), 5);
-
-    expect((await docRow(documentId)).scan_finished_at).not.toBeNull();
-  });
-
-  it("저절로 마감된 전표의 박스를 취소하면 전표가 저절로 다시 열려 그 줄이 '안 온 것'으로 카드에 돌아온다", async () => {
-    const product = await newProduct();
-    const trace = world.newTraceNo();
-    const { documentId } = await world.createDocumentLine({ traceNo: trace, product, quantity: 1 });
-    const data = await scan(trace, 6);
-
-    expect((await docRow(documentId)).status).toBe("CLOSED");
-    expect((await voidScanAction(data.scanId)).success).toBe(true);
-    expect(await stockOf(product.id)).toBe(0);
-    expect((await docRow(documentId)).status).toBe("PENDING");
-
-    // 같은 박스를 다시 찍으면 처음처럼 이어지고 저절로 마감된다.
-    await scan(trace, 6);
-
-    expect((await docRow(documentId)).status).toBe("CLOSED");
-  });
-
-  it("사무실이 미입고 사유를 적어 마감한 전표라도 이어졌던 박스를 취소하면 다시 열려 사무실이 알아챌 수 있다", async () => {
-    const { t1, documentId } = await threeLineDocument();
-    const data = await scan(t1, 5);
-
-    await setDocumentsScanFinishedAction([documentId], true);
-
-    expect((await closeInboundDocumentAction(documentId, "결품")).success).toBe(true);
-    expect((await docRow(documentId)).status).toBe("CLOSED");
-    expect((await voidScanAction(data.scanId)).success).toBe(true);
-    expect((await docRow(documentId)).status).toBe("PENDING");
   });
 });
 
