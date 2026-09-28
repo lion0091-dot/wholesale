@@ -25,6 +25,7 @@ const PRODUCT_TABS = [
 const STOCK_TABS = [
   { label: "입출고 내역", href: "/dashboard/stock-ledger" },
   { label: "매입 정산", href: "/dashboard/purchases" },
+  { label: "발주 추천", href: "/dashboard/reorder-suggestions" },
 ] as const;
 
 // 입고는 현장(입고 스캔)과 사무실(전표입력) 두 화면이다. 입고 스캔은 하위 경로(전표입력·대조 화면)까지
