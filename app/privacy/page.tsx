@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PLATFORM } from "@/lib/platform-info";
 
 /**
  * 개인정보처리방침.
@@ -174,10 +175,9 @@ export default function PrivacyPage() {
           <p>
             회사는 개인정보보호법 제29조에 따라 다음과 같은 안전성 확보조치를 취하고 있습니다.<br />
             <br />
-            - <strong>관리적 조치:</strong> 내부관리계획 수립·시행, 담당자 최소화 및 접근권한 관리(공급사(도매)는
+            - <strong>관리적 조치:</strong> 담당자 최소화 및 접근권한 관리(공급사(도매)는
             자신이 등록한 고객(소매) 정보만, 고객(소매)는 본인 정보만 조회 가능하도록 데이터베이스 접근제어(RLS) 적용)<br />
-            - <strong>기술적 조치:</strong> 개인정보처리시스템 접근권한 관리, 접속기록 보관, 고유식별정보 등의
-            암호화, 전송구간 SSL/TLS 암호화(HTTPS)<br />
+            - <strong>기술적 조치:</strong> 개인정보처리시스템 접근권한 관리, 전송구간 SSL/TLS 암호화(HTTPS)<br />
             - <strong>물리적 조치:</strong> 전산실, 자료보관실 등의 접근통제 (인프라 수탁사인 Supabase의 보안
             정책에 따름)
           </p>
@@ -200,9 +200,11 @@ export default function PrivacyPage() {
           </h2>
           <p>
             회사는 개인정보 처리에 관한 업무를 총괄해서 책임지고, 개인정보 처리와 관련한 이용자의 불만처리 및
-            피해구제 등을 위하여 아래와 같이 개인정보 보호책임자를 지정하고 있습니다. 개인정보 보호책임자의
-            성명, 이메일, 고객지원 연락처 등 구체적인 정보는 본 페이지 하단 공통 푸터에 표시된 사업자 정보를
-            참고해 주시기 바랍니다.
+            피해구제 등을 위하여 아래와 같이 개인정보 보호책임자를 지정하고 있습니다.<br />
+            <br />
+            - 성명: {PLATFORM.privacyOfficer}<br />
+            - 이메일: {PLATFORM.privacyEmail}<br />
+            - 고객지원 연락처: {PLATFORM.supportPhone} ({PLATFORM.supportHours})
           </p>
         </section>
 

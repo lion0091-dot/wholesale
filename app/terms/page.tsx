@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PLATFORM } from "@/components/legal-footer";
+import { PLATFORM } from "@/lib/platform-info";
 
 /**
  * 서비스 이용약관.

@@ -284,6 +284,33 @@ export function SupplierSignupForm({ defaultName, defaultPhone }: SupplierSignup
             </span>
           </label>
         </div>
+
+        <div
+          style={{
+            borderTop: "1px solid #e2e8f0",
+            marginTop: "8px",
+            paddingTop: "10px",
+            fontSize: "12px",
+            color: "#64748b",
+            lineHeight: 1.7,
+          }}
+        >
+          <div>
+            <strong>수집 항목:</strong> 상호, 대표자·담당자 성명, 연락처, 사업장 소재지, 사업자등록번호(입력
+            시)
+          </div>
+          <div>
+            <strong>이용 목적:</strong> 회원 식별, 입점 심사, 발주 처리·알림 전송, 정산
+          </div>
+          <div>
+            <strong>보유·이용기간:</strong> 회원 탈퇴 시까지 (법령상 보존해야 하는 거래 기록은 해당
+            기간 동안 보관)
+          </div>
+          <div>
+            <strong>동의 거부:</strong> 동의를 거부할 권리가 있습니다. 다만 [필수] 항목에 동의하지
+            않으면 가입할 수 없고, [선택] 항목은 거부해도 서비스 이용에 불이익이 없습니다.
+          </div>
+        </div>
       </div>
 
       <button

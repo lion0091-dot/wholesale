@@ -2,28 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { PLATFORM } from "@/lib/platform-info";
 
 /**
  * 전자상거래법·정보통신망법상 의무 표시 사항을 담는 공통 푸터.
- * 실제 사업자 정보는 환경변수로 주입하고, 미설정 시 플레이스홀더를 노출한다.
+ * 사업자 정보는 lib/platform-info.ts (환경변수 주입).
  */
-export const PLATFORM = {
-  companyName: process.env.NEXT_PUBLIC_COMPANY_NAME || "미트 파트너스",
-  // 통신판매업 신고증상 법적 상호. companyName은 서비스 브랜드명으로 병기한다.
-  legalName: process.env.NEXT_PUBLIC_COMPANY_LEGAL_NAME || "장터",
-  representative: process.env.NEXT_PUBLIC_COMPANY_REPRESENTATIVE || "권영성",
-  businessNumber: process.env.NEXT_PUBLIC_COMPANY_BUSINESS_NUMBER || "455-17-02259",
-  mailOrderNumber:
-    process.env.NEXT_PUBLIC_COMPANY_MAIL_ORDER_NUMBER || "제 2024-경기안산-5773호",
-  address:
-    process.env.NEXT_PUBLIC_COMPANY_ADDRESS ||
-    "경기도 안산시 단원구 광덕4로 116, 대덕프라자 5층 502호(고잔동)",
-  privacyOfficer: process.env.NEXT_PUBLIC_PRIVACY_OFFICER || "권영성",
-  supportEmail: process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "support@wholesale-meat.kr",
-  privacyEmail: process.env.NEXT_PUBLIC_PRIVACY_EMAIL || "privacy@wholesale-meat.kr",
-  supportPhone: process.env.NEXT_PUBLIC_SUPPORT_PHONE || "1588-0000",
-  supportHours: process.env.NEXT_PUBLIC_SUPPORT_HOURS || "평일 09:00 ~ 18:00 (토/일/공휴일 휴무)",
-};
+export { PLATFORM };
 
 const linkStyle = { color: "#f8fafc", textDecoration: "none" as const };
 
