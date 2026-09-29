@@ -143,4 +143,88 @@ begin
     reset role;
 end $$;
 
+-- ========== 3. 학습 매핑이 BMS를 보는지 — 마이그레이션 161 버그 수정 검증 ==========
+-- 통단테에서 발견한 버그: BMS9 상품으로 스캔 한 번 학습시키면(resolve_inbound_mapping의
+-- trace_product_map 기록), 이후 같은 부위·등급·성별·품종이지만 BMS7인 박스가 와도
+-- record_inbound_scan_base가 학습 매핑을 그대로 재사용해 BMS9 상품에 잘못 자동배정됐다.
+do $$
+declare
+    v_w        uuid := 'c2c2c2c2-0000-0000-0000-0000000000a1';
+    v_bms9_id  uuid;
+    v_bms7_id  uuid;
+    v_scan_id  uuid;
+    v_result   jsonb;
+begin
+    insert into public.products (wholesaler_id,name,category,subcategory,grade,breed,sex,bms,origin,base_price,unit,stock_quantity,is_active)
+    values (v_w,'한우 채끝 1++(9) 거세','소','채끝','1++','한우','거세','9','국내산',0,'kg',0,true)
+    returning id into v_bms9_id;
+
+    insert into public.products (wholesaler_id,name,category,subcategory,grade,breed,sex,bms,origin,base_price,unit,stock_quantity,is_active)
+    values (v_w,'한우 채끝 1++(7) 거세','소','채끝','1++','한우','거세','7','국내산',0,'kg',0,true)
+    returning id into v_bms7_id;
+
+    -- BMS9 개체를 스캔해 BMS9 상품으로 확정 → 학습 매핑에 (소,채끝,1++,한우,거세) 키로 기록됨.
+    perform public.upsert_master_livestock('009999990101','individual','mtrace_livestock','{}'::jsonb,'한우','소','채끝','1++',current_date-1,'○○도축장',null,null,null,current_date,'거세','9');
+
+    set role authenticated;
+    set request.jwt.claim.sub = 'c2c2c2c2-0000-0000-0000-000000000001';
+    v_result := public.record_inbound_scan('009999990101', 2.0, 'BARCODE_SCAN');
+    v_scan_id := (v_result->>'scan_id')::uuid;
+    reset role;
+
+    set role authenticated;
+    set request.jwt.claim.sub = 'c2c2c2c2-0000-0000-0000-000000000001';
+    perform public.resolve_inbound_mapping(v_scan_id, v_bms9_id, true);
+    reset role;
+
+    -- 이제 BMS7 개체를 스캔한다 — 부위·등급·품종·성별은 BMS9과 완전히 같다.
+    -- 고친 후에는 학습 매핑을 그대로 못 쓰고(BMS 불일치) PENDING_MAPPING이어야 한다.
+    perform public.upsert_master_livestock('009999990102','individual','mtrace_livestock','{}'::jsonb,'한우','소','채끝','1++',current_date-1,'○○도축장',null,null,null,current_date,'거세','7');
+
+    set role authenticated;
+    set request.jwt.claim.sub = 'c2c2c2c2-0000-0000-0000-000000000001';
+    v_result := public.record_inbound_scan('009999990102', 2.0, 'BARCODE_SCAN');
+    reset role;
+
+    perform pg_temp.expect(
+        '[버그수정] BMS7 박스는 BMS9 학습 매핑에 안 걸리고 PENDING_MAPPING',
+        v_result->>'status' = 'PENDING_MAPPING' and v_result->>'product_id' is null
+    );
+
+    -- BMS7도 사람이 한 번 확정해주면(학습), 그 다음부터는 BMS7끼리 자동 매핑돼야 한다.
+    set role authenticated;
+    set request.jwt.claim.sub = 'c2c2c2c2-0000-0000-0000-000000000001';
+    perform public.resolve_inbound_mapping((v_result->>'scan_id')::uuid, v_bms7_id, true);
+    reset role;
+
+    perform public.upsert_master_livestock('009999990103','individual','mtrace_livestock','{}'::jsonb,'한우','소','채끝','1++',current_date-1,'○○도축장',null,null,null,current_date,'거세','7');
+
+    set role authenticated;
+    set request.jwt.claim.sub = 'c2c2c2c2-0000-0000-0000-000000000001';
+    v_result := public.record_inbound_scan('009999990103', 2.0, 'BARCODE_SCAN');
+    reset role;
+
+    perform pg_temp.expect(
+        '[버그수정] BMS7 학습 후 다음 BMS7 박스는 BMS7 상품으로 자동 매핑',
+        v_result->>'status' = 'NORMAL' and (v_result->>'product_id')::uuid = v_bms7_id
+    );
+
+    -- trace_product_map의 유니크 키는 bms를 안 보므로(원산지와 같은 설계, 별도 컬럼
+    -- 없음) BMS7 학습이 같은 키의 옛 BMS9 학습 행을 덮어쓴다 — 그래서 BMS9을 다시
+    -- 스캔하면 "기억"은 못 하고 PENDING_MAPPING으로 떨어진다(원산지도 이미 이런
+    -- 한계가 있던 기존 설계, 이번 수정 범위 밖). 중요한 건 안전성 하나뿐이다:
+    -- BMS9 박스가 방금 학습된 BMS7 상품으로 잘못 자동배정되면 안 된다.
+    perform public.upsert_master_livestock('009999990104','individual','mtrace_livestock','{}'::jsonb,'한우','소','채끝','1++',current_date-1,'○○도축장',null,null,null,current_date,'거세','9');
+
+    set role authenticated;
+    set request.jwt.claim.sub = 'c2c2c2c2-0000-0000-0000-000000000001';
+    v_result := public.record_inbound_scan('009999990104', 2.0, 'BARCODE_SCAN');
+    reset role;
+
+    perform pg_temp.expect(
+        '[안전성] BMS9 박스가 BMS7 상품으로 잘못 자동배정되지 않는다(PENDING_MAPPING으로 떨어지는 것은 정상 — 다시 학습만 해주면 됨)',
+        not (v_result->>'status' = 'NORMAL' and (v_result->>'product_id')::uuid = v_bms7_id)
+    );
+end $$;
+
 select '--- 결과: 예외 없이 여기까지 왔으면 전부 PASS ---' as summary;
