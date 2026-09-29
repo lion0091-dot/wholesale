@@ -66,12 +66,23 @@ export async function updateSupplierStatusAction(
     if (newStatus === "active") {
       const { data: supplier } = await supabase
         .from("wholesalers")
-        .select("business_number, nts_verification_status")
+        .select("business_number, nts_verification_status, profile_id")
         .eq("id", supplierId)
         .maybeSingle();
 
       if (!supplier) {
         return { success: false, error: "공급사를 찾을 수 없습니다." };
+      }
+
+      // 자기승인 차단 — 겸용 관리자(또는 나중에 추가되는 관리자)가 본인 명의로 신청한
+      // 업체를 본인이 승인할 수 없다. 다른 관리자가 승인해야 한다.
+      const { data: authData } = await supabase.auth.getUser();
+
+      if (!authData.user || supplier.profile_id === authData.user.id) {
+        return {
+          success: false,
+          error: "본인 명의의 업체는 본인이 승인할 수 없습니다. 다른 관리자가 승인해야 합니다.",
+        };
       }
 
       if (!isValidBusinessNumber(supplier.business_number as string | null)) {
