@@ -531,7 +531,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "10px" }}>
                 <div>
                   <label htmlFor="po-supplier" style={labelStyle}>공급처 *</label>
-                  <select id="po-supplier" value={supplierId} onChange={(event) => setSupplierId(event.target.value)} style={fieldStyle}>
+                  <select id="po-supplier" autoFocus value={supplierId} onChange={(event) => setSupplierId(event.target.value)} style={fieldStyle}>
                     <option value="">{activeSuppliers.length === 0 ? "아래 거래처 관리에서 먼저 등록하세요" : "거래처를 고르세요"}</option>
                     {activeSuppliers.map((supplier) => (
                       <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
