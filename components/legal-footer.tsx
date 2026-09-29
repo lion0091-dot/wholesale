@@ -9,6 +9,8 @@ import Link from "next/link";
  */
 export const PLATFORM = {
   companyName: process.env.NEXT_PUBLIC_COMPANY_NAME || "미트 파트너스",
+  // 통신판매업 신고증상 법적 상호. companyName은 서비스 브랜드명으로 병기한다.
+  legalName: process.env.NEXT_PUBLIC_COMPANY_LEGAL_NAME || "장터",
   representative: process.env.NEXT_PUBLIC_COMPANY_REPRESENTATIVE || "권영성",
   businessNumber: process.env.NEXT_PUBLIC_COMPANY_BUSINESS_NUMBER || "455-17-02259",
   mailOrderNumber:
@@ -73,7 +75,7 @@ export function LegalFooter() {
             {PLATFORM.companyName}
           </p>
           <p>
-            대표자: {PLATFORM.representative} | 사업자등록번호: {PLATFORM.businessNumber} | 통신판매업신고:{" "}
+            상호: {PLATFORM.legalName} (서비스명: {PLATFORM.companyName}) | 대표자: {PLATFORM.representative} | 사업자등록번호: {PLATFORM.businessNumber} | 통신판매업신고:{" "}
             {PLATFORM.mailOrderNumber}
           </p>
           <p>

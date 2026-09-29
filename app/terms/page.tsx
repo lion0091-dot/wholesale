@@ -159,7 +159,7 @@ export default function TermsPage() {
         }}
       >
         <div style={{ fontWeight: 700, color: "#334155", marginBottom: "6px" }}>사업자 정보</div>
-        상호: {PLATFORM.companyName} | 대표자: {PLATFORM.representative}
+        상호: {PLATFORM.legalName} (서비스명: {PLATFORM.companyName}) | 대표자: {PLATFORM.representative}
         <br />
         사업자등록번호: {PLATFORM.businessNumber} | 통신판매업 신고번호: {PLATFORM.mailOrderNumber}
         <br />
