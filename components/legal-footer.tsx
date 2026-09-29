@@ -9,12 +9,13 @@ import Link from "next/link";
  */
 export const PLATFORM = {
   companyName: process.env.NEXT_PUBLIC_COMPANY_NAME || "미트 파트너스",
-  representative: process.env.NEXT_PUBLIC_COMPANY_REPRESENTATIVE || "홍길동",
-  businessNumber: process.env.NEXT_PUBLIC_COMPANY_BUSINESS_NUMBER || "220-88-00000",
+  representative: process.env.NEXT_PUBLIC_COMPANY_REPRESENTATIVE || "권영성",
+  businessNumber: process.env.NEXT_PUBLIC_COMPANY_BUSINESS_NUMBER || "455-17-02259",
   mailOrderNumber:
-    process.env.NEXT_PUBLIC_COMPANY_MAIL_ORDER_NUMBER || "제 2026-서울성동-00000호",
+    process.env.NEXT_PUBLIC_COMPANY_MAIL_ORDER_NUMBER || "제 2024-경기안산-5773호",
   address:
-    process.env.NEXT_PUBLIC_COMPANY_ADDRESS || "서울특별시 성동구 마장로 123 미트타워 5층",
+    process.env.NEXT_PUBLIC_COMPANY_ADDRESS ||
+    "경기도 안산시 단원구 광덕4로 116, 대덕프라자 5층 502호(고잔동)",
   privacyOfficer: process.env.NEXT_PUBLIC_PRIVACY_OFFICER || "이순신",
   supportEmail: process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "support@wholesale-meat.kr",
   privacyEmail: process.env.NEXT_PUBLIC_PRIVACY_EMAIL || "privacy@wholesale-meat.kr",
