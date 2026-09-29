@@ -153,11 +153,12 @@ export interface MtraceRecord {
   /** 부위 — 응답에 없을 수 있다(위 주의사항 참고) */
   partName: string | null;
   grade: string | null;
-  /** 성별(거세/암) — 소 개체번호 응답에만 있다(2026-09-30 실조회로 확인, sexNm). 로트/수입은 항상 null. */
+  /** 성별(거세/암) — 소 개체번호 응답에만 있다(2026-09-30 실조회로 확인, sexNm). 로트는 개체마다 다를 수 있어 항상 null(farmName과 같은 원칙). */
   sex: string | null;
   /**
    * 마블링 세부점수(BMS, insfat) — 1++ 등급에서만 응답에 실려 온다(2026-09-30 실조회로
    * 확인, 7건 중 1++ 1건만 있었음). 값은 API 원문 그대로 숫자 문자열("7"~"9")이다.
+   * 로트는 개체마다 다를 수 있어 항상 null(farmName과 같은 원칙).
    */
   bms: string | null;
   slaughterDate: string | null;
@@ -561,8 +562,13 @@ function toRecord(
     // 스캔 처리 쪽에서 사용자에게 한 번 물어본다.
     partName: pick(tree, ["partNm", "partName", "cutMeatNm", "itemNm"]),
     grade: pick(tree, ["gradeNm", "cattleGradeNm", "qgradeNm", "gradeCd"]),
-    sex: pick(tree, ["sexNm"]),
-    bms: pick(tree, ["insfat"]),
+    // 로트는 farmName과 같은 이유로 성별·BMS도 대표값을 못 낸다 — 개체마다 다를 수
+    // 있는데 pick()이 재귀로 첫 번째 값만 집어서 로트 전체가 한 값인 것처럼 허위표시될
+    // 위험이 있다(통단테 발견, 2026-09-30). 개체마다 다른 값을 신뢰성 있게 합치려면
+    // raw_payload의 items 배열을 직접 순회해야 하는데 그 경로는 아직 없어, 로트는
+    // farmName과 동일하게 null로 비워 사람이 채우게 한다.
+    sex: traceKind === "group" ? null : pick(tree, ["sexNm"]),
+    bms: traceKind === "group" ? null : pick(tree, ["insfat"]),
     slaughterDate: normalizeDate(pick(tree, ["butcheryYmd", "slaughterYmd", "butcheryDate"])),
     packingDate: normalizeDate(pick(tree, ["processYmd", "packingYmd", "packDate", "prcsYmd"])),
     butcheryPlace: pick(tree, ["butcheryPlaceNm", "abattNm", "butcheryPlace"]),
