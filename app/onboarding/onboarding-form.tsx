@@ -90,13 +90,12 @@ export function OrganizationCreateForm() {
 
       <div style={{ marginBottom: "14px" }}>
         <label htmlFor="business_number" style={labelStyle}>
-          사업자등록번호 (숫자 10자리)
+          사업자등록번호 (숫자 10자리, 선택)
         </label>
         <input
           id="business_number"
           name="business_number"
           type="text"
-          required
           inputMode="numeric"
           placeholder="000-00-00000"
           disabled={pending}
@@ -104,7 +103,7 @@ export function OrganizationCreateForm() {
         />
       </div>
 
-      <div style={{ marginBottom: "14px" }}>
+      <div style={{ marginBottom: "18px" }}>
         <label htmlFor="representative_name" style={labelStyle}>
           대표자명 (선택)
         </label>
@@ -116,23 +115,6 @@ export function OrganizationCreateForm() {
           disabled={pending}
           style={inputStyle}
         />
-      </div>
-
-      <div style={{ marginBottom: "18px" }}>
-        <label htmlFor="subscription_tier" style={labelStyle}>
-          구독 플랜
-        </label>
-        <select
-          id="subscription_tier"
-          name="subscription_tier"
-          defaultValue="pro"
-          disabled={pending}
-          style={inputStyle}
-        >
-          <option value="lite">Lite</option>
-          <option value="pro">Pro</option>
-          <option value="enterprise">Enterprise</option>
-        </select>
       </div>
 
       <button

@@ -17,7 +17,6 @@ export interface ActionResult<T = undefined> {
 }
 
 const ORG_ROLES: OrgRole[] = ["owner", "manager", "staff"];
-const SUBSCRIPTION_TIERS = ["lite", "pro", "enterprise"] as const;
 /** 직원 관리 화면 — 카카오 초대 링크 기반으로 재구축(app/dashboard/team) */
 const REVALIDATE_PATH = "/dashboard/team";
 
@@ -50,21 +49,20 @@ export async function createOrganization(
     }
 
     const name = ((formData.get("name") as string) || "").trim();
-    const businessNumber = ((formData.get("business_number") as string) || "").replace(/[^0-9]/g, "");
+    const businessNumberRaw = ((formData.get("business_number") as string) || "").replace(/[^0-9]/g, "");
     const representativeName = ((formData.get("representative_name") as string) || "").trim() || null;
-    const tierInput = ((formData.get("subscription_tier") as string) || "pro").trim();
 
     if (name.length < 2) {
       throw new RbacError("조직(업체)명을 2자 이상 입력해주세요.");
     }
 
-    if (businessNumber.length !== 10) {
-      throw new RbacError("사업자등록번호 10자리를 정확히 입력해주세요.");
+    // 사업자등록번호는 선택이다(wholesalers.business_number와 같은 규칙, 2026-09-30 사장님 지적) —
+    // 입력했으면 형식은 맞아야 하지만, 없을 수도 있으니 비워도 통과시킨다.
+    if (businessNumberRaw && businessNumberRaw.length !== 10) {
+      throw new RbacError("사업자등록번호는 숫자 10자리로 입력해주세요. (없으면 비워두셔도 됩니다)");
     }
 
-    const subscriptionTier = (SUBSCRIPTION_TIERS as readonly string[]).includes(tierInput)
-      ? tierInput
-      : "pro";
+    const businessNumber = businessNumberRaw || null;
 
     const supabase = await createClient();
 
@@ -82,7 +80,6 @@ export async function createOrganization(
         name,
         business_number: businessNumber,
         representative_name: representativeName,
-        subscription_tier: subscriptionTier,
       })
       .select("id")
       .single();
