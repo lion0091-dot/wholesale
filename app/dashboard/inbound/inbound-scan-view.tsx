@@ -294,11 +294,11 @@ export function InboundScanView({
   const [splitTraceNo, setSplitTraceNo] = useState("");
   /**
    * 방금 찍었는데 이력조회가 실패한 코드. 소·돼지가 섞여 온 박스는 공급처
-   * 박스 바코드밖에 없어 조회될 수가 없다 — 그 자리에서 쪼개기를 권한다.
+   * 박스 바코드밖에 없어 조회될 수가 없다 — 그 자리에서 분류입고를 권한다.
    */
   const [splitCandidate, setSplitCandidate] = useState<string | null>(null);
   /**
-   * "이 박스 쪼개기" 제안에 "아니오"(상품 1개 맞음)로 답한 이력번호들.
+   * "이 박스 분류입고" 제안에 "아니오"(상품 1개 맞음)로 답한 이력번호들.
    * 그냥 사라지게 두면 나중에 상품을 지정할 때 "이거 확인은 한 거였나"를 알 수 없어서,
    * 상품 지정 칸 옆에 계속 눈에 띄게 남겨둔다(사장님 요청 — 강제 차단은 아니고 기록만).
    */
@@ -477,7 +477,7 @@ export function InboundScanView({
         });
 
         // 공급처 박스 바코드일 수 있다 — 소·돼지가 섞인 박스는 박스 코드밖에 없어 조회될 리가 없으니
-        // 그 자리에서 쪼개기를 제안한다(사장님 확정).
+        // 그 자리에서 분류입고를 제안한다(사장님 확정).
         if (data.status === "EXCEPTION") {
           setSplitCandidate(value);
         }
@@ -513,7 +513,7 @@ export function InboundScanView({
 
       // 파서가 이력번호로 볼 만한 패턴을 하나도 못 찾은 값(마트 소매용 EAN-13 등)을
       // "인식 완료"라고 알려주면 실제로는 아무것도 인식 못 했는데 성공한 것처럼
-      // 보인다 — 그대로 두면 헛된 정부 API 호출 → 조회 실패 → "박스 쪼개기?"
+      // 보인다 — 그대로 두면 헛된 정부 API 호출 → 조회 실패 → "박스 분류입고?"
       // 배너까지 이어져 혼란만 커진다. 막지는 않되(파서가 못 잡는 정상 번호일 수도
       // 있으니) 있는 그대로 알린다.
       const notRecognized = !parsed.traceNo;
@@ -947,7 +947,7 @@ export function InboundScanView({
     });
 
     if (!result.success) {
-      setError(result.error ?? "박스 나눠서 입고에 실패했습니다.");
+      setError(result.error ?? "박스 분류입고에 실패했습니다.");
       setSplitSubmitting(false);
       return;
     }
@@ -1008,7 +1008,7 @@ export function InboundScanView({
     router.refresh();
   };
 
-  // 박스 나눠서 입고 — 코드 한 번 → 상품·무게 2개 이상 → 전체 입고. 카드와 칸 강조가 같은 판단을 쓴다.
+  // 박스 분류입고 — 코드 한 번 → 상품·무게 2개 이상 → 전체 입고. 카드와 칸 강조가 같은 판단을 쓴다.
   const splitBoxCode = (parseBarcode(splitTraceNo).traceNo ?? splitTraceNo.trim()).trim();
   const splitValidCount = splitRows.filter((row) => row.productId && Number.parseFloat(row.weight) > 0).length;
   const activeSplitField: "box" | "rows" | "submit" | null = splitSubmitting
@@ -1276,9 +1276,9 @@ export function InboundScanView({
 
         {needsProduct && declinedSplitTraceNos.has(scan.traceNo) && (
           <p style={{ fontSize: "11px", color: "#92400e", margin: "2px 0 0", width: "100%" }}>
-            ⚠ 쪼개기 안 함으로 확인됨 — 아래에서 상품을 하나로 지정하면 이 무게 전체가 그
-            상품 재고로 들어갑니다. 실제로 여러 상품이 섞인 박스라면 취소하고 "박스 나눠서
-            입고"로 다시 입력하세요.
+            ⚠ 분류입고 안 함으로 확인됨 — 아래에서 상품을 하나로 지정하면 이 무게 전체가 그
+            상품 재고로 들어갑니다. 실제로 여러 상품이 섞인 박스라면 취소하고 "박스 분류입고"로
+            다시 입력하세요.
           </p>
         )}
 
@@ -1556,7 +1556,7 @@ export function InboundScanView({
             onClick={() => setSplitMode((prev) => !prev)}
             style={{ ...buttonStyle, marginLeft: "auto" }}
           >
-            {splitMode ? "박스 나눠서 입고 닫기" : "박스 나눠서 입고 (상품 여러 개)"}
+            {splitMode ? "박스 분류입고 닫기" : "박스 분류입고 (상품 여러 개)"}
           </button>
         </div>
 
@@ -1625,7 +1625,7 @@ export function InboundScanView({
               }}
               style={{ ...buttonStyle, padding: "6px 12px", fontSize: "12px" }}
             >
-              이 박스 쪼개기
+              이 박스 분류입고
             </button>
             <button
               type="button"
@@ -1653,7 +1653,7 @@ export function InboundScanView({
             <StepCard who="현장" step={splitStep} />
           </div>
           <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginBottom: "6px" }}>
-            박스 나눠서 입고
+            박스 분류입고
           </div>
           <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 10px" }}>
             공급자가 서로 다른 상품을 한 박스에 코드 하나로 묶어 보낸 경우입니다. 코드는 한 번만

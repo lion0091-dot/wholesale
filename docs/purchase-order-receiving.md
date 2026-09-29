@@ -6,7 +6,7 @@
 
 - ① DB·판정 함수: 완료(로컬). `scripts/db-test-purchase-order-receiving.sql` 통과(묶음 채움·사장님 200/25kg 시나리오 포함). **라이브 미적용.**
 - 발주 관리 화면(`/dashboard/purchase-orders`): 줄마다 "받음 N kg · 남음 M kg / 다 받음", 발주서 상태 표시("입고 중"·"다 받음"). 화면 클릭 검증 안 함.
-- ② 입고 스캔 화면·서버 액션 연결: 완료(로컬). 입고 스캔 화면 맨 위 "지금 온 거래처"(필수, 한 번 고르면 유지·localStorage) — 예전 매입처 글자 칸은 없어지고 고른 거래처 이름이 매입처로 기록된다. `recordScanAction`·`recordSplitScansAction`은 `supplierId`를 받고(서버 필수는 아님 — 화면이 필수로 막는다, 엑셀 입고는 안 보냄), 결과에 `po`·`status: "REJECTED"`가 실린다. 자동 생성·사무실 상품 지정·번호 바로잡기 경로도 같은 판정을 받고(`lib/livestock/scan-purchase-order.ts`), 나눠서 입고는 한 줄이라도 거절되면 전부 취소한다. 검증: `tests/integration/inbound-purchase-order.itest.ts` 7건.
+- ② 입고 스캔 화면·서버 액션 연결: 완료(로컬). 입고 스캔 화면 맨 위 "지금 온 거래처"(필수, 한 번 고르면 유지·localStorage) — 예전 매입처 글자 칸은 없어지고 고른 거래처 이름이 매입처로 기록된다. `recordScanAction`·`recordSplitScansAction`은 `supplierId`를 받고(서버 필수는 아님 — 화면이 필수로 막는다, 엑셀 입고는 안 보냄), 결과에 `po`·`status: "REJECTED"`가 실린다. 자동 생성·사무실 상품 지정·번호 바로잡기 경로도 같은 판정을 받고(`lib/livestock/scan-purchase-order.ts`), 분류입고는 한 줄이라도 거절되면 전부 취소한다. 검증: `tests/integration/inbound-purchase-order.itest.ts` 7건.
 - ③ 사무실 화면: 줄 고르기는 없어졌고 보류·거절 목록만 남음(미착수).
 
 ## 잠긴 결정

@@ -89,11 +89,11 @@ describe("buildScanResultCard", () => {
     expect(card.action?.href).toBe("#scan-s1");
   });
 
-  it("9. 이력 못 찾음 — 빨강, 박스 나눠서 입고도 안내한다", () => {
+  it("9. 이력 못 찾음 — 빨강, 박스 분류입고도 안내한다", () => {
     const card = buildScanResultCard({ ...ok, status: "EXCEPTION", failReason: "NOT_FOUND" }, options);
 
     expect(card.tone).toBe("red");
-    expect(card.detail).toContain("박스 나눠서 입고");
+    expect(card.detail).toContain("박스 분류입고");
   });
 
   it("10. 인증키 미설정 — 다시 찍어도 안 된다고 알린다", () => {

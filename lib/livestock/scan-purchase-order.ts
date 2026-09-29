@@ -177,7 +177,7 @@ function formatKg(value: number): string {
   return value.toLocaleString("ko-KR", { maximumFractionDigits: 3 });
 }
 
-/** 거절 한 줄 요약 — 화면 카드와 "박스 나눠서 입고" 오류 문구가 같은 말을 쓴다. */
+/** 거절 한 줄 요약 — 화면 카드와 "박스 분류입고" 오류 문구가 같은 말을 쓴다. */
 export function rejectionSummary(po: ScanPurchaseOrder): string {
   if (po.reason === "OVER") {
     const numbers =

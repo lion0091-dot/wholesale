@@ -155,7 +155,7 @@ describe("중복·동시 — 같은 박스를 두 번 찍어도 재고가 두 �
   });
 });
 
-describe("박스 나눠서 입고 — 중간에 실패하면 반쪽만 남지 않고 전부 되돌려진다", () => {
+describe("박스 분류입고 — 중간에 실패하면 반쪽만 남지 않고 전부 되돌려진다", () => {
   it("모든 줄이 성공하면 줄마다 박스가 생기고 상품별 재고가 늘어난다", async () => {
     const [a, b] = [await newProduct({ subcategory: "등심" }), await newProduct({ subcategory: "안심" })];
     const box = world.newTraceNo();

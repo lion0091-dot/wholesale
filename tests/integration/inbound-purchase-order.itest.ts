@@ -269,7 +269,7 @@ describe("입고 스캔 액션 — 거래처를 싣고 찍기", () => {
     expect((await scanRow(rightTrace)).supplier_id).toBe(supplierId);
   });
 
-  it("박스 나눠서 입고 — 한 줄이라도 거절되면 앞서 넣은 줄까지 전부 취소한다", async () => {
+  it("박스 분류입고 — 한 줄이라도 거절되면 앞서 넣은 줄까지 전부 취소한다", async () => {
     const supplierId = await newSupplier("마");
     const p1 = await world.createProduct({ stock_quantity: 0 });
     const p2 = await world.createProduct({ stock_quantity: 0 });
