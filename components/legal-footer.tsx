@@ -18,7 +18,7 @@ export const PLATFORM = {
   address:
     process.env.NEXT_PUBLIC_COMPANY_ADDRESS ||
     "경기도 안산시 단원구 광덕4로 116, 대덕프라자 5층 502호(고잔동)",
-  privacyOfficer: process.env.NEXT_PUBLIC_PRIVACY_OFFICER || "이순신",
+  privacyOfficer: process.env.NEXT_PUBLIC_PRIVACY_OFFICER || "권영성",
   supportEmail: process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "support@wholesale-meat.kr",
   privacyEmail: process.env.NEXT_PUBLIC_PRIVACY_EMAIL || "privacy@wholesale-meat.kr",
   supportPhone: process.env.NEXT_PUBLIC_SUPPORT_PHONE || "1588-0000",
