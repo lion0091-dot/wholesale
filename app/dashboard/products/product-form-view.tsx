@@ -742,12 +742,11 @@ export function ProductFormView({
                 id="grade"
                 name="grade"
                 type="text"
-                readOnly={isEdit}
                 value={gradeValue}
                 onChange={(event) => setGradeValue(event.target.value)}
                 placeholder="예: 1등급, 특"
                 autoComplete="off"
-                style={isEdit ? readOnlyFieldStyle : fieldStyle}
+                style={fieldStyle}
               />
             )}
             {gradeLocked && (
