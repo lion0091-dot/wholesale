@@ -52,6 +52,26 @@ export function bmsAppliesTo(category: string | null | undefined, grade: string 
   return category === "소" && grade === "1++";
 }
 
+/**
+ * "등급(BMS)" 한 조각 — BMS는 등급 바로 뒤에 괄호로 붙여야 등급·BMS가 한 묶음으로
+ * 읽힌다(예: "1++(9)", 사장님 지적 2026-09-30). 이 조립을 상품명(composeIdentityName)·
+ * 발주서 목록 라벨(productSpecLabel)·카톡 문구(buildPurchaseOrderMessage)·발주서 화면
+ * 미리보기(specText) 네 곳이 각자 따로 구현했다가 한 곳만 고쳐서 표기가 갈리는 버그가
+ * 실제로 있었다(통단테 발견, 2026-09-30) — 그래서 이 한 조각만 공유 함수로 뺀다.
+ * bmsAppliesTo가 이미 "소·1++"만 걸러주므로 호출부는 등급 필드 사용 여부(예: 돼지는
+ * 애초에 grade 자체를 안 씀)만 자기 쪽에서 가리면 된다.
+ */
+export function formatGradeWithBms(
+  category: string | null | undefined,
+  grade: string | null | undefined,
+  bms: string | null | undefined
+): string {
+  const gradeText = (grade ?? "").trim();
+  const bmsText = bmsAppliesTo(category, grade) ? (bms ?? "").trim() : "";
+
+  return bmsText ? `${gradeText}(${bmsText})` : gradeText;
+}
+
 const IDENTITY_FIELDS_BY_CATEGORY: Record<string, IdentityField[]> = {
   소: ["breed", "subcategory", "grade", "sex", "origin", "storageState"],
   돼지: ["subcategory", "origin", "storageState"],
@@ -117,11 +137,9 @@ export function composeIdentityName(
   }
 
   const part = values.subcategory?.trim() ?? "";
-  const gradeText = fields.includes("grade") ? (values.grade?.trim() ?? "") : "";
   const breedText = fields.includes("breed") ? (values.breed?.trim() ?? "") : "";
   const sexText = fields.includes("sex") ? (values.sex?.trim() ?? "") : "";
-  const bmsText = bmsAppliesTo(category, values.grade) ? (values.bms?.trim() ?? "") : "";
-  const gradeWithBms = bmsText ? `${gradeText}(${bmsText})` : gradeText;
+  const gradeWithBms = fields.includes("grade") ? formatGradeWithBms(category, values.grade, values.bms) : "";
   const name = [storageText, breedText, part, gradeWithBms, sexText]
     .filter(Boolean)
     .join(" ");

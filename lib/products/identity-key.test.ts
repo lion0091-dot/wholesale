@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bmsAppliesTo,
   composeIdentityName,
+  formatGradeWithBms,
   identityFieldsFor,
   PART_UNSPECIFIED_LABEL,
 } from "@/lib/products/identity-key";
@@ -33,6 +34,37 @@ describe("bmsAppliesTo", () => {
     expect(bmsAppliesTo("소", "1+")).toBe(false);
     expect(bmsAppliesTo("소", null)).toBe(false);
     expect(bmsAppliesTo("돼지", "1++")).toBe(false);
+  });
+});
+
+// identity-key.ts(상품명)·product-match.ts(발주서 목록 라벨)·message.ts(카톡 문구)·
+// purchase-order-view.tsx(발주서 화면 미리보기) 네 곳이 이 조립을 각자 따로 구현했다가
+// 한 곳만 고쳐서 표기가 갈리는 버그가 있었다(통단테 발견, 2026-09-30) — 공유 함수로
+// 뺀 뒤 그 네 곳이 전부 이 함수를 부른다. 여기서 한 번만 검증하면 네 곳이 다 맞다.
+describe("formatGradeWithBms", () => {
+  it("소 1++는 등급 바로 뒤에 BMS를 괄호로 붙인다", () => {
+    expect(formatGradeWithBms("소", "1++", "9")).toBe("1++(9)");
+  });
+
+  it("소라도 1++가 아니면 BMS를 무시하고 등급만 남긴다", () => {
+    expect(formatGradeWithBms("소", "1+", "9")).toBe("1+");
+  });
+
+  it("소가 아니면 BMS를 무시한다(잘못 들어온 값이라도)", () => {
+    expect(formatGradeWithBms("돼지", "1++", "9")).toBe("1++");
+  });
+
+  it("BMS 값이 없으면 등급만 그대로", () => {
+    expect(formatGradeWithBms("소", "1++", null)).toBe("1++");
+    expect(formatGradeWithBms("소", "1++", "")).toBe("1++");
+  });
+
+  it("등급이 없으면 빈 문자열(BMS 있어도 등급 없이는 안 보임)", () => {
+    expect(formatGradeWithBms("소", null, "9")).toBe("");
+  });
+
+  it("BMS 값의 앞뒤 공백은 다듬는다(등급은 bmsAppliesTo 판정에 쓰이므로 호출부가 이미 다듬어 건넨다)", () => {
+    expect(formatGradeWithBms("소", "1++", " 9 ")).toBe("1++(9)");
   });
 });
 

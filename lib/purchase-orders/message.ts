@@ -1,3 +1,5 @@
+import { formatGradeWithBms } from "@/lib/products/identity-key";
+
 /**
  * 발주서를 카톡 본문에 붙여 넣을 문구로 만든다. 축종별로 묶고 한 줄에 "냉장/냉동 품종 부위 등급(BMS) 성별 원산지 수량"만 적는다.
  * 공급처가 어느 변형을 보내야 하는지 알 수 있도록 성별·BMS·냉장/냉동까지 전부 문구에 실어야 한다(2026-09-30, 사장님 지적 —
@@ -41,7 +43,7 @@ export function buildPurchaseOrderMessage(order: PurchaseOrderMessageInput, opti
   const groups = new Map<string, string[]>();
 
   for (const line of order.lines) {
-    const gradeWithBms = line.bms ? `${line.grade ?? ""}(${line.bms})` : line.grade;
+    const gradeWithBms = formatGradeWithBms(line.category, line.grade, line.bms);
     const spec = [line.storageState, line.breed, line.subcategory, gradeWithBms, line.sex, line.origin]
       .filter(Boolean)
       .join(" ");

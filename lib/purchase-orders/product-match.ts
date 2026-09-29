@@ -1,4 +1,4 @@
-import { bmsAppliesTo, identityFieldsFor } from "@/lib/products/identity-key";
+import { bmsAppliesTo, formatGradeWithBms, identityFieldsFor } from "@/lib/products/identity-key";
 import { originMatches } from "@/lib/products/origin-options";
 
 /** 발주서 줄에서 고를 수 있는 상품(보관되지 않은 것) — 목록 표시와 스펙 매칭에 필요한 칸만. */
@@ -39,9 +39,7 @@ export function productSpecLabel(product: ProductOption): string {
     return [product.category, product.name, product.origin].map(clean).filter(Boolean).join(" ");
   }
 
-  const gradeText = fields.includes("grade") ? clean(product.grade) : "";
-  const bmsText = bmsAppliesTo(product.category, product.grade) ? clean(product.bms) : "";
-  const gradeWithBms = bmsText ? `${gradeText}(${bmsText})` : gradeText;
+  const gradeWithBms = fields.includes("grade") ? formatGradeWithBms(product.category, product.grade, product.bms) : "";
 
   return [
     fields.includes("storageState") ? product.storageState : null,

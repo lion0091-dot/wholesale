@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { PurchaseOrderLineInput } from "@/lib/purchase-orders/lines";
 import { PURCHASE_ORDER_MAX_LINES } from "@/lib/purchase-orders/lines";
 import { locateSaveError } from "@/lib/purchase-orders/locate-error";
+import { formatGradeWithBms } from "@/lib/products/identity-key";
 import { buildPurchaseOrderMessage } from "@/lib/purchase-orders/message";
 import { specFromProduct, productSpecLabel, type ProductOption } from "@/lib/purchase-orders/product-match";
 import { NewProductPanel } from "./new-product-panel";
@@ -158,9 +159,9 @@ function specText(line: {
   storageState?: string | null;
   origin: string;
 }): string {
-  // BMS는 등급 바로 뒤에 괄호로 붙인다(등급·BMS가 한 묶음으로 읽혀야 한다) — lib/purchase-orders/product-match.ts의
-  // productSpecLabel()과 같은 표기 규칙. 여기 있는 별도 구현이 그 규칙을 안 따라 성별 뒤에 BMS가 붙는 버그가 있었다.
-  const gradeWithBms = line.bms ? `${line.grade ?? ""}(${line.bms})` : line.grade;
+  // "등급(BMS)" 조립은 공유 함수를 쓴다 — identity-key.ts/product-match.ts/message.ts와
+  // 각자 따로 구현했다가 한 곳만 고쳐서 표기가 갈리는 버그가 있었다(통단테 발견, 2026-09-30).
+  const gradeWithBms = formatGradeWithBms(line.category, line.grade, line.bms);
   const storageState = line.storage_state ?? line.storageState;
 
   return [storageState, line.category, line.breed, line.subcategory, gradeWithBms, line.sex, line.origin]
