@@ -147,13 +147,18 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
   const shopToken = (wholesaler?.shop_token as string | undefined) ?? null;
 
   // 업체 레코드가 아직 없으면 상호/연락처를 받지 않은 상태다.
-  // 슈퍼관리자도 겸용 공급사 계정이 될 수 있어(2026-09-30, 사장님 지적으로 발견) 제외하지
-  // 않는다 — 예전엔 여기서 슈퍼관리자를 제외해서, is_supplier=true인 슈퍼관리자가
+  // isSupplier는 여기서 안 쓴다(2026-09-30, 실계정 재현으로 발견) — 일반 계정은
+  // /login(공급사 전용) 최초 로그인 트리거(handle_new_user)가 is_supplier를 항상
+  // true로 만들어 실질적으로 항상 참이었지만, 슈퍼관리자는 만들어진 경로가 달라
+  // is_supplier가 false일 수 있다(실계정에서 확인됨) — is_supplier는 "가입 마무리"를
+  // 끝낸 결과이지, 그 화면을 보기 위한 전제조건이 아니다. 슈퍼관리자도 제외하지
+  // 않는다 — 예전엔 여기서 슈퍼관리자를 제외해서, is_supplier=false인 슈퍼관리자가
   // /onboarding에 들어가면 최신(1단계, complete_supplier_signup) 대신 wholesaler_id가
   // 안 채워지는 옛 "조직 생성"(2단계, 레거시) 화면으로 빠져 승인 대기 목록에 아예
   // 안 잡히는 죽은 경로로 떨어졌다. complete_supplier_signup은 이미 super_admin
   // role을 그대로 보존하도록 설계돼 있어(20260914000000) 겸용 계정에 안전하다.
-  const needsMinimumInfo = isSupplier && (!profile?.terms_agreed_at || !wholesaler?.id);
+  // (retailer는 /onboarding 페이지 자체가 별도로 걸러낸다 — 여기서 또 안 막아도 됨)
+  const needsMinimumInfo = !profile?.terms_agreed_at || !wholesaler?.id;
 
   const administrativelyApproved = isVerified || supplierStatus === "active";
 
