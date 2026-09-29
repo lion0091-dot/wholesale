@@ -152,7 +152,11 @@ function specText(line: {
   storage_state?: string | null;
   origin: string;
 }): string {
-  return [line.storage_state, line.category, line.breed, line.subcategory, line.grade, line.sex, line.bms ? `(${line.bms})` : null, line.origin]
+  // BMS는 등급 바로 뒤에 괄호로 붙인다(등급·BMS가 한 묶음으로 읽혀야 한다) — lib/purchase-orders/product-match.ts의
+  // productSpecLabel()과 같은 표기 규칙. 여기 있는 별도 구현이 그 규칙을 안 따라 성별 뒤에 BMS가 붙는 버그가 있었다.
+  const gradeWithBms = line.bms ? `${line.grade ?? ""}(${line.bms})` : line.grade;
+
+  return [line.storage_state, line.category, line.breed, line.subcategory, gradeWithBms, line.sex, line.origin]
     .filter(Boolean)
     .join(" ");
 }
