@@ -6,7 +6,7 @@
  */
 
 export { ORIGIN_OPTIONS } from "@/lib/products/origin-options";
-export { CATTLE_BREEDS, CATTLE_GRADES } from "@/lib/products/identity-key";
+export { CATTLE_BREEDS, CATTLE_GRADES, CATTLE_SEXES, BMS_VALUES, STORAGE_STATES, bmsAppliesTo } from "@/lib/products/identity-key";
 
 export interface SpecListRule {
   breedFromList: boolean;

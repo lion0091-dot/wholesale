@@ -9,6 +9,9 @@ const product = (patch: Partial<ProductOption>): ProductOption => ({
   subcategory: "등심",
   grade: "1++",
   breed: "한우",
+  sex: null,
+  bms: null,
+  storageState: null,
   origin: "국내산",
   ...patch,
 });
@@ -39,6 +42,15 @@ describe("productSpecLabel", () => {
   it("키 없는 축종은 상품명을 넣는다", () => {
     expect(productSpecLabel(product({ category: "가공육", name: "수제 소불고기", subcategory: null, grade: null }))).toBe("가공육 수제 소불고기 국내산");
   });
+
+  it("성별·냉장냉동·(1++ 소만) BMS를 라벨에 넣는다", () => {
+    expect(productSpecLabel(product({ sex: "거세", storageState: "냉장" }))).toBe("냉장 소 한우 등심 1++ 거세 국내산");
+    // BMS는 등급 바로 뒤에 괄호로 붙는다("1++(9)").
+    expect(productSpecLabel(product({ sex: "거세", bms: "9" }))).toBe("소 한우 등심 1++(9) 거세 국내산");
+    // 1++가 아니면 BMS가 있어도 라벨에 안 나온다(등급이 다르면 BMS 개념 자체가 없다).
+    expect(productSpecLabel(product({ grade: "1", sex: "암", bms: "9" }))).toBe("소 한우 등심 1 암 국내산");
+    expect(productSpecLabel(product({ category: "돼지", breed: null, subcategory: "삼겹살", grade: "특", storageState: "냉동" }))).toBe("냉동 돼지 삼겹살 국내산");
+  });
 });
 
 describe("specFromProduct", () => {
@@ -48,9 +60,17 @@ describe("specFromProduct", () => {
       breed: "",
       subcategory: "소시지",
       grade: "",
+      sex: "",
+      bms: "",
+      storageState: "",
       origin: "국내산",
     });
     expect(specFromProduct(product({ category: "소", subcategory: null }))).toMatchObject({ subcategory: "" });
+  });
+
+  it("성별·냉장냉동을 그대로 옮기고, BMS는 1++일 때만 옮긴다", () => {
+    expect(specFromProduct(product({ sex: "거세", storageState: "냉장", bms: "9" }))).toMatchObject({ sex: "거세", storageState: "냉장", bms: "9" });
+    expect(specFromProduct(product({ grade: "1", sex: "암", bms: "9" }))).toMatchObject({ bms: "" });
   });
 });
 
@@ -62,8 +82,22 @@ describe("findProductForSpec", () => {
     product({ id: "pork", category: "돼지", breed: null, subcategory: "삼겹살", grade: null }),
     product({ id: "chicken", category: "닭", breed: null, subcategory: null, grade: null }),
     product({ id: "sausage", category: "가공육", name: "소시지", breed: null, subcategory: null, grade: null }),
+    product({ id: "beef-female", sex: "암" }),
+    product({ id: "beef-frozen", storageState: "냉동" }),
+    product({ id: "beef-bms9", bms: "9" }),
+    product({ id: "beef-bms8", bms: "8" }),
   ];
-  const spec = (patch: Record<string, string>) => ({ category: "소", breed: "한우", subcategory: "등심", grade: "1++", origin: "국내산", ...patch });
+  const spec = (patch: Record<string, string>) => ({
+    category: "소",
+    breed: "한우",
+    subcategory: "등심",
+    grade: "1++",
+    sex: "",
+    bms: "",
+    storageState: "",
+    origin: "국내산",
+    ...patch,
+  });
 
   it("키 칸이 모두 같으면 찾고, 원산지는 포함 비교", () => {
     expect(findProductForSpec(spec({}), products)?.id).toBe("beef");
@@ -87,5 +121,15 @@ describe("findProductForSpec", () => {
 
   it("키 없는 축종은 스펙으로 못 찾는다", () => {
     expect(findProductForSpec(spec({ category: "가공육", subcategory: "소시지" }), products)).toBeNull();
+  });
+
+  it("성별·냉장냉동이 다르면 다른 상품, BMS는 1++일 때만 구분한다", () => {
+    expect(findProductForSpec(spec({}), products)?.id).toBe("beef");
+    expect(findProductForSpec(spec({ sex: "암" }), products)?.id).toBe("beef-female");
+    expect(findProductForSpec(spec({ storageState: "냉동" }), products)?.id).toBe("beef-frozen");
+    expect(findProductForSpec(spec({ bms: "9" }), products)?.id).toBe("beef-bms9");
+    expect(findProductForSpec(spec({ bms: "8" }), products)?.id).toBe("beef-bms8");
+    // 1++가 아니면 BMS는 정체성이 아니라 무시한다 — bms 값이 있어도 그 등급의 상품과 맞는다.
+    expect(findProductForSpec(spec({ grade: "1", subcategory: "안심", origin: "미국산", bms: "9" }), products)?.id).toBe("us-beef");
   });
 });

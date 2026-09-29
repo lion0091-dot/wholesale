@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { identityFieldsFor } from "@/lib/products/identity-key";
-import { CATTLE_BREEDS, CATTLE_GRADES, ORIGIN_OPTIONS, specListRuleFor } from "@/lib/purchase-orders/spec-options";
+import { bmsAppliesTo, identityFieldsFor } from "@/lib/products/identity-key";
+import { isDomesticOrigin } from "@/lib/products/origin-options";
+import { CATTLE_BREEDS, CATTLE_GRADES, CATTLE_SEXES, BMS_VALUES, STORAGE_STATES, ORIGIN_OPTIONS, specListRuleFor } from "@/lib/purchase-orders/spec-options";
 import type { LineSpec, ProductOption } from "@/lib/purchase-orders/product-match";
 import { createPurchaseOrderProductAction } from "./actions";
 
@@ -42,6 +43,9 @@ export function NewProductPanel({ categories, subcategoriesByCategory, initial, 
   const [breed, setBreed] = useState(initial.breed);
   const [subcategory, setSubcategory] = useState(initial.subcategory);
   const [grade, setGrade] = useState(initial.grade);
+  const [sex, setSex] = useState(initial.sex);
+  const [bms, setBms] = useState(initial.bms);
+  const [storageState, setStorageState] = useState(initial.storageState);
   const [origin, setOrigin] = useState(initial.origin || "국내산");
   // 정체성 키가 없는 축종(양·가공육)은 specFromProduct가 이름을 subcategory 자리에 담아 보낸다(줄에 이름 칸이 따로 없어서) —
   // "바꾸기"로 다시 열었을 때 이름이 사라지지 않도록 여기서 이어받는다.
@@ -51,16 +55,26 @@ export function NewProductPanel({ categories, subcategoriesByCategory, initial, 
 
   const rule = specListRuleFor(category);
   const parts = subcategoriesByCategory[category] ?? [];
-  const hasKey = identityFieldsFor(category) !== null;
+  const identityFields = identityFieldsFor(category);
+  const hasKey = identityFields !== null;
+  const isCattle = category === "소";
+  const domesticOrigin = isDomesticOrigin(origin);
+  const sexIsKey = identityFields?.includes("sex") ?? false;
+  const storageIsKey = identityFields?.includes("storageState") ?? false;
+  const bmsIsKey = bmsAppliesTo(category, grade);
 
   const changeCategory = (next: string) => {
     const nextParts = subcategoriesByCategory[next] ?? [];
     const nextRule = specListRuleFor(next);
+    const nextFields = identityFieldsFor(next);
 
     setCategory(next);
     setBreed((prev) => (nextRule.breedFromList && CATTLE_BREEDS.includes(prev) ? prev : ""));
     setSubcategory((prev) => (nextParts.includes(prev) ? prev : ""));
     setGrade((prev) => (nextRule.gradeFromList && !CATTLE_GRADES.includes(prev) ? "" : prev));
+    setSex((prev) => (nextFields?.includes("sex") && CATTLE_SEXES.includes(prev) ? prev : ""));
+    setBms("");
+    setStorageState((prev) => (nextFields?.includes("storageState") && STORAGE_STATES.includes(prev) ? prev : ""));
     setOrigin((prev) => (nextRule.originFromList && !ORIGIN_OPTIONS.includes(prev) ? "국내산" : prev));
   };
 
@@ -68,7 +82,7 @@ export function NewProductPanel({ categories, subcategoriesByCategory, initial, 
     setBusy(true);
     setError(null);
 
-    const result = await createPurchaseOrderProductAction({ category, breed, subcategory, grade, origin, name });
+    const result = await createPurchaseOrderProductAction({ category, breed, subcategory, grade, sex, bms, storageState, origin, name });
 
     setBusy(false);
 
@@ -140,7 +154,17 @@ export function NewProductPanel({ categories, subcategoriesByCategory, initial, 
           </>
         )}
         {rule.gradeFromList ? (
-          <select aria-label="새 품목 등급" value={grade} onChange={(event) => setGrade(event.target.value)} style={fieldStyle}>
+          <select
+            aria-label="새 품목 등급"
+            value={grade}
+            onChange={(event) => {
+              const nextGrade = event.target.value;
+
+              setGrade(nextGrade);
+              if (!bmsAppliesTo(category, nextGrade)) setBms("");
+            }}
+            style={fieldStyle}
+          >
             <option value="">등급 선택</option>
             {CATTLE_GRADES.map((item) => (
               <option key={item} value={item}>
@@ -150,6 +174,16 @@ export function NewProductPanel({ categories, subcategoriesByCategory, initial, 
           </select>
         ) : (
           <input aria-label="새 품목 등급" value={grade} onChange={(event) => setGrade(event.target.value)} placeholder="등급 (선택)" style={fieldStyle} autoComplete="off" />
+        )}
+        {sexIsKey && (
+          <select aria-label="새 품목 성별" value={sex} onChange={(event) => setSex(event.target.value)} style={fieldStyle}>
+            <option value="">{domesticOrigin ? "성별 선택" : "성별 (수입은 선택)"}</option>
+            {CATTLE_SEXES.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
         )}
         {rule.originFromList ? (
           <select aria-label="새 품목 원산지" value={origin} onChange={(event) => setOrigin(event.target.value)} style={fieldStyle}>
@@ -162,6 +196,26 @@ export function NewProductPanel({ categories, subcategoriesByCategory, initial, 
           </select>
         ) : (
           <input aria-label="새 품목 원산지" value={origin} onChange={(event) => setOrigin(event.target.value)} placeholder="원산지" style={fieldStyle} autoComplete="off" />
+        )}
+        {storageIsKey && (
+          <select aria-label="새 품목 냉장/냉동" value={storageState} onChange={(event) => setStorageState(event.target.value)} style={fieldStyle}>
+            <option value="">냉장/냉동 선택</option>
+            {STORAGE_STATES.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        )}
+        {isCattle && bmsIsKey && (
+          <select aria-label="새 품목 BMS" value={bms} onChange={(event) => setBms(event.target.value)} style={fieldStyle}>
+            <option value="">BMS (선택)</option>
+            {BMS_VALUES.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
         )}
         {category && !hasKey && (
           <input aria-label="새 품목 상품명" value={name} onChange={(event) => setName(event.target.value)} placeholder="상품명 *" style={fieldStyle} autoComplete="off" />

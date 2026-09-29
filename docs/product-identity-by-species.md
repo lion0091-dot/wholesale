@@ -7,8 +7,16 @@
 > - **냉장/냉동**: 계란을 제외한 전 축종의 정체성 일부. **공공 API에 없는 값**(공급처가 직접 표기) — 입고 스캔 자동 생성은 이 칸을 절대 못 채우고 항상 비워 둔다(부위 미지정과 같은 패턴). 원산지와 무관하게(수입육도 냉장/냉동 표기가 있다) 항상 필요.
 > - **원가 처리 방식도 같이 바꿨다**: 입고 스캔 화면에서 매입단가 입력을 없앴다 — 전표 한 장에 품목별로 단가가 달라도 스캔 화면은 "이어쓰기" 습관 때문에 정확히 반영이 안 됐다(사장님 지적). 이제 매입단가는 입고 때 안 묻고 상품 기본값이 자동으로 들어가며, 실제 전표를 보고 정확히 맞추는 건 `/dashboard/purchases`(매입 정산 화면, 기존부터 있던 박스별 단가 수정 기능)에서만 한다.
 > - DB: `products.sex`/`bms`/`storage_state` 컬럼 + CHECK 제약, `idx_products_cattle/pork/poultry_egg_identity` 3개 유니크 인덱스 전부 갱신, `trace_product_map`에도 `sex` 추가(성별이 다른 두 상품이 학습 매핑을 서로 덮어쓰는 걸 막음), `upsert_master_livestock`에 `p_sex`/`p_bms` 추가. TS: `lib/products/identity-key.ts`의 `composeIdentityName()`이 객체 인자로 시그니처 변경(호출부 전부 갱신), `CATTLE_SEXES`/`BMS_VALUES`/`STORAGE_STATES` 신규 상수.
-> - **범위 밖으로 미룬 것**: 발주서 줄 스펙(`purchase_order_lines`, `lib/purchase-orders/product-match.ts`)은 성별·BMS·냉장냉동을 아직 구분하지 않는다 — 발주서 화면 자체를 바꿔야 하는 별도 작업이라 이번엔 손대지 않았고, 입고 박스↔발주서 줄 대조(142)의 정확도가 이 세 항목만큼은 떨어질 수 있다. 농장 정보(`farmAddr`, 실조회로 존재 확인됨)는 정체성이 아니라 "손님에게 노출할 때"의 표시 전용 — 아직 화면에 안 붙였다.
+> - **범위 밖으로 미룬 것(당시)**: 발주서 줄 스펙(`purchase_order_lines`, `lib/purchase-orders/product-match.ts`)이 성별·BMS·냉장냉동을 안 구분해서, 카톡으로 나가는 실제 발주 문구가 이 세 항목을 전혀 담지 못하는 심각한 구멍이 있었다(공급처가 어느 변형을 보내야 할지 알 방법이 없음) — **마이그레이션 160(2026-09-30 후속)에서 닫음**, 아래 절 참고. 농장 정보(`farmAddr`, 실조회로 존재 확인됨)는 정체성이 아니라 "손님에게 노출할 때"의 표시 전용 — 아직 화면에 안 붙였다.
 > - 검증: `scripts/db-test-cattle-sex-bms-storage.sql`(13건, 신규) + 기존 `scripts/db-test-cattle-breed.sql`(16건) 재통과 확인. tsc·build·vitest(382건) 통과. 라이브 미적용, 실화면 클릭 검증 전무.
+>
+> **2026-09-30 후속 (마이그레이션 160) — 발주서 줄에 성별·BMS·냉장/냉동 추가, 카톡 발주 문구 구멍 닫음.**
+>
+> - `purchase_order_lines`에 `sex`/`bms`/`storage_state` 컬럼 추가(CHECK는 products와 같은 패턴, 전부 NULL 허용 — 필수 여부는 앱 계층). 발주서 줄 선택 화면(`NewProductPanel`, 축종→부위→등급→[성별]→원산지→[냉장/냉동]→[BMS] 단계선택)과 엑셀 양식(성별·냉장/냉동·BMS 열 추가)에 반영. `buildPurchaseOrderMessage`가 이 세 값을 카톡 문구에 포함하도록 수정 — 이제 "냉장 한우 등심 1++ 거세 (9) 국내산 50kg"처럼 나간다.
+> - `findProductForSpec`/`specFromProduct`/`productSpecLabel`(`lib/purchase-orders/product-match.ts`)이 성별·냉장냉동(항상)·BMS(1++일 때만)까지 비교하도록 갱신 — 입고 박스↔발주서 줄 대조(142)는 `product_id`로만 매칭해 DB 함수는 그대로이고, 이 TS 계층의 정확한 매칭이 대조 정확도를 좌우한다.
+> - 필수 여부는 상품 등록 폼과 동일한 규칙: 성별은 국내산 소만 필수(수입은 개념 없음), 냉장/냉동은 원산지 무관하게 소·돼지·닭·오리 전부 필수, BMS는 항상 선택.
+> - **겸사겸사 고침**: `purchase_order_lines_breed_valid` CHECK가 "소면 품종 항상 NOT NULL"을 요구해서 수입 원산지 소 발주 줄(품종 개념 없음, 이미 2026-09-28에 앱 검증은 완화됐었다)에서 품종을 비우면 저장이 CHECK 위반으로 실패하던 버그를 발견해 함께 고쳤다(products와 같은 완화된 CHECK로 통일). `lines.ts`의 `breed: isCattle ? breed : null`도 빈 문자열이 아니라 null을 저장하도록 수정.
+> - 검증: 단위테스트(`lines.test.ts`/`product-match.test.ts`/`message.test.ts`) 갱신+통과, tsc·vitest·build 통과. 통합테스트(`tests/integration/*.itest.ts`)는 타입만 맞춰 컴파일되게 고쳤고, 로컬 Docker DB 미가동으로 실행 검증은 못 했다. 라이브 미적용, 실화면 클릭 검증 전무.
 >
 > **2026-09-28 추가 — 수입소고기는 품종·등급 둘 다 없이 등록한다(코드 변경, DB 마이그레이션 없음).** 수입축산물 이력 API(`meatwatch-client.ts`, data.mafra.go.kr)를 실제로 조회해보니 응답에 등급 필드 자체가 없었다(국내산 축산물품질평가원 API에만 있는 개념). 품종(한우/육우/젖소)도 국내 도축 개체 전용이라 수입육엔 원천적으로 안 맞는다. DB 유니크 인덱스(`idx_products_cattle_identity`)는 이미 `COALESCE(breed, ''), COALESCE(grade, '')`로 NULL을 빈 문자열 취급해 "부위+원산지만 같으면 같은 상품"으로 정확히 걸러지고 있었다(마이그레이션 변경 불필요) — 문제는 **폼 검증만** 원산지와 무관하게 품종·등급을 강제로 요구하고 있던 것. `product-form-view.tsx`(상품 등록 폼)와 `lib/purchase-orders/lines.ts`(발주서 줄 검증, 화면·엑셀·서버 공용)를 수정해 **원산지가 "국내산"일 때만** 품종·등급을 필수로 만들었다(`lib/products/origin-options.ts`의 `isDomesticOrigin()`). tsc·build·vitest(379건) 통과, 실화면 클릭 검증은 아직.
 >

@@ -7,6 +7,9 @@ const line = (patch: Partial<Parameters<typeof validatePurchaseOrderLine>[0]> = 
   breed: "한우",
   subcategory: "등심",
   grade: "1++",
+  sex: "거세",
+  bms: "",
+  storageState: "냉장",
   origin: "국내산",
   quantity: "50",
   unitPrice: "",
@@ -29,7 +32,18 @@ describe("validatePurchaseOrderLine", () => {
   it("정상 줄은 다듬어서 통과시키고 부위·등급·단가는 비어도 된다", () => {
     expect(validatePurchaseOrderLine(line({ subcategory: "  ", grade: "", unitPrice: "45,000" }), CATEGORIES)).toEqual({
       ok: true,
-      line: { category: "소", breed: "한우", subcategory: null, grade: null, origin: "국내산", quantity: 50, unitPrice: 45000 },
+      line: {
+        category: "소",
+        breed: "한우",
+        subcategory: null,
+        grade: null,
+        sex: "거세",
+        bms: null,
+        storageState: "냉장",
+        origin: "국내산",
+        quantity: 50,
+        unitPrice: 45000,
+      },
     });
   });
 
@@ -82,10 +96,10 @@ describe("validatePurchaseOrderLine — 목록에서만 고르는 칸", () => {
   it("엑셀 올리기도 같은 검사를 한다", () => {
     const parsed = parsePurchaseOrderCells(
       [
-        ["축종", "품종", "부위", "등급", "원산지", "수량", "단가"],
-        ["소", "한우", "등신", "1++", "국내산", "5", ""],
-        ["소", "한우", "등심", "1++", "국내산", "5", ""],
-        ["소", "", "등심", "1++", "국내산", "5", ""],
+        ["축종", "품종", "부위", "등급", "성별", "원산지", "냉장/냉동", "수량", "단가"],
+        ["소", "한우", "등신", "1++", "거세", "국내산", "냉장", "5", ""],
+        ["소", "한우", "등심", "1++", "거세", "국내산", "냉장", "5", ""],
+        ["소", "", "등심", "1++", "거세", "국내산", "냉장", "5", ""],
       ],
       CATEGORIES,
       PARTS
@@ -94,6 +108,19 @@ describe("validatePurchaseOrderLine — 목록에서만 고르는 칸", () => {
     expect(parsed.rows[0].error).toContain("부위");
     expect(parsed.rows[1].error).toBeNull();
     expect(parsed.rows[2].error).toContain("품종");
+  });
+
+  it("성별·냉장/냉동 칸이 없으면(옛 양식) 국내산 소·냉장냉동 필요 축종 줄은 거부한다", () => {
+    const parsed = parsePurchaseOrderCells(
+      [
+        ["축종", "품종", "부위", "등급", "원산지", "수량", "단가"],
+        ["소", "한우", "등심", "1++", "국내산", "5", ""],
+      ],
+      CATEGORIES,
+      PARTS
+    );
+
+    expect(parsed.rows[0].error).toContain("성별");
   });
 
   it("소는 품종이 필수이고 목록(한우·육우·젖소)만, 다른 축종은 품종이 없다", () => {
@@ -118,17 +145,21 @@ describe("parsePurchaseOrderCells", () => {
   it("머리글 칸 순서가 바뀌어도 이름으로 읽고 빈 줄은 건너뛰며 오류 줄에는 이유를 붙인다", () => {
     const parsed = parsePurchaseOrderCells(
       [
-        ["수량(kg)", "축종", "원산지", "등급", "부위", "단가(원/kg)", "품종"],
-        ["50", "소", "국내산", "1++", "등심", "45,000", "육우"],
-        ["", "", "", "", "", "", ""],
-        ["10", "말", "국내산", "", "", "", ""],
+        ["수량(kg)", "축종", "원산지", "등급", "부위", "단가(원/kg)", "품종", "성별", "냉장/냉동"],
+        ["50", "소", "국내산", "1++", "등심", "45,000", "육우", "암", "냉장"],
+        ["", "", "", "", "", "", "", "", ""],
+        ["10", "말", "국내산", "", "", "", "", "", ""],
       ],
       CATEGORIES
     );
 
     expect(parsed.headerError).toBeNull();
     expect(parsed.rows).toHaveLength(2);
-    expect(parsed.rows[0]).toMatchObject({ rowNo: 2, error: null, input: { category: "소", breed: "육우", subcategory: "등심", grade: "1++", quantity: "50", unitPrice: "45,000" } });
+    expect(parsed.rows[0]).toMatchObject({
+      rowNo: 2,
+      error: null,
+      input: { category: "소", breed: "육우", subcategory: "등심", grade: "1++", sex: "암", storageState: "냉장", quantity: "50", unitPrice: "45,000" },
+    });
     expect(parsed.rows[1]).toMatchObject({ rowNo: 4 });
     expect(parsed.rows[1].error).toContain("알 수 없습니다");
   });

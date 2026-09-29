@@ -46,7 +46,7 @@ describe("composeIdentityName", () => {
     ).toBe("냉동 육우 등심 1++ 암");
   });
 
-  it("1++ 등급에서 BMS가 있으면 괄호로 덧붙인다", () => {
+  it("1++ 등급에서 BMS가 있으면 등급 바로 뒤에 괄호로 붙인다", () => {
     expect(
       composeIdentityName("소", {
         subcategory: "등심",
@@ -56,7 +56,7 @@ describe("composeIdentityName", () => {
         storageState: "냉장",
         bms: "9",
       })
-    ).toBe("냉장 한우 등심 1++ 거세 (9)");
+    ).toBe("냉장 한우 등심 1++(9) 거세");
   });
 
   it("1++가 아니면 BMS 값이 있어도 무시한다", () => {

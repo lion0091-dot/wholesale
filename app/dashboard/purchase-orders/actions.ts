@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
 import { extractExcelTable } from "@/lib/livestock/excel-table";
 import { fetchSubcategoriesByCategory } from "../products/get-subcategories";
-import { composeIdentityName, identityFieldsFor } from "@/lib/products/identity-key";
+import { bmsAppliesTo, composeIdentityName, identityFieldsFor } from "@/lib/products/identity-key";
 import { loadProductOptions } from "@/lib/purchase-orders/load-product-options";
 import { findProductForSpec, specFromProduct, type ProductOption } from "@/lib/purchase-orders/product-match";
 import {
@@ -240,7 +240,17 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
         throw new RbacError(`${index + 1}번째 줄: ${result.error}`);
       }
 
-      let matched = linked ?? findProductForSpec({ ...result.line, breed: result.line.breed ?? "", subcategory: result.line.subcategory ?? "", grade: result.line.grade ?? "" }, products);
+      const lineSpec = {
+        category: result.line.category,
+        breed: result.line.breed ?? "",
+        subcategory: result.line.subcategory ?? "",
+        grade: result.line.grade ?? "",
+        sex: result.line.sex ?? "",
+        bms: result.line.bms ?? "",
+        storageState: result.line.storageState ?? "",
+        origin: result.line.origin,
+      };
+      let matched = linked ?? findProductForSpec(lineSpec, products);
 
       // 발주서의 모든 줄은 등록된 품목이어야 한다(입고 때 박스를 이 줄과 이으려면 상품이 필요하다). 화면으로 넣든 엑셀로 올리든 기준이 같고,
       // 등록된 품목이 없는 줄은 튕기지 않고 상품 관리에 판매중지·0원으로 자동 등록해 잇는다(사장님 결정, 2026-09-28).
@@ -250,14 +260,7 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
           const ensured = await ensureProductForSpec(
             supabase,
             wholesalerId,
-            {
-              category: result.line.category,
-              breed: result.line.breed ?? "",
-              subcategory: result.line.subcategory ?? "",
-              grade: result.line.grade ?? "",
-              origin: result.line.origin,
-              name: result.line.subcategory ?? "",
-            },
+            { ...lineSpec, name: result.line.subcategory ?? "" },
             products
           );
 
@@ -301,6 +304,9 @@ export async function createPurchaseOrderAction(input: CreatePurchaseOrderInput)
         breed: line.breed,
         subcategory: line.subcategory,
         grade: line.grade,
+        sex: line.sex,
+        bms: line.bms,
+        storage_state: line.storageState,
         origin: line.origin,
         quantity: line.quantity,
         unit_price: line.unitPrice,
@@ -331,6 +337,9 @@ interface ProductSpecInput {
   breed: string;
   subcategory: string;
   grade: string;
+  sex: string;
+  bms: string;
+  storageState: string;
   origin: string;
   /** 정체성 키가 없는 축종(양·가공육)만 — 키 축종은 이름이 자동으로 조합된다. */
   name: string;
@@ -338,7 +347,8 @@ interface ProductSpecInput {
 
 /**
  * 스펙에 맞는 상품을 돌려준다. 이미 있으면 그걸, 없으면 상품 관리에 판매중지·0원으로 새로 등록한다(가격을 넣고 켜야 고객에게 보인다).
- * known은 이미 읽어 둔 같은 축종의 상품 목록이다.
+ * known은 이미 읽어 둔 같은 축종의 상품 목록이다. 성별·냉장냉동이 필수인지는 validatePurchaseOrderLine이 호출 전에 이미
+ * 확인했다(breed와 같은 패턴) — 여기서는 부위·등급만 다시 확인한다(그 둘은 이 함수가 상품명 조합에 바로 쓰기 때문).
  */
 async function ensureProductForSpec(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -348,8 +358,14 @@ async function ensureProductForSpec(
 ): Promise<{ product: ProductOption; created: boolean }> {
   const fields = identityFieldsFor(spec.category);
   const name = fields
-    ? (composeIdentityName(spec.category, { subcategory: spec.subcategory, grade: spec.grade, breed: spec.breed }) ??
-        spec.category)
+    ? (composeIdentityName(spec.category, {
+        subcategory: spec.subcategory,
+        grade: spec.grade,
+        breed: spec.breed,
+        sex: spec.sex,
+        bms: spec.bms,
+        storageState: spec.storageState,
+      }) ?? spec.category)
     : spec.name.trim();
 
   if (fields?.includes("subcategory") && !spec.subcategory) {
@@ -378,7 +394,10 @@ async function ensureProductForSpec(
       category: spec.category,
       subcategory: spec.subcategory || null,
       grade: spec.grade || null,
-      breed: spec.category === "소" ? spec.breed : null,
+      breed: spec.category === "소" ? spec.breed || null : null,
+      sex: spec.category === "소" ? spec.sex || null : null,
+      bms: bmsAppliesTo(spec.category, spec.grade) ? spec.bms || null : null,
+      storage_state: fields?.includes("storageState") ? spec.storageState || null : null,
       origin: spec.origin,
       base_price: 0,
       unit: "kg",
@@ -386,7 +405,7 @@ async function ensureProductForSpec(
       is_active: false,
       description: "전표 작성 중 등록됨 — 판매가를 넣고 판매중으로 바꾸면 고객에게 보입니다.",
     })
-    .select("id, name, category, subcategory, grade, breed, origin")
+    .select("id, name, category, subcategory, grade, breed, sex, bms, storageState:storage_state, origin")
     .single();
 
   if (error?.code === "23505") {
@@ -420,6 +439,9 @@ export async function createPurchaseOrderProductAction(
       breed: (input.breed ?? "").trim(),
       subcategory: (input.subcategory ?? "").trim(),
       grade: (input.grade ?? "").trim(),
+      sex: (input.sex ?? "").trim(),
+      bms: (input.bms ?? "").trim(),
+      storageState: (input.storageState ?? "").trim(),
       origin: (input.origin ?? "").trim(),
       name: (input.name ?? "").trim(),
     };

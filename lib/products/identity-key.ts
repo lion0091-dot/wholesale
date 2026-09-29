@@ -94,10 +94,11 @@ export interface IdentityValues {
 }
 
 /**
- * 키 축종의 자동 상품명. 소는 "냉장/냉동 품종 부위 등급 성별 (BMS)", 돼지는 "냉장/냉동 부위",
- * 닭·오리는 "냉장/냉동 축종", 계란은 축종 이름. 부위가 키인데 비어 있으면(이력으로 자동
- * 생성된 상품 등) 끝에 "(부위 미지정)"을 붙인다. 키 규칙이 없는 축종은 null(호출부가
- * 사용자가 적은 이름을 그대로 쓴다).
+ * 키 축종의 자동 상품명. 소는 "냉장/냉동 품종 부위 등급(BMS) 성별", 돼지는 "냉장/냉동 부위",
+ * 닭·오리는 "냉장/냉동 축종", 계란은 축종 이름. BMS는 등급 바로 뒤에 괄호로 붙인다(예: "1++(9)") —
+ * 등급과 BMS가 한 묶음으로 읽혀야 어떤 상품인지 헷갈리지 않는다(사장님 지적, 2026-09-30).
+ * 부위가 키인데 비어 있으면(이력으로 자동 생성된 상품 등) 끝에 "(부위 미지정)"을 붙인다.
+ * 키 규칙이 없는 축종은 null(호출부가 사용자가 적은 이름을 그대로 쓴다).
  */
 export function composeIdentityName(
   category: string | null | undefined,
@@ -120,7 +121,8 @@ export function composeIdentityName(
   const breedText = fields.includes("breed") ? (values.breed?.trim() ?? "") : "";
   const sexText = fields.includes("sex") ? (values.sex?.trim() ?? "") : "";
   const bmsText = bmsAppliesTo(category, values.grade) ? (values.bms?.trim() ?? "") : "";
-  const name = [storageText, breedText, part, gradeText, sexText, bmsText ? `(${bmsText})` : ""]
+  const gradeWithBms = bmsText ? `${gradeText}(${bmsText})` : gradeText;
+  const name = [storageText, breedText, part, gradeWithBms, sexText]
     .filter(Boolean)
     .join(" ");
 

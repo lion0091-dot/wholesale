@@ -45,6 +45,9 @@ export interface PurchaseOrderRow {
     breed?: string | null;
     subcategory: string | null;
     grade: string | null;
+    sex?: string | null;
+    bms?: string | null;
+    storage_state?: string | null;
     origin: string;
     quantity: number;
     unit: string;
@@ -128,6 +131,9 @@ const emptyLine = (): PurchaseOrderLineInput => ({
   breed: "",
   subcategory: "",
   grade: "",
+  sex: "",
+  bms: "",
+  storageState: "",
   origin: "국내산",
   quantity: "",
   unitPrice: "",
@@ -136,8 +142,19 @@ const emptyLine = (): PurchaseOrderLineInput => ({
 
 const isFilled = (line: PurchaseOrderLineInput) => Object.values(line).some((value) => (value ?? "").trim() !== "" && value !== "국내산");
 
-function specText(line: { category: string; breed?: string | null; subcategory: string | null; grade: string | null; origin: string }): string {
-  return [line.category, line.breed, line.subcategory, line.grade, line.origin].filter(Boolean).join(" ");
+function specText(line: {
+  category: string;
+  breed?: string | null;
+  subcategory: string | null;
+  grade: string | null;
+  sex?: string | null;
+  bms?: string | null;
+  storage_state?: string | null;
+  origin: string;
+}): string {
+  return [line.storage_state, line.category, line.breed, line.subcategory, line.grade, line.sex, line.bms ? `(${line.bms})` : null, line.origin]
+    .filter(Boolean)
+    .join(" ");
 }
 
 // 줄마다 배열 순서(index)가 아니라 이 값으로 화면 컴포넌트를 식별한다 — index를 key로 쓰면 줄을 지웠을 때
@@ -179,7 +196,16 @@ const PurchaseOrderLineRow = memo(function PurchaseOrderLineRow({
   onCancelEdit,
   onProductCreated,
 }: LineRowProps) {
-  const lineSpec = { category: line.category, breed: line.breed, subcategory: line.subcategory, grade: line.grade, origin: line.origin };
+  const lineSpec = {
+    category: line.category,
+    breed: line.breed,
+    subcategory: line.subcategory,
+    grade: line.grade,
+    sex: line.sex,
+    bms: line.bms,
+    storageState: line.storageState,
+    origin: line.origin,
+  };
   const showPanel = isEditing || !line.productId;
 
   return (
@@ -440,6 +466,9 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
               breed: line.breed,
               subcategory: line.subcategory,
               grade: line.grade,
+              sex: line.sex,
+              bms: line.bms,
+              storageState: line.storage_state,
               origin: line.origin,
               quantity: Number(line.quantity),
               unit: line.unit,
