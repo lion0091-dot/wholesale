@@ -91,6 +91,19 @@ export function validatePurchaseOrderLine(
   const isCattle = category === "소";
   const usesStorage = identityFieldsFor(category)?.includes("storageState") ?? false;
 
+  // 품종·성별 형식 검사는 원산지와 무관하게 항상 한다 — 값이 비어 있는 건 수입산이면
+  // 괜찮지만(아래 필수 검사가 원산지로 가른다), 값이 있는데 목록 밖이면 원산지와
+  // 상관없이 잘못된 값이다. 예전엔 이 형식 검사가 국내산 블록 안에만 있어서, 수입산
+  // 줄에 오타 값이 들어가면 여기서 안 걸리고 그대로 저장 시도돼 DB CHECK 위반
+  // (친절한 안내 없는 원본 Postgres 오류)이 그대로 터졌다(통단테 발견, 2026-09-30).
+  if (isCattle && breed && !CATTLE_BREEDS.includes(breed)) {
+    return { ok: false, error: `품종 '${breed}'은(는) 목록에 없습니다. (${CATTLE_BREEDS.join(", ")} 중 하나)` };
+  }
+
+  if (isCattle && sex && !CATTLE_SEXES.includes(sex)) {
+    return { ok: false, error: `성별 '${sex}'은(는) 목록에 없습니다. (${CATTLE_SEXES.join(", ")} 중 하나)` };
+  }
+
   // 품종·성별은 국내산 소에만 있는 개념(수입육 이력 API에 그 값 자체가 없다, 2026-09-28/09-30 확인) — 수입 원산지는 비워도 된다.
   if (isCattle && isDomesticOrigin(origin)) {
     if (!breed) {
@@ -102,10 +115,6 @@ export function validatePurchaseOrderLine(
       };
     }
 
-    if (!CATTLE_BREEDS.includes(breed)) {
-      return { ok: false, error: `품종 '${breed}'은(는) 목록에 없습니다. (${CATTLE_BREEDS.join(", ")} 중 하나)` };
-    }
-
     if (!sex) {
       return {
         ok: false,
@@ -113,10 +122,6 @@ export function validatePurchaseOrderLine(
           ? "이 상품은 성별이 비어 있어 발주에 쓸 수 없습니다. 상품 관리에서 성별을 채워주세요."
           : "성별을 골라주세요. (거세, 암)",
       };
-    }
-
-    if (!CATTLE_SEXES.includes(sex)) {
-      return { ok: false, error: `성별 '${sex}'은(는) 목록에 없습니다. (${CATTLE_SEXES.join(", ")} 중 하나)` };
     }
   }
 

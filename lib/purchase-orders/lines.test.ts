@@ -132,6 +132,18 @@ describe("validatePurchaseOrderLine — 목록에서만 고르는 칸", () => {
     expect(check({ category: "돼지", subcategory: "삼겹살", breed: "한우" })).toMatchObject({ ok: true, line: { breed: null } });
   });
 
+  it("[버그수정] 수입 원산지 소 줄도 품종·성별 값이 있으면 목록 형식을 검사한다(통단테 발견)", () => {
+    // 수입산은 품종·성별이 비어도 되지만(위 테스트), 값이 들어있는데 오타/목록 밖이면
+    // 원산지와 무관하게 거부해야 한다 — 예전엔 이 형식 검사가 국내산 블록 안에만 있어서
+    // 수입산 줄은 그대로 통과돼 저장 시 DB CHECK 위반(안내 없는 원본 오류)으로 터졌다.
+    expect(check({ origin: "미국산", breed: "흑우" })).toMatchObject({ ok: false, error: expect.stringContaining("품종") });
+    expect(check({ origin: "미국산", sex: "수컷" })).toMatchObject({ ok: false, error: expect.stringContaining("성별") });
+    // 수입산은 여전히 비워도 통과(필수 아님).
+    expect(check({ origin: "미국산", breed: "", sex: "" }).ok).toBe(true);
+    // 수입산이라도 목록 안 값이면 그대로 통과.
+    expect(check({ origin: "미국산", breed: "육우", sex: "암" }).ok).toBe(true);
+  });
+
   it("등록된 상품에서 온 스펙(trustSpec)도 소의 품종이 비어 있으면 거부하고 상품 관리에서 채우라고 안내한다", () => {
     const result = validatePurchaseOrderLine(line({ breed: "" }), CATEGORIES, PARTS, { trustSpec: true });
 
