@@ -62,9 +62,18 @@ export interface ImportedTraceRecord {
   exportProcessEnd: string | null;
   distributionLimitStart: string | null;
   distributionLimitEnd: string | null;
+  /** 냉동/냉장구분 — "냉동" 또는 "냉장"(REFRIG_COLDRE_SE, 값과 품목명(냉동OO/냉장OO) 상관관계로 확인함). 코드 밖이면 원본 코드 그대로. */
+  refrigeration: string | null;
+  /** 냉동전환구분(REFRIG_CNVRS_SE) — 원문 코드 그대로("Y"/"N" 등, 정확한 의미는 미확인). */
+  refrigerationConverted: string | null;
   sold: string | null;
   rawPayload: unknown;
 }
+
+const REFRIG_LABELS: Record<string, string> = {
+  "1": "냉동",
+  "2": "냉장",
+};
 
 export interface ImportedTraceSearchResult {
   records: ImportedTraceRecord[];
@@ -143,6 +152,11 @@ function toRecord(row: Record<string, unknown>): ImportedTraceRecord {
     exportProcessEnd: normalizeDate(row.EXCOURY_PRCSS_END_DE),
     distributionLimitStart: normalizeDate(row.DISTB_TMLMT_START_DE),
     distributionLimitEnd: normalizeDate(row.DISTB_TMLMT_END_DE),
+    refrigeration: (() => {
+      const code = toStringOrNull(row.REFRIG_COLDRE_SE);
+      return code ? (REFRIG_LABELS[code] ?? code) : null;
+    })(),
+    refrigerationConverted: toStringOrNull(row.REFRIG_CNVRS_SE),
     sold: toStringOrNull(row.SLE_AT),
     rawPayload: row,
   };

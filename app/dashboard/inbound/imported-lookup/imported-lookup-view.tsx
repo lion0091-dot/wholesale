@@ -17,6 +17,7 @@ interface ImportedTraceRecordView {
   exportSlaughterStart: string | null;
   exportSlaughterEnd: string | null;
   distributionLimitEnd: string | null;
+  refrigeration: string | null;
   sold: string | null;
 }
 
@@ -145,6 +146,7 @@ export function ImportedLookupView() {
                   <th style={{ padding: "6px" }}>품목명</th>
                   <th style={{ padding: "6px" }}>원산지</th>
                   <th style={{ padding: "6px" }}>수량/중량</th>
+                  <th style={{ padding: "6px" }}>냉동/냉장</th>
                   <th style={{ padding: "6px" }}>선하증권번호</th>
                   <th style={{ padding: "6px" }}>유통기한</th>
                   <th style={{ padding: "6px" }}>상태</th>
@@ -167,6 +169,7 @@ export function ImportedLookupView() {
                       <td style={{ padding: "6px" }}>
                         {r.quantity ?? "-"} / {r.weight ?? "-"}
                       </td>
+                      <td style={{ padding: "6px" }}>{r.refrigeration ?? "-"}</td>
                       <td style={{ padding: "6px" }}>{r.blNo ?? "-"}</td>
                       <td style={{ padding: "6px" }}>{r.distributionLimitEnd ?? "-"}</td>
                       <td style={{ padding: "6px" }}>{r.status ?? "-"}</td>
