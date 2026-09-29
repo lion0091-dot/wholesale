@@ -142,6 +142,11 @@ const emptyLine = (): PurchaseOrderLineInput => ({
 
 const isFilled = (line: PurchaseOrderLineInput) => Object.values(line).some((value) => (value ?? "").trim() !== "" && value !== "국내산");
 
+// 이 화면에서 specText를 호출하는 두 곳의 냉장/냉동 필드 이름이 다르다 — 작성 중인
+// 초안(PurchaseOrderLineInput, camelCase storageState)과 저장된 전표(PurchaseOrderRow.
+// purchase_order_lines, DB 그대로 snake_case storage_state). 파라미터 타입이 storage_state만
+// 있고 옵셔널이라 컴파일 에러 없이 초안 쪽 호출에서 냉장/냉동 표시가 조용히 빠지는
+// 버그가 있었다 — 두 이름 다 받아서 어느 쪽으로 호출되든 값을 읽는다.
 function specText(line: {
   category: string;
   breed?: string | null;
@@ -150,13 +155,15 @@ function specText(line: {
   sex?: string | null;
   bms?: string | null;
   storage_state?: string | null;
+  storageState?: string | null;
   origin: string;
 }): string {
   // BMS는 등급 바로 뒤에 괄호로 붙인다(등급·BMS가 한 묶음으로 읽혀야 한다) — lib/purchase-orders/product-match.ts의
   // productSpecLabel()과 같은 표기 규칙. 여기 있는 별도 구현이 그 규칙을 안 따라 성별 뒤에 BMS가 붙는 버그가 있었다.
   const gradeWithBms = line.bms ? `${line.grade ?? ""}(${line.bms})` : line.grade;
+  const storageState = line.storage_state ?? line.storageState;
 
-  return [line.storage_state, line.category, line.breed, line.subcategory, gradeWithBms, line.sex, line.origin]
+  return [storageState, line.category, line.breed, line.subcategory, gradeWithBms, line.sex, line.origin]
     .filter(Boolean)
     .join(" ");
 }
