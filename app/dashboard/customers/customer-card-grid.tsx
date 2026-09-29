@@ -31,6 +31,7 @@ interface CustomerCardGridProps {
 const RELATION_BADGES: Record<RelationshipStatus, { label: string; bg: string; color: string }> = {
   active: { label: "거래중", bg: "#dcfce7", color: "#166534" },
   blocked: { label: "거래중지", bg: "#fee2e2", color: "#991b1b" },
+  pending_review: { label: "승인 대기", bg: "#fef3c7", color: "#92400e" },
 };
 
 /** 섬네일 아바타 색상 — 상호명 해시로 고정해 매 렌더 동일한 색을 유지한다. */
@@ -283,7 +284,12 @@ export function CustomerCardGrid({
                 style={{
                   fontSize: "11px",
                   fontWeight: 600,
-                  color: customer.relationStatus === "blocked" ? "#166534" : "#991b1b",
+                  color:
+                    customer.relationStatus === "blocked"
+                      ? "#166534"
+                      : customer.relationStatus === "pending_review"
+                        ? "#92400e"
+                        : "#991b1b",
                   background: "none",
                   border: "none",
                   padding: 0,
@@ -291,7 +297,11 @@ export function CustomerCardGrid({
                   textAlign: "right",
                 }}
               >
-                {customer.relationStatus === "blocked" ? "거래 재개 →" : "거래중지 →"}
+                {customer.relationStatus === "blocked"
+                  ? "거래 재개 →"
+                  : customer.relationStatus === "pending_review"
+                    ? "승인 검토 →"
+                    : "거래중지 →"}
               </button>
             </div>
           </article>

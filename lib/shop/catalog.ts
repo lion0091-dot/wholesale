@@ -43,6 +43,7 @@ const GUEST_CUSTOMER: ShopCustomer = {
   contactPhone: null,
   deliveryAddress: null,
   isLinked: false,
+  linkStatus: null,
   creditLimit: 0,
   allowedPaymentMethods: [],
 };
@@ -51,6 +52,23 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 // 공급사 본인이 승인 전에 자기 미니샵을 미리 볼 수 있는 상태. 해지(closed)는 제외한다.
 const SUPPLIER_PREVIEW_STATUSES = ["pending", "suspended", "rejected"];
+
+/**
+ * 이 미니샵의 주인(대표·소속 직원) 또는 슈퍼관리자인지 — 공급사 상태(active 여부)와
+ * 무관하게 항상 참으로 판정할 수 있어야 한다("내 미니샵 바로가기" 자기 미리보기용).
+ */
+async function resolveSelfViewer(
+  supabase: SupabaseServerClient,
+  wholesalerId: string
+): Promise<"admin" | "supplier" | null> {
+  if (await isSuperAdminSession()) {
+    return "admin";
+  }
+
+  const { data } = await supabase.rpc("can_access_wholesaler", { p_wholesaler_id: wholesalerId });
+
+  return data === true ? "supplier" : null;
+}
 
 /**
  * 비활성 공급사 미니샵을 미리보기로 볼 수 있는 사람인지 판정한다.
@@ -69,9 +87,7 @@ async function resolvePreviewViewer(
     return null;
   }
 
-  const { data } = await supabase.rpc("can_access_wholesaler", { p_wholesaler_id: wholesalerId });
-
-  return data === true ? "supplier" : null;
+  return resolveSelfViewer(supabase, wholesalerId);
 }
 
 /**
@@ -102,6 +118,7 @@ async function resolveCustomer(
     contactPhone: buyer.contactPhone,
     deliveryAddress: buyer.deliveryAddress,
     isLinked: buyer.isLinked,
+    linkStatus: buyer.linkStatus,
     creditLimit: buyer.creditLimit,
     allowedPaymentMethods: buyer.allowedPaymentMethods,
   };
@@ -200,6 +217,16 @@ export async function loadShopCatalog(
 
   const customer = await resolveCustomer(supabase, wholesaler.id);
 
+  // 카탈로그(상품·가격) 자체를 볼 수 있는 사람인지 — 이 공급사와 활성(active) 거래
+  // 관계가 확인된 손님이거나, 공급사 본인/소속 직원/슈퍼관리자가 자기 미니샵을
+  // 미리보는 경우만 통과한다. 그 외(승인대기·거래중지·제3자가 링크만 갖고 들어온
+  // 경우)는 상품을 내보내지 않는다 — 링크 소지만으로 경쟁사가 단가를 염탐하던
+  // 문제의 근본 게이트(2026-09-30, [[retailer-invite-espionage-risk]]).
+  // previewViewer가 이미 구했다면(비활성 공급사 미리보기) 재사용하고, 활성 공급사
+  // 자기 미리보기는 별도로 확인한다(previewViewer는 비활성 상태에서만 계산됨).
+  const selfViewer = previewViewer ?? (await resolveSelfViewer(supabase, wholesaler.id));
+  const canSeeCatalog = customer.isLinked || selfViewer !== null;
+
   // isLinked가 아니면(거래중지 등) retailerId가 있어도 맞춤단가를 계산하지 않는다 —
   // 그렇지 않으면 정지된 고객에게 여전히 맞춤단가가 노출된다. 핫딜은 상품 자체
   // 속성이라 이 조건과 무관하게(비로그인 손님 포함) 전체 공개된다.
@@ -211,17 +238,18 @@ export async function loadShopCatalog(
       )
     : new Map<string, number>();
 
-  // 모든 상품은 항상 전체 고객에게 기준 단가로 노출된다. 상품의 핫딜이 켜져 있으면
-  // 그 가격이 최우선, 없으면 켜진 맞춤단가, 둘 다 없으면 기준 단가.
-  const items: ShopCatalogItem[] = products.map((product) =>
-    resolveCatalogItem(product, custom.get(product.id))
-  );
+  // 모든 상품은 볼 수 있는 사람에게는 전체 노출된다("숨겨진 상품" 개념 없음). 상품의
+  // 핫딜이 켜져 있으면 그 가격이 최우선, 없으면 켜진 맞춤단가, 둘 다 없으면 기준 단가.
+  const items: ShopCatalogItem[] = canSeeCatalog
+    ? products.map((product) => resolveCatalogItem(product, custom.get(product.id)))
+    : [];
 
   return {
     shopToken,
     wholesaler,
     items,
     customer,
+    catalogVisible: canSeeCatalog,
     previewStatus,
     previewViewer,
   };

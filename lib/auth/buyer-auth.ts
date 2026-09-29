@@ -161,6 +161,8 @@ export interface BuyerIdentity {
   deliveryAddress: string | null;
   /** 이 공급사와 활성(active) 거래 관계가 확인된 단골 여부 */
   isLinked: boolean;
+  /** wholesaler_retailers.status 원본값('active'|'blocked'|'pending_review') — 관계 자체가 없으면 null */
+  linkStatus: string | null;
   /** 여신 한도 (0이면 외상 거래 불가). 미연결 상태면 0 */
   creditLimit: number;
   /** 공급사가 이 거래처에 열어준 결제수단. 미연결 상태면 빈 배열 */
@@ -221,6 +223,7 @@ export async function resolveBuyerIdentity(
       contactPhone: null,
       deliveryAddress: null,
       isLinked: false,
+      linkStatus: null,
       creditLimit: 0,
       allowedPaymentMethods: [],
     };
@@ -242,12 +245,14 @@ export async function resolveBuyerIdentity(
       contactPhone: (profile?.phone as string | undefined) ?? null,
       deliveryAddress: null,
       isLinked: false,
+      linkStatus: null,
       creditLimit: 0,
       allowedPaymentMethods: [],
     };
   }
 
   let isLinked = false;
+  let linkStatus: string | null = null;
   let creditLimit = 0;
   let allowedPaymentMethods: string[] = [];
 
@@ -259,7 +264,8 @@ export async function resolveBuyerIdentity(
       .eq("retailer_id", retailer.id as string)
       .maybeSingle();
 
-    isLinked = relation?.status === "active";
+    linkStatus = (relation?.status as string | undefined) ?? null;
+    isLinked = linkStatus === "active";
     creditLimit = isLinked ? Number(relation?.credit_limit ?? 0) : 0;
     allowedPaymentMethods = isLinked ? ((relation?.allowed_payment_methods as string[] | null) ?? []) : [];
   }
@@ -275,6 +281,7 @@ export async function resolveBuyerIdentity(
       [retailer.delivery_address, retailer.delivery_address_detail].filter(Boolean).join(", ") ||
       null,
     isLinked,
+    linkStatus,
     creditLimit,
     allowedPaymentMethods,
   };
@@ -389,6 +396,8 @@ export interface ClaimShopAccessResult {
   wholesalerId: string;
   businessName: string;
   isLinked: boolean;
+  /** 'active' | 'blocked' | 'pending_review' */
+  status: string;
 }
 
 const CLAIM_ERROR_MESSAGES: Record<string, string> = {
@@ -396,6 +405,8 @@ const CLAIM_ERROR_MESSAGES: Record<string, string> = {
   INVALID_SHOP_TOKEN: "유효하지 않거나 중지된 공급사 링크입니다. 공급사에 문의해주세요.",
   NOT_A_BUYER_ACCOUNT:
     "공급사/관리자 계정으로는 고객(소매) 미니샵을 이용할 수 없습니다. 고객(소매) 카카오 계정으로 로그인해주세요.",
+  PHONE_ALREADY_REGISTERED:
+    "이 전화번호로 이미 등록된 계정이 있습니다. 기존에 쓰던 카카오 계정으로 로그인해주세요.",
 };
 
 export async function claimShopAccess(shopToken: string): Promise<ClaimShopAccessResult> {
@@ -425,6 +436,7 @@ export async function claimShopAccess(shopToken: string): Promise<ClaimShopAcces
     wholesaler_id: string;
     business_name: string;
     is_linked: boolean;
+    status: string;
   } | null;
 
   if (!row) {
@@ -436,6 +448,7 @@ export async function claimShopAccess(shopToken: string): Promise<ClaimShopAcces
     wholesalerId: row.wholesaler_id,
     businessName: row.business_name,
     isLinked: row.is_linked,
+    status: row.status,
   };
 }
 

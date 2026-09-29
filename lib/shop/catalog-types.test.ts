@@ -75,9 +75,11 @@ function makeCatalog(overrides: Partial<ShopCatalog> = {}): ShopCatalog {
       contactPhone: null,
       deliveryAddress: null,
       isLinked: false,
+      linkStatus: null,
       creditLimit: 0,
       allowedPaymentMethods: [],
     },
+    catalogVisible: true,
     ...overrides,
   };
 }

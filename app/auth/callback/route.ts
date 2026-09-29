@@ -271,7 +271,9 @@ export async function GET(request: NextRequest) {
           request,
           nextPath,
           "claim_failed",
-          "공급사가 거래를 차단한 상태입니다. 공급사에 직접 문의해주세요."
+          result.status === "pending_review"
+            ? "가입 확인 중입니다. 등록된 전화번호와 일치하지 않아 공급사가 직접 승인해야 카탈로그를 볼 수 있습니다. 공급사에 문의해주세요."
+            : "공급사가 거래를 차단한 상태입니다. 공급사에 직접 문의해주세요."
         );
       }
     } catch (error) {

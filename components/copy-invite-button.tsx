@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { issueInviteAction } from "@/app/actions/invite";
+import { normalizePhone, isValidPhone } from "@/lib/validation/phone";
 
 interface CopyInviteButtonProps {
   /** 초대장 발부 권한 (미승인 공급사는 false) */
@@ -31,15 +32,24 @@ export function CopyInviteButton({
   shopToken,
   customerName,
 }: CopyInviteButtonProps) {
+  const [phone, setPhone] = useState("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  const normalizedPhone = normalizePhone(phone);
+  const phoneReady = isValidPhone(normalizedPhone);
+
   const handleCopyInvite = () => {
     setError(null);
 
+    if (!phoneReady) {
+      setError("초대할 손님의 전화번호를 입력해주세요(숫자 9자리 이상).");
+      return;
+    }
+
     startTransition(async () => {
-      const result = await issueInviteAction(customerName ?? null);
+      const result = await issueInviteAction(customerName ?? null, normalizedPhone);
 
       if (!result.success || !result.data) {
         setError(result.error ?? "초대장을 생성할 수 없습니다.");
@@ -81,7 +91,22 @@ export function CopyInviteButton({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+        <input
+          type="tel"
+          inputMode="numeric"
+          value={phone}
+          onChange={(event) => setPhone(event.target.value)}
+          placeholder="초대할 손님 전화번호 (예: 01012345678)"
+          style={{
+            fontSize: "12px",
+            padding: "7px 10px",
+            borderRadius: "6px",
+            border: "1px solid #cbd5e1",
+            width: "220px",
+          }}
+        />
+
         {/* 카카오톡 초대 문구 복사 */}
         <button
           type="button"
@@ -131,6 +156,11 @@ export function CopyInviteButton({
           </a>
         )}
       </div>
+
+      <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.5 }}>
+        이 번호로 카카오 로그인해야 자동으로 단골 등록됩니다. 링크가 다른 사람에게 전달돼도
+        번호가 다르면 자동승인되지 않고 승인 대기로 남습니다.
+      </span>
 
       {error && (
         <span role="alert" style={{ fontSize: "12px", color: "#b91c1c", lineHeight: 1.6 }}>

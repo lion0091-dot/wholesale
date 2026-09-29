@@ -97,7 +97,10 @@ export async function claimShopAccessAction(
     if (!result.isLinked) {
       return {
         success: false,
-        error: "공급사가 거래를 차단한 상태입니다. 공급사에 직접 문의해주세요.",
+        error:
+          result.status === "pending_review"
+            ? "가입 확인 중입니다. 등록된 전화번호와 일치하지 않아 공급사가 직접 승인해야 합니다."
+            : "공급사가 거래를 차단한 상태입니다. 공급사에 직접 문의해주세요.",
       };
     }
 

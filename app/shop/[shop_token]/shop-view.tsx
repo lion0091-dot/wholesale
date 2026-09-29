@@ -120,6 +120,13 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
     });
   };
 
+  // 상품을 볼 권한이 없는 경우(승인 대기·거래중지·링크만 갖고 들어온 제3자) —
+  // 재고 없음이 아니라 권한 문제이므로 카탈로그 화면 대신 상태 안내만 보여준다.
+  // (경쟁사가 손님으로 위장 가입해도 공급사 승인 전엔 아무 상품도 못 본다.)
+  if (!catalog.catalogVisible) {
+    return <PendingAccessView catalog={catalog} authMessage={authMessage} />;
+  }
+
   return (
     <div style={{ ...shopPageStyle, paddingBottom: totals.itemCount > 0 && !previewOnly ? "100px" : "20px" }}>
       <ShopHeader wholesaler={catalog.wholesaler} customer={catalog.customer}>
@@ -416,6 +423,56 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
           </Link>
         </div>
       )}
+
+      <ShopFooter businessName={catalog.wholesaler.business_name} />
+    </div>
+  );
+}
+
+function PendingAccessView({ catalog, authMessage }: ShopViewProps) {
+  const status = catalog.customer.linkStatus;
+
+  const notice =
+    status === "pending_review"
+      ? {
+          title: "가입 확인 중입니다",
+          body: `${catalog.wholesaler.business_name}에서 등록한 전화번호와 일치하지 않아 자동으로 연결되지 않았습니다. 공급사가 직접 확인 후 승인하면 상품과 단가가 보입니다.`,
+        }
+      : status === "blocked"
+        ? {
+            title: "거래가 중지된 상태입니다",
+            body: `${catalog.wholesaler.business_name}와의 거래가 현재 중지되어 있습니다. 문의가 필요하면 공급사에 직접 연락해주세요.`,
+          }
+        : {
+            title: "이 미니샵을 볼 수 없습니다",
+            body: "공급사에게 받은 초대 링크로 카카오 로그인해주세요.",
+          };
+
+  return (
+    <div style={shopPageStyle}>
+      <ShopHeader wholesaler={catalog.wholesaler} customer={catalog.customer} />
+
+      <div style={{ padding: "16px" }}>
+        {authMessage && (
+          <p style={{ fontSize: "13px", color: "#dc2626", marginBottom: "12px" }}>{authMessage}</p>
+        )}
+
+        <div
+          style={{
+            ...cardStyle,
+            padding: "28px 20px",
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: "32px", marginBottom: "8px" }}>⏳</div>
+          <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+            {notice.title}
+          </h2>
+          <p style={{ fontSize: "13px", color: "#475569", lineHeight: 1.7, marginTop: "8px" }}>
+            {notice.body}
+          </p>
+        </div>
+      </div>
 
       <ShopFooter businessName={catalog.wholesaler.business_name} />
     </div>

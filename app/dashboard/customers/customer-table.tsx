@@ -34,6 +34,7 @@ interface CustomerTableProps {
 const RELATION_BADGES: Record<RelationshipStatus, { label: string; bg: string; color: string }> = {
   active: { label: "거래중", bg: "#dcfce7", color: "#166534" },
   blocked: { label: "거래중지", bg: "#fee2e2", color: "#991b1b" },
+  pending_review: { label: "승인 대기", bg: "#fef3c7", color: "#92400e" },
 };
 
 const chipButtonStyle: CSSProperties = {
@@ -124,7 +125,7 @@ export function CustomerTable({
 
     let active = true;
 
-    void issueInviteAction(inviteTarget.restaurantName).then((result) => {
+    void issueInviteAction(inviteTarget.restaurantName, inviteTarget.contactPhone).then((result) => {
       if (!active) {
         return;
       }
@@ -369,6 +370,7 @@ export function CustomerTable({
           >
             <option value="all">전체 거래 상태</option>
             <option value="active">거래중</option>
+            <option value="pending_review">승인 대기</option>
             <option value="blocked">거래중지</option>
           </select>
 
@@ -574,11 +576,25 @@ export function CustomerTable({
                             onClick={() => handleOpenStatus(customer)}
                             style={{
                               ...chipButtonStyle,
-                              color: customer.relationStatus === "blocked" ? "#166534" : "#991b1b",
-                              borderColor: customer.relationStatus === "blocked" ? "#bbf7d0" : "#fecaca",
+                              color:
+                                customer.relationStatus === "blocked"
+                                  ? "#166534"
+                                  : customer.relationStatus === "pending_review"
+                                    ? "#92400e"
+                                    : "#991b1b",
+                              borderColor:
+                                customer.relationStatus === "blocked"
+                                  ? "#bbf7d0"
+                                  : customer.relationStatus === "pending_review"
+                                    ? "#fde68a"
+                                    : "#fecaca",
                             }}
                           >
-                            {customer.relationStatus === "blocked" ? "거래 재개" : "거래중지"}
+                            {customer.relationStatus === "blocked"
+                              ? "거래 재개"
+                              : customer.relationStatus === "pending_review"
+                                ? "승인 검토"
+                                : "거래중지"}
                           </button>
                         </div>
                       </td>
@@ -1037,7 +1053,11 @@ export function CustomerTable({
             <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
               <div style={{ flex: 1 }}>
                 <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
-                  {statusTarget.relationStatus === "blocked" ? "거래 재개" : "거래중지"}
+                  {statusTarget.relationStatus === "blocked"
+                    ? "거래 재개"
+                    : statusTarget.relationStatus === "pending_review"
+                      ? "신규 손님 승인"
+                      : "거래중지"}
                 </h2>
                 <p style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
                   {statusTarget.restaurantName}
@@ -1081,6 +1101,23 @@ export function CustomerTable({
               </>
             ) : (
               <div>
+                {statusTarget.relationStatus === "pending_review" && (
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "#92400e",
+                      backgroundColor: "#fef3c7",
+                      borderRadius: "8px",
+                      padding: "9px 11px",
+                      lineHeight: 1.6,
+                      marginBottom: "10px",
+                    }}
+                  >
+                    이 손님이 로그인한 카카오 전화번호가 등록해둔 초대 번호와 일치하지 않아
+                    자동승인되지 않았습니다. 아는 손님이 맞는지 확인한 뒤 승인해주세요.
+                    {statusTarget.contactPhone && ` (연락처: ${statusTarget.contactPhone})`}
+                  </div>
+                )}
                 <label
                   style={{
                     display: "block",
@@ -1090,7 +1127,7 @@ export function CustomerTable({
                     marginBottom: "5px",
                   }}
                 >
-                  거래중지 사유 (필수)
+                  거래중지 사유 {statusTarget.relationStatus === "pending_review" ? "(거절할 경우 필수)" : "(필수)"}
                 </label>
                 <textarea
                   value={blockReasonValue}
@@ -1154,6 +1191,39 @@ export function CustomerTable({
                 >
                   {statusPending ? "처리 중..." : "거래 재개"}
                 </button>
+              ) : statusTarget.relationStatus === "pending_review" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleBlockRetailer}
+                    disabled={statusPending}
+                    style={{
+                      ...chipButtonStyle,
+                      backgroundColor: statusPending ? "#94a3b8" : "#dc2626",
+                      borderColor: statusPending ? "#94a3b8" : "#dc2626",
+                      color: "#ffffff",
+                      padding: "9px 13px",
+                      cursor: statusPending ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {statusPending ? "처리 중..." : "거절"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleReactivateRetailer}
+                    disabled={statusPending}
+                    style={{
+                      ...chipButtonStyle,
+                      backgroundColor: statusPending ? "#94a3b8" : "#16a34a",
+                      borderColor: statusPending ? "#94a3b8" : "#16a34a",
+                      color: "#ffffff",
+                      padding: "9px 13px",
+                      cursor: statusPending ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {statusPending ? "처리 중..." : "승인"}
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"

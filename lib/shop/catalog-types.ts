@@ -39,6 +39,8 @@ export interface ShopCustomer {
   deliveryAddress: string | null;
   /** 공급사와 활성 거래 관계(단골)가 확인된 고객 여부 */
   isLinked: boolean;
+  /** wholesaler_retailers.status 원본값 — 관계 자체가 없으면 null */
+  linkStatus: string | null;
   /** 여신 한도 (0이면 외상 거래 불가) */
   creditLimit: number;
   /** 공급사가 이 거래처에 열어준 결제수단('prepaid'/'on_credit'/'pg') */
@@ -50,6 +52,13 @@ export interface ShopCatalog {
   wholesaler: Wholesaler;
   items: ShopCatalogItem[];
   customer: ShopCustomer;
+  /**
+   * 상품 목록(단가 포함)을 실제로 볼 수 있는 사람인지 — 활성 거래 관계가 있는 손님이거나
+   * 공급사 본인/직원/슈퍼관리자의 자기 미리보기일 때만 true. false면 items는 항상 빈
+   * 배열이며(가입 진행 중이라 아직 없는 게 아니라 권한이 없는 것), 화면은 상품이 없다는
+   * 안내 대신 승인대기/거래중지 안내를 보여줘야 한다.
+   */
+  catalogVisible: boolean;
   /** 비활성(승인 대기·정지 등) 공급사 미니샵을 미리보기로 연 경우의 업체 상태. 일반 조회에서는 없다. */
   previewStatus?: string | null;
   /** 미리보기를 연 사람 — 슈퍼관리자 또는 그 공급사 본인(대표·직원) */

@@ -2,7 +2,7 @@ export type UserRole = "super_admin" | "wholesaler" | "retailer";
 
 export type WholesalerStatus = "pending" | "active" | "suspended" | "rejected" | "closed";
 export type SubscriptionStatus = "trial" | "active" | "overdue" | "cancelled";
-export type RelationshipStatus = "active" | "blocked";
+export type RelationshipStatus = "active" | "blocked" | "pending_review";
 export type OrderStatus =
   | "pending"
   /**

@@ -50,7 +50,14 @@ insert into auth.users (id,email,raw_user_meta_data) values
  ('94999999-0000-0000-0000-000000000009','buyer-new@acct.test','{"name":"이손님"}'),
  ('94999999-0000-0000-0000-000000000010','staffchan@acct.test','{}'),
  ('94999999-0000-0000-0000-000000000012','invitee2@acct.test','{}'),
- ('94999999-0000-0000-0000-000000000013','owner-b@acct.test','{}');
+ ('94999999-0000-0000-0000-000000000013','owner-b@acct.test','{}'),
+ ('94999999-0000-0000-0000-000000000014','selfdeal@acct.test','{"name":"부계정","phone_number":"010"}'),
+ ('94999999-0000-0000-0000-000000000015','phonedupe-a@acct.test','{"name":"김폰중복","phone_number":"01099998888"}'),
+ ('94999999-0000-0000-0000-000000000016','phonedupe-b@acct.test','{"name":"이폰중복","phone_number":"01099998888"}'),
+ ('94999999-0000-0000-0000-000000000017','buyer-match@acct.test','{"name":"김일치","phone_number":"01055556666"}'),
+ ('94999999-0000-0000-0000-000000000018','buyer-mismatch@acct.test','{"name":"박불일치","phone_number":"01077778888"}'),
+ ('94999999-0000-0000-0000-000000000019','buyer-nophone@acct.test','{}'),
+ ('94999999-0000-0000-0000-000000000020','buyer-expired@acct.test','{"name":"최만료","phone_number":"01044443333"}');
 
 -- 1-A. 동의 전 개인정보 미저장: 트리거가 만든 프로필은 이름·전화가 비어 있어야 한다
 insert into results (who,what,expected,result) values
@@ -200,13 +207,92 @@ insert into results (who,what,expected,result) values
 set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000009';
 insert into results (who,what,expected,result) values
  ('신규 손님','승인대기 회사 링크로 가입 → 거부(승인 전 영업 불가)','DENIED: INVALID_SHOP_TOKEN', pg_temp.try($q$select public.claim_shop_access('54999999-0000-0000-0000-000000000099')$q$)),
- ('신규 손님','A사 미니샵 링크로 가입 → 거래처 연결','true', pg_temp.val($q$select (public.claim_shop_access('54999999-0000-0000-0000-000000000001'))->>'is_linked'$q$)),
+ -- A사에 이 번호(전화번호 없음)로 등록된 초대가 없으므로 156/157 이후엔 승인대기로 떨어진다(자동승인 아님).
+ ('신규 손님','A사 미니샵 링크로 가입 → 거래처 연결(등록된 초대 없어 승인대기)','false', pg_temp.val($q$select (public.claim_shop_access('54999999-0000-0000-0000-000000000001'))->>'is_linked'$q$)),
  ('신규 손님','  └ 역할 retailer, 이름은 자리표시자(동의 전 PII 미저장)','retailer|카카오 회원', pg_temp.val($q$select p.role||'|'||r.restaurant_name from public.profiles p join public.retailers r on r.profile_id=p.id where p.id='94999999-0000-0000-0000-000000000009'$q$)),
  ('신규 손님','  └ 동의 전','<null>', pg_temp.val($q$select terms_agreed_at::text from public.profiles where id='94999999-0000-0000-0000-000000000009'$q$)),
  ('신규 손님','동의 기록 → 허용','ALLOWED', pg_temp.try($q$select public.record_buyer_consent(false)$q$)),
  ('신규 손님','  └ 동의 시각 기록, 마케팅은 없음','true|false', pg_temp.val($q$select (terms_agreed_at is not null)||'|'||(marketing_agreed_at is not null) from public.profiles where id='94999999-0000-0000-0000-000000000009'$q$)),
- ('신규 손님','B사 링크로도 가입(여러 공급사 거래) → 허용','true', pg_temp.val($q$select (public.claim_shop_access('54999999-0000-0000-0000-000000000002'))->>'is_linked'$q$)),
+ ('신규 손님','B사 링크로도 가입(여러 공급사 거래) → 허용(마찬가지로 초대 없어 승인대기)','false', pg_temp.val($q$select (public.claim_shop_access('54999999-0000-0000-0000-000000000002'))->>'is_linked'$q$)),
  ('신규 손님','공급사 온보딩 시도 → 거부','DENIED: NOT_A_SUPPLIER_ACCOUNT', pg_temp.try($q$select public.complete_supplier_signup('손님축산','이손님','01012345678','서울시 어딘가 123')$q$));
+
+-- ========== 1-E-2. 같은 전화번호로 손님 계정 중복 가입 차단 (154) ==========
+-- 부계정(014)의 카카오 전화번호가 A사장(001, phone='010')과 같다 — 자기 상대 거래 시도
+set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000014';
+insert into results (who,what,expected,result) values
+ ('A사장 부계정(전화번호 동일)','A사 미니샵에 손님으로 가입 시도 → 거부(전화번호 중복)','DENIED: PHONE_ALREADY_REGISTERED', pg_temp.try($q$select public.claim_shop_access('54999999-0000-0000-0000-000000000001')$q$)),
+ ('A사장 부계정(전화번호 동일)','  └ role 그대로 wholesaler(전환 안 됨)','wholesaler', pg_temp.val($q$select role from public.profiles where id='94999999-0000-0000-0000-000000000014'$q$));
+-- 서로 다른 두 신규 계정이 같은 전화번호(01099998888)로 가입 시도.
+-- claim_shop_access()는 profiles.phone을 저장하지 않으므로(PII 지연저장),
+-- 첫 번째 계정이 실제로 동의(record_buyer_consent, 155)까지 마쳐야 그 번호가
+-- profiles.phone에 저장되고, 그래야 두 번째 계정의 가입 시도에서 154의
+-- 중복 검사가 실제로 뭔가와 비교할 대상이 생긴다.
+set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000015';
+insert into results (who,what,expected,result) values
+ ('신규 손님(전화 01099998888, 첫 번째)','A사 미니샵 가입 → 허용','ALLOWED', pg_temp.try($q$select public.claim_shop_access('54999999-0000-0000-0000-000000000001')$q$)),
+ ('신규 손님(전화 01099998888, 첫 번째)','동의 기록 → 허용(이 시점에 phone이 저장됨, 155)','ALLOWED', pg_temp.try($q$select public.record_buyer_consent(false)$q$)),
+ ('신규 손님(전화 01099998888, 첫 번째)','  └ profiles.phone에 저장됨','01099998888', pg_temp.val($q$select phone from public.profiles where id='94999999-0000-0000-0000-000000000015'$q$));
+set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000016';
+insert into results (who,what,expected,result) values
+ ('신규 손님(전화 01099998888, 두 번째)','B사 미니샵 가입 시도 → 거부(같은 번호로 이미 가입됨)','DENIED: PHONE_ALREADY_REGISTERED', pg_temp.try($q$select public.claim_shop_access('54999999-0000-0000-0000-000000000002')$q$));
+
+-- ========== 1-E-3. 초대 전화번호 대조 — 자동승인 / 승인대기 (156/157) ==========
+set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000003';
+insert into results (who,what,expected,result) values
+ ('A직원','초대 전화번호 등록 → 거부(owner/manager만)','DENIED: NOT_A_WHOLESALER', pg_temp.try($q$select public.create_retailer_invite('01055556666','초대손님')$q$));
+
+set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000002';
+insert into results (who,what,expected,result) values
+ ('A매니저','전화번호 8자리 → 거부','DENIED: INVALID_PHONE', pg_temp.try($q$select public.create_retailer_invite('12345678')$q$)),
+ ('A매니저','손님 전화번호(01055556666) 등록 → 허용','ALLOWED', pg_temp.try($q$select public.create_retailer_invite('01055556666','초대손님')$q$)),
+ ('A매니저','  └ 미소진 초대 1건 생성','1', pg_temp.val($q$select count(*)::text from public.retailer_invites where wholesaler_id='a4999999-0000-0000-0000-000000000001' and phone='01055556666' and consumed_at is null$q$)),
+ ('A매니저','같은 번호 재등록(재초대) → 허용(갱신)','ALLOWED', pg_temp.try($q$select public.create_retailer_invite('01055556666','초대손님(갱신)')$q$)),
+ ('A매니저','  └ 갱신 후에도 미소진 초대는 여전히 1건(중복 안 쌓임)','1', pg_temp.val($q$select count(*)::text from public.retailer_invites where wholesaler_id='a4999999-0000-0000-0000-000000000001' and phone='01055556666' and consumed_at is null$q$));
+
+-- 등록된 번호(01055556666)로 로그인한 신규 손님 → 즉시 active(무마찰)
+set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000017';
+insert into results (who,what,expected,result) values
+ ('신규 손님(초대 번호 일치)','A사 미니샵 가입 → 자동승인(active)','true|active', pg_temp.val($q$select r->>'is_linked'||'|'||(r->>'status') from public.claim_shop_access('54999999-0000-0000-0000-000000000001') r$q$));
+
+-- 등록되지 않은 번호로 로그인한 신규 손님 → pending_review(공급사 확인 필요)
+set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000018';
+insert into results (who,what,expected,result) values
+ ('신규 손님(초대 번호 불일치)','A사 미니샵 가입 → 승인대기(pending_review)','false|pending_review', pg_temp.val($q$select r->>'is_linked'||'|'||(r->>'status') from public.claim_shop_access('54999999-0000-0000-0000-000000000001') r$q$));
+
+-- 전화번호를 아예 안 넘겨준 손님(카카오 동의 항목에 따라 흔함) → 대조 불가라 pending_review
+set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000019';
+insert into results (who,what,expected,result) values
+ ('신규 손님(전화번호 없음)','B사 미니샵 가입 → 승인대기(pending_review)','false|pending_review', pg_temp.val($q$select r->>'is_linked'||'|'||(r->>'status') from public.claim_shop_access('54999999-0000-0000-0000-000000000002') r$q$));
+
+-- 만료된 초대는 번호가 일치해도 자동승인에 쓰이지 않는다
+reset role;
+insert into public.retailer_invites (wholesaler_id, phone, customer_name, expires_at) values
+ ('a4999999-0000-0000-0000-000000000001','01044443333','만료초대', now() - interval '1 day');
+set role authenticated; set request.jwt.claim.role = 'authenticated'; set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000020';
+insert into results (who,what,expected,result) values
+ ('신규 손님(만료된 초대와 번호 일치)','A사 가입 → 승인대기(만료 초대는 무시)','false|pending_review', pg_temp.val($q$select r->>'is_linked'||'|'||(r->>'status') from public.claim_shop_access('54999999-0000-0000-0000-000000000001') r$q$));
+
+-- A매니저 관점 확인: 일치했던 초대는 소진(consumed) 처리됨, 불일치·만료 건은 그대로 미소진
+set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000002';
+insert into results (who,what,expected,result) values
+ ('A매니저','  └ 01055556666 초대는 소진 처리됨(consumed_at·consumed_retailer_id 기록)','true', pg_temp.val($q$select (consumed_at is not null and consumed_retailer_id = (select id from public.retailers where profile_id='94999999-0000-0000-0000-000000000017'))::text from public.retailer_invites where wholesaler_id='a4999999-0000-0000-0000-000000000001' and phone='01055556666' and consumed_at is not null$q$)),
+ ('A매니저','  └ 01044443333(만료) 초대는 미소진으로 남음','1', pg_temp.val($q$select count(*)::text from public.retailer_invites where wholesaler_id='a4999999-0000-0000-0000-000000000001' and phone='01044443333' and consumed_at is null$q$));
+
+-- 승인대기 손님을 owner/manager가 직접 승인/거절 (기존 set_wholesaler_retailer_status 재사용, 105)
+set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000001';
+insert into results (who,what,expected,result) values
+ ('A사장','번호 불일치로 승인대기였던 손님을 승인(active) → 허용','ALLOWED', pg_temp.try($q$select public.set_wholesaler_retailer_status((select id from public.retailers where profile_id='94999999-0000-0000-0000-000000000018'),'active')$q$)),
+ ('A사장','  └ 승인 후 상태 active','active', pg_temp.val($q$select status from public.wholesaler_retailers where wholesaler_id='a4999999-0000-0000-0000-000000000001' and retailer_id=(select id from public.retailers where profile_id='94999999-0000-0000-0000-000000000018')$q$));
+
+set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000013';
+insert into results (who,what,expected,result) values
+ ('B사장','전화번호 없이 승인대기였던 손님을 거절(blocked, 사유 필수) → 허용','ALLOWED', pg_temp.try($q$select public.set_wholesaler_retailer_status((select id from public.retailers where profile_id='94999999-0000-0000-0000-000000000019'),'blocked','경쟁사 위장가입 의심')$q$));
+-- blocked는 retailers RLS가 (의도적으로, 158과 무관하게 기존부터) 숨기므로 슈퍼유저로 직접 확인
+reset role;
+insert into results (who,what,expected,result) values
+ ('B사장','  └ 거절 후 상태 blocked','blocked', pg_temp.val($q$select status from public.wholesaler_retailers where wholesaler_id='a4999999-0000-0000-0000-000000000002' and retailer_id=(select id from public.retailers where profile_id='94999999-0000-0000-0000-000000000019')$q$));
+set role authenticated; set request.jwt.claim.role = 'authenticated';
+
 set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000001';
 insert into results (who,what,expected,result) values
  ('A사장','미니샵 링크로 손님 가입 시도 → 거부(계정 종류 안 섞임)','DENIED: NOT_A_BUYER_ACCOUNT', pg_temp.try($q$select public.claim_shop_access('54999999-0000-0000-0000-000000000002')$q$)),
