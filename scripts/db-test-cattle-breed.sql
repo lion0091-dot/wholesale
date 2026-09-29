@@ -19,7 +19,7 @@ alter table public.profiles enable trigger user;
 insert into public.wholesalers (id, profile_id, business_name, business_number, representative_name)
     values ('c1c1c1c1-0000-0000-0000-0000000000a1', 'c1c1c1c1-0000-0000-0000-000000000001', '품종축산', '1110000077', 'A');
 
-grant execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date) to authenticated;
+grant execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date,text,text) to authenticated;
 
 -- 1) trace_breed: 축종 원문 → 품종
 select pg_temp.expect('trace_breed 한우/육우/젖소/그 외',

@@ -8,7 +8,17 @@ import { createProductAction, updateProductAction } from "./actions";
 import { ORIGIN_OPTIONS, isDomesticOrigin } from "@/lib/products/origin-options";
 import { MarketPriceWidget } from "@/components/market-price-widget";
 import { ProductStockBreakdownWidget } from "@/components/product-stock-breakdown";
-import { CATTLE_BREEDS, composeIdentityName, identityDescription, identityFieldsFor } from "@/lib/products/identity-key";
+import {
+  CATTLE_BREEDS,
+  CATTLE_GRADES,
+  CATTLE_SEXES,
+  BMS_VALUES,
+  STORAGE_STATES,
+  bmsAppliesTo,
+  composeIdentityName,
+  identityDescription,
+  identityFieldsFor,
+} from "@/lib/products/identity-key";
 
 interface ProductFormViewProps {
   /** 수정 모드일 때 기존 상품 값 */
@@ -380,6 +390,9 @@ export function ProductFormView({
   const [unit, setUnit] = useState(product?.unit ?? UNITS[0]);
   const [gradeValue, setGradeValue] = useState(product?.grade ?? "");
   const [breedValue, setBreedValue] = useState(product?.breed ?? "");
+  const [sexValue, setSexValue] = useState(product?.sex ?? "");
+  const [bmsValue, setBmsValue] = useState(product?.bms ?? "");
+  const [storageStateValue, setStorageStateValue] = useState(product?.storage_state ?? "");
   const [selectedOrigin, setSelectedOrigin] = useState(product?.origin ?? "");
 
   // 소처럼 정체성 키가 정해진 축종은 상품명을 적지 않는다 — 부위+등급으로 자동 조합된다(lib/products/identity-key.ts).
@@ -389,22 +402,43 @@ export function ProductFormView({
   const partIsKey = identityFields?.includes("subcategory") ?? false;
   const gradeIsKey = identityFields?.includes("grade") ?? false;
   const breedIsKey = identityFields?.includes("breed") ?? false;
+  const sexIsKey = identityFields?.includes("sex") ?? false;
+  const storageIsKey = identityFields?.includes("storageState") ?? false;
   const partLocked = isEdit && partIsKey && Boolean(product?.subcategory?.trim());
   const gradeLocked = isEdit && gradeIsKey && Boolean(product?.grade?.trim());
   const breedLocked = isEdit && breedIsKey && Boolean(product?.breed?.trim());
-  // 품종·등급은 국내산 소에만 있는 개념(수입육은 정부 이력 API에 그 값 자체가 없다 —
-  // 2026-09-28 실제 조회로 확인, 수입육은 품종 NULL/등급 NULL로 부위+원산지만으로 구분한다).
+  const sexLocked = isEdit && sexIsKey && Boolean(product?.sex?.trim());
+  const storageLocked = isEdit && storageIsKey && Boolean(product?.storage_state?.trim());
+  // 품종·등급·성별은 국내산 소에만 있는 개념(수입육은 정부 이력 API에 그 값 자체가 없다 —
+  // 2026-09-28/09-30 실제 조회로 확인, 수입육은 이 칸들이 NULL로 부위+원산지만으로 구분한다).
   // DB 유니크 인덱스·자동상품명·자동생성 함수는 NULL을 이미 올바르게 다루므로(COALESCE(…, '')),
   // 여기 폼 필수 표시만 원산지에 맞춰 바꾸면 된다.
   const originIsDomestic = isDomesticOrigin(selectedOrigin);
   const breedRequired = breedIsKey && !isEdit && originIsDomestic;
   const gradeRequired = gradeIsKey && !isEdit && originIsDomestic;
-  const composedName = composeIdentityName(selectedCategory, selectedSubcategory, gradeValue, breedValue);
+  const sexRequired = sexIsKey && !isEdit && originIsDomestic;
+  // 냉장/냉동은 원산지와 무관하게(수입육도 냉장·냉동 표기는 있다) 항상 필요하다.
+  const storageRequired = storageIsKey && !isEdit;
+  // BMS(마블링 지수)는 등급이 1++일 때만 정체성의 일부다(사장님 2026-09-30) — 같은
+  // 1++라도 BMS가 다르면 매입원가가 달라 재고 단위 자체가 갈린다.
+  const bmsIsKey = bmsAppliesTo(selectedCategory, gradeValue);
+  const bmsLocked = isEdit && bmsAppliesTo(selectedCategory, product?.grade) && Boolean(product?.bms?.trim());
+  const composedName = composeIdentityName(selectedCategory, {
+    subcategory: selectedSubcategory,
+    grade: gradeValue,
+    breed: breedValue,
+    sex: sexValue,
+    bms: bmsValue,
+    storageState: storageStateValue,
+  });
   const willRename =
     !isEdit ||
     (!partLocked && Boolean(selectedSubcategory)) ||
     (!gradeLocked && Boolean(gradeValue.trim())) ||
-    (!breedLocked && Boolean(breedValue.trim()));
+    (!breedLocked && Boolean(breedValue.trim())) ||
+    (!sexLocked && Boolean(sexValue.trim())) ||
+    (!bmsLocked && Boolean(bmsValue.trim())) ||
+    (!storageLocked && Boolean(storageStateValue.trim()));
   const nameToShow = hasIdentityKey && willRename ? (composedName ?? "") : product?.name;
 
   const handleCategoryChange = (next: string) => {
@@ -684,19 +718,38 @@ export function ProductFormView({
             <label htmlFor="grade" style={labelStyle}>
               {gradeIsKey ? (gradeRequired ? "등급 *" : "등급 (국내산만 해당)") : "등급"}
             </label>
-            <input
-              id="grade"
-              name="grade"
-              type="text"
-              required={gradeRequired}
-              readOnly={gradeLocked}
-              disabled={gradeIsKey && !isEdit && !originIsDomestic}
-              value={gradeValue}
-              onChange={(event) => setGradeValue(event.target.value)}
-              placeholder="예: 1++, 1등급, 프라임"
-              autoComplete="off"
-              style={gradeLocked ? readOnlyFieldStyle : fieldStyle}
-            />
+            {gradeLocked ? (
+              <input id="grade" name="grade" type="text" readOnly value={gradeValue} style={readOnlyFieldStyle} />
+            ) : gradeIsKey ? (
+              <select
+                id="grade"
+                name="grade"
+                required={gradeRequired}
+                disabled={!isEdit && !originIsDomestic}
+                value={gradeValue}
+                onChange={(event) => setGradeValue(event.target.value)}
+                style={fieldStyle}
+              >
+                <option value="">{isEdit ? "선택 안 함" : "등급 선택"}</option>
+                {CATTLE_GRADES.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id="grade"
+                name="grade"
+                type="text"
+                readOnly={isEdit}
+                value={gradeValue}
+                onChange={(event) => setGradeValue(event.target.value)}
+                placeholder="예: 1등급, 특"
+                autoComplete="off"
+                style={isEdit ? readOnlyFieldStyle : fieldStyle}
+              />
+            )}
             {gradeLocked && (
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
                 등록 후에는 등급을 바꿀 수 없어요. 등급이 다르면 새 상품으로 등록해주세요.
@@ -708,6 +761,119 @@ export function ProductFormView({
               </p>
             )}
           </div>
+
+          {sexIsKey && (
+            <div>
+              <label htmlFor="sex" style={labelStyle}>
+                {sexRequired ? "성별 *" : "성별 (국내산만 해당)"}
+              </label>
+              {sexLocked ? (
+                <input id="sex" name="sex" type="text" readOnly value={sexValue} style={readOnlyFieldStyle} />
+              ) : (
+                <select
+                  id="sex"
+                  name="sex"
+                  required={sexRequired}
+                  disabled={!isEdit && !originIsDomestic}
+                  value={sexValue}
+                  onChange={(event) => setSexValue(event.target.value)}
+                  style={fieldStyle}
+                >
+                  <option value="">{isEdit ? "선택 안 함" : "성별 선택"}</option>
+                  {CATTLE_SEXES.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {sexLocked && (
+                <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+                  등록 후에는 성별을 바꿀 수 없어요. 성별이 다르면 새 상품으로 등록해주세요.
+                </p>
+              )}
+              {!isEdit && !originIsDomestic && (
+                <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+                  수입육은 성별 개념이 없어 비워둡니다.
+                </p>
+              )}
+            </div>
+          )}
+
+          {storageIsKey && (
+            <div>
+              <label htmlFor="storage_state" style={labelStyle}>
+                {storageRequired ? "냉장/냉동 *" : "냉장/냉동"}
+              </label>
+              {storageLocked ? (
+                <input
+                  id="storage_state"
+                  name="storage_state"
+                  type="text"
+                  readOnly
+                  value={storageStateValue}
+                  style={readOnlyFieldStyle}
+                />
+              ) : (
+                <select
+                  id="storage_state"
+                  name="storage_state"
+                  required={storageRequired}
+                  value={storageStateValue}
+                  onChange={(event) => setStorageStateValue(event.target.value)}
+                  style={fieldStyle}
+                >
+                  <option value="">{isEdit ? "선택 안 함" : "냉장/냉동 선택"}</option>
+                  {STORAGE_STATES.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+                {storageLocked
+                  ? "등록 후에는 냉장/냉동을 바꿀 수 없어요. 다르면 새 상품으로 등록해주세요."
+                  : "이력조회 API에는 없는 정보라 입고 스캔으로는 자동으로 안 채워집니다. 상품 등록 시 직접 골라주세요."}
+              </p>
+            </div>
+          )}
+
+          {bmsIsKey && (
+            <div>
+              <label htmlFor="bms" style={labelStyle}>
+                BMS(마블링 지수)
+              </label>
+              {bmsLocked ? (
+                <input id="bms" name="bms" type="text" readOnly value={bmsValue} style={readOnlyFieldStyle} />
+              ) : (
+                <select
+                  id="bms"
+                  name="bms"
+                  value={bmsValue}
+                  onChange={(event) => setBmsValue(event.target.value)}
+                  style={fieldStyle}
+                >
+                  <option value="">선택 안 함</option>
+                  {BMS_VALUES.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {bmsLocked ? (
+                <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+                  등록 후에는 BMS를 바꿀 수 없어요. BMS가 다르면 새 상품으로 등록해주세요.
+                </p>
+              ) : (
+                <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px" }}>
+                  1++ 등급만 BMS 개념이 있어요(원가가 달라 별도 상품·재고로 관리됩니다). 입고
+                  스캔은 BMS를 몰라 "선택 안 함"으로 들어오니, 등급판정서를 보고 여기서 채워주세요.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="dash-form-grid-3">

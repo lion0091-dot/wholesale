@@ -347,7 +347,10 @@ async function ensureProductForSpec(
   known: readonly ProductOption[]
 ): Promise<{ product: ProductOption; created: boolean }> {
   const fields = identityFieldsFor(spec.category);
-  const name = fields ? (composeIdentityName(spec.category, spec.subcategory, spec.grade, spec.breed) ?? spec.category) : spec.name.trim();
+  const name = fields
+    ? (composeIdentityName(spec.category, { subcategory: spec.subcategory, grade: spec.grade, breed: spec.breed }) ??
+        spec.category)
+    : spec.name.trim();
 
   if (fields?.includes("subcategory") && !spec.subcategory) {
     throw new RbacError("부위를 골라주세요.");

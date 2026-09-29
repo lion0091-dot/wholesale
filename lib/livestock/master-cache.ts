@@ -44,6 +44,8 @@ export async function cacheTraceRecord(record: MtraceRecord): Promise<void> {
     p_origin_country: record.originCountry,
     p_importer_name: record.importerName,
     p_packing_date: record.packingDate,
+    p_sex: record.sex,
+    p_bms: record.bms,
   });
 
   if (error) {

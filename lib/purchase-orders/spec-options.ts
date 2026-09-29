@@ -6,9 +6,7 @@
  */
 
 export { ORIGIN_OPTIONS } from "@/lib/products/origin-options";
-export { CATTLE_BREEDS } from "@/lib/products/identity-key";
-
-export const CATTLE_GRADES: readonly string[] = ["1++", "1+", "1", "2", "3"];
+export { CATTLE_BREEDS, CATTLE_GRADES } from "@/lib/products/identity-key";
 
 export interface SpecListRule {
   breedFromList: boolean;

@@ -19,7 +19,7 @@ insert into public.products (id, wholesaler_id, name, category, subcategory, ori
 
 -- A사장으로 로그인
 -- 테스트 전용: 실서비스에서는 service_role만 실행 가능(20260930000098). 로컬 테스트 세션에만 다시 연다.
-grant execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date) to authenticated;
+grant execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date,text,text) to authenticated;
 set role authenticated;
 set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 

@@ -64,7 +64,7 @@ insert into public.purchase_order_lines (id, purchase_order_id, wholesaler_id, l
 insert into public.purchase_orders (id, wholesaler_id, supplier_id, supplier_name, ordered_on, status) values
     ('d2d2d2d2-0000-0000-0000-000000000b99', 'd2d2d2d2-0000-0000-0000-0000000000a2', 'd2d2d2d2-0000-0000-0000-0000000005b1', '남의 공급처', current_date, 'OPEN');
 
-grant execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date) to authenticated;
+grant execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date,text,text) to authenticated;
 
 -- ---------------------------------------------------------------- 도우미 (A 세션으로 전환)
 set role authenticated;

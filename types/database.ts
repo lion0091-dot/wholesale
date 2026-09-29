@@ -113,6 +113,12 @@ export interface Product {
   grade: string | null;
   /** 소의 품종(한우·육우·젖소). 소가 아니거나 품종 도입 전 상품은 null. */
   breed: string | null;
+  /** 소의 성별(거세/암). 소가 아니거나 값이 없으면 null(2026-09-30). */
+  sex: string | null;
+  /** 마블링 지수(BMS) — 소가 1++ 등급일 때만 값이 있다(7/8/9). 그 외엔 항상 null(2026-09-30). */
+  bms: string | null;
+  /** 냉장/냉동 — 계란을 제외한 축종에서 정체성의 일부(2026-09-30). 공공 API엔 없어 사람이 채운다. */
+  storage_state: string | null;
   base_price: number;
   unit: string;
   stock_quantity: number;

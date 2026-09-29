@@ -20,7 +20,7 @@ create temp table results (no int generated always as identity, what text, expec
 grant all on results to authenticated;
 
 -- 테스트 전용: 실서비스에서는 service_role만 실행 가능(20260930000098). 로컬 테스트 세션에만 다시 연다.
-grant execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date) to authenticated;
+grant execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date,text,text) to authenticated;
 
 -- ========== 시드 ==========
 insert into auth.users (id,email) values

@@ -17,7 +17,7 @@ delete from public.profiles where id='$U';
 alter table public.profiles enable trigger user;
 delete from auth.users where id='$U';
 -- 테스트가 열어 둔 권한을 되돌린다(실서비스에서는 service_role만 실행 가능 — 098).
-revoke execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date) from authenticated, anon, public;
+revoke execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date,text,text) from authenticated, anon, public;
 SQL
 }
 cleanup
@@ -28,7 +28,7 @@ alter table public.profiles disable trigger user;
 insert into public.profiles (id,role,name,phone) values ('$U','wholesaler','C','010') on conflict (id) do update set role=excluded.role;
 alter table public.profiles enable trigger user;
 insert into public.wholesalers (id,profile_id,business_name,business_number,representative_name) values ('$W','$U','동시성축산','1110000099','C');
-grant execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date) to authenticated;
+grant execute on function public.upsert_master_livestock(text,text,text,jsonb,text,text,text,text,date,text,text,text,text,date,text,text) to authenticated;
 set role authenticated;
 set request.jwt.claim.sub = '$U';
 select public.upsert_master_livestock('002999900001','individual','mtrace_livestock','{}'::jsonb,'한우','소','등심','1++',current_date-3,'○○도축장');

@@ -133,7 +133,11 @@ interface Props {
   storageLocationSuggestions: string[];
   /** 보관(감춤)돼 목록에서 빠진 상품 수 — 지정할 상품이 없을 때 보관을 풀라고 안내한다. */
   archivedProductCount?: number;
-  /** 매입단가 칸 노출 여부 — owner/manager/super_admin만 true. 직원은 칸이 없고 값도 안 보낸다. */
+  /**
+   * 매입단가는 원가라 owner/manager/super_admin만 본다. 입고 스캔에서는 더 이상
+   * 입력받지 않는다(2026-09-30 사장님 결정 — 전표 정리할 때 /dashboard/purchases에서
+   * 입력) — 이 값은 스캔 결과 카드에 계산된 매입금액을 보여줄지만 결정한다.
+   */
   canEditPurchasePrice: boolean;
   /** "지금 온 거래처"로 고를 수 있는 거래처(사용 중인 것만). 발주 관리의 거래처 관리에서 만든다. */
   suppliers: Array<{ id: string; name: string }>;
@@ -310,8 +314,6 @@ export function InboundScanView({
   const [weight, setWeight] = useState("");
   // 바코드(GS1-128)에 실려 온 표기중량. 사람이 고칠 수도 있다.
   const [labeledWeight, setLabeledWeight] = useState("");
-  // 매입단가는 한 차에 들어오는 물건이 대체로 같아서 스캔 후에도 비우지 않는다.
-  const [unitPrice, setUnitPrice] = useState("");
   const [rows, setRows] = useState<InboundScanRow[]>(initialScans);
   const [pending, setPending] = useState<PendingRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -402,9 +404,9 @@ export function InboundScanView({
         return;
       }
 
-      // 매입단가는 관리자(owner/manager)만 정한다 — 직원 화면은 칸 자체가 없고 값을 보내지 않는다.
-      const typedPrice = canEditPurchasePrice ? Number.parseFloat(unitPrice) : Number.NaN;
-      const purchaseUnitPrice = Number.isFinite(typedPrice) && typedPrice >= 0 ? typedPrice : null;
+      // 매입단가는 여기서 더 안 받는다(2026-09-30) — 항상 상품 기본 매입단가로 기록되고,
+      // 실제 전표를 보고 정확히 맞추는 건 /dashboard/purchases(매입 정산)에서 한다.
+      const purchaseUnitPrice = null;
 
       setError(null);
       setNotice(null);
@@ -483,7 +485,7 @@ export function InboundScanView({
 
       router.refresh();
     },
-    [router, labeledWeight, unitPrice, supplierId, canEditPurchasePrice, products]
+    [router, labeledWeight, supplierId, canEditPurchasePrice, products]
   );
 
   /**
@@ -1092,7 +1094,6 @@ export function InboundScanView({
     Number.parseFloat(labeledWeight),
     Number.parseFloat(weight)
   );
-  const liveAmount = calcPurchaseAmount(Number.parseFloat(weight), Number.parseFloat(unitPrice));
 
   // 확인이 필요한 박스는 위 '확인이 필요한 박스' 자리에 따로 두고, 입고 내역에는 나머지만 둔다(같은 박스가 두 자리에 겹쳐 그려지지 않게).
   const historyRows = rows.filter((row) => !unresolvedRows.includes(row));
@@ -1521,24 +1522,6 @@ export function InboundScanView({
             />
           </div>
 
-          {canEditPurchasePrice ? (
-            <div style={{ width: "120px" }}>
-              <label htmlFor="unit_price" style={labelStyle}>
-                매입단가 (원/kg)
-              </label>
-              <input
-                id="unit_price"
-                type="number"
-                min="0"
-                step="100"
-                value={unitPrice}
-                onChange={(event) => setUnitPrice(event.target.value)}
-                placeholder="상품 기본값"
-                style={inputStyle}
-              />
-            </div>
-          ) : null}
-
           <button
             type="button"
             onClick={() => void submitScan(traceNo, weight, "MANUAL")}
@@ -1588,7 +1571,6 @@ export function InboundScanView({
             표기 {labeledWeight}kg / 실측 {weight}kg → {formatVarianceWeight(liveVariance.variance)} (
             {formatVarianceRatio(liveVariance.ratio)})
             {liveVariance.exceeded ? " · 허용 오차(±2%)를 넘습니다" : ""}
-            {liveAmount !== null ? ` · 매입 ${formatWon(liveAmount)}` : ""}
           </div>
         )}
 

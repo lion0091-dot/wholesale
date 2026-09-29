@@ -77,6 +77,8 @@ describe("GET /api/cron/retry-trace-lookups", () => {
       speciesGroup: "소",
       partName: "등심",
       grade: "1++",
+      sex: null,
+      bms: null,
       slaughterDate: new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10),
       packingDate: null,
       butcheryPlace: "○○도축장",

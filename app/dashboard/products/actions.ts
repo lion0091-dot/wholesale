@@ -4,9 +4,19 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
 import { MANUAL_DEFAULT_DELIVERY_ITEMS } from "@/lib/products/default-delivery-items";
-import { ORIGIN_OPTIONS } from "@/lib/products/origin-options";
+import { ORIGIN_OPTIONS, isDomesticOrigin } from "@/lib/products/origin-options";
 import { STOCK_ADJUST_REASON_CODES } from "@/lib/products/stock-adjust-reasons";
-import { CATTLE_BREEDS, composeIdentityName, IDENTITY_FIELD_LABELS, identityDescription, identityFieldsFor } from "@/lib/products/identity-key";
+import {
+  CATTLE_BREEDS,
+  CATTLE_SEXES,
+  BMS_VALUES,
+  STORAGE_STATES,
+  bmsAppliesTo,
+  composeIdentityName,
+  IDENTITY_FIELD_LABELS,
+  identityDescription,
+  identityFieldsFor,
+} from "@/lib/products/identity-key";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -75,6 +85,12 @@ interface ProductInput {
   origin: string;
   grade: string | null;
   breed: string | null;
+  /** 성별(거세/암) — 소에서만 의미가 있다. 그 외엔 항상 null. */
+  sex: string | null;
+  /** 마블링 지수(BMS) — 소가 1++ 등급일 때만 의미가 있다(bmsAppliesTo). 그 외엔 항상 null. */
+  bms: string | null;
+  /** 냉장/냉동 — 계란을 제외한 축종에서 정체성 일부. 그 외엔 항상 null. */
+  storage_state: string | null;
   base_price: number;
   unit: string;
   stock_quantity: number;
@@ -100,8 +116,24 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
   const breedRaw = ((formData.get("breed") as string) || "").trim() || null;
   // 품종은 소에서만 의미가 있다 — 다른 축종에 값이 실려 와도 저장하지 않는다.
   const breed = category === "소" ? breedRaw : null;
-  // 키 규칙이 있는 축종(소)은 상품명을 사용자가 적지 않는다 — 품종+부위+등급으로 서버가 만든다(identity-key.ts).
-  const identityName = composeIdentityName(category, subcategory, grade, breed);
+  const sexRaw = ((formData.get("sex") as string) || "").trim() || null;
+  // 성별도 소에서만 의미가 있다.
+  const sex = category === "소" ? sexRaw : null;
+  const bmsRaw = ((formData.get("bms") as string) || "").trim() || null;
+  // BMS는 소가 1++ 등급일 때만 의미가 있다 — 그 외 조합으로 값이 실려 와도 저장하지 않는다.
+  const bms = bmsAppliesTo(category, grade) ? bmsRaw : null;
+  const storageStateRaw = ((formData.get("storage_state") as string) || "").trim() || null;
+  // 냉장/냉동은 계란을 제외한 축종에서만 의미가 있다.
+  const storageState = identityFieldsFor(category)?.includes("storageState") ? storageStateRaw : null;
+  // 키 규칙이 있는 축종(소)은 상품명을 사용자가 적지 않는다 — 품종+부위+등급+성별(+BMS)로 서버가 만든다(identity-key.ts).
+  const identityName = composeIdentityName(category, {
+    subcategory,
+    grade,
+    breed,
+    sex,
+    bms,
+    storageState,
+  });
   const name = identityName ?? rawName;
   const unit = ((formData.get("unit") as string) || "kg").trim();
   // 화면에서 천 단위 콤마를 붙여 표시하므로("25,000") 서버에서 항상 콤마를 제거하고 파싱한다.
@@ -135,12 +167,24 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
     throw new RbacError("카테고리(부위 구분)를 선택해주세요.");
   }
 
-  // 키 축종은 부위·등급이 키의 일부라 신규 등록에서는 비워둘 수 없다(원산지는 아래에서 공통으로 검사).
-  // 수정에서는 요구하지 않는다 — 이력으로 자동 생성된 "(부위 미지정)" 상품의 가격만 고치는 경우가 있어서다.
-  const identityValues = { breed, subcategory, grade } as const;
+  // 키 축종은 부위·등급·성별·냉장냉동이 키의 일부라 신규 등록에서는 비워둘 수 없다
+  // (원산지는 아래에서 공통으로 검사). 수정에서는 요구하지 않는다 — 이력으로 자동
+  // 생성된 "(부위 미지정)" 상품의 가격만 고치는 경우가 있어서다.
+  // 품종·등급·성별은 수입육에 개념 자체가 없어(2026-09-28/09-30 실조회 확인) 원산지가
+  // 국내산일 때만 요구한다 — 냉장/냉동은 원산지와 무관하게 항상 요구한다.
+  const domesticOrigin = isDomesticOrigin(origin);
+  const identityValues = { breed, subcategory, grade, sex, storageState } as const;
 
   for (const field of options.requireIdentityFields ? (identityFieldsFor(category) ?? []) : []) {
-    if (field !== "origin" && !identityValues[field]) {
+    if (field === "origin") {
+      continue; // origin은 아래에서 공통으로 검사한다.
+    }
+
+    if (!domesticOrigin && (field === "breed" || field === "grade" || field === "sex")) {
+      continue;
+    }
+
+    if (!identityValues[field as keyof typeof identityValues]) {
       throw new RbacError(
         `${category}는 ${IDENTITY_FIELD_LABELS[field]}을(를) 입력해주세요. ${identityDescription(category)}이(가) 이 상품의 정체성입니다.`
       );
@@ -149,6 +193,18 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
 
   if (breed !== null && !CATTLE_BREEDS.includes(breed)) {
     throw new RbacError(`품종 '${breed}'은(는) 목록에 없습니다. (${CATTLE_BREEDS.join(", ")} 중 하나)`);
+  }
+
+  if (sex !== null && !CATTLE_SEXES.includes(sex)) {
+    throw new RbacError(`성별 '${sex}'은(는) 목록에 없습니다. (${CATTLE_SEXES.join(", ")} 중 하나)`);
+  }
+
+  if (storageState !== null && !STORAGE_STATES.includes(storageState)) {
+    throw new RbacError(`냉장/냉동 '${storageState}'은(는) 목록에 없습니다. (${STORAGE_STATES.join(", ")} 중 하나)`);
+  }
+
+  if (bms !== null && !BMS_VALUES.includes(bms)) {
+    throw new RbacError(`BMS '${bms}'은(는) 목록에 없습니다. (${BMS_VALUES.join(", ")} 중 하나)`);
   }
 
   if (!origin) {
@@ -190,6 +246,9 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
     origin,
     grade,
     breed,
+    sex,
+    bms,
+    storage_state: storageState,
     base_price: basePrice,
     unit,
     stock_quantity: stockQuantity,
@@ -212,7 +271,16 @@ function parseProductForm(formData: FormData, options: { requireIdentityFields: 
 async function assertNoDuplicateIdentity(
   supabase: Awaited<ReturnType<typeof createClient>>,
   wholesalerId: string,
-  key: { category: string; subcategory: string | null; grade: string | null; breed: string | null; origin: string },
+  key: {
+    category: string;
+    subcategory: string | null;
+    grade: string | null;
+    breed: string | null;
+    sex: string | null;
+    origin: string;
+    storage_state: string | null;
+    bms?: string | null;
+  },
   excludeProductId?: string
 ): Promise<void> {
   const fields = identityFieldsFor(key.category);
@@ -228,9 +296,17 @@ async function assertNoDuplicateIdentity(
     .eq("category", key.category);
 
   for (const field of fields) {
-    const value = key[field];
+    // DB 컬럼명·key 프로퍼티명이 TS 필드명과 다른 것만 옮긴다(storageState -> storage_state).
+    const column = field === "storageState" ? "storage_state" : field;
+    const value = key[column as keyof typeof key];
 
-    query = value === null ? query.is(field, null) : query.eq(field, value);
+    query = value === null ? query.is(column, null) : query.eq(column, value as string);
+  }
+
+  // BMS는 identityFieldsFor의 고정 목록이 아니라 등급이 1++일 때만 켜지는 조건부 키다
+  // (bmsAppliesTo) — 여기서 따로 검사한다.
+  if (bmsAppliesTo(key.category, key.grade)) {
+    query = key.bms ? query.eq("bms", key.bms) : query.is("bms", null);
   }
 
   if (excludeProductId) {
@@ -321,12 +397,15 @@ export async function updateProductAction(
     let subcategoryToSave = input.subcategory;
     let gradeToSave = input.grade;
     let breedToSave = input.breed;
+    let sexToSave = input.sex;
+    let bmsToSave = input.bms;
+    let storageStateToSave = input.storage_state;
     let identityName: string | null = null;
 
     {
       let currentQuery = supabase
         .from("products")
-        .select("category, subcategory, grade, breed, origin")
+        .select("category, subcategory, grade, breed, sex, bms, storage_state, origin")
         .eq("id", productId);
 
       if (!context.isSuperAdmin) {
@@ -341,13 +420,36 @@ export async function updateProductAction(
         const currentPart = (current.subcategory as string | null)?.trim() || null;
         const currentGrade = (current.grade as string | null)?.trim() || null;
         const currentBreed = (current.breed as string | null)?.trim() || null;
+        const currentSex = (current.sex as string | null)?.trim() || null;
+        const currentBms = (current.bms as string | null)?.trim() || null;
+        const currentStorageState = (current.storage_state as string | null)?.trim() || null;
 
         subcategoryToSave = currentFields.includes("subcategory") ? (currentPart ?? input.subcategory) : input.subcategory;
         gradeToSave = currentFields.includes("grade") ? (currentGrade ?? input.grade) : input.grade;
         breedToSave = currentFields.includes("breed") ? (currentBreed ?? input.breed) : null;
+        sexToSave = currentFields.includes("sex") ? (currentSex ?? input.sex) : null;
+        storageStateToSave = currentFields.includes("storageState")
+          ? (currentStorageState ?? input.storage_state)
+          : null;
+        // BMS는 identityFieldsFor의 고정 목록이 아니라 등급이 1++일 때만 켜지는 조건부 키다.
+        bmsToSave = bmsAppliesTo(current.category as string, gradeToSave) ? (currentBms ?? input.bms) : null;
 
-        if (subcategoryToSave !== currentPart || gradeToSave !== currentGrade || breedToSave !== currentBreed) {
-          identityName = composeIdentityName(current.category as string, subcategoryToSave, gradeToSave, breedToSave);
+        if (
+          subcategoryToSave !== currentPart ||
+          gradeToSave !== currentGrade ||
+          breedToSave !== currentBreed ||
+          sexToSave !== currentSex ||
+          bmsToSave !== currentBms ||
+          storageStateToSave !== currentStorageState
+        ) {
+          identityName = composeIdentityName(current.category as string, {
+            subcategory: subcategoryToSave,
+            grade: gradeToSave,
+            breed: breedToSave,
+            sex: sexToSave,
+            bms: bmsToSave,
+            storageState: storageStateToSave,
+          });
 
           await assertNoDuplicateIdentity(
             supabase,
@@ -357,7 +459,10 @@ export async function updateProductAction(
               subcategory: subcategoryToSave,
               grade: gradeToSave,
               breed: breedToSave,
+              sex: sexToSave,
+              bms: bmsToSave,
               origin: current.origin as string,
+              storage_state: storageStateToSave,
             },
             productId
           );
@@ -370,6 +475,9 @@ export async function updateProductAction(
       subcategory: subcategoryToSave,
       grade: gradeToSave,
       breed: breedToSave,
+      sex: sexToSave,
+      bms: bmsToSave,
+      storage_state: storageStateToSave,
       base_price: input.base_price,
       unit: input.unit,
       // stock_quantity는 여기서 갱신하지 않는다 — 재고는 stock_ledger 합계로
