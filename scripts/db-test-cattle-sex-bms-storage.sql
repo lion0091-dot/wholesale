@@ -114,7 +114,8 @@ begin
     perform pg_temp.expect('스캔 자동 생성 — 성별은 이력조회 값(거세)으로 채워짐', v_product.sex = '거세');
     perform pg_temp.expect('스캔 자동 생성 — BMS는 이력조회 값(9)으로 채워짐(1++라서)', v_product.bms = '9');
     perform pg_temp.expect('스캔 자동 생성 — 냉장/냉동은 API에 없어 항상 비워둠', v_product.storage_state is null);
-    perform pg_temp.expect('스캔 자동 생성 — 상품명에 성별·BMS 반영', v_product.name = '한우 안심 1++ 거세 (9)');
+    -- BMS는 등급 바로 뒤 괄호로 묶는다(마이그 162, TS 쪽 "1++(9)" 표기와 통일).
+    perform pg_temp.expect('스캔 자동 생성 — 상품명에 성별·BMS 반영("등급(BMS) 성별" 순서)', v_product.name = '한우 안심 1++(9) 거세');
 
     reset role;
 end $$;
