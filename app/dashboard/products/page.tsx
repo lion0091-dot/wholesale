@@ -38,7 +38,7 @@ export default async function DashboardProductsPage() {
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
-    const [{ data }, { data: members }, { data: summaries }] = await Promise.all([
+    const [{ data }, { data: members }, { data: summaries }, marketPriceResult] = await Promise.all([
       supabase
         .from("products")
         .select("*")
@@ -52,6 +52,7 @@ export default async function DashboardProductsPage() {
         .order("id", { ascending: true }),
       supabase.rpc("list_wholesaler_member_names", { p_wholesaler_id: scope.wholesalerId }),
       supabase.rpc("get_product_stock_summary", { p_wholesaler_id: scope.wholesalerId }),
+      getLatestMarketPricesAction(),
     ]);
 
     products = (data ?? []) as Product[];
@@ -59,8 +60,6 @@ export default async function DashboardProductsPage() {
     stockSummaries = Object.fromEntries(
       ((summaries ?? []) as StockSummary[]).map((summary) => [summary.product_id, summary])
     );
-
-    const marketPriceResult = await getLatestMarketPricesAction();
 
     if (marketPriceResult.success) {
       marketPrices = buildMarketPriceIndex(marketPriceResult.data ?? []);
