@@ -22,6 +22,8 @@ export interface StatementItem {
   origin: string | null;
   /** 냉장/냉동. 상품에 없으면 null. */
   storageState: string | null;
+  /** 수량의 단위(kg, 마리 등). 상품에 없으면 null. */
+  unit: string | null;
   unitPrice: number;
   quantity: number;
   subtotalAmount: number;
@@ -144,18 +146,18 @@ async function fetchOrderCore(
 async function fetchProductOrigins(
   supabase: SupabaseServerClient,
   items: OrderItemRow[]
-): Promise<Map<string, { origin: string | null; storageState: string | null }>> {
+): Promise<Map<string, { origin: string | null; storageState: string | null; unit: string | null }>> {
   const ids = [...new Set(items.map((item) => item.product_id).filter((id): id is string => Boolean(id)))];
-  const map = new Map<string, { origin: string | null; storageState: string | null }>();
+  const map = new Map<string, { origin: string | null; storageState: string | null; unit: string | null }>();
 
   if (ids.length === 0) {
     return map;
   }
 
-  const { data } = await supabase.from("products").select("id, origin, storage_state").in("id", ids);
+  const { data } = await supabase.from("products").select("id, origin, storage_state, unit").in("id", ids);
 
-  for (const row of (data ?? []) as Array<{ id: string; origin: string | null; storage_state: string | null }>) {
-    map.set(row.id, { origin: row.origin, storageState: row.storage_state });
+  for (const row of (data ?? []) as Array<{ id: string; origin: string | null; storage_state: string | null; unit: string | null }>) {
+    map.set(row.id, { origin: row.origin, storageState: row.storage_state, unit: row.unit });
   }
 
   return map;
@@ -250,7 +252,7 @@ function toStatementData(
   items: OrderItemRow[],
   parties: { supplier: StatementParty; buyer: StatementParty },
   traces: StatementTrace[],
-  productInfo: Map<string, { origin: string | null; storageState: string | null }> = new Map()
+  productInfo: Map<string, { origin: string | null; storageState: string | null; unit: string | null }> = new Map()
 ): StatementData {
   return {
     orderId: order.id,
@@ -264,6 +266,7 @@ function toStatementData(
       productName: composeProductDisplayName(item.category, item.product_name),
       origin: (item.product_id && productInfo.get(item.product_id)?.origin) || null,
       storageState: (item.product_id && productInfo.get(item.product_id)?.storageState) || null,
+      unit: (item.product_id && productInfo.get(item.product_id)?.unit) || null,
       unitPrice: Number(item.unit_price),
       // 출고 마감이 끝났으면 실제 나간 양을 찍는다. 금액(subtotal_amount)도
       // 그때 같이 확정되므로 단가 × 수량이 항상 맞는다.

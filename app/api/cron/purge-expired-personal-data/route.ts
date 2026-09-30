@@ -49,5 +49,12 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ licenseFiles: paths.length, storageFailed });
+  // 접속기록은 2년(DB의 access_log_retention())이 지나면 지운다.
+  const { data: purgedLogs, error: logError } = await supabase.rpc("purge_old_access_logs");
+
+  if (logError) {
+    console.error("[cron purge-expired-personal-data] 접속기록 정리 실패:", logError.message);
+  }
+
+  return NextResponse.json({ licenseFiles: paths.length, storageFailed, accessLogsPurged: purgedLogs ?? 0 });
 }

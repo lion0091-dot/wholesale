@@ -63,5 +63,17 @@ insert into results (what,expected,result) values
  ('탈퇴 미처리 계정은 정리 안 함(W3)','0',(select public.scrub_withdrawn_login_identity('96999999-0000-0000-0000-000000000003'))::text);
 create temp table sc (n int); insert into sc select public.scrub_withdrawn_login_identity('96999999-0000-0000-0000-000000000002');
 insert into results (what,expected,result) values
- ('탈퇴 계정 식별정보 정리(1행), sub만 남음','1/{"sub": "k123"}',(select n::text from sc)||'/'||(select identity_data::text from auth.identities where provider_id='k123'));
+ ('탈퇴 계정 식별정보 정리(1행), 카카오 번호(provider_id)·sub 모두 교체','1/{"sub": "withdrawn"}/withdrawn-96999999-0000-0000-0000-000000000002',(select n::text from sc)||'/'||(select identity_data::text from auth.identities where user_id='96999999-0000-0000-0000-000000000002')||'/'||(select provider_id from auth.identities where user_id='96999999-0000-0000-0000-000000000002'));
+insert into public.access_log (user_id,event,created_at) values
+ ('96999999-0000-0000-0000-000000000001','login',now()-interval '3 years'),
+ ('96999999-0000-0000-0000-000000000001','login',now()-interval '1 month');
+create temp table pl (n int); insert into pl select public.purge_old_access_logs();
+insert into results (what,expected,result) values
+ ('접속기록: 3년 전 삭제(1행), 1개월 전 유지','1/1',(select n::text from pl)||'/'||(select count(*)::text from public.access_log where user_id='96999999-0000-0000-0000-000000000001'));
+set role authenticated; set request.jwt.claim.sub='96999999-0000-0000-0000-000000000003'; set request.jwt.claim.role='authenticated';
+insert into results (what,expected,result) values
+ ('일반 사용자: 접속기록 조회 0건','0',(select count(*)::text from public.access_log)),
+ ('일반 사용자: 접속기록 쓰기 거부','DENIED',pg_temp.try($q$insert into public.access_log(event) values ('x')$q$)),
+ ('일반 사용자: 접속기록 삭제 거부(0행 또는 거부)','DENIED',pg_temp.try($q$delete from public.access_log$q$));
+reset role;
 select no, what, expected, result, case when result=expected then 'PASS' else 'FAIL' end v from results order by no;

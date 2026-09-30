@@ -22,6 +22,7 @@
  * (공급사 profiles 기본 레코드는 auth.users INSERT 트리거가 이미 만들어 두었다)
  */
 
+import { recordAccess } from "@/lib/security/access-log";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -118,6 +119,9 @@ export async function GET(request: NextRequest) {
       "카카오 로그인 처리에 실패했습니다. 잠시 후 다시 시도해주세요."
     );
   }
+
+  // 접속기록(안전성 확보조치 기준) — 실패해도 로그인은 계속된다.
+  await recordAccess(exchangeData.user?.id, "login");
 
   // ------------------------------------------------------------------
   // 슈퍼관리자 부트스트랩 — 흐름 구분 이전, 세션 확립 직후.

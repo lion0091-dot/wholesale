@@ -139,3 +139,10 @@ Claude Max 요금제는 잔량 조회 API가 없어 실시간 동적 라우팅�
 ## 수입축산물 이력 조회 — data.mafra.go.kr 실연동 (2026-09-28, 별도 기능)
 
 `lib/livestock/meatwatch-client.ts` — 수입육 이력은 `meatwatch.go.kr` 별도 기업심사가 아니라 **data.mafra.go.kr(농림축산식품부 공공데이터포털)**에서 키를 발급받아 실주소·실호출로 검증 완료(경로 방식 `/openapi/{API_KEY}/json/{GRID_ID}/{시작}/{끝}?IMPORT_DE=...`가 정상 동작, 쿼리스트링으로 API_KEY 넘기는 방식은 실패). **이 API는 이력번호로 직접 조회가 안 되고 수입일자(IMPORT_DE, 필수)로만 그날 목록을 받을 수 있다** — 그래서 국내산(mtrace)과 달리 현장 스캔 자동조회에는 안 붙였다(하루치 최대 몇백 건을 실시간 스캔 타임아웃 안에 다 훑는 건 무리). 대신 수입일자를 아는 사무실 직원이 직접 조회하는 화면 `/dashboard/inbound/imported-lookup`(보류함과 같은 급, PC 전용 탭)을 새로 만들었다 — 날짜+선택 필터로 조회해 목록에서 번호를 눈으로 대조한다, 조회 결과는 저장 안 함. `lib/livestock/mtrace-client.ts`의 기존 `meatwatch` TraceSource(REST 번호검색 가정)는 이 실제 API와 구조가 안 맞아 여전히 미사용 죽은 코드로 남아 있다. `.env.example`에 `MEATWATCH_API_BASE`·`MEATWATCH_GRID_ID` 추가(기본값 있어 보통 안 건드려도 됨). 실호출 검증 완료, 화면 클릭 검증은 아직.
+
+## 개인정보 수명주기·접속기록·법률자문 (2026-09-30, 별도 기능)
+
+- 가입 미완료 30일 자동삭제(마이그 165 공급사·166 고객, 크론 `purge-unconsented-accounts`), 탈퇴 익명화(000·001·168·171: 이메일·카카오 식별자 정리, 고객 상호·사업자번호는 유지), 탈퇴 5년 후 개인정보 자동 파기(167·169·170, 주간 크론 `purge-expired-personal-data`: 대표자명·주소·자격정보·주문 배송지·변경이력 복사본·발주처 연락처, **명세서 파일·주문번호·금액·이력번호는 유지**), 입점 문의 1년 삭제(170), 접속기록 `access_log`(171: 로그인·관리자 화면 진입, 2년 보관 후 삭제, 슈퍼관리자만 조회). 기간 상수는 `withdrawn_data_retention()`·`match_request_retention()`·`access_log_retention()` 한 곳씩. 로컬 테스트: `scripts/db-test-purge-withdrawn.sql`(20건), `db-test-stale-*.sql`. **5년·1년·2년은 대표 결정이며 법령 원문 미확인 — 변호사 자문서(claude.ai 문서 "장터 개인정보 보호 현황 및 법률자문 요청사항", Word 사본은 사장님 바탕화면) 질문 8·13 답 후 확정.**
+- [docs/data-breach-response.md](docs/data-breach-response.md) — 유출 대응 절차 초안(변호사 확인 전).
+- 접속기록 범위는 로그인과 관리자 화면 진입뿐이다. 공급사 대시보드의 개인정보 조회·다운로드는 아직 기록하지 않는다(필요하면 `lib/security/access-log.ts`의 `recordAccess` 호출을 추가).
+

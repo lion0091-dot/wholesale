@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
   cellName: { flex: 1, padding: 6 },
   cellOrigin: { width: 64, padding: 6, textAlign: "center" },
   cellPrice: { width: 80, padding: 6, textAlign: "right" },
-  cellQty: { width: 56, padding: 6, textAlign: "right" },
+  cellQty: { width: 72, padding: 6, textAlign: "right" },
   cellAmount: { width: 90, padding: 6, textAlign: "right" },
   headerCell: { fontWeight: 700, color: "#334155" },
   totalRow: {
@@ -224,7 +224,7 @@ function TransactionStatementDocument({ data }: { data: StatementData }) {
               </Text>
               <Text style={styles.cellOrigin}>{item.origin ?? "-"}</Text>
               <Text style={styles.cellPrice}>{formatWon(item.unitPrice)}</Text>
-              <Text style={styles.cellQty}>{item.quantity}</Text>
+              <Text style={styles.cellQty}>{item.unit ? `${item.quantity} ${item.unit}` : item.quantity}</Text>
               <Text style={styles.cellAmount}>{formatWon(item.subtotalAmount)}</Text>
             </View>
           ))}
@@ -234,6 +234,15 @@ function TransactionStatementDocument({ data }: { data: StatementData }) {
           <Text style={styles.totalLabel}>합계금액</Text>
           <Text style={styles.totalValue}>{formatWon(data.totalAmount)}</Text>
         </View>
+
+        {data.traces.length === 0 && data.items.length > 0 && (
+          <View style={styles.notesBox}>
+            <Text>
+              축산물 이력번호: 출고 박스가 아직 배정되지 않아 이 문서에는 표기하지 못했습니다. 출고 확정 후 다시
+              발행하면 표기됩니다.
+            </Text>
+          </View>
+        )}
 
         {data.traces.length > 0 && (
           <View style={styles.traceBox}>
@@ -266,7 +275,9 @@ function TransactionStatementDocument({ data }: { data: StatementData }) {
 
         <Text style={styles.disclaimer}>
           본 문서는 플랫폼에 적재된 발주 데이터를 기준으로 자동 생성된 거래명세서이며, 계산서(면세)·
-          세금계산서 등 세법상 증빙을 대체하지 않습니다. 세법상 증빙은 공급사(도매)가 별도로 발행합니다.
+          세금계산서 등 세법상 증빙을 대체하지 않습니다. 세법상 증빙은 공급사(도매)가 별도로 발행합니다. 이 문서의
+          판매자(공급자)는 위에 표기된 공급사이며, 장터(미트 파트너스)는 공급사의 주문 데이터를 문서로 생성해 드리는
+          역할만 합니다.
         </Text>
       </Page>
     </Document>
