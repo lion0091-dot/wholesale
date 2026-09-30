@@ -702,7 +702,7 @@ export async function deleteProductAction(productId: string): Promise<ActionResu
       query = query.eq("wholesaler_id", wholesalerId);
     }
 
-    const { data, error } = await query.select("id").maybeSingle();
+    const { data, error } = await query.select("id, wholesaler_id").maybeSingle();
 
     if (error) {
       // 23503 = foreign_key_violation. product_has_stock_history()는 stock_ledger만
@@ -733,8 +733,8 @@ export async function deleteProductAction(productId: string): Promise<ActionResu
     }
 
     // 상품이 지워졌으니 공개 버킷에 남은 사진도 치운다. 실패해도 삭제 결과에는 영향이 없다(고아 파일일 뿐).
-    if (wholesalerId) {
-      await supabase.storage.from("product-images").remove([`${wholesalerId}/${productId}`]);
+    if (data.wholesaler_id) {
+      await supabase.storage.from("product-images").remove([`${data.wholesaler_id}/${productId}`]);
     }
 
     revalidatePath(REVALIDATE_PATH);
@@ -1044,13 +1044,19 @@ export async function uploadProductImageAction(
     // 같은 경로에 덮어쓰므로 브라우저·CDN이 옛 사진을 붙들지 않게 버전 값을 붙인다.
     const url = `${publicUrl}?v=${Date.now()}`;
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("products")
       .update({ image_url: url })
-      .eq("id", productId);
+      .eq("id", productId)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       throw new Error(error.message);
+    }
+
+    if (!updated) {
+      throw new RbacError("사진을 저장하지 못했습니다. 상품이 삭제됐거나 권한이 없습니다.");
     }
 
     revalidatePath(REVALIDATE_PATH);

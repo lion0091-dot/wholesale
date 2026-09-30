@@ -687,7 +687,15 @@ export function InboundScanView({
   const handleViewLocationPhoto = async (photoPath: string) => {
     // 서버에서 주소를 받은 뒤 window.open을 부르면 모바일 사파리·카톡 인앱이 팝업으로 보고 막는다 — 눌린 즉시 빈 창을 먼저 연다.
     const popup = window.open("", "_blank");
-    const result = await getScanLocationPhotoUrlAction(photoPath);
+    let result: Awaited<ReturnType<typeof getScanLocationPhotoUrlAction>>;
+
+    try {
+      result = await getScanLocationPhotoUrlAction(photoPath);
+    } catch {
+      popup?.close();
+      setError("사진을 불러오지 못했습니다. 네트워크를 확인하고 다시 눌러 주세요.");
+      return;
+    }
 
     if (!result.success || !result.data) {
       popup?.close();

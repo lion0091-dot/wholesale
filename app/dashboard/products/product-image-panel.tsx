@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition, type ChangeEvent } from "react";
 import { removeProductImageAction, uploadProductImageAction } from "./actions";
 
@@ -19,7 +18,13 @@ async function shrinkImage(file: File): Promise<File> {
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(bitmap.width * scale);
     canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const context = canvas.getContext("2d");
+    // 투명 배경 PNG/WEBP가 JPEG로 바뀔 때 검은 배경이 되지 않게 흰색을 먼저 깐다.
+    if (context) {
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    }
 
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
 
@@ -34,7 +39,7 @@ async function shrinkImage(file: File): Promise<File> {
  * 사진 없이도 판매에는 지장이 없다(카드가 지금처럼 글자만 표시된다).
  */
 export function ProductImagePanel({ productId, currentImageUrl }: ProductImagePanelProps) {
-  const router = useRouter();
+  const [imageUrl, setImageUrl] = useState<string | null>(currentImageUrl ?? null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -62,8 +67,8 @@ export function ProductImagePanel({ productId, currentImageUrl }: ProductImagePa
         return;
       }
 
+      setImageUrl(result.data?.url ?? null);
       setNotice("사진을 저장했습니다. 미니샵 상품 카드에 바로 보입니다.");
-      router.refresh();
     });
   };
 
@@ -81,8 +86,8 @@ export function ProductImagePanel({ productId, currentImageUrl }: ProductImagePa
         return;
       }
 
+      setImageUrl(null);
       setNotice("사진을 지웠습니다.");
-      router.refresh();
     });
   };
 
@@ -99,10 +104,10 @@ export function ProductImagePanel({ productId, currentImageUrl }: ProductImagePa
         flexWrap: "wrap",
       }}
     >
-      {currentImageUrl ? (
+      {imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={currentImageUrl}
+          src={imageUrl}
           alt="상품 사진"
           style={{ width: "96px", height: "96px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e2e8f0" }}
         />
@@ -138,7 +143,7 @@ export function ProductImagePanel({ productId, currentImageUrl }: ProductImagePa
             disabled={pending}
             style={{ fontSize: "12px" }}
           />
-          {currentImageUrl && (
+          {imageUrl && (
             <button
               type="button"
               onClick={handleRemove}
