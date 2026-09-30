@@ -183,6 +183,8 @@ interface WholesalerAlimtalkCredentials {
   senderKey: string;
   senderPhone: string;
   templateCodes: Partial<Record<AlimtalkTemplateKey, string>>;
+  /** 발송비 안분 청구용 — platform: 플랫폼 대표 채널, own: 공급사 자체 계정 */
+  channel: "platform" | "own";
 }
 
 type CredentialLoadResult =
@@ -232,7 +234,7 @@ function loadPlatformCredentials(): CredentialLoadResult {
     }
   }
 
-  return { state: "ready", creds: { account, password, senderKey, senderPhone, templateCodes } };
+  return { state: "ready", creds: { account, password, senderKey, senderPhone, templateCodes, channel: "platform" } };
 }
 
 /**
@@ -312,6 +314,7 @@ async function loadCredentials(wholesalerId: string): Promise<CredentialLoadResu
       senderPhone: data.alimtalk_sender_phone as string,
       templateCodes:
         (data.alimtalk_template_codes as Partial<Record<AlimtalkTemplateKey, string>> | null) ?? {},
+      channel: "own",
     },
   };
 }
@@ -322,6 +325,47 @@ interface DispatchInput {
   templateTitle: string;
   formattedMessage: string;
   targetPhone?: string;
+}
+
+interface SendLogEntry {
+  wholesalerId: string;
+  templateKey: AlimtalkTemplateKey;
+  channel: "platform" | "own";
+  status: NotificationResult["status"];
+  errorCode: number | null;
+  messagekey: string | null;
+  refkey: string;
+}
+
+/**
+ * 발송 결과를 alimtalk_send_log에 남긴다(플랫폼 대표 채널 발송비 안분 청구 근거, 마이그 183).
+ * 수신 번호·본문은 저장하지 않는다. 기록 실패는 발송 결과에 영향을 주지 않는다 — 콘솔에만 남긴다.
+ * status "sent"는 비즈뿌리오의 요청 접수이지 수신자 도착이 아니다.
+ */
+async function recordSendLog(entry: SendLogEntry): Promise<void> {
+  try {
+    const supabase = createServiceRoleClient();
+
+    if (!supabase) {
+      return;
+    }
+
+    const { error } = await supabase.from("alimtalk_send_log").insert({
+      wholesaler_id: entry.wholesalerId,
+      template_key: entry.templateKey,
+      channel: entry.channel,
+      status: entry.status,
+      error_code: entry.errorCode,
+      messagekey: entry.messagekey,
+      refkey: entry.refkey,
+    });
+
+    if (error) {
+      console.error("[AlimTalk] 발송 로그 기록 실패:", error.message);
+    }
+  } catch (error) {
+    console.error("[AlimTalk] 발송 로그 기록 실패:", error instanceof Error ? error.message : error);
+  }
 }
 
 async function dispatchAlimtalk({
@@ -347,6 +391,7 @@ async function dispatchAlimtalk({
 
   if (credentialState.state === "invalid") {
     console.error(`[AlimTalk] 공급사(${wholesalerId}) 인증정보 복호화 실패 — 설정 재입력 필요`);
+    await recordSendLog({ wholesalerId, templateKey, channel: "own", status: "error", errorCode: null, messagekey: null, refkey: messageId });
     return {
       ...base,
       success: false,
@@ -358,7 +403,11 @@ async function dispatchAlimtalk({
   const { creds } = credentialState;
   const templateCode = creds.templateCodes[templateKey];
 
+  const log = (status: NotificationResult["status"], errorCode: number | null, messagekey: string | null) =>
+    recordSendLog({ wholesalerId, templateKey, channel: creds.channel, status, errorCode, messagekey, refkey: messageId });
+
   if (!templateCode) {
+    await log("not_configured", null, null);
     return {
       ...base,
       success: false,
@@ -380,6 +429,7 @@ async function dispatchAlimtalk({
     });
 
     if (!result.accepted) {
+      await log("error", result.code, result.messagekey);
       return {
         ...base,
         success: false,
@@ -388,11 +438,13 @@ async function dispatchAlimtalk({
       };
     }
 
+    await log("sent", result.code, result.messagekey);
     return { ...base, success: true, status: "sent" };
   } catch (error) {
     const message =
       error instanceof BizppurioError ? error.message : "알림톡 발송 중 오류가 발생했습니다.";
     console.error(`[AlimTalk] 발송 실패 (${templateTitle}):`, message);
+    await log("error", null, null);
 
     return { ...base, success: false, status: "error", error: message };
   }

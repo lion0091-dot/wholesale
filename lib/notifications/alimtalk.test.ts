@@ -2,15 +2,37 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const credentialRow: { current: Record<string, unknown> | null } = { current: null };
 
+const sendLogRows: Array<Record<string, unknown>> = [];
+const sendLogBehavior: { mode: "ok" | "error" | "throw" } = { mode: "ok" };
+
 vi.mock("@/lib/supabase/service-role-client", () => ({
   createServiceRoleClient: () => ({
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: credentialRow.current }),
+    from: (table: string) => {
+      if (table === "alimtalk_send_log") {
+        return {
+          insert: async (row: Record<string, unknown>) => {
+            if (sendLogBehavior.mode === "throw") {
+              throw new Error("db down");
+            }
+
+            if (sendLogBehavior.mode === "error") {
+              return { error: { message: "insert failed" } };
+            }
+
+            sendLogRows.push(row);
+            return { error: null };
+          },
+        };
+      }
+
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: credentialRow.current }),
+          }),
         }),
-      }),
-    }),
+      };
+    },
   }),
 }));
 
@@ -58,6 +80,8 @@ const fetchMock = vi.fn();
 beforeEach(() => {
   process.env.CREDENTIAL_ENCRYPTION_KEY = "ab".repeat(32);
   credentialRow.current = null;
+  sendLogRows.length = 0;
+  sendLogBehavior.mode = "ok";
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -463,5 +487,94 @@ describe("플랫폼 기본 채널 폴백 — 공급사가 자기 계정을 등�
     credentialRow.current = readyRow();
 
     await expect(isAlimtalkConfiguredForWholesaler(WHOLESALER_ID)).resolves.toBe(true);
+  });
+});
+
+
+describe("발송 로그(alimtalk_send_log) — 플랫폼 채널 발송비 안분 청구 근거", () => {
+  it("공급사 자체 계정으로 접수되면 channel=own, status=sent, messagekey·refkey 기록 (번호·본문은 없음)", async () => {
+    credentialRow.current = readyRow();
+    mockTokenThenSend(jsonResponse({ code: 1000, description: "ok", messagekey: "MK-1" }));
+
+    const result = await sendOrderNotificationToWholesaler(orderPayload());
+
+    expect(result.status).toBe("sent");
+    expect(sendLogRows).toHaveLength(1);
+    expect(sendLogRows[0]).toMatchObject({
+      wholesaler_id: WHOLESALER_ID,
+      template_key: "orderNew",
+      channel: "own",
+      status: "sent",
+      error_code: 1000,
+      messagekey: "MK-1",
+      refkey: result.messageId,
+    });
+    expect(JSON.stringify(sendLogRows[0])).not.toContain("01012345678");
+    expect(JSON.stringify(sendLogRows[0])).not.toContain("A축산");
+  });
+
+  it("공급사 미등록 + 플랫폼 대표 채널 설정이면 channel=platform으로 기록", async () => {
+    credentialRow.current = null;
+    vi.stubEnv("ALIMTALK_PLATFORM_ACCOUNT", "plat-acct");
+    vi.stubEnv("ALIMTALK_PLATFORM_PASSWORD", "plat-pw");
+    vi.stubEnv("ALIMTALK_PLATFORM_SENDER_KEY", "plat-key");
+    vi.stubEnv("ALIMTALK_PLATFORM_SENDER_PHONE", "0212345678");
+    vi.stubEnv("ALIMTALK_PLATFORM_TEMPLATE_ORDER_NEW", "TPL_PLAT");
+    mockTokenThenSend(jsonResponse({ code: 1000, messagekey: "MK-2" }));
+
+    const result = await sendOrderNotificationToWholesaler(orderPayload());
+
+    expect(result.status).toBe("sent");
+    expect(sendLogRows[0]).toMatchObject({ channel: "platform", status: "sent", messagekey: "MK-2" });
+    vi.unstubAllEnvs();
+  });
+
+  it("비즈뿌리오가 거부하면 status=error와 코드 기록", async () => {
+    credentialRow.current = readyRow();
+    mockTokenThenSend(jsonResponse({ code: 7315, description: "Template not found" }));
+
+    await sendOrderNotificationToWholesaler(orderPayload());
+
+    expect(sendLogRows[0]).toMatchObject({ channel: "own", status: "error", error_code: 7315 });
+  });
+
+  it("네트워크 예외도 status=error로 기록", async () => {
+    credentialRow.current = readyRow();
+    mockTokenThenSend(new TypeError("fetch failed"));
+
+    await sendOrderNotificationToWholesaler(orderPayload());
+
+    expect(sendLogRows[0]).toMatchObject({ status: "error", error_code: null });
+  });
+
+  it("템플릿 코드 미등록은 status=not_configured로 기록", async () => {
+    credentialRow.current = readyRow({ alimtalk_template_codes: {} });
+
+    await sendOrderNotificationToWholesaler(orderPayload());
+
+    expect(sendLogRows[0]).toMatchObject({ channel: "own", status: "not_configured" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("공급사 ID·수신번호가 없거나 아예 미설정이면 기록하지 않는다", async () => {
+    await sendOrderNotificationToWholesaler(orderPayload({ wholesalerId: null }));
+    await sendOrderNotificationToWholesaler(orderPayload({ wholesalerPhone: undefined }));
+    credentialRow.current = null;
+    await sendOrderNotificationToWholesaler(orderPayload());
+
+    expect(sendLogRows).toHaveLength(0);
+  });
+
+  it("로그 기록이 실패(오류 응답·예외)해도 발송 결과는 그대로 sent", async () => {
+    credentialRow.current = readyRow();
+
+    for (const mode of ["error", "throw"] as const) {
+      sendLogBehavior.mode = mode;
+      mockTokenThenSend(jsonResponse({ code: 1000, messagekey: "MK" }));
+
+      const result = await sendOrderNotificationToWholesaler(orderPayload());
+
+      expect(result).toMatchObject({ success: true, status: "sent" });
+    }
   });
 });
