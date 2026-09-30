@@ -61,9 +61,13 @@ insert into auth.identities (provider_id,user_id,identity_data,provider,last_sig
  values ('k123','96999999-0000-0000-0000-000000000002','{"sub":"k123","email":"x@k.com","name":"닉"}','kakao',now(),now(),now());
 insert into results (what,expected,result) values
  ('탈퇴 미처리 계정은 정리 안 함(W3)','0',(select public.scrub_withdrawn_login_identity('96999999-0000-0000-0000-000000000003'))::text);
+update auth.users set raw_user_meta_data='{"name":"닉","avatar_url":"x"}' where id in ('96999999-0000-0000-0000-000000000002','96999999-0000-0000-0000-000000000003');
 create temp table sc (n int); insert into sc select public.scrub_withdrawn_login_identity('96999999-0000-0000-0000-000000000002');
 insert into results (what,expected,result) values
  ('탈퇴 계정 식별정보 정리(1행), 카카오 번호(provider_id)·sub 모두 교체','1/{"sub": "withdrawn"}/withdrawn-96999999-0000-0000-0000-000000000002',(select n::text from sc)||'/'||(select identity_data::text from auth.identities where user_id='96999999-0000-0000-0000-000000000002')||'/'||(select provider_id from auth.identities where user_id='96999999-0000-0000-0000-000000000002'));
+insert into results (what,expected,result) values
+ ('탈퇴 계정 로그인 메타데이터(이름·닉네임·이미지) 비움(W2)','{}',(select raw_user_meta_data::text from auth.users where id='96999999-0000-0000-0000-000000000002')),
+ ('탈퇴 미처리 계정 메타데이터는 유지(W3)','2',(select count(*)::text from auth.users u, jsonb_object_keys(u.raw_user_meta_data) where u.id='96999999-0000-0000-0000-000000000003'));
 insert into public.access_log (user_id,event,created_at) values
  ('96999999-0000-0000-0000-000000000001','login',now()-interval '3 years'),
  ('96999999-0000-0000-0000-000000000001','login',now()-interval '1 month');

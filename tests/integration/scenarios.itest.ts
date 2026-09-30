@@ -37,7 +37,7 @@ describe("SC-3 상품 중복 제어 — 스캔 자동 생성 → 같은 키 손 
 
   function productForm(fields: Record<string, string>): FormData {
     const data = new FormData();
-    const defaults: Record<string, string> = { name: "", category: "가공육", subcategory: "", origin: "국내산", base_price: "5000", stock_quantity: "0" };
+    const defaults: Record<string, string> = { name: "", category: "가공육", subcategory: "", origin: "국내산", storage_state: "냉장", base_price: "5000", stock_quantity: "0" };
 
     for (const [key, value] of Object.entries({ ...defaults, ...fields })) data.set(key, value);
 
@@ -51,7 +51,7 @@ describe("SC-3 상품 중복 제어 — 스캔 자동 생성 → 같은 키 손 
 
     for (const traceNo of traces) {
       await world.seedTrace(traceNo, { part: p, grade: "1+" });
-      const result = await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN" });
+      const result = await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN", storageHint: "냉장" });
 
       expect(result.success).toBe(true);
       productIds.add((result.data as ScanResult).productId!);
@@ -68,14 +68,18 @@ describe("SC-3 상품 중복 제어 — 스캔 자동 생성 → 같은 키 손 
       .eq("grade", "1+");
 
     expect(same).toHaveLength(1);
-    expect(same![0].name).toBe(`한우 ${p} 1+`);
+    expect(same![0].name).toBe(`냉장 한우 ${p} 1+`);
     expect(await stockOf([...productIds][0])).toBeCloseTo(12);
 
-    // (a) 상품 관리 화면에서 같은 소 상품을 손으로 등록 → 같은 키라 거부
-    const manual = await createProductAction(productForm({ category: "소", breed: "한우", subcategory: p, grade: "1+", name: "" }));
+    // (a) 상품 관리 화면에서 소를 손으로 등록하려면 성별·냉장/냉동이 필수라(160) 성별·냉장냉동이 비어 자동 생성된 스캔 상품과는 키가 다르다.
+    //     같은 키로 두 번 등록하면 두 번째는 거부된다.
+    const manualFields = { category: "소", breed: "한우", subcategory: p, grade: "1+", sex: "거세", storage_state: "냉장", name: "" };
+    const manual = await createProductAction(productForm(manualFields));
+    const manualAgain = await createProductAction(productForm(manualFields));
 
-    expect(manual.success).toBe(false);
-    expect(manual.error).toContain("이미 같은 상품이 등록되어 있습니다");
+    expect(manual.success).toBe(true);
+    expect(manualAgain.success).toBe(false);
+    expect(manualAgain.error).toContain("이미 같은 상품이 등록되어 있습니다");
 
     // (b) 돼지·닭·오리·계란도 미리 손으로 등록할 수 있고(상품명은 자동 조합), 같은 키를 다시 등록하면 거부, 가공육·양은 키가 없어 그대로 등록된다
     expect((await createProductAction(productForm({ category: "돼지", subcategory: "삼겹살", origin: "스페인산", name: "손 삼겹" }))).success).toBe(true);
@@ -87,7 +91,7 @@ describe("SC-3 상품 중복 제어 — 스캔 자동 생성 → 같은 키 손 
 
     // (c) 부위·등급이 비어 자동 생성된 상품을 수정으로 채우다가 이미 있는 키와 같아지면 거부
     const blank = await world.createProduct({ category: "소", subcategory: null, grade: null, origin: "국내산", name: "(부위 미지정)" });
-    const clash = await updateProductAction(blank.id, productForm({ category: "소", breed: "한우", subcategory: p, grade: "1+", origin: "국내산" }));
+    const clash = await updateProductAction(blank.id, productForm({ category: "소", breed: "한우", subcategory: p, grade: "1+", sex: "거세", origin: "국내산" }));
 
     expect(clash.success).toBe(false);
     expect(clash.error).toContain("이미 같은 상품이 등록되어 있습니다");
@@ -101,6 +105,7 @@ describe("SC-3 상품 중복 제어 — 스캔 자동 생성 → 같은 키 손 
       subcategory: p,
       grade: "1+",
       origin: "국내산",
+      storage_state: "냉장",
       base_price: 0,
       unit: "kg",
       stock_quantity: 0,

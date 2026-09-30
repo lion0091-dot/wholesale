@@ -302,13 +302,13 @@ describe("recordScanAction — 상품 자동 결정", () => {
     await world.seedTrace(first, { part: "안심", grade: "1+" });
     await world.seedTrace(second, { part: "안심", grade: "1+" });
 
-    const created = scanData(await recordScanAction({ traceNo: first, weight: 4, scanType: "BARCODE_SCAN" }));
+    const created = scanData(await recordScanAction({ traceNo: first, weight: 4, scanType: "BARCODE_SCAN", storageHint: "냉장" }));
 
     expect(created.status).toBe("NORMAL");
     expect(created.autoCreated).toMatchObject({ needsPrice: true });
     expect(created.productId).not.toBeNull();
 
-    const again = scanData(await recordScanAction({ traceNo: second, weight: 3, scanType: "BARCODE_SCAN" }));
+    const again = scanData(await recordScanAction({ traceNo: second, weight: 3, scanType: "BARCODE_SCAN", storageHint: "냉장" }));
 
     expect(again.status).toBe("NORMAL");
     expect(again.productId).toBe(created.productId);
@@ -329,7 +329,7 @@ describe("recordScanAction — 상품 자동 결정", () => {
     const traceNo = world.newTraceNo();
 
     await world.seedTrace(traceNo, { part: null, grade: "2등급" });
-    const data = scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN" }));
+    const data = scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN", storageHint: "냉장" }));
 
     expect(data.status).toBe("NORMAL");
     expect(data.autoCreated?.productName).toContain("(부위 미지정)");
@@ -344,7 +344,7 @@ describe("recordScanAction — 상품 자동 결정", () => {
 
     await world.seedTrace(traceNo, { part: null, speciesGroup: null });
     const before = await countProducts();
-    const data = scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN" }));
+    const data = scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN", storageHint: "냉장" }));
 
     expect(data).toMatchObject({ status: "PENDING_MAPPING", productId: null, autoCreated: null });
     expect(await countProducts()).toBe(before);
@@ -415,7 +415,7 @@ describe("resolveMappingAction", () => {
 
     await world.seedTrace(traceNo, { part: null, speciesGroup: null });
 
-    return scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN" }));
+    return scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN", storageHint: "냉장" }));
   }
 
   it("상품을 지정하면 재고로 확정되고, 이미 처리된 입고를 다시 지정하면 안내 문구가 나온다", async () => {
@@ -440,7 +440,7 @@ describe("resolveMappingAction", () => {
 
     // 축종을 몰라 자동 생성이 안 되는(그래서 대기로 남는) 이력 — 부위(등심)는 알고 있다.
     await world.seedTrace(traceNo, { part: "등심", speciesGroup: null });
-    const pending = scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN" }));
+    const pending = scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN", storageHint: "냉장" }));
 
     expect(pending.status).toBe("PENDING_MAPPING");
 
@@ -488,19 +488,19 @@ describe("resolveMappingAction", () => {
 
 describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산지)", () => {
   async function productOf(productId: string) {
-    const { data } = await adminClient().from("products").select("name, category, subcategory, grade, breed, origin").eq("id", productId).single();
+    const { data } = await adminClient().from("products").select("name, category, subcategory, grade, breed, origin, storage_state").eq("id", productId).single();
 
-    return data as { name: string; category: string; subcategory: string | null; grade: string | null; breed: string | null; origin: string };
+    return data as { name: string; category: string; subcategory: string | null; grade: string | null; breed: string | null; origin: string; storage_state: string | null };
   }
 
   it("상품명은 '품종 부위 등급'으로 만들어지고 품종은 이력조회의 축종 원문에서 온다(축종은 화면 태그가 붙인다)", async () => {
     const traceNo = world.newTraceNo();
 
     await world.seedTrace(traceNo, { part: "채끝", grade: "1+" });
-    const data = scanData(await recordScanAction({ traceNo, weight: 3, scanType: "BARCODE_SCAN" }));
+    const data = scanData(await recordScanAction({ traceNo, weight: 3, scanType: "BARCODE_SCAN", storageHint: "냉장" }));
 
-    expect(data.autoCreated?.productName).toBe("한우 채끝 1+");
-    expect(await productOf(data.productId!)).toMatchObject({ name: "한우 채끝 1+", category: "소", breed: "한우", subcategory: "채끝", grade: "1+", origin: "국내산" });
+    expect(data.autoCreated?.productName).toBe("냉장 한우 채끝 1+");
+    expect(await productOf(data.productId!)).toMatchObject({ name: "냉장 한우 채끝 1+", category: "소", breed: "한우", subcategory: "채끝", grade: "1+", origin: "국내산", storage_state: "냉장" });
   });
 
   it("부위·등급이 같아도 원산지가 다르면(국내산 ↔ 수입산) 다른 상품으로 만든다", async () => {
@@ -510,8 +510,8 @@ describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산
     await world.seedTrace(domestic, { part: "갈비", grade: "1++" });
     await world.seedTrace(imported, { part: "갈비", grade: "1++", traceKind: "imported", originCountry: "미국산" });
 
-    const first = scanData(await recordScanAction({ traceNo: domestic, weight: 3, scanType: "BARCODE_SCAN" }));
-    const second = scanData(await recordScanAction({ traceNo: imported, weight: 3, scanType: "BARCODE_SCAN" }));
+    const first = scanData(await recordScanAction({ traceNo: domestic, weight: 3, scanType: "BARCODE_SCAN", storageHint: "냉장" }));
+    const second = scanData(await recordScanAction({ traceNo: imported, weight: 3, scanType: "BARCODE_SCAN", storageHint: "냉장" }));
 
     expect(first.productId).not.toBe(second.productId);
     expect((await productOf(first.productId!)).origin).toBe("국내산");
@@ -522,7 +522,7 @@ describe("소 상품 자동 생성 — 정체성 키(축종+부위+등급+원산
 
 describe("소 외 축종 자동 생성 — 정체성 키 = 돼지 부위+원산지, 닭·오리·계란 원산지(마이그레이션 137)", () => {
   async function productOf(productId: string) {
-    const { data } = await adminClient().from("products").select("name, category, subcategory, origin, grade").eq("id", productId).single();
+    const { data } = await adminClient().from("products").select("name, category, subcategory, origin, grade, storage_state").eq("id", productId).single();
 
     return data as { name: string; category: string; subcategory: string | null; origin: string | null; grade: string | null };
   }
@@ -538,7 +538,7 @@ describe("소 외 축종 자동 생성 — 정체성 키 = 돼지 부위+원산�
   ) {
     await world.seedTrace(traceNo, { speciesGroup, part, grade: null, ...seed });
 
-    return scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN" }));
+    return scanData(await recordScanAction({ traceNo, weight: 4, scanType: "BARCODE_SCAN", storageHint: "냉장" }));
   }
 
   it("돼지: 같은 부위+원산지면 농장이 달라도 같은 상품이고 이름은 부위뿐이다", async () => {
@@ -549,7 +549,7 @@ describe("소 외 축종 자동 생성 — 정체성 키 = 돼지 부위+원산�
     expect(second.productId).toBe(first.productId);
     expect(first.autoCreated).not.toBeNull();
     expect(second.autoCreated).toBeNull();
-    expect(await productOf(first.productId!)).toMatchObject({ category: "돼지", subcategory: p, origin: "국내산", name: p });
+    expect(await productOf(first.productId!)).toMatchObject({ category: "돼지", subcategory: p, origin: "국내산", name: `냉장 ${p}`, storage_state: "냉장" });
   });
 
   it("돼지: 부위가 다르거나 원산지가 다르면 다른 상품", async () => {
@@ -566,7 +566,7 @@ describe("소 외 축종 자동 생성 — 정체성 키 = 돼지 부위+원산�
     const second = await scan(world.newTraceNo("1400775"), "돼지", null);
 
     expect(second.productId).toBe(first.productId);
-    expect((await productOf(first.productId!)).name).toBe("(부위 미지정)");
+    expect((await productOf(first.productId!)).name).toBe("냉장 (부위 미지정)");
   });
 
   it("닭·오리·계란: 카테고리가 따로고 원산지만 같으면 부위와 상관없이 한 상품이며 이름은 축종이다", async () => {
@@ -577,20 +577,20 @@ describe("소 외 축종 자동 생성 — 정체성 키 = 돼지 부위+원산�
 
     expect(chickenAgain.productId).toBe(chicken.productId);
     expect(new Set([chicken.productId, duck.productId, egg.productId]).size).toBe(3);
-    expect(await productOf(chicken.productId!)).toMatchObject({ category: "닭", name: "닭", subcategory: null, origin: "국내산" });
-    expect(await productOf(duck.productId!)).toMatchObject({ category: "오리", name: "오리", subcategory: null });
+    expect(await productOf(chicken.productId!)).toMatchObject({ category: "닭", name: "냉장 닭", subcategory: null, origin: "국내산", storage_state: "냉장" });
+    expect(await productOf(duck.productId!)).toMatchObject({ category: "오리", name: "냉장 오리", subcategory: null });
     expect(await productOf(egg.productId!)).toMatchObject({ category: "계란", name: "계란" });
   });
 
   it("상품 관리에서 미리 등록한 상품이 있으면 스캔이 새로 만들지 않고 그 상품에 붙는다", async () => {
     const p = part("항정살");
-    const preRegistered = await world.createProduct({ category: "돼지", subcategory: p, origin: "국내산", name: p });
+    const preRegistered = await world.createProduct({ category: "돼지", subcategory: p, origin: "국내산", name: `냉장 ${p}`, storage_state: "냉장" });
     const pork = await scan(world.newTraceNo("1400776"), "돼지", p);
 
     expect(pork.productId).toBe(preRegistered.id);
     expect(pork.autoCreated).toBeNull();
 
-    const duck = await world.createProduct({ category: "오리", origin: "호주산", name: "오리" });
+    const duck = await world.createProduct({ category: "오리", origin: "호주산", name: "냉장 오리", storage_state: "냉장" });
     const scannedDuck = await scan(world.newTraceNo("5778"), "오리", null, { traceKind: "imported", originCountry: "호주산" });
 
     expect(scannedDuck.productId).toBe(duck.id);
@@ -598,7 +598,7 @@ describe("소 외 축종 자동 생성 — 정체성 키 = 돼지 부위+원산�
 
   it("원산지는 포함 비교(like) — 이력조회의 '미국'이 미리 등록한 '미국산' 상품에 붙고, 다른 나라는 붙지 않는다", async () => {
     const p = part("등심");
-    const registered = await world.createProduct({ category: "돼지", subcategory: p, origin: "미국산", name: p });
+    const registered = await world.createProduct({ category: "돼지", subcategory: p, origin: "미국산", name: `냉장 ${p}`, storage_state: "냉장" });
     const us = await scan(world.newTraceNo("1400779"), "돼지", p, { traceKind: "imported", originCountry: "미국" });
     const au = await scan(world.newTraceNo("1400779"), "돼지", p, { traceKind: "imported", originCountry: "호주" });
 
@@ -621,8 +621,8 @@ describe("소 외 축종 자동 생성 — 정체성 키 = 돼지 부위+원산�
     }
 
     const [first, second] = await Promise.all([
-      recordScanAction({ traceNo: a, weight: 4, scanType: "BARCODE_SCAN" }),
-      recordScanAction({ traceNo: b, weight: 4, scanType: "BARCODE_SCAN" }),
+      recordScanAction({ traceNo: a, weight: 4, scanType: "BARCODE_SCAN", storageHint: "냉장" }),
+      recordScanAction({ traceNo: b, weight: 4, scanType: "BARCODE_SCAN", storageHint: "냉장" }),
     ]);
 
     expect(new Set([scanData(first).productId, scanData(second).productId]).size).toBe(1);
@@ -669,7 +669,7 @@ describe("replaceScanTraceNoAction — 이력조회 실패 박스의 번호를 �
     fetchTraceMock.mockResolvedValueOnce(apiRecord(good));
     const result = replaced(await replaceScanTraceNoAction(failed.scanId, good));
 
-    expect(result).toMatchObject({ status: "NORMAL", changed: true, traceNo: good });
+    expect(result).toMatchObject({ status: "PENDING_MAPPING", changed: true, traceNo: good });
 
     const { data: oldScan } = await adminClient().from("inbound_scans").select("status, memo").eq("id", failed.scanId).single();
     const { data: newScan } = await adminClient()
@@ -680,10 +680,11 @@ describe("replaceScanTraceNoAction — 이력조회 실패 박스의 번호를 �
 
     expect(oldScan).toMatchObject({ status: "VOIDED" });
     expect(String(oldScan!.memo)).toContain(`${wrong} → ${good}`);
+    // 냉장/냉동을 정할 방법이 없는 바로잡기이므로 새 박스는 상품 확인 필요로 보관된다 — 재고에는 냉장/냉동을 고른 뒤에 들어간다(178).
     expect(newScan).toMatchObject({
-      status: "NORMAL",
+      status: "PENDING_MAPPING",
       weight: 5,
-      remaining_weight: 5,
+      remaining_weight: 0,
       labeled_weight: 5.2,
       storage_location: "A-3 선반",
       gtin: "08800000000017",
@@ -693,7 +694,7 @@ describe("replaceScanTraceNoAction — 이력조회 실패 박스의 번호를 �
     });
     const { data: ledger } = await adminClient().from("stock_ledger").select("qty_delta, event_type").eq("inbound_scan_id", result.scanId);
 
-    expect(ledger).toEqual([{ qty_delta: 5, event_type: "INBOUND" }]);
+    expect(ledger).toEqual([]);
     expect((await adminClient().from("livestock_exception_log").select("resolved_status").eq("inbound_scan_id", failed.scanId)).data).toEqual([
       { resolved_status: "DISCARDED" },
     ]);
@@ -726,8 +727,8 @@ describe("replaceScanTraceNoAction — 이력조회 실패 박스의 번호를 �
     fetchTraceMock.mockResolvedValueOnce(apiRecord(wrong));
     const result = replaced(await replaceScanTraceNoAction(failed.scanId, wrong));
 
-    expect(result).toMatchObject({ status: "NORMAL", changed: true });
-    expect((await scanRow(wrong)).map((row) => row.status).sort()).toEqual(["NORMAL", "VOIDED"]);
+    expect(result).toMatchObject({ status: "PENDING_MAPPING", changed: true });
+    expect((await scanRow(wrong)).map((row) => row.status).sort()).toEqual(["PENDING_MAPPING", "VOIDED"]);
   });
 
   it("재고에 이미 들어간 박스는 번호를 바꿀 수 없다", async () => {
@@ -816,7 +817,7 @@ describe("retryUnresolvedScansAction — 이력조회 실패 박스를 시스템
     const result = await retryUnresolvedScansAction();
 
     expect(result).toEqual({ success: true, data: { checked: 2, resolved: 1 } });
-    expect((await scanRow(nowFound)).map((row) => row.status).sort()).toEqual(["NORMAL", "VOIDED"]);
+    expect((await scanRow(nowFound)).map((row) => row.status).sort()).toEqual(["PENDING_MAPPING", "VOIDED"]);
     expect((await scanRow(stillMissing)).map((row) => row.status)).toEqual(["EXCEPTION"]);
   });
 

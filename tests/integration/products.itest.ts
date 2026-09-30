@@ -211,12 +211,12 @@ describe("createProductAction", () => {
   it("소·돼지·닭·오리·계란도 미리 손으로 등록되고 상품명이 자동 조합되며, 같은 키는 거부되고 원산지는 목록만 받는다", async () => {
     const marker = `미리등록-${world.runId}`;
     const create = (fields: Record<string, string>) =>
-      createProductAction(form({ name: "손 등록", description: marker, origin: "스페인산", ...fields }));
+      createProductAction(form({ name: "손 등록", description: marker, origin: "스페인산", storage_state: "냉장", ...fields }));
     const nameOf = async (id: string) => (await row(id)).name;
 
     const pork = await create({ category: "돼지", subcategory: "항정살", grade: "특" });
     expect(pork.success).toBe(true);
-    expect(await nameOf(pork.data!.id)).toBe("항정살");
+    expect(await nameOf(pork.data!.id)).toBe("냉장 항정살");
     expect((await create({ category: "돼지", subcategory: "항정살" })).error).toContain("이미 같은 상품이 등록되어 있습니다");
     expect((await create({ category: "돼지", subcategory: "" })).error).toContain("부위");
 
@@ -224,7 +224,7 @@ describe("createProductAction", () => {
       const created = await create({ category, subcategory: "", grade: "" });
 
       expect(created.success).toBe(true);
-      expect(await nameOf(created.data!.id)).toBe(category);
+      expect(await nameOf(created.data!.id)).toBe(category === "계란" ? category : `냉장 ${category}`);
       expect((await create({ category })).error).toContain("이미 같은 상품이 등록되어 있습니다");
     }
 
@@ -232,7 +232,7 @@ describe("createProductAction", () => {
     expect((await create({ category: "소", breed: "한우", subcategory: "등심", grade: "1++", origin: "한국" })).error).toContain("목록에 없습니다");
 
     // 소는 품종(한우·육우·젖소)이 정체성이다 — 없으면 거부, 목록 밖이면 거부, 품종이 다르면 같은 부위·등급·원산지라도 별개 상품.
-    const cattle = (fields: Record<string, string>) => create({ category: "소", subcategory: "등심", grade: "1++", origin: "국내산", ...fields });
+    const cattle = (fields: Record<string, string>) => create({ category: "소", subcategory: "등심", grade: "1++", sex: "거세", origin: "국내산", ...fields });
 
     expect((await cattle({ breed: "" })).error).toContain("품종");
     expect((await cattle({ breed: "흑우" })).error).toContain("목록에 없습니다");
@@ -242,8 +242,8 @@ describe("createProductAction", () => {
 
     expect(hanwoo.success).toBe(true);
     expect(yukwoo.success).toBe(true);
-    expect(await nameOf(hanwoo.data!.id)).toBe("한우 등심 1++");
-    expect(await nameOf(yukwoo.data!.id)).toBe("육우 등심 1++");
+    expect(await nameOf(hanwoo.data!.id)).toBe("냉장 한우 등심 1++ 거세");
+    expect(await nameOf(yukwoo.data!.id)).toBe("냉장 육우 등심 1++ 거세");
     expect((await row(hanwoo.data!.id)).breed).toBe("한우");
     expect((await cattle({ breed: "한우" })).error).toContain("이미 같은 상품이 등록되어 있습니다");
     expect((await create({ category: "돼지", subcategory: "목살", breed: "한우" })).success).toBe(true);

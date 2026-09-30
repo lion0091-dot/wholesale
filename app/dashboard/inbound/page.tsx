@@ -33,6 +33,7 @@ export default async function InboundPage() {
 
   // "지금 온 거래처"로 고를 수 있는 거래처(발주 관리의 거래처 관리에서 만든 사용 중인 것).
   let suppliers: Array<{ id: string; name: string }> = [];
+  let partOptions: { byPo: Record<string, string[]>; all: string[] } = { byPo: {}, all: [] };
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -44,6 +45,38 @@ export default async function InboundPage() {
       .order("name", { ascending: true });
 
     suppliers = (supplierRows ?? []) as Array<{ id: string; name: string }>;
+
+    // 부위 드롭박스 목록(마이그레이션 176~): 현장에서 부위를 새로 만들지 않고 이미 등록된 부위에서만 고른다.
+    // 그 거래처의 열린 전표(발주서)에 있는 부위를 먼저, 전표가 없으면 이 업체에 등록된 상품의 부위 전체를 쓴다.
+    const [{ data: poRows }, { data: productRows }] = await Promise.all([
+      supabase
+        .from("purchase_order_lines")
+        .select("products ( subcategory ), purchase_orders!inner ( supplier_id, status )")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .eq("purchase_orders.status", "OPEN"),
+      supabase.from("products").select("subcategory").eq("wholesaler_id", scope.wholesalerId).not("subcategory", "is", null),
+    ]);
+
+    const byPo = new Map<string, Set<string>>();
+
+    for (const row of (poRows ?? []) as unknown as Array<{
+      products: { subcategory: string | null } | null;
+      purchase_orders: { supplier_id: string | null } | null;
+    }>) {
+      const part = row.products?.subcategory;
+      const supplierId = row.purchase_orders?.supplier_id;
+
+      if (!part || !supplierId) continue;
+      if (!byPo.has(supplierId)) byPo.set(supplierId, new Set());
+      byPo.get(supplierId)!.add(part);
+    }
+
+    partOptions = {
+      byPo: Object.fromEntries([...byPo].map(([id, set]) => [id, [...set].sort((a, b) => a.localeCompare(b, "ko"))])),
+      all: [...new Set(((productRows ?? []) as Array<{ subcategory: string | null }>).map((row) => row.subcategory).filter((v): v is string => Boolean(v)))].sort((a, b) =>
+        a.localeCompare(b, "ko")
+      ),
+    };
   }
 
   return (
@@ -89,6 +122,7 @@ export default async function InboundPage() {
         archivedProductCount={data.archivedProductCount}
         canEditPurchasePrice={data.canManage}
         suppliers={suppliers}
+        partOptions={partOptions}
       />
     </div>
   );

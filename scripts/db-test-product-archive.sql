@@ -24,7 +24,7 @@ select public.upsert_master_livestock('002111111111','individual','mtrace_livest
 
 select '--- A1: 자동 생성 상품은 판매중지 + 0원 ---' as t;
 select public.record_inbound_scan('002111111111', 8.20, 'BARCODE_SCAN') -> 'status';
-select public.autocreate_product_for_scan((select id from public.inbound_scans where trace_no='002111111111'));
+select public.autocreate_product_for_scan((select id from public.inbound_scans where trace_no='002111111111'), NULL, '냉장');
 select name, base_price, is_active as should_be_false, archived_at from public.products;
 
 select '--- A2: 입출고 기록이 있으면 삭제 불가(원장 FK) ---' as t;

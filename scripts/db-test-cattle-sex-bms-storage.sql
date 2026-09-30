@@ -108,14 +108,14 @@ begin
     set role authenticated;
     set request.jwt.claim.sub = 'c2c2c2c2-0000-0000-0000-000000000001';
 
-    v_result := public.autocreate_product_for_scan(v_scan_id);
+    v_result := public.autocreate_product_for_scan(v_scan_id, NULL, '냉장');
     select * into v_product from public.products where id = (v_result->>'product_id')::uuid;
 
     perform pg_temp.expect('스캔 자동 생성 — 성별은 이력조회 값(거세)으로 채워짐', v_product.sex = '거세');
     perform pg_temp.expect('스캔 자동 생성 — BMS는 이력조회 값(9)으로 채워짐(1++라서)', v_product.bms = '9');
-    perform pg_temp.expect('스캔 자동 생성 — 냉장/냉동은 API에 없어 항상 비워둠', v_product.storage_state is null);
+    perform pg_temp.expect('스캔 자동 생성 — 냉장/냉동은 API에 없어 사람이 입력한 값(냉장)으로 채워짐(178: 빈 채로 두지 않는다)', v_product.storage_state = '냉장');
     -- BMS는 등급 바로 뒤 괄호로 묶는다(마이그 162, TS 쪽 "1++(9)" 표기와 통일).
-    perform pg_temp.expect('스캔 자동 생성 — 상품명에 성별·BMS 반영("등급(BMS) 성별" 순서)', v_product.name = '한우 안심 1++(9) 거세');
+    perform pg_temp.expect('스캔 자동 생성 — 상품명에 성별·BMS 반영("등급(BMS) 성별" 순서)', v_product.name = '냉장 한우 안심 1++(9) 거세');
 
     reset role;
 end $$;
@@ -138,7 +138,7 @@ begin
 
     perform pg_temp.expect('성별 모르는 개체도 일단 PENDING_MAPPING(부위·등급까지는 정상)', v_status = 'PENDING_MAPPING');
 
-    v_result := public.autocreate_product_for_scan(v_scan_id);
+    v_result := public.autocreate_product_for_scan(v_scan_id, NULL, '냉장');
     perform pg_temp.expect('성별을 몰라도 자동 생성은 막지 않는다(품종과 다름, BREED_UNKNOWN 아님)', (v_result->>'created')::boolean = true);
 
     reset role;

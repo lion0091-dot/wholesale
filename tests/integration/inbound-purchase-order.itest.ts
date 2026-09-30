@@ -195,7 +195,7 @@ describe("입고 스캔 액션 — 거래처를 싣고 찍기", () => {
     expect(result.error).toContain("거래처를 찾을 수 없습니다");
   });
 
-  it("상품이 스캔 뒤에 자동 생성으로 정해지는 박스도 같은 판정을 받는다 — 발주서에 없는 물건이면 받지 않는다", async () => {
+  it("상품이 스캔 뒤에 자동으로 정해지는 박스는 발주서에 맞는 상품이 하나일 때만 받는다 — 하나도 없으면 새 상품을 만들지 않고 보관한다(177)", async () => {
     const supplierId = await newSupplier("나");
     const other = await world.createProduct({ stock_quantity: 0 });
 
@@ -204,9 +204,9 @@ describe("입고 스캔 액션 — 거래처를 싣고 찍기", () => {
     const trace = world.newTraceNo();
     const result = await scan(trace, 8, { supplierId });
 
-    expect(result.status).toBe("REJECTED");
-    expect(result.po).toMatchObject({ result: "REJECTED", reason: "UNLISTED" });
-    expect((await scanRow(trace)).status).toBe("VOIDED");
+    expect(result.status).toBe("PENDING_MAPPING");
+    expect(result.productId).toBeNull();
+    expect((await scanRow(trace)).status).toBe("PENDING_MAPPING");
   });
 
   it("상품을 사람이 나중에 지정하는 순간 판정된다 — 붙으면 남은 양, 넘치면 받지 않고 재고에 안 넣는다", async () => {
@@ -243,7 +243,7 @@ describe("입고 스캔 액션 — 거래처를 싣고 찍기", () => {
     expect((await scanRow(secondTrace)).status).toBe("VOIDED");
   });
 
-  it("이력번호를 바로잡아 새 박스가 만들어져도 거래처가 따라간다(발주서에 없는 물건이면 그 자리에서 거절)", async () => {
+  it("이력번호를 바로잡아 새 박스가 만들어져도 거래처가 따라간다(발주서에 맞는 상품이 없으면 그 자리에서 보관)", async () => {
     const supplierId = await newSupplier("라");
     const other = await world.createProduct({ stock_quantity: 0 });
 
@@ -264,8 +264,7 @@ describe("입고 스캔 액션 — 거래처를 싣고 찍기", () => {
     const data = replaced.data as ReplaceTraceResult;
 
     expect(replaced.success, replaced.error).toBe(true);
-    expect(data.status).toBe("REJECTED");
-    expect(data.po).toMatchObject({ result: "REJECTED", reason: "UNLISTED" });
+    expect(data.status).toBe("PENDING_MAPPING");
     expect((await scanRow(rightTrace)).supplier_id).toBe(supplierId);
   });
 

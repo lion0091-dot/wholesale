@@ -17,6 +17,7 @@ import { composeProductDisplayName } from "@/lib/products/display-name";
 import {
   recordScanAction,
   resolveMappingAction,
+  resolveScanStorageAction,
   resolveMappingToOrderAction,
   recordSplitScansAction,
   voidScanAction,
@@ -78,6 +79,18 @@ export interface InboundScanRow {
   storageLocation: string | null;
   /** 위치 참고 사진 경로(선택). private 버킷이라 볼 때마다 서명 링크를 새로 받는다. */
   storageLocationPhotoPath: string | null;
+  /**
+   * 상품 확인이 필요한 박스에 대해, 지금 거래처의 열린 발주서 중 이 박스와 맞는 상품 후보(마이그레이션 175).
+   * 스캔이 모르는 부위·냉장/냉동을 박스 라벨을 보고 후보 중에서 고르게 한다. 없거나 비어 있으면 전체 상품 목록으로 고른다.
+   */
+  productChoices?: Array<{ productId: string; name: string }>;
+  /**
+   * 후보가 하나도 없는 보관 박스에 대해, 그 거래처의 열린 발주서에 있는 상품 전체(마이그레이션 177).
+   * 박스에도 안 적혀 있으면 전표에서 오늘 들어올 물건을 보고 여기서 고른다. 없으면 전체 상품 목록으로 고른다.
+   */
+  poProducts?: Array<{ productId: string; name: string }>;
+  /** 전표로도 상품을 못 정했고 냉장/냉동이 의미 있는 축종이라, 냉장/냉동을 사람이 골라야 한다(마이그레이션 178). */
+  needsStorage?: boolean;
   /**
    * 개발용 미리보기 행 — DB에 없다. 5가지 이력번호 유형이 화면에서 각각 어떻게
    * 보이는지 실제 API·DB 호출 없이 확인하려고 만들었다. 실제 동작은 하지 않으므로
@@ -141,9 +154,13 @@ interface Props {
   canEditPurchasePrice: boolean;
   /** "지금 온 거래처"로 고를 수 있는 거래처(사용 중인 것만). 발주 관리의 거래처 관리에서 만든다. */
   suppliers: Array<{ id: string; name: string }>;
+  /** 부위 드롭박스 목록: 거래처별 열린 전표의 부위(byPo)와 이 업체에 등록된 상품의 부위 전체(all). */
+  partOptions?: { byPo: Record<string, string[]>; all: string[] };
 }
 
 const SUPPLIER_STORAGE_KEY = "inbound:current-supplier";
+const PART_HINT_STORAGE_KEY = "inbound:part-hint";
+const STORAGE_HINT_STORAGE_KEY = "inbound:storage-hint";
 
 /** 오픈 직전 Vercel에서 이 값을 지우거나 false로 바꾸면 샘플 패널이 전부 사라진다. */
 const SHOW_DEV_SAMPLES = process.env.NEXT_PUBLIC_SHOW_DEV_SAMPLES === "true";
@@ -245,12 +262,52 @@ export function InboundScanView({
   archivedProductCount = 0,
   canEditPurchasePrice,
   suppliers,
+  partOptions,
 }: Props) {
   const router = useRouter();
 
   // 지금 온 거래처 — 한 번 고르면 다음 박스에도 그대로 남는다(한 차 분량은 대체로 한 거래처). 새로고침해도 기억한다.
   const [supplierId, setSupplierId] = useState("");
   const supplierSelectRef = useRef<HTMLSelectElement>(null);
+
+  // 박스 라벨을 보고 사람이 고르는 값(마이그레이션 176). 이력조회는 부위·냉장/냉동을 주지 않고, 상품코드(GTIN)가 없는 박스는
+  // 이 값으로 상품을 정한다. 부위는 새로 만들지 않고 이미 등록된 부위 목록에서만 고른다.
+  // "오늘은 무조건 등심"처럼 한 번 고르면 다음 박스에도 그대로 적용된다(사장님) — 화면에 켜져 있음을 눈에 띄게 보여 준다.
+  const [partHint, setPartHint] = useState("");
+  const [storageHint, setStorageHint] = useState<"" | "냉장" | "냉동">("");
+
+  useEffect(() => {
+    try {
+      setPartHint(window.localStorage.getItem(PART_HINT_STORAGE_KEY) ?? "");
+      const storage = window.localStorage.getItem(STORAGE_HINT_STORAGE_KEY);
+
+      if (storage === "냉장" || storage === "냉동") setStorageHint(storage);
+    } catch {
+      // 저장소를 못 쓰는 환경 — 그냥 매번 고르게 둔다.
+    }
+  }, []);
+
+  const changePartHint = (value: string) => {
+    setPartHint(value);
+
+    try {
+      if (value) window.localStorage.setItem(PART_HINT_STORAGE_KEY, value);
+      else window.localStorage.removeItem(PART_HINT_STORAGE_KEY);
+    } catch {
+      // 저장 실패는 화면 동작에 영향이 없다.
+    }
+  };
+
+  const changeStorageHint = (value: "" | "냉장" | "냉동") => {
+    setStorageHint(value);
+
+    try {
+      if (value) window.localStorage.setItem(STORAGE_HINT_STORAGE_KEY, value);
+      else window.localStorage.removeItem(STORAGE_HINT_STORAGE_KEY);
+    } catch {
+      // 저장 실패는 화면 동작에 영향이 없다.
+    }
+  };
 
   useEffect(() => {
     try {
@@ -265,6 +322,9 @@ export function InboundScanView({
 
   const handleSupplierChange = (value: string) => {
     setSupplierId(value);
+    // 거래처가 바뀌면 부위 목록도 달라진다 — 앞 거래처에서 고른 값이 남아 있지 않게 비운다.
+    changePartHint("");
+    changeStorageHint("");
 
     try {
       if (value) window.localStorage.setItem(SUPPLIER_STORAGE_KEY, value);
@@ -438,6 +498,8 @@ export function InboundScanView({
         // 바코드의 상품코드. 이력번호가 소 한 마리를 가리킨다면 이건 공급처가
         // 부여한 품목 구분자다 — 이력조회가 부위를 안 주므로 이쪽으로 학습한다.
         gtin: parsed.gtin ?? null,
+        partHint: partHint.trim() || null,
+        storageHint: storageHint || null,
       });
 
       setPending((prev) => prev.filter((item) => item.key !== key));
@@ -485,7 +547,7 @@ export function InboundScanView({
 
       router.refresh();
     },
-    [router, labeledWeight, supplierId, canEditPurchasePrice, products]
+    [router, labeledWeight, supplierId, canEditPurchasePrice, products, partHint, storageHint]
   );
 
   /**
@@ -786,10 +848,28 @@ export function InboundScanView({
 
   useEffect(() => stopCamera, [stopCamera]);
 
-  const handleResolve = async (scanId: string, productId: string) => {
+  // 냉장/냉동을 사람이 골라 주는 박스(마이그레이션 178) — 고른 값으로 상품을 다시 정한다. 부위를 골라 둔 상태면 함께 쓴다.
+  const handleResolveStorage = async (scanId: string, storage: "냉장" | "냉동") => {
+    const result = await resolveScanStorageAction(scanId, storage, partHint || null);
+
+    if (!result.success) {
+      setError(result.error ?? "냉장/냉동 지정에 실패했습니다.");
+      return;
+    }
+
+    if (result.data?.status === "REJECTED") {
+      setError(`냉장/냉동은 정했지만 이 박스는 받지 않았습니다 — ${result.data.po ? rejectionSummary(result.data.po) : ""} 재고에는 넣지 않았습니다.`);
+    } else {
+      setNotice(`${storage}으로 정해 입고했습니다${result.data?.productName ? ` — ${result.data.productName}` : ""}.`);
+    }
+
+    router.refresh();
+  };
+
+  const handleResolve = async (scanId: string, productId: string, remember = true) => {
     if (!productId) return;
 
-    const result = await resolveMappingAction(scanId, productId, true);
+    const result = await resolveMappingAction(scanId, productId, remember);
 
     if (!result.success) {
       setError(result.error ?? "상품 지정에 실패했습니다.");
@@ -1298,7 +1378,70 @@ export function InboundScanView({
             </Link>
           )}
 
-          {needsProduct && products.length > 0 && (
+          {needsProduct && (scan.productChoices?.length ?? 0) > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", width: "100%" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#92400e" }}>
+                발주서에 이 고기가 {scan.productChoices!.length}가지로 있습니다 — 박스 라벨을 보고 맞는 것을 누르세요
+              </span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {scan.productChoices!.map((choice) => (
+                  <button
+                    key={choice.productId}
+                    type="button"
+                    // 후보 선택은 기억하지 않는다 — 기억하면 냉장·냉동이 섞여 올 때 다음 박스가 발주서를 보지 않고 같은 상품으로 간다.
+                    onClick={() => void handleResolve(scan.id, choice.productId, false)}
+                    style={{ ...buttonStyle, ...HIGHLIGHT_FIELD, padding: "8px 12px", fontSize: "13px", fontWeight: 700 }}
+                  >
+                    {choice.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {needsProduct && scan.needsStorage && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", width: "100%" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#92400e" }}>
+                냉장인지 냉동인지 정해지지 않았습니다 — 박스에 적힌 것을 보고 고르세요 (비워 둘 수 없는 정보입니다)
+              </span>
+              <div style={{ display: "flex", gap: "6px" }}>
+                {(["냉장", "냉동"] as const).map((storage) => (
+                  <button
+                    key={storage}
+                    type="button"
+                    onClick={() => void handleResolveStorage(scan.id, storage)}
+                    style={{ ...buttonStyle, ...HIGHLIGHT_FIELD, padding: "8px 16px", fontSize: "13px", fontWeight: 700 }}
+                  >
+                    {storage}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {needsProduct && (scan.productChoices?.length ?? 0) === 0 && (scan.poProducts?.length ?? 0) > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", width: "100%" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#92400e" }}>
+                전표에 맞는 상품이 없습니다 — 박스에 적힌 것이나 오늘 들어올 전표 상품을 보고 고르세요
+              </span>
+              <select
+                defaultValue=""
+                // 전표 상품 중에서 고르는 것은 기억하지 않는다 — 같은 이유(냉장·냉동·부위가 섞여 올 수 있음). 상품코드 학습은 한다.
+                onChange={(event) => void handleResolve(scan.id, event.target.value, false)}
+                aria-label="전표 상품 지정"
+                style={{ ...inputStyle, ...HIGHLIGHT_FIELD, width: "auto", padding: "6px 8px", fontSize: "12px" }}
+              >
+                <option value="">전표 상품 선택…</option>
+                {scan.poProducts!.map((product) => (
+                  <option key={product.productId} value={product.productId}>
+                    {product.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {needsProduct && (scan.productChoices?.length ?? 0) === 0 && (scan.poProducts?.length ?? 0) === 0 && products.length > 0 && (
             <select
               defaultValue=""
               onChange={(event) => void handleResolve(scan.id, event.target.value)}
@@ -1458,6 +1601,49 @@ export function InboundScanView({
               ))}
             </select>
           )}
+        </div>
+
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div style={{ flex: "1 1 160px", minWidth: 0 }}>
+            <label htmlFor="part_hint" style={labelStyle}>
+              부위 (박스에 적힌 것 / 오늘 전표 부위)
+            </label>
+            <select
+              id="part_hint"
+              value={partHint}
+              onChange={(event) => changePartHint(event.target.value)}
+              style={{ ...inputStyle, ...(partHint ? { borderColor: "#0f172a", fontWeight: 700 } : {}) }}
+            >
+              <option value="">표기 없음 (전표대로)</option>
+              {(((partOptions?.byPo[supplierId]?.length ?? 0) > 0 ? partOptions!.byPo[supplierId] : partOptions?.all) ?? []).map((part) => (
+                <option key={part} value={part}>
+                  {part}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <span style={labelStyle}>냉장/냉동</span>
+            <div style={{ display: "flex", gap: "6px" }}>
+              {(["", "냉장", "냉동"] as const).map((value) => (
+                <button
+                  key={value || "none"}
+                  type="button"
+                  aria-pressed={storageHint === value}
+                  onClick={() => changeStorageHint(value)}
+                  style={{
+                    ...buttonStyle,
+                    padding: "8px 12px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    ...(storageHint === value ? { backgroundColor: "#0f172a", color: "#fff", borderColor: "#0f172a" } : {}),
+                  }}
+                >
+                  {value || "모름"}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end" }}>

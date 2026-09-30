@@ -220,6 +220,42 @@ export async function loadInboundData(scope: SupplierScope): Promise<InboundData
       storageLocationPhotoPath: (row.storage_location_photo_path as string | null) ?? null,
     }));
 
+    // 상품 확인이 필요한 박스: 지금 거래처의 열린 발주서 중 맞는 상품 후보(마이그레이션 175)를 붙인다.
+    // 후보가 있으면 화면이 전체 상품 목록 대신 후보 버튼을 보여 준다. 대기 박스는 적어서 박스마다 한 번씩 부른다(최대 20개).
+    const pendingScans = scans.filter((scan) => scan.status === "PENDING_MAPPING").slice(0, 20);
+
+    await Promise.all(
+      pendingScans.map(async (scan) => {
+        const { data: candidates } = await supabase.rpc("scan_po_candidates", { p_scan_id: scan.id });
+        const choices = ((candidates ?? []) as Array<{ product_id: string; name: string }>).map((item) => ({
+          productId: item.product_id,
+          name: item.name,
+        }));
+
+        if (choices.length > 0) {
+          scan.productChoices = choices;
+          return;
+        }
+
+        // 후보가 하나도 없으면 그 거래처의 열린 발주서 상품 전체를 보여 준다(마이그레이션 177).
+        const { data: poProducts } = await supabase.rpc("scan_open_po_products", { p_scan_id: scan.id });
+        const list = ((poProducts ?? []) as Array<{ product_id: string; name: string }>).map((item) => ({
+          productId: item.product_id,
+          name: item.name,
+        }));
+
+        if (list.length > 0) {
+          scan.poProducts = list;
+          return;
+        }
+
+        // 전표로도 못 정했고 냉장/냉동이 의미 있는 축종이면 냉장/냉동을 사람이 고르게 한다(마이그레이션 178).
+        const species = masterByTrace.get(scan.traceNo)?.species ?? null;
+
+        if (species && ["소", "돼지", "닭", "오리"].includes(species)) scan.needsStorage = true;
+      })
+    );
+
     // 업체마다 창고 구조가 달라 고정 목록을 안 두고, 그동안 이 업체가 직접
     // 입력했던 위치 이름을 골라 쓸 수 있게 제안한다(플랫폼 여러 업체 대응).
     storageLocationSuggestions = [

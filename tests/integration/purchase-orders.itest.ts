@@ -530,7 +530,8 @@ describe("createPurchaseOrderProductAction — 발주서에서 새 품목 만들
     expect(yuk.data!.product.id).not.toBe(first.data!.product.id);
     expect(await productRow(yuk.data!.product.id)).toMatchObject({ name: "냉장 육우 다짐육 1+", breed: "육우" });
 
-    const noBreed = await createPurchaseOrderProductAction(spec({ breed: "" }));
+    // 품종은 국내산일 때만 요구한다(수입 소고기는 품종·등급 개념이 없다).
+    const noBreed = await createPurchaseOrderProductAction(spec({ breed: "", origin: "국내산", sex: "거세" }));
 
     expect(noBreed.success).toBe(false);
     expect(noBreed.error).toContain("품종");

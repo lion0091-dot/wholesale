@@ -226,7 +226,7 @@ interface FinishedScan {
  */
 async function finishRecordedScan(
   supabase: Client,
-  input: { scanId: string; status: string; gtin: string | null }
+  input: { scanId: string; status: string; gtin: string | null; partHint?: string | null; storageHint?: string | null }
 ): Promise<FinishedScan> {
   let status = input.status;
   let productId: string | null = null;
@@ -249,7 +249,12 @@ async function finishRecordedScan(
   let autoCreated: FinishedScan["autoCreated"] = null;
 
   if (status === "PENDING_MAPPING") {
-    const { data: created } = await supabase.rpc("autocreate_product_for_scan", { p_scan_id: input.scanId });
+    // 사람이 박스 라벨을 보고 입력한 부위·냉장/냉동(GTIN이 없을 때)이 있으면 함께 넘긴다(마이그레이션 176).
+    const { data: created } = await supabase.rpc("autocreate_product_for_scan", {
+      p_scan_id: input.scanId,
+      p_part_hint: input.partHint ?? null,
+      p_storage_hint: input.storageHint ?? null,
+    });
     const createdRow = created as Record<string, unknown> | null;
 
     if (createdRow?.product_id) {
@@ -310,6 +315,13 @@ export async function recordScanAction(input: {
    * 실물로 확인돼(30단계), 부위 대신 이 코드로 상품을 학습한다.
    */
   gtin?: string | null;
+  /**
+   * 박스 라벨을 보고 사람이 입력한 부위(한글, 예: "등심"). 이력조회는 부위를 주지 않는다 — 상품코드(GTIN)가 없는 박스에 쓰인다.
+   * 이력조회가 준 부위가 있으면 그것이 우선한다(마이그레이션 176).
+   */
+  partHint?: string | null;
+  /** 박스 라벨을 보고 사람이 입력한 냉장/냉동. 이력조회에도 상품코드에도 없는 정보다(마이그레이션 176). */
+  storageHint?: "냉장" | "냉동" | null;
   /**
    * 엑셀 대량 입고에서 온 행이면 그 행 ID. DB가 (import_row_id) 유니크로 같은
    * 행의 두 번째 입고를 거부한다 — 탭 두 개/재접속 자동재개가 겹쳐도 재고가
@@ -409,7 +421,13 @@ export async function recordScanAction(input: {
       row.status === "REJECTED"
         ? { status: "REJECTED", productId: null, autoCreated: null }
         : row.scan_id
-          ? await finishRecordedScan(supabase, { scanId: String(row.scan_id), status: String(row.status), gtin })
+          ? await finishRecordedScan(supabase, {
+              scanId: String(row.scan_id),
+              status: String(row.status),
+              gtin,
+              partHint: input.partHint?.trim().slice(0, 40) || null,
+              storageHint: input.storageHint === "냉장" || input.storageHint === "냉동" ? input.storageHint : null,
+            })
           : { status: String(row.status), productId: null, autoCreated: null };
 
     row.status = finished.status;
@@ -764,6 +782,68 @@ export async function retryUnresolvedScansAction(): Promise<ActionResult<{ check
   }
 }
 
+/**
+ * 냉장/냉동이 정해지지 않아 보관된 박스(상품 확인 필요)에 사람이 냉장/냉동을 골라 준다(마이그레이션 178).
+ * 냉장/냉동은 빈 채로 두지 않는 정보라, 상품코드·전표·박스 표기 어디서도 못 정한 박스는 이렇게 사람이 정한다.
+ * 고른 값으로 다시 상품을 찾거나(전표 후보 → 같은 냉장/냉동 상품) 만든다 — 찾은 뒤 전표 판정은 지정 때와 같다.
+ */
+export async function resolveScanStorageAction(
+  scanId: string,
+  storage: "냉장" | "냉동",
+  partHint?: string | null
+): Promise<ActionResult<{ status: string; po: ScanPurchaseOrder | null; productName: string | null }>> {
+  try {
+    const { supabase } = await resolveInboundScope();
+
+    if (storage !== "냉장" && storage !== "냉동") {
+      throw new RbacError("냉장 또는 냉동을 골라주세요.");
+    }
+
+    const { data, error } = await supabase.rpc("autocreate_product_for_scan", {
+      p_scan_id: scanId,
+      p_part_hint: partHint?.trim().slice(0, 40) || null,
+      p_storage_hint: storage,
+    });
+
+    if (error) {
+      if (error.message.includes("SCAN_ALREADY_RESOLVED")) {
+        throw new RbacError("이미 처리된 입고입니다. 새로고침 후 확인해주세요.");
+      }
+
+      throw new Error(error.message);
+    }
+
+    const row = (data ?? {}) as Record<string, unknown>;
+
+    if (!row.product_id) {
+      const reason = String(row.reason ?? "");
+      const message =
+        reason === "NEEDS_CHOICE" || reason === "NO_MATCH"
+          ? "전표에서 상품을 하나로 정할 수 없습니다. 아래 목록에서 상품을 직접 골라주세요."
+          : "이 박스는 자동으로 상품을 정할 수 없습니다. 상품을 직접 골라주세요.";
+
+      throw new RbacError(message);
+    }
+
+    const { data: after } = await supabase.from("inbound_scans").select("status").eq("id", scanId).maybeSingle();
+    const po = await loadScanPurchaseOrder(supabase, scanId);
+
+    revalidatePath(REVALIDATE_PATH, "layout");
+    revalidatePath("/dashboard/products");
+
+    return {
+      success: true,
+      data: {
+        status: after?.status === "VOIDED" ? "REJECTED" : "NORMAL",
+        po,
+        productName: (row.product_name as string | null) ?? null,
+      },
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
 /** 상품 미확정(PENDING_MAPPING)/예외 건에 상품을 지정해 재고로 확정한다. */
 export interface MappingResult {
   /** 이력의 부위와 고른 상품의 부위가 다를 때 true (막지는 않는다) */
@@ -802,7 +882,10 @@ export async function resolveMappingAction(
     // 이 박스에 상품코드가 있었다면 "이 코드 = 이 상품"으로 기억한다.
     // 이력조회가 부위를 주지 않아 trace_product_map 학습이 안 걸리는 경우에도
     // 이쪽은 걸린다 — 실제로 되묻는 횟수를 줄여주는 건 이 경로다(30단계).
-    if (remember) {
+    // remember=false(발주서 후보 중에서 고른 경우)여도 상품코드 학습은 한다: 상품코드는 품목 하나(냉장/냉동 포함)를
+    // 가리키므로 다음 박스부터 되묻지 않게 해 준다. 안 하는 것은 축종·부위·등급 기준 기억(trace_product_map)뿐이다 —
+    // 그건 냉장·냉동이 섞여 올 때 다음 박스를 같은 상품으로 몰고 간다.
+    {
       const { error: learnError } = await supabase.rpc("learn_gtin_product", {
         p_scan_id: scanId,
         p_product_id: productId,

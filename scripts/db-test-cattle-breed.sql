@@ -111,7 +111,7 @@ select public.upsert_master_livestock('002900000003','individual','mtrace_livest
 select public.upsert_master_livestock('002900000004','individual','mtrace_livestock','{}'::jsonb,null,'소','등심','1++',current_date-2,'○○도축장');
 
 select public.record_inbound_scan('002900000001', 8.0, 'BARCODE_SCAN');
-select public.autocreate_product_for_scan((select id from public.inbound_scans where trace_no = '002900000001'));
+select public.autocreate_product_for_scan((select id from public.inbound_scans where trace_no = '002900000001'), NULL, '냉장');
 
 select public.record_inbound_scan('002900000002', 7.0, 'BARCODE_SCAN');
 
@@ -121,7 +121,7 @@ select pg_temp.expect('육우 스캔은 한우 상품으로 학습 매핑되지 
 
 set role authenticated;
 set request.jwt.claim.sub = 'c1c1c1c1-0000-0000-0000-000000000001';
-select public.autocreate_product_for_scan((select id from public.inbound_scans where trace_no = '002900000002'));
+select public.autocreate_product_for_scan((select id from public.inbound_scans where trace_no = '002900000002'), NULL, '냉장');
 select public.record_inbound_scan('002900000003', 6.0, 'BARCODE_SCAN');
 select public.record_inbound_scan('002900000004', 5.0, 'BARCODE_SCAN');
 reset role;
@@ -138,7 +138,7 @@ select pg_temp.expect('품종을 모르는 소(이력조회 축종 없음)는 �
 set role authenticated;
 set request.jwt.claim.sub = 'c1c1c1c1-0000-0000-0000-000000000001';
 select pg_temp.expect('품종을 모르는 소의 자동 생성은 BREED_UNKNOWN으로 거절',
-    (public.autocreate_product_for_scan((select id from public.inbound_scans where trace_no = '002900000004'))) ->> 'reason' = 'BREED_UNKNOWN');
+    (public.autocreate_product_for_scan((select id from public.inbound_scans where trace_no = '002900000004'), NULL, '냉장')) ->> 'reason' = 'BREED_UNKNOWN');
 select pg_temp.expect('list_product_options가 품종을 돌려줌',
     exists (select 1 from jsonb_array_elements(public.list_product_options('c1c1c1c1-0000-0000-0000-0000000000a1')) e where e ->> 'breed' = '육우'));
 reset role;
