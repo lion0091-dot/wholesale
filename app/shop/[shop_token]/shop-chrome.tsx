@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ShopCustomer } from "@/lib/shop/catalog-types";
 import type { Wholesaler } from "@/types/database";
+import { ShopBell } from "./shop-bell";
 
 /** 미니샵(모바일 웹 / 카카오 인앱 브라우저) 공통 레이아웃 토큰 */
 export const SHOP_MAX_WIDTH = "600px";
@@ -116,21 +117,24 @@ export function ShopHeader({
           </span>
 
           {customer.isLinked && (
-            <Link
-              href="/my-shops"
-              style={{
-                fontSize: "13px",
-                fontWeight: 800,
-                color: "#ffffff",
-                backgroundColor: "#2563eb",
-                padding: "8px 14px",
-                borderRadius: "999px",
-                textDecoration: "none",
-                whiteSpace: "nowrap",
-              }}
-            >
-              내 거래처
-            </Link>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <ShopBell />
+              <Link
+                href="/my-shops"
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 800,
+                  color: "#ffffff",
+                  backgroundColor: "#2563eb",
+                  padding: "8px 14px",
+                  borderRadius: "999px",
+                  textDecoration: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                내 거래처
+              </Link>
+            </div>
           )}
         </div>
       </div>

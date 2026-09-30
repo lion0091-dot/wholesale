@@ -47,3 +47,13 @@
   공식 코드표로 재확인 필요.
 - 라이브 마이그레이션 미적용 — 사용자가 Supabase SQL Editor에서 직접 적용 예정.
 - 실계정 라이브 검증 안 함(로컬 프로덕션 빌드로 UI 렌더링만 확인).
+
+## 고객 알림벨 — 배송 시작 (마이그레이션 182, 2026-09-30)
+
+미니샵 상단(`shop-chrome.tsx`의 `ShopHeader`)에 벨을 둔다. 단골 인증을 마친 고객에게만 보인다. **알림톡은 만들지 않았다**(벨만, 사장님 결정 — 템플릿 심사·건당 비용이 붙는다).
+
+- **알림 저장소 없음:** 알림은 주문에서 그대로 뽑는다. `orders.shipped_at`(신규)은 주문이 `shipping`이 되는 순간에만 트리거(`set_order_shipped_at`)가 찍고, 그 외 UPDATE는 옛 값으로 되돌린다(바이어 세션이 직접 덮어쓰는 것도 막힘). 기존 주문은 채우지 않았다 — 옛 배송중 주문이 첫 접속에 알림으로 몰리지 않게 하려는 것이다.
+- **읽음 표시:** `retailer_bell_reads(retailer_id, wholesaler_id, seen_at)` — 고객×공급사별 마지막 확인 시각. DB에 두므로 폰·PC 어디서 열어도 같다. RLS는 본인(`retailers.profile_id = auth.uid()`)만.
+- **동작:** `loadShopBellAction`(최근 14일·최대 10건, 새 알림 수)·`markShopBellSeenAction`(`app/shop/[shop_token]/actions.ts`). 신원은 `requireLinkedBuyer`가 auth.uid()에서 도출. 미인증·미연결은 빈 결과.
+- **이벤트는 배송 시작 하나뿐**이다. 배송완료·취소·주문 수락 등을 넣으려면 같은 방식(시각 컬럼 또는 기존 시각 재사용)으로 확장한다.
+- 테스트: `tests/integration/shop-bell.itest.ts`(3건). **실화면 클릭 검증은 아직 없다.**

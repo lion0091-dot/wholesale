@@ -866,3 +866,114 @@ export async function editOrderAction(input: EditOrderInput): Promise<EditOrderR
     };
   }
 }
+
+// ====================================================================
+// 알림벨 — 배송 시작 (바이어)
+// ====================================================================
+
+/** 벨에 보이는 기간. 이보다 오래된 배송 시작은 벨에서 내린다(주문 내역에서는 계속 보인다). */
+const SHOP_BELL_WINDOW_DAYS = 14;
+const SHOP_BELL_MAX_ITEMS = 10;
+
+export interface ShopBellItem {
+  orderId: string;
+  orderNumber: string;
+  courierCode: string | null;
+  trackingNumber: string | null;
+  shippedAt: string;
+  /** 마지막으로 벨을 연 뒤에 시작된 배송이면 true */
+  isNew: boolean;
+}
+
+export interface ShopBellResult {
+  success: boolean;
+  error?: string;
+  data?: { items: ShopBellItem[]; unseenCount: number };
+}
+
+/**
+ * 미니샵 알림벨 — 이 공급사에서 배송이 시작된 내 주문(최근 14일)과 새 알림 수.
+ * 별도 알림 테이블 없이 orders.shipped_at(배송중이 된 시각)과 마지막 확인 시각(retailer_bell_reads)으로 계산한다.
+ * 신원은 requireLinkedBuyer가 auth.uid()에서 도출하므로 남의 주문은 보이지 않는다.
+ */
+export async function loadShopBellAction(shopToken: string): Promise<ShopBellResult> {
+  try {
+    if (!UUID_PATTERN.test(shopToken ?? "")) {
+      return { success: false, error: "올바른 미니샵 주소가 아닙니다." };
+    }
+
+    const supabase = await createClient();
+    const buyer = await requireLinkedBuyer(supabase, shopToken);
+
+    const cutoff = new Date(Date.now() - SHOP_BELL_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+    const [{ data: orders, error }, { data: mark }] = await Promise.all([
+      supabase
+        .from("orders")
+        .select("id, order_number, courier_code, tracking_number, shipped_at")
+        .eq("wholesaler_id", buyer.wholesalerId)
+        .eq("retailer_id", buyer.retailerId)
+        .not("shipped_at", "is", null)
+        .gte("shipped_at", cutoff)
+        .order("shipped_at", { ascending: false })
+        .limit(SHOP_BELL_MAX_ITEMS),
+      supabase
+        .from("retailer_bell_reads")
+        .select("seen_at")
+        .eq("wholesaler_id", buyer.wholesalerId)
+        .eq("retailer_id", buyer.retailerId)
+        .maybeSingle(),
+    ]);
+
+    if (error) {
+      return { success: false, error: "알림을 불러오지 못했습니다." };
+    }
+
+    const seenAt = mark?.seen_at ? new Date(mark.seen_at as string).getTime() : null;
+
+    const items: ShopBellItem[] = (orders ?? []).map((order) => ({
+      orderId: order.id as string,
+      orderNumber: order.order_number as string,
+      courierCode: (order.courier_code as string | null) ?? null,
+      trackingNumber: (order.tracking_number as string | null) ?? null,
+      shippedAt: order.shipped_at as string,
+      isNew: seenAt === null || new Date(order.shipped_at as string).getTime() > seenAt,
+    }));
+
+    return { success: true, data: { items, unseenCount: items.filter((item) => item.isNew).length } };
+  } catch (error) {
+    if (error instanceof BuyerAuthError) {
+      // 미인증·미연결 고객에게는 벨을 그리지 않는다(오류 문구 대신 빈 결과).
+      return { success: true, data: { items: [], unseenCount: 0 } };
+    }
+
+    console.error("[Shop Bell ERROR]", error);
+
+    return { success: false, error: "알림을 불러오지 못했습니다." };
+  }
+}
+
+/** 벨을 열었을 때 호출 — 지금까지의 알림을 확인한 것으로 표시한다. */
+export async function markShopBellSeenAction(shopToken: string): Promise<{ success: boolean }> {
+  try {
+    if (!UUID_PATTERN.test(shopToken ?? "")) {
+      return { success: false };
+    }
+
+    const supabase = await createClient();
+    const buyer = await requireLinkedBuyer(supabase, shopToken);
+
+    const { error } = await supabase.from("retailer_bell_reads").upsert(
+      {
+        retailer_id: buyer.retailerId,
+        wholesaler_id: buyer.wholesalerId,
+        seen_at: new Date().toISOString(),
+      },
+      { onConflict: "retailer_id,wholesaler_id" }
+    );
+
+    return { success: !error };
+  } catch {
+    return { success: false };
+  }
+}
