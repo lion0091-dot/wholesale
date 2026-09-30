@@ -33,6 +33,7 @@ const INBOUND_TABS = [
   { label: "입고 스캔", href: "/dashboard/inbound", exact: true },
   { label: "보류함", href: "/dashboard/inbound/holds", desktopOnly: true },
   { label: "수입육 조회", href: "/dashboard/inbound/imported-lookup", desktopOnly: true },
+  { label: "명세서 보관", href: "/dashboard/inbound/statements", desktopOnly: true },
 ] as const;
 
 export function DashboardTabs() {
