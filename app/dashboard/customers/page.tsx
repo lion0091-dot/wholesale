@@ -120,14 +120,13 @@ function countByRetailer(rows: Array<{ retailer_id: string }>): Map<string, numb
 }
 
 export default async function DashboardCustomersPage() {
-  const scope = await getSupplierScope();
+  // scope와 초대장 발부 자격(is_verified)은 서로 무관한 별도 조회 — 병렬로 묶는다.
+  const [scope, account] = await Promise.all([getSupplierScope(), getSupplierAccount()]);
 
   if (isSuperAdminWithoutScope(scope)) {
     return <AdminScopeNotice />;
   }
 
-  // 초대장 발부는 행정 승인(is_verified) 후에만 열린다.
-  const account = await getSupplierAccount();
   const canIssueInvite = account?.canIssueInvite ?? false;
   const inviteRestriction = account
     ? describeInviteRestriction(account)

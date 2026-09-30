@@ -113,33 +113,38 @@ export default async function DashboardInvitesPage() {
   const canIssue = account.canIssueInvite;
   const statusBadge = STATUS_LABELS[account.supplierStatus ?? "pending"] ?? STATUS_LABELS.pending;
 
-  const alimtalkSettingsResult = account.wholesalerId ? await getAlimtalkSettingsAction() : null;
+  // 서로 무관한 설정 5개 — 순차 await면 각자 내부에서 getSupplierScope()를 또 불러
+  // 한 화면 로드에 인증 조회까지 최대 10회 안팎 순차 DB 왕복이 쌓인다. 병렬로 묶는다.
+  const [
+    alimtalkSettingsResult,
+    pgSettingsResult,
+    negotiationSettingsResult,
+    orderPolicySettingsResult,
+    weightToleranceResult,
+  ] = account.wholesalerId
+    ? await Promise.all([
+        getAlimtalkSettingsAction(),
+        getPgSettingsAction(),
+        getNegotiationSettingsAction(),
+        getOrderPolicySettingsAction(),
+        getWeightToleranceSettingsAction(),
+      ])
+    : [null, null, null, null, null];
+
   const alimtalkSettings =
     alimtalkSettingsResult?.success && alimtalkSettingsResult.data
       ? alimtalkSettingsResult.data
       : null;
-
-  const pgSettingsResult = account.wholesalerId ? await getPgSettingsAction() : null;
   const pgSettings =
     pgSettingsResult?.success && pgSettingsResult.data ? pgSettingsResult.data : null;
-
-  const negotiationSettingsResult = account.wholesalerId
-    ? await getNegotiationSettingsAction()
-    : null;
   const negotiationSettings =
     negotiationSettingsResult?.success && negotiationSettingsResult.data
       ? negotiationSettingsResult.data
       : null;
-
-  const orderPolicySettingsResult = account.wholesalerId
-    ? await getOrderPolicySettingsAction()
-    : null;
   const orderPolicySettings =
     orderPolicySettingsResult?.success && orderPolicySettingsResult.data
       ? orderPolicySettingsResult.data
       : null;
-
-  const weightToleranceResult = account.wholesalerId ? await getWeightToleranceSettingsAction() : null;
   const weightToleranceSettings =
     weightToleranceResult?.success && weightToleranceResult.data ? weightToleranceResult.data : null;
 

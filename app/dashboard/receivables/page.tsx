@@ -25,10 +25,15 @@ export default async function DashboardReceivablesPage() {
 
   let groups: ReceivableCustomerGroup[] = [];
 
+  // 리마인드 발송 버튼은 실제로 보낼 수 있는 상태(계정/비밀번호/발신정보/이 템플릿 코드까지
+  // 전부 등록됨)일 때만 보여준다 — 절반만 설정된 상태에서 눌렀다가 실패하는 걸 막는다.
+  // 아래 두 거래처/주문 조회와도 서로 무관해 같이 병렬로 묶는다.
+  let alimtalkSettingsResult: Awaited<ReturnType<typeof getAlimtalkSettingsAction>> | null = null;
+
   if (scope?.wholesalerId) {
     const supabase = await createClient();
 
-    const [{ data: relations }, { data: creditOrders }] = await Promise.all([
+    const [{ data: relations }, { data: creditOrders }, alimtalkResult] = await Promise.all([
       supabase
         .from("wholesaler_retailers")
         .select(
@@ -42,17 +47,16 @@ export default async function DashboardReceivablesPage() {
         .eq("payment_method", "on_credit")
         .is("settled_at", null)
         .neq("status", "cancelled"),
+      getAlimtalkSettingsAction(),
     ]);
 
     groups = buildReceivableGroups(
       (relations ?? []) as ReceivableRelationRow[],
       (creditOrders ?? []) as ReceivableCreditOrderRow[]
     );
+    alimtalkSettingsResult = alimtalkResult;
   }
 
-  // 리마인드 발송 버튼은 실제로 보낼 수 있는 상태(계정/비밀번호/발신정보/이 템플릿 코드까지
-  // 전부 등록됨)일 때만 보여준다 — 절반만 설정된 상태에서 눌렀다가 실패하는 걸 막는다.
-  const alimtalkSettingsResult = scope?.wholesalerId ? await getAlimtalkSettingsAction() : null;
   const alimtalkSettings =
     alimtalkSettingsResult?.success && alimtalkSettingsResult.data ? alimtalkSettingsResult.data : null;
   const alimtalkReady = Boolean(

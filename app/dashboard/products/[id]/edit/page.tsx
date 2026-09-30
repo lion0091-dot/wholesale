@@ -15,14 +15,14 @@ interface EditProductPageProps {
 
 export default async function EditProductPage({ params }: EditProductPageProps) {
   const { id } = await params;
-  const scope = await getSupplierScope();
   const supabase = await createClient();
-  const { data: categoryRows } = await supabase
-    .from("product_categories")
-    .select("name")
-    .order("sort_order", { ascending: true });
+  // scope·카테고리·부위 목록은 서로 무관하다 — 병렬로 묶는다.
+  const [scope, { data: categoryRows }, subcategoriesByCategory] = await Promise.all([
+    getSupplierScope(),
+    supabase.from("product_categories").select("name").order("sort_order", { ascending: true }),
+    fetchSubcategoriesByCategory(supabase),
+  ]);
   const categories = ((categoryRows ?? []) as Array<{ name: string }>).map((row) => row.name);
-  const subcategoriesByCategory = await fetchSubcategoriesByCategory(supabase);
 
   if (!scope?.wholesalerId) {
     notFound();

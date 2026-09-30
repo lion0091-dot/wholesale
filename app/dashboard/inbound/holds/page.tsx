@@ -59,14 +59,23 @@ export default async function InboundHoldsPage() {
   if (scope?.wholesalerId) {
     const supabase = await createClient();
 
-    const { data: scanRows } = await supabase
-      .from("inbound_scans")
-      .select("id, trace_no, weight, po_state, created_at, product_id, supplier_id, products(name), suppliers(name)")
-      .eq("wholesaler_id", scope.wholesalerId)
-      .eq("status", "NORMAL")
-      .in("po_state", ["UNLISTED_HELD", "OVER_HELD"])
-      .order("created_at", { ascending: false })
-      .limit(100);
+    // rejectionRows는 scanRows/fillRows와 무관한 별도 조회라 같이 병렬로 묶는다.
+    const [{ data: scanRows }, { data: rejectionRows }] = await Promise.all([
+      supabase
+        .from("inbound_scans")
+        .select("id, trace_no, weight, po_state, created_at, product_id, supplier_id, products(name), suppliers(name)")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .eq("status", "NORMAL")
+        .in("po_state", ["UNLISTED_HELD", "OVER_HELD"])
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabase
+        .from("inbound_rejections")
+        .select("id, trace_no, weight, reason, created_at, supplier_id, product_id, products(name), suppliers(name)")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .order("created_at", { ascending: false })
+        .limit(50),
+    ]);
 
     const scans = (scanRows ?? []) as unknown as ScanRow[];
     const scanIds = scans.map((row) => row.id);
@@ -96,13 +105,6 @@ export default async function InboundHoldsPage() {
       supplierName: oneName(row.suppliers),
       unassignedWeight: Number(row.weight) - (assignedByScanId.get(row.id) ?? 0),
     }));
-
-    const { data: rejectionRows } = await supabase
-      .from("inbound_rejections")
-      .select("id, trace_no, weight, reason, created_at, supplier_id, product_id, products(name), suppliers(name)")
-      .eq("wholesaler_id", scope.wholesalerId)
-      .order("created_at", { ascending: false })
-      .limit(50);
 
     rejections = ((rejectionRows ?? []) as unknown as RejectionRow[]).map((row) => ({
       id: row.id,

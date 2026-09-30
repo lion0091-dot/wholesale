@@ -8,13 +8,12 @@ export const metadata = {
 
 export default async function NewProductPage() {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("product_categories")
-    .select("name")
-    .order("sort_order", { ascending: true });
+  const [{ data }, subcategoriesByCategory] = await Promise.all([
+    supabase.from("product_categories").select("name").order("sort_order", { ascending: true }),
+    fetchSubcategoriesByCategory(supabase),
+  ]);
 
   const categories = ((data ?? []) as Array<{ name: string }>).map((row) => row.name);
-  const subcategoriesByCategory = await fetchSubcategoriesByCategory(supabase);
 
   return (
     <ProductFormView
