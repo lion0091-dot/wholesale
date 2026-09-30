@@ -26,6 +26,9 @@ insert into public.orders (id,wholesaler_id,retailer_id,order_number,total_amoun
 insert into public.supplier_statement_files (wholesaler_id,file_name,storage_path) values
  ('a6999999-0000-0000-0000-000000000001','a.pdf','a6999999-0000-0000-0000-000000000001/a.pdf');
 
+insert into public.suppliers (id,wholesaler_id,name,name_key,phone,note) values
+ ('e6999999-0000-0000-0000-000000000001','a6999999-0000-0000-0000-000000000001','발주처1','발주처1','010-1','메모'),
+ ('e6999999-0000-0000-0000-000000000002','a6999999-0000-0000-0000-000000000002','발주처2','발주처2','010-2','메모2');
 create temp table paths (p text); insert into paths select * from public.purge_expired_withdrawn_personal_data();
 insert into results (what,expected,result) values
  ('반환된 사업자등록증 경로','96999999/lic',(select string_agg(p,',') from paths)),
@@ -41,6 +44,9 @@ grant all on results to authenticated; set role authenticated;
 create function pg_temp.try(p_sql text) returns text language plpgsql as $$ begin execute p_sql; return 'ALLOWED'; exception when others then return 'DENIED'; end $$;
 insert into results (what,expected,result) values ('일반 사용자 호출 거부','DENIED',pg_temp.try($q$select * from public.purge_expired_withdrawn_personal_data()$q$));
 reset role;
+insert into results (what,expected,result) values
+ ('W1 발주처 전화·메모 파기, 상호 유지','null/null/발주처1',(select coalesce(phone,'null')||'/'||coalesce(note,'null')||'/'||name from public.suppliers where id='e6999999-0000-0000-0000-000000000001')),
+ ('W2(유지) 발주처 그대로','010-2/메모2',(select phone||'/'||note from public.suppliers where id='e6999999-0000-0000-0000-000000000002'));
 -- 168: 식별정보 정리 + 고객 탈퇴 시 상호 유지
 insert into auth.identities (provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at)
  values ('k123','96999999-0000-0000-0000-000000000002','{"sub":"k123","email":"x@k.com","name":"닉"}','kakao',now(),now(),now());
