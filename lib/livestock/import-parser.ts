@@ -6,6 +6,7 @@
  *   ① CSV 파일 업로드 (엑셀 > 다른 이름으로 저장 > CSV)
  *   ② 엑셀에서 범위를 복사해 붙여넣기 (탭 구분 TSV)
  *
+ * 칸 순서: 이력번호, 중량, 냉장/냉동(선택).
  * 구분자는 첫 줄을 보고 자동 판별한다. 헤더가 있으면 건너뛴다.
  * 이력번호는 GS1-128/QR로 들어와도 되게 barcode-parser를 태운다 — 엑셀에
  * 스캐너로 찍어 넣은 값이 그대로 들어있는 경우가 흔하다.
@@ -18,6 +19,8 @@ export interface ImportRow {
   rowNo: number;
   traceNo: string;
   weight: number | null;
+  /** 셋째 칸의 냉장/냉동 표기 (없거나 알 수 없으면 null) */
+  storageHint: "냉장" | "냉동" | null;
   /** 이 줄을 처리할 수 없는 이유 (있으면 업로드에서 제외) */
   error: string | null;
   raw: string;
@@ -91,6 +94,17 @@ function parseWeight(value: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+/** "냉장", "냉동", "chilled", "frozen" 등을 두 값 중 하나로 바꾼다. 못 알아보면 null. */
+export function parseStorageHint(value: string): "냉장" | "냉동" | null {
+  const text = value.trim().toLowerCase();
+
+  if (!text) return null;
+  if (text.includes("냉동") || text.startsWith("froz")) return "냉동";
+  if (text.includes("냉장") || text.startsWith("chill")) return "냉장";
+
+  return null;
+}
+
 export function parseImportTable(text: string): ParsedImport {
   const lines = text.replace(/\r\n?/g, "\n").split("\n").filter((line) => line.trim() !== "");
 
@@ -113,18 +127,24 @@ export function parseImportTable(text: string): ParsedImport {
     // 중량은 둘째 칸을 먼저 보고, 없으면 바코드에 실려 있던 값을 쓴다.
     const weight = parseWeight(cells[1] ?? "") ?? parsed.weightKg;
 
+    const cellHint = (cells[2] ?? "").trim();
+    const storageHint = parseStorageHint(cellHint);
+
     let error: string | null = null;
 
     if (!parsed.traceNo) {
       error = "이력번호를 읽을 수 없습니다";
     } else if (!weight) {
       error = "중량이 없습니다";
+    } else if (cellHint && !storageHint) {
+      error = "냉장/냉동 칸을 읽을 수 없습니다 (냉장 또는 냉동으로 적어주세요)";
     }
 
     rows.push({
       rowNo: index + 1,
       traceNo: parsed.traceNo ?? (cells[0] ?? "").trim(),
       weight,
+      storageHint,
       error,
       raw: line,
     });

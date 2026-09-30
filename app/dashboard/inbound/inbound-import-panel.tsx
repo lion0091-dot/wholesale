@@ -105,6 +105,7 @@ export function InboundImportPanel() {
         rowNo: row.rowNo,
         traceNo: row.traceNo,
         weight: row.weight as number,
+        storageHint: row.storageHint,
       })),
     });
 
@@ -239,7 +240,7 @@ export function InboundImportPanel() {
               }}
             />
             <p style={{ fontSize: "11px", color: "#94a3b8", margin: "4px 0 0" }}>
-              첫 칸은 이력번호(바코드 값 그대로도 됩니다), 둘째 칸은 중량입니다. 머리글 줄은 자동으로 건너뜁니다.
+              첫 칸은 이력번호(바코드 값 그대로도 됩니다), 둘째 칸은 중량, 셋째 칸은 냉장 또는 냉동입니다(소·돼지·닭·오리는 꼭 적어주세요. 비우면 \"상품 확인 필요\"로 보관됩니다). 머리글 줄은 자동으로 건너뜁니다.
             </p>
           </div>
 

@@ -1125,7 +1125,7 @@ async function countImportRows(
 
 export async function createImportJobAction(input: {
   fileName: string;
-  rows: Array<{ rowNo: number; traceNo: string; weight: number }>;
+  rows: Array<{ rowNo: number; traceNo: string; weight: number; storageHint?: "냉장" | "냉동" | null }>;
 }): Promise<ActionResult<ImportJobProgress>> {
   try {
     const { supabase, wholesalerId, context } = await resolveInboundScope();
@@ -1162,6 +1162,7 @@ export async function createImportJobAction(input: {
         row_no: row.rowNo,
         trace_no: row.traceNo,
         weight: row.weight,
+        storage_hint: row.storageHint === "냉장" || row.storageHint === "냉동" ? row.storageHint : null,
       }))
     );
 
@@ -1202,7 +1203,7 @@ export async function processImportChunkAction(
 
     const { data: pendingRows } = await supabase
       .from("inbound_import_rows")
-      .select("id, row_no, trace_no, weight")
+      .select("id, row_no, trace_no, weight, storage_hint")
       .eq("job_id", jobId)
       .eq("status", "PENDING")
       .order("row_no", { ascending: true })
@@ -1245,6 +1246,7 @@ export async function processImportChunkAction(
         scanType: "EXCEL",
         confirmDuplicate: true,
         importRowId: rowId,
+        storageHint: row.storage_hint === "냉장" || row.storage_hint === "냉동" ? row.storage_hint : null,
       });
 
       const scanned = result.success && result.data && "scanId" in result.data ? result.data : null;
