@@ -5,7 +5,7 @@
  * 강조한다("다 강조하면 강조가 아니다"). 나머지는 작은 링크로 아래에 둔다. 문제가 하나도 없으면
  * 카드 자체를 숨긴다(상품 관리는 입고처럼 항상 할 일이 있는 화면이 아니다).
  *
- * 우선순위(급한 순): 상품이 아예 없음(초기 설정) → 재입고했는데 주문가 안 풀림(매출 손실 중) →
+ * 우선순위(급한 순): 상품이 아예 없음(초기 설정) → 재입고했는데 주문이 안 풀림(매출 손실 중) →
  * 판매가 없어 고객에게 안 보임(매출 기회 막힘) → 부위가 비어 있음(관리 부정확) →
  * 핫딜 매진(정상 동작이지만 마무리 확인 필요) → 핫딜 매진 임박(정보성).
  */
@@ -72,11 +72,11 @@ function buildCandidates(input: ProductsNextStepInput): Candidate[] {
     {
       key: "auto-stopped",
       count: input.autoStoppedCount,
-      title: `재입고됐는데도 주문가 막힌 상품이 ${input.autoStoppedCount}개 있습니다`,
-      detail: "재고가 0이 되면 자동으로 주문가 멈추고, 다시 채워도 저절로 안 풀립니다. 지금 이대로면 고객이 주문할 수 없습니다 — 확인 후 직접 다시 여세요.",
+      title: `재입고됐는데도 주문이 막힌 상품이 ${input.autoStoppedCount}개 있습니다`,
+      detail: "재고가 0이 되면 자동으로 주문이 멈추고, 다시 채워도 저절로 안 풀립니다. 지금 이대로면 고객이 주문할 수 없습니다 — 확인 후 직접 다시 여세요.",
       buttonLabel: "확인하러 가기",
       href: PRODUCTS_ANCHORS.autoStopped,
-      linkLabel: `주문가 막힌 상품 ${input.autoStoppedCount}개 확인하기`,
+      linkLabel: `주문이 막힌 상품 ${input.autoStoppedCount}개 확인하기`,
     },
     {
       key: "unpriced",

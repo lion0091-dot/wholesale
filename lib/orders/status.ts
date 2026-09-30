@@ -145,7 +145,7 @@ export const ORDER_STATUS_ACTIONS: Record<OrderStatus, StatusActionConfig> = {
   cancel_rejected: {
     status: "cancel_rejected",
     label: "취소 요청 반려",
-    confirmMessage: "취소 요청을 반려하시겠습니까? 주문는 기존 일정대로 진행됩니다.",
+    confirmMessage: "취소 요청을 반려하시겠습니까? 주문은 기존 일정대로 진행됩니다.",
     tone: "primary",
   },
   cancelled: {

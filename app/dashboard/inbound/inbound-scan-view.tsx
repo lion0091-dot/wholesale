@@ -685,14 +685,22 @@ export function InboundScanView({
   };
 
   const handleViewLocationPhoto = async (photoPath: string) => {
+    // 서버에서 주소를 받은 뒤 window.open을 부르면 모바일 사파리·카톡 인앱이 팝업으로 보고 막는다 — 눌린 즉시 빈 창을 먼저 연다.
+    const popup = window.open("", "_blank");
     const result = await getScanLocationPhotoUrlAction(photoPath);
 
     if (!result.success || !result.data) {
+      popup?.close();
       setError(result.error ?? "사진을 불러오지 못했습니다.");
       return;
     }
 
-    window.open(result.data, "_blank", "noopener,noreferrer");
+    if (popup) {
+      popup.opener = null;
+      popup.location.href = result.data;
+    } else {
+      window.location.href = result.data;
+    }
   };
 
   const handleWeightKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {

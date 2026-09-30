@@ -889,7 +889,7 @@ export function CustomerTable({
                 }}
               />
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                0으로 설정하면 이 거래처는 외상 주문를 선택할 수 없습니다.
+                0으로 설정하면 이 거래처는 외상 주문을 선택할 수 없습니다.
               </p>
             </div>
 

@@ -82,7 +82,7 @@ export function CartView({ catalog }: CartViewProps) {
               marginBottom: "12px",
             }}
           >
-            ✏️ 기존 주문서를 수정하는 중입니다. 저장하면 새 주문가 아니라 이 주문서의 품목이
+            ✏️ 기존 주문서를 수정하는 중입니다. 저장하면 새 주문이 아니라 이 주문서의 품목이
             바뀝니다.
           </div>
         )}

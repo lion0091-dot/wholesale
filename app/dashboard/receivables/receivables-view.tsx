@@ -72,7 +72,7 @@ export function ReceivablesView({ groups, alimtalkReady = false }: ReceivablesVi
     const orderIds = group.orders.filter((order) => selected.has(order.id)).map((order) => order.id);
 
     if (orderIds.length === 0) {
-      setErrorByGroup((prev) => ({ ...prev, [group.retailerId]: "정산할 주문를 선택해주세요." }));
+      setErrorByGroup((prev) => ({ ...prev, [group.retailerId]: "정산할 주문을 선택해주세요." }));
       return;
     }
 
@@ -179,7 +179,7 @@ export function ReceivablesView({ groups, alimtalkReady = false }: ReceivablesVi
           textAlign: "center",
         }}
       >
-        <p style={{ fontSize: "13px", color: "#94a3b8" }}>미정산 외상 주문가 없습니다.</p>
+        <p style={{ fontSize: "13px", color: "#94a3b8" }}>미정산 외상 주문이 없습니다.</p>
       </section>
     );
   }

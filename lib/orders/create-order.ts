@@ -150,7 +150,7 @@ export async function createOrderWithItems(
       quantity: line.quantity,
       subtotal_amount: lineSubtotal(line),
       requested_unit_price: line.requestedUnitPrice ?? null,
-      // 이 주문가 핫딜가로 팔린 줄인지 스냅샷 — hot_deal_active가 나중에 바뀌어도
+      // 이 주문이 핫딜가로 팔린 줄인지 스냅샷 — hot_deal_active가 나중에 바뀌어도
       // 이 주문이 핫딜 소비였는지는 변하지 않아야 한도 반환(취소 시)이 정확하다.
       is_hot_deal: line.isHotDeal,
     }))

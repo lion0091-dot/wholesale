@@ -732,6 +732,11 @@ export async function deleteProductAction(productId: string): Promise<ActionResu
       throw new RbacError("삭제 권한이 없거나 해당 상품을 찾을 수 없습니다.");
     }
 
+    // 상품이 지워졌으니 공개 버킷에 남은 사진도 치운다. 실패해도 삭제 결과에는 영향이 없다(고아 파일일 뿐).
+    if (wholesalerId) {
+      await supabase.storage.from("product-images").remove([`${wholesalerId}/${productId}`]);
+    }
+
     revalidatePath(REVALIDATE_PATH);
     return { success: true };
   } catch (error) {
@@ -1041,7 +1046,7 @@ export async function uploadProductImageAction(
 
     const { error } = await supabase
       .from("products")
-      .update({ image_url: url, updated_at: new Date().toISOString() })
+      .update({ image_url: url })
       .eq("id", productId);
 
     if (error) {
@@ -1079,7 +1084,7 @@ export async function removeProductImageAction(productId: string): Promise<Actio
 
     const { error } = await supabase
       .from("products")
-      .update({ image_url: null, updated_at: new Date().toISOString() })
+      .update({ image_url: null })
       .eq("id", productId);
 
     if (error) {

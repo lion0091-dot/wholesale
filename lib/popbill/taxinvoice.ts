@@ -228,7 +228,7 @@ export async function issueTaxInvoice(
     // 두 번 눌러도 국세청에 이중 접수되지 않는다. 사유를 알려 정정 발행으로 안내한다.
     if (insertError?.message.includes("idx_tax_invoice_issuances_one_live_original")) {
       throw new Error(
-        "이 주문는 이미 계산서 발행이 진행 중이거나 발행 완료되었습니다. 내용을 바꿔야 하면 '정정 발행'을 이용해주세요."
+        "이 주문은 이미 계산서 발행이 진행 중이거나 발행 완료되었습니다. 내용을 바꿔야 하면 '정정 발행'을 이용해주세요."
       );
     }
 

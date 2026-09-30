@@ -140,7 +140,7 @@ export default async function DashboardStatsPage({
           <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>판매 통계</h1>
         </div>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          축종 → 부위 기준으로 판매량/매출을 집계합니다. 취소된 주문는 제외됩니다.
+          축종 → 부위 기준으로 판매량/매출을 집계합니다. 취소된 주문은 제외됩니다.
         </p>
       </header>
 

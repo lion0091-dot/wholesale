@@ -19,7 +19,7 @@ export interface ActionResult<T = undefined> {
 
 /**
  * 주문이력 "대상 찾기" 전용 조회 — app/dashboard/orders/actions.ts의
- * getHistoricalOrdersAction과 달리 상태 무관 전체 주문를 대상으로 한다
+ * getHistoricalOrdersAction과 달리 상태 무관 전체 주문을 대상으로 한다
  * (감사이력은 진행 중인 주문에도 필요하다 — 완료/취소된 것만 볼 이유가 없음).
  */
 export async function listOrdersForHistoryAction(

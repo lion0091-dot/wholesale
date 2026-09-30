@@ -497,7 +497,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 lineHeight: 1.6,
               }}
             >
-              ⚠️ 카카오 계정 정보로만 가입되어 있어요. 아래 상호명·배송지는 이번 주문를
+              ⚠️ 카카오 계정 정보로만 가입되어 있어요. 아래 상호명·배송지는 이번 주문을
               접수하면 앞으로의 기본 정보로 저장됩니다 — 사업자등록번호 등록이나 나중에
               다시 고치는 건{" "}
               <Link href="/my-shops" style={{ fontWeight: 700, color: "#b45309" }}>
@@ -673,7 +673,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
             }}
           >
             {isEditMode ? (
-              <>ℹ️ 저장하면 새 주문가 아니라 기존 주문서({editOrderNumber ?? "..."})의 품목이 바뀝니다. 최종 단가는 저장 시점의 계약 단가로 다시 계산됩니다.</>
+              <>ℹ️ 저장하면 새 주문이 아니라 기존 주문서({editOrderNumber ?? "..."})의 품목이 바뀝니다. 최종 단가는 저장 시점의 계약 단가로 다시 계산됩니다.</>
             ) : (
               <>
                 ℹ️ 주문서 전송 즉시 <strong>{wholesaler.business_name}</strong> 대표님께 카카오 알림톡이 발송됩니다.

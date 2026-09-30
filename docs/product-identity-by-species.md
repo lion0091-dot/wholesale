@@ -106,6 +106,6 @@
 ## 상품 사진 (2026-09-30, 마이그 184)
 
 - `products.image_url` + public 버킷 `product-images`(경로 `<wholesaler_id>/<product_id>`). 쓰기 권한은 미니샵 썸네일과 같은 판정(`can_manage_wholesaler_thumbnail` — 대표·조직 owner/manager·super_admin)을 재사용.
-- 업로드는 상품 **수정 화면**(`/dashboard/products/[id]/edit`) 위쪽 패널에서만(신규 등록 화면에는 없음 — 상품을 먼저 저장한 뒤 올린다). 브라우저가 긴 변 1200px JPEG로 줄여 올리고, 서버는 4MB·JPG/PNG/WEBP만 받는다.
+- 업로드는 상품 **수정 화면**(`/dashboard/products/[id]/edit`) 위쪽 패널에서만(신규 등록 화면에는 없음 — 상품을 먼저 저장한 뒤 올린다). 브라우저가 긴 변 480px JPEG로 줄여 올리고, 서버는 4MB·JPG/PNG/WEBP만 받는다.
 - 미니샵 상품 카드(`shop-view.tsx` ProductCard) 왼쪽에 72px 사진. 없으면 지금처럼 글자만. 장바구니·결제 화면에는 아직 안 나온다.
 - 로컬 DB에서 열·정책·버킷·폴더 권한(본인 폴더 허용/타사 폴더 거부) 확인, 라이브 적용 완료. 실화면 업로드 클릭 검증은 아직 안 함.

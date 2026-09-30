@@ -82,7 +82,7 @@ export function describeCancelProgress(order: ShopOrder): string | null {
     case "cancel_requested":
       return "공급사에 취소 요청이 접수되었습니다. 승인 시 취소가 확정됩니다.";
     case "cancel_rejected":
-      return "공급사가 취소 요청을 반려했습니다. 주문는 기존 일정대로 진행됩니다.";
+      return "공급사가 취소 요청을 반려했습니다. 주문은 기존 일정대로 진행됩니다.";
     case "cancelled":
       return "주문이 최종 취소되었습니다.";
     default:

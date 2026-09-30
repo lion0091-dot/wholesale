@@ -9,9 +9,9 @@ interface ProductImagePanelProps {
   currentImageUrl?: string | null;
 }
 
-const MAX_SIDE = 1200;
+const MAX_SIDE = 480;
 
-/** 폰으로 찍은 큰 사진도 올릴 수 있게 긴 변 1200px, JPEG로 줄인다. 실패하면 원본을 그대로 보낸다(서버가 4MB로 다시 거른다). */
+/** 폰으로 찍은 큰 사진도 올릴 수 있게 긴 변 480px, JPEG로 줄인다(카드에는 72px로 보이므로 충분하고, 상품이 많아도 미니샵이 무거워지지 않는다). 실패하면 원본을 그대로 보낸다(서버가 4MB로 다시 거른다). */
 async function shrinkImage(file: File): Promise<File> {
   try {
     const bitmap = await createImageBitmap(file);

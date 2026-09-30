@@ -246,7 +246,7 @@ export default async function DashboardProductsPage() {
             color: "#991b1b",
           }}
         >
-          ⛔ 상품 {autoStoppedProducts.length}개가 재고 0으로 주문가 자동정지됐습니다. 재입고해도 자동으로
+          ⛔ 상품 {autoStoppedProducts.length}개가 재고 0으로 주문이 자동정지됐습니다. 재입고해도 자동으로
           다시 열리지 않으니, 상품 수정 화면에서 확인 후 직접 재개해주세요.
           <ul style={{ margin: "8px 0 0", paddingLeft: "18px" }}>
             {autoStoppedProducts.map((product) => (

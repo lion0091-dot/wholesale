@@ -114,7 +114,7 @@ export const ALIMTALK_TEMPLATE_REFERENCE_TEXT: Record<
 #{바이어상호} 담당자님, #{공급사명}입니다.
 
 미수금이 있어 외상 주문이 접수되지 않았습니다.
-미수금을 빠르게 정산해 주지 않으시면 앞으로도 주문가 계속 제한됩니다.
+미수금을 빠르게 정산해 주지 않으시면 앞으로도 주문이 계속 제한됩니다.
 정산 후 다시 이용해주시기 바랍니다.`,
   },
   creditLimitChangedWholesaler: {
@@ -140,7 +140,7 @@ export const ALIMTALK_TEMPLATE_REFERENCE_TEXT: Record<
 
 #{바이어상호} 담당자님, #{공급사명}입니다.
 
-현재 거래가 일시 제한되어 주문가 어렵습니다.
+현재 거래가 일시 제한되어 주문이 어렵습니다.
 자세한 사항은 공급사에 직접 문의해주세요.`,
   },
   retailerResumed: {
@@ -149,7 +149,7 @@ export const ALIMTALK_TEMPLATE_REFERENCE_TEXT: Record<
 
 #{공급사명} 대표님, #{처리자}님이 #{바이어상호}와의 거래를 재개하였습니다.
 
-다시 주문가 가능한 상태입니다.`,
+다시 주문이 가능한 상태입니다.`,
   },
   retailerResumedRetailer: {
     title: "거래 재개 안내",

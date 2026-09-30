@@ -632,7 +632,7 @@ ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
  * sendCreditLimitExceededNotificationToWholesaler와 같은 이벤트에서 함께 트리거되지만
  * 수신자가 다르다(공급사 vs 바이어). 바이어 화면에서는 체크아웃 시도 중에만 에러
  * 문구가 보이고 그 외엔 알 방법이 없었던 문제를 보완한다. "여신 한도"라는 용어와
- * 정확한 한도/미수금 금액은 넣지 않고, 정산을 서두르지 않으면 주문가 계속 막힌다는
+ * 정확한 한도/미수금 금액은 넣지 않고, 정산을 서두르지 않으면 주문이 계속 막힌다는
  * 행동 유도만 담는다.
  */
 export async function sendCreditLimitExceededNotificationToRetailer(
@@ -643,7 +643,7 @@ export async function sendCreditLimitExceededNotificationToRetailer(
 ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
 
 미수금이 있어 외상 주문이 접수되지 않았습니다.
-미수금을 빠르게 정산해 주지 않으시면 앞으로도 주문가 계속 제한됩니다.
+미수금을 빠르게 정산해 주지 않으시면 앞으로도 주문이 계속 제한됩니다.
 정산 후 다시 이용해주시기 바랍니다.`;
 
   return dispatchAlimtalk({
@@ -710,7 +710,7 @@ ${payload.wholesalerName} 대표님, ${payload.actorName}님이 ${payload.retail
  * 거래처(식당) 대상 '거래 제한' 알림톡.
  *
  * "여신 한도" 알림과 같은 원칙 — 정지 사유는 내부 사정(대금 미납 등)일 수 있어
- * 고객에게는 노출하지 않고, 주문가 제한됐다는 결과와 문의 유도만 담는다.
+ * 고객에게는 노출하지 않고, 주문이 제한됐다는 결과와 문의 유도만 담는다.
  */
 export async function sendRetailerBlockedNotificationToRetailer(
   payload: RetailerStatusRetailerNotificationPayload
@@ -719,7 +719,7 @@ export async function sendRetailerBlockedNotificationToRetailer(
 
 ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
 
-현재 거래가 일시 제한되어 주문가 어렵습니다.
+현재 거래가 일시 제한되어 주문이 어렵습니다.
 자세한 사항은 공급사에 직접 문의해주세요.`;
 
   return dispatchAlimtalk({
@@ -741,7 +741,7 @@ export async function sendRetailerResumedNotificationToWholesaler(
 
 ${payload.wholesalerName} 대표님, ${payload.actorName}님이 ${payload.retailerName}와의 거래를 재개하였습니다.
 
-다시 주문가 가능한 상태입니다.`;
+다시 주문이 가능한 상태입니다.`;
 
   return dispatchAlimtalk({
     wholesalerId: payload.wholesalerId,

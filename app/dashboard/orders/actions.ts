@@ -106,7 +106,7 @@ async function resolveOrderScope() {
   }
 
   if (!wholesalerId) {
-    throw new RbacError("공급사 업체 정보가 없어 주문를 처리할 수 없습니다.");
+    throw new RbacError("공급사 업체 정보가 없어 주문을 처리할 수 없습니다.");
   }
 
   return { supabase, context, wholesalerId };
@@ -417,7 +417,7 @@ export async function getHistoricalOrdersAction(
 
 /**
  * 배송완료/취소 목록에서 주문번호 또는 거래처(소매) 상호로 검색한다.
- * 조회 구간(30일/3개월)에 갇히면 예전 주문를 못 찾으므로, 검색은 전체 기간을
+ * 조회 구간(30일/3개월)에 갇히면 예전 주문을 못 찾으므로, 검색은 전체 기간을
  * 대상으로 하되 결과가 무한정 커지는 걸 막기 위해 ORDER_HISTORY_SEARCH_LIMIT으로
  * 상한만 둔다(페이지네이션 없음 — 특정 건을 찾는 용도이지 목록 훑어보기가 아니라서).
  *

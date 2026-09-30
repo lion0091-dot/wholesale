@@ -48,7 +48,7 @@ export function QuickOrdersView({ orders }: { orders: OrderRow[] }) {
 
       {filtered.length === 0 ? (
         <p style={{ fontSize: "13px", color: "#94a3b8", margin: 0 }}>
-          {orders.length === 0 ? "처리할 진행중 주문가 없습니다." : "검색 결과가 없습니다."}
+          {orders.length === 0 ? "처리할 진행중 주문이 없습니다." : "검색 결과가 없습니다."}
         </p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
