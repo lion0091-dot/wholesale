@@ -73,8 +73,8 @@ IT에 어두운 공급사 사장님 기준으로 헷갈리기 가장 쉬운 지�
 
 ## 발송 로그 + 플랫폼 채널 발송비 안분 청구 (2026-09-30, 마이그 183)
 
-- 약관 제5조 5~7항(사장님 결정): 입점 승인일부터 3개월은 플랫폼이 부담, 이후 플랫폼 대표 채널 총 발송비를 공급사별 접수 건수 비율로 **안분** 청구. 자체 계정 발송분은 제외. 변호사 자문서 8-4절(16·17번)에 검토 요청 등재.
+- 약관 제5조 5~7항(사장님 결정): 구독료 청구 시작일(`wholesalers.billing_starts_at`)부터 3개월은 플랫폼이 부담(시작일 미지정·체험 기간은 실비도 없음), 이후 플랫폼 대표 채널 총 발송비를 공급사별 접수 건수 비율로 **안분** 청구. 자체 계정 발송분은 제외. 변호사 자문서 8-4절(16·17번)에 검토 요청 등재.
 - `alimtalk_send_log`(공급사·템플릿·채널 platform/own·status sent/error/not_configured·error_code·messagekey·refkey). `dispatchAlimtalk`가 기록(`recordSendLog`), 기록 실패는 발송 결과에 영향 없음. 수신번호·본문은 저장 안 함, 서버(service_role)만 쓰고 super_admin만 읽음, 자동 삭제 없음(개인정보 없음).
 - **status=sent는 비즈뿌리오 "접수"이지 수신자 도착이 아니다.** 결과 리포트 조회(`/v2/report`)는 미구현이라 안분은 접수 건수 기준. 실제 청구서와 건별로 맞추려면 messagekey로 리포트 조회를 붙여야 한다.
-- 월 집계(플랫폼 채널·sent만): `select wholesaler_id, count(*) from alimtalk_send_log where channel='platform' and status='sent' and created_at >= date_trunc('month', now() - interval '1 month') and created_at < date_trunc('month', now()) group by 1;` — 집계 화면은 아직 없음(3개월 안에 필요).
+- 월 집계(플랫폼 채널·sent만): `select l.wholesaler_id, count(*) from alimtalk_send_log l join wholesalers w on w.id=l.wholesaler_id where w.billing_starts_at is not null and l.created_at >= w.billing_starts_at + interval '3 months' and l.channel='platform' and l.status='sent' and l.created_at >= date_trunc('month', now() - interval '1 month') and l.created_at < date_trunc('month', now()) group by 1;` — 집계 화면은 아직 없음(3개월 안에 필요).
 - 대표 채널 환경변수(`ALIMTALK_PLATFORM_*`)를 실제로 넣는 시점에 개인정보처리방침 5조 "공급사가 직접 계약" 표기를 고칠 것(자문서 17번).
