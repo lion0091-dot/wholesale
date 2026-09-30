@@ -581,6 +581,15 @@ export async function withdrawWholesalerAccountAction(): Promise<ActionResult> {
       if (banError) {
         console.error("[Wholesaler Withdrawal] 계정 정지 실패:", banError.message);
       }
+
+      // 소셜 로그인 식별정보(카카오 이메일·닉네임)도 비운다 — 마이그레이션 168.
+      const { error: scrubError } = await admin.rpc("scrub_withdrawn_login_identity", {
+        p_user_id: user.id,
+      });
+
+      if (scrubError) {
+        console.error("[Wholesaler Withdrawal] 로그인 식별정보 정리 실패:", scrubError.message);
+      }
     } else {
       console.error(
         "[Wholesaler Withdrawal] SUPABASE_SERVICE_ROLE_KEY가 없어 계정을 정지할 수 없습니다."

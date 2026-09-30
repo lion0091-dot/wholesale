@@ -41,4 +41,12 @@ grant all on results to authenticated; set role authenticated;
 create function pg_temp.try(p_sql text) returns text language plpgsql as $$ begin execute p_sql; return 'ALLOWED'; exception when others then return 'DENIED'; end $$;
 insert into results (what,expected,result) values ('일반 사용자 호출 거부','DENIED',pg_temp.try($q$select * from public.purge_expired_withdrawn_personal_data()$q$));
 reset role;
+-- 168: 식별정보 정리 + 고객 탈퇴 시 상호 유지
+insert into auth.identities (provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at)
+ values ('k123','96999999-0000-0000-0000-000000000002','{"sub":"k123","email":"x@k.com","name":"닉"}','kakao',now(),now(),now());
+insert into results (what,expected,result) values
+ ('탈퇴 미처리 계정은 정리 안 함(W3)','0',(select public.scrub_withdrawn_login_identity('96999999-0000-0000-0000-000000000003'))::text);
+create temp table sc (n int); insert into sc select public.scrub_withdrawn_login_identity('96999999-0000-0000-0000-000000000002');
+insert into results (what,expected,result) values
+ ('탈퇴 계정 식별정보 정리(1행), sub만 남음','1/{"sub": "k123"}',(select n::text from sc)||'/'||(select identity_data::text from auth.identities where provider_id='k123'));
 select no, what, expected, result, case when result=expected then 'PASS' else 'FAIL' end v from results order by no;
