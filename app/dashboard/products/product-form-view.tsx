@@ -1,5 +1,6 @@
 "use client";
 
+import { ProductImagePanel } from "./product-image-panel";
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -520,6 +521,8 @@ export function ProductFormView({
           고객(소매) 미니샵에 노출될 품목 정보와 기본 단가를 입력하세요.
         </p>
       </header>
+
+      {product && <ProductImagePanel productId={product.id} currentImageUrl={product.image_url} />}
 
       <form
         id={FORM_ID}

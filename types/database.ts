@@ -137,6 +137,8 @@ export interface Product {
   archived_at: string | null;
   /** 고객에게 보이는 상품명(공급사 설정). null이면 name을 보인다 — 134. lib/shop/catalog-types.ts의 shopProductName 참고. */
   display_alias?: string | null;
+  /** 상품 사진 공개 URL(마이그 184). null이면 사진 없음. */
+  image_url?: string | null;
   /** 핫딜 할인가. hot_deal_active가 꺼져 있으면 값이 남아 있어도 적용 안 됨. */
   hot_deal_price: number | null;
   /** 켜져 있으면 모든 고객(비로그인 포함)에게 hot_deal_price가 기준가 대신 보인다. */

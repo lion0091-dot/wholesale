@@ -102,3 +102,10 @@
 - 닭·오리: 오리 번호 `521060600101`(코드 5, 도축장 210)은 KAPE 조회가 결과 0건(옵션 1~9 전부). 번호 문제인지 이 API가 가금류를 안 주는지 **미확인** — 앱/mtrace.go.kr에서 같은 번호를 직접 조회해 확인 필요.
 - **알려진 문제(미수정):** `fetchTraceRecord`의 "형식 판별 실패 시 순차 폴백"에 `poultry` 종류가 있는데 `master_livestock.trace_kind` CHECK는 `individual/group/imported`만 허용한다 — 그 경로로 캐시하면 저장이 실패한다(현재는 12/15자리·L접두어·영문접두어 밖의 형식일 때만 도달).
 - 결정 대기: 닭/오리 카테고리 분리(현재 `product_categories`에 "닭/오리" 한 덩어리, 계란 없음), 가금류를 번호만으로 상품 생성할지(API 결과가 없어도).
+
+## 상품 사진 (2026-09-30, 마이그 184)
+
+- `products.image_url` + public 버킷 `product-images`(경로 `<wholesaler_id>/<product_id>`). 쓰기 권한은 미니샵 썸네일과 같은 판정(`can_manage_wholesaler_thumbnail` — 대표·조직 owner/manager·super_admin)을 재사용.
+- 업로드는 상품 **수정 화면**(`/dashboard/products/[id]/edit`) 위쪽 패널에서만(신규 등록 화면에는 없음 — 상품을 먼저 저장한 뒤 올린다). 브라우저가 긴 변 1200px JPEG로 줄여 올리고, 서버는 4MB·JPG/PNG/WEBP만 받는다.
+- 미니샵 상품 카드(`shop-view.tsx` ProductCard) 왼쪽에 72px 사진. 없으면 지금처럼 글자만. 장바구니·결제 화면에는 아직 안 나온다.
+- 로컬 DB에서 열·정책·버킷·폴더 권한(본인 폴더 허용/타사 폴더 거부) 확인, 라이브 적용 완료. 실화면 업로드 클릭 검증은 아직 안 함.

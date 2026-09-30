@@ -509,7 +509,23 @@ function ProductCard({ item, quantity, onStep, previewOnly = false }: ProductCar
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
-        <div>
+        {product.image_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={product.image_url}
+            alt={shopProductName(product)}
+            loading="lazy"
+            style={{
+              width: "72px",
+              height: "72px",
+              objectFit: "cover",
+              borderRadius: "8px",
+              border: "1px solid #e2e8f0",
+              flexShrink: 0,
+            }}
+          />
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
             <span
               style={{

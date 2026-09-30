@@ -977,3 +977,122 @@ export async function getProductStockBreakdownAction(
     return toResult(error);
   }
 }
+
+const PRODUCT_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+const PRODUCT_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * 상품 사진 올리기/바꾸기 — 미니샵 상품 카드에 보인다. 경로는 <업체>/<상품>으로 고정해 재업로드하면 덮어쓴다.
+ * 공개 버킷이라 URL만 알면 열리지만 사진에는 가격 정보가 없다. 저장 권한은 상품 관리 권한(owner/manager)과 같다.
+ */
+export async function uploadProductImageAction(
+  productId: string,
+  formData: FormData
+): Promise<ActionResult<{ url: string }>> {
+  try {
+    const { supabase, context, wholesalerId } = await resolveProductScope();
+
+    if (!UUID_PATTERN.test(productId)) {
+      throw new RbacError("올바른 상품 식별자가 아닙니다.");
+    }
+
+    const file = formData.get("image");
+
+    if (!(file instanceof File) || file.size === 0) {
+      throw new RbacError("사진을 선택해주세요.");
+    }
+
+    if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
+      throw new RbacError("사진 용량은 4MB 이하만 올릴 수 있습니다.");
+    }
+
+    if (!PRODUCT_IMAGE_TYPES.includes(file.type)) {
+      throw new RbacError("JPG, PNG, WEBP 사진만 올릴 수 있습니다.");
+    }
+
+    let ownerQuery = supabase.from("products").select("id, wholesaler_id").eq("id", productId);
+
+    if (!context.isSuperAdmin) {
+      ownerQuery = ownerQuery.eq("wholesaler_id", wholesalerId);
+    }
+
+    const { data: product } = await ownerQuery.maybeSingle();
+
+    if (!product) {
+      throw new RbacError("권한이 없거나 해당 상품을 찾을 수 없습니다.");
+    }
+
+    const path = `${product.wholesaler_id}/${productId}`;
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    const { error: uploadError } = await supabase.storage
+      .from("product-images")
+      .upload(path, buffer, { contentType: file.type, upsert: true });
+
+    if (uploadError) {
+      throw new RbacError("사진 업로드에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("product-images").getPublicUrl(path);
+    // 같은 경로에 덮어쓰므로 브라우저·CDN이 옛 사진을 붙들지 않게 버전 값을 붙인다.
+    const url = `${publicUrl}?v=${Date.now()}`;
+
+    const { error } = await supabase
+      .from("products")
+      .update({ image_url: url, updated_at: new Date().toISOString() })
+      .eq("id", productId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(`/dashboard/products/${productId}/edit`);
+    return { success: true, data: { url } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** 상품 사진 지우기 — 파일과 연결을 함께 없앤다. 카드는 사진 없이 표시된다. */
+export async function removeProductImageAction(productId: string): Promise<ActionResult> {
+  try {
+    const { supabase, context, wholesalerId } = await resolveProductScope();
+
+    if (!UUID_PATTERN.test(productId)) {
+      throw new RbacError("올바른 상품 식별자가 아닙니다.");
+    }
+
+    let ownerQuery = supabase.from("products").select("id, wholesaler_id").eq("id", productId);
+
+    if (!context.isSuperAdmin) {
+      ownerQuery = ownerQuery.eq("wholesaler_id", wholesalerId);
+    }
+
+    const { data: product } = await ownerQuery.maybeSingle();
+
+    if (!product) {
+      throw new RbacError("권한이 없거나 해당 상품을 찾을 수 없습니다.");
+    }
+
+    const { error } = await supabase
+      .from("products")
+      .update({ image_url: null, updated_at: new Date().toISOString() })
+      .eq("id", productId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    // 파일 삭제 실패는 화면에 영향이 없다(연결은 이미 끊어짐) — 다음 업로드가 같은 경로를 덮어쓴다.
+    await supabase.storage.from("product-images").remove([`${product.wholesaler_id}/${productId}`]);
+
+    revalidatePath(REVALIDATE_PATH);
+    revalidatePath(`/dashboard/products/${productId}/edit`);
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
