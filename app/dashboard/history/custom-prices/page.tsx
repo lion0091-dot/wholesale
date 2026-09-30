@@ -14,7 +14,7 @@ export default async function CustomPriceHistoryPage() {
     return <AdminScopeNotice />;
   }
 
-  const items = await loadCustomPriceHistoryItems();
+  const items = await loadCustomPriceHistoryItems(scope);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>

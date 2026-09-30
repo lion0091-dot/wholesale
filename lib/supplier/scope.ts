@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getOrgStaffContext, type OrgRole } from "@/lib/auth/rbac";
+import { getOrgStaffContext, getTrustedStaffContext, type OrgRole } from "@/lib/auth/rbac";
 import type { UserRole } from "@/types/database";
 
 export interface SupplierScope {
@@ -27,8 +27,18 @@ export async function getSupplierScope(): Promise<SupplierScope | null> {
 
   const supabase = await createClient();
   let wholesalerId: string | null = null;
+  // 미들웨어가 같은 요청에서 검증·서명한 조직→업체 연결이 있으면 organizations 재조회를 건너뛴다.
+  // 서명이 없거나 검증 실패·조직 불일치면 기존 조회 그대로(fail-closed). getTrustedStaffContext는
+  // 요청당 cache()라 getOrgStaffContext가 이미 검증한 결과를 재사용한다.
+  const trusted = await getTrustedStaffContext();
+  const trustedOrganization =
+    trusted && context.organizationId && trusted.organizationId === context.organizationId
+      ? trusted.organization
+      : null;
 
-  if (context.organizationId) {
+  if (trustedOrganization) {
+    wholesalerId = trustedOrganization.wholesalerId;
+  } else if (context.organizationId) {
     const { data: organization } = await supabase
       .from("organizations")
       .select("wholesaler_id")

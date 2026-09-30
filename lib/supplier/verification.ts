@@ -15,6 +15,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { resolveDisplayName, resolveKakaoNickname } from "@/lib/auth/display-name";
+import type { User } from "@supabase/supabase-js";
+import { getTrustedStaffContext } from "@/lib/auth/rbac";
+import type { TrustedStaffContext } from "@/lib/auth/request-context";
 import type { UserRole, WholesalerStatus } from "@/types/database";
 
 export interface SupplierAccount {
@@ -74,12 +77,68 @@ export const PENDING_VERIFICATION_NOTICE =
 export const BUSINESS_NUMBER_REQUIRED_NOTICE =
   "사업자등록번호가 아직 제출되지 않았습니다. 번호를 등록하면 승인 심사가 시작됩니다.";
 
+const WHOLESALER_COLUMNS =
+  "id, profile_id, business_name, business_number, representative_name, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_thumbnail_url, shop_token, status";
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- 타입 없는 클라이언트의 행(기존 코드와 동일하게 필드마다 캐스팅)
+type Row = any;
+
+interface SupplierAccountSources {
+  user: User;
+  profile: Row;
+  organizationId: string | null;
+  wholesaler: Row;
+}
+
 /**
- * 현재 세션의 공급사 계정 상태를 한 번에 조회한다.
- * 미인증(데모 모드 포함)이면 null — 호출부가 샘플 데이터로 대체한다.
+ * 미들웨어가 같은 요청에서 검증·서명한 컨텍스트가 있을 때의 조회.
+ * 조직 소속(organization_staff)과 조직→업체 연결(organizations.wholesaler_id)만 서명값으로
+ * 대신하고, 나머지(getUser·profiles·wholesalers)는 폴백과 같은 쿼리를 병렬로 그대로 읽는다.
+ * 사용자가 없거나 서명값과 다르면 null → 호출부가 기존 전체 조회로 폴백한다.
  */
-export async function getSupplierAccount(): Promise<SupplierAccount | null> {
-  const supabase = await createClient();
+async function loadSourcesFromTrustedContext(
+  supabase: SupabaseServerClient,
+  trusted: TrustedStaffContext
+): Promise<SupplierAccountSources | null> {
+  // 조직 소속인데 조직 정보가 비어 있으면(정상 서명에선 생기지 않음) 추측하지 않고 폴백한다.
+  if (trusted.organizationId && !trusted.organization) {
+    return null;
+  }
+
+  const linkedWholesalerId = trusted.organizationId
+    ? (trusted.organization?.wholesalerId ?? null)
+    : null;
+
+  const [
+    {
+      data: { user },
+    },
+    { data: profile },
+    { data: wholesaler },
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase
+      .from("profiles")
+      .select("role, name, phone, is_supplier, is_verified, terms_agreed_at")
+      .eq("id", trusted.userId)
+      .maybeSingle(),
+    linkedWholesalerId
+      ? supabase.from("wholesalers").select(WHOLESALER_COLUMNS).eq("id", linkedWholesalerId).maybeSingle()
+      : supabase.from("wholesalers").select(WHOLESALER_COLUMNS).eq("profile_id", trusted.userId).maybeSingle(),
+  ]);
+
+  if (!user || user.id !== trusted.userId) {
+    return null;
+  }
+
+  return { user, profile, organizationId: trusted.organizationId, wholesaler };
+}
+
+/** 서명 컨텍스트가 없거나 검증되지 않을 때의 기존 전체 조회 (동작 무변경). */
+async function loadSourcesFromDatabase(
+  supabase: SupabaseServerClient
+): Promise<SupplierAccountSources | null> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -101,7 +160,6 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
       .maybeSingle(),
   ]);
 
-  const platformRole = (profile?.role as UserRole | undefined) ?? null;
   const organizationId = (staff?.organization_id as string | undefined) ?? null;
 
   // 업체 레코드 해석 순서: 조직에 연결된 업체 → 본인 소유 업체
@@ -121,18 +179,44 @@ export async function getSupplierAccount(): Promise<SupplierAccount | null> {
   const { data: wholesaler } = linkedWholesalerId
     ? await supabase
         .from("wholesalers")
-        .select(
-          "id, profile_id, business_name, business_number, representative_name, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_thumbnail_url, shop_token, status"
-        )
+        .select(WHOLESALER_COLUMNS)
         .eq("id", linkedWholesalerId)
         .maybeSingle()
     : await supabase
         .from("wholesalers")
-        .select(
-          "id, profile_id, business_name, business_number, representative_name, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_thumbnail_url, shop_token, status"
-        )
+        .select(WHOLESALER_COLUMNS)
         .eq("profile_id", user.id)
         .maybeSingle();
+
+  return { user, profile, organizationId, wholesaler };
+}
+
+/**
+ * 현재 세션의 공급사 계정 상태를 한 번에 조회한다.
+ * 미인증(데모 모드 포함)이면 null — 호출부가 샘플 데이터로 대체한다.
+ *
+ * /dashboard 요청이면 미들웨어가 서명한 컨텍스트로 조직 조회 두 번을 건너뛰고 나머지를
+ * 병렬로 읽는다. 서명이 없거나(/login·/onboarding·/auth/callback 등) 검증에 실패하면
+ * 기존 전체 조회 그대로다(fail-closed).
+ */
+export async function getSupplierAccount(): Promise<SupplierAccount | null> {
+  const supabase = await createClient();
+  const trusted = await getTrustedStaffContext();
+  const sources =
+    (trusted ? await loadSourcesFromTrustedContext(supabase, trusted) : null) ??
+    (await loadSourcesFromDatabase(supabase));
+
+  return sources ? buildSupplierAccount(sources) : null;
+}
+
+/** 조회 결과 → SupplierAccount. 두 조회 경로가 같은 매핑을 쓴다. */
+function buildSupplierAccount({
+  user,
+  profile,
+  organizationId,
+  wholesaler,
+}: SupplierAccountSources): SupplierAccount {
+  const platformRole = (profile?.role as UserRole | undefined) ?? null;
 
   const kakaoName = resolveKakaoNickname(user.user_metadata);
   const kakaoPhone =

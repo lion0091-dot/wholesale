@@ -90,9 +90,8 @@ function SummaryCard({
 }
 
 export default async function DashboardPage() {
-  const context = await getOrgStaffContext();
   // 초대장 발부(영업) 권한은 승인 상태에 따라 달라진다.
-  const account = await getSupplierAccount();
+  const [context, account] = await Promise.all([getOrgStaffContext(), getSupplierAccount()]);
   const inviteRestriction = account ? describeInviteRestriction(account) : null;
   const canIssueInvite = account?.canIssueInvite ?? false;
   const { todayStart, monthStart } = kstBoundaries();
@@ -109,34 +108,39 @@ export default async function DashboardPage() {
 
     // 조직에 연결된 wholesalers 레코드를 찾는다 (조직 생성 전이면 profile로 직접 조회).
     let wholesalerId: string | null = null;
+    let wholesaler: { id: string; business_name: string | null; shop_token: string | null } | null =
+      null;
 
-    if (context.organizationId) {
-      const { data: organization } = await supabase
-        .from("organizations")
-        .select("wholesaler_id")
-        .eq("id", context.organizationId)
-        .maybeSingle();
+    if (!context.isSuperAdmin) {
+      // 일반 공급사: getSupplierAccount()가 같은 규칙(조직 연결 업체 → 본인 소유 업체)으로
+      // 이미 같은 행을 읽었으므로 재조회하지 않는다. wholesalerId는 행이 실제로 있을 때만 채워진다.
+      wholesaler = account?.wholesalerId
+        ? { id: account.wholesalerId, business_name: account.businessName, shop_token: account.shopToken }
+        : null;
+    } else {
+      if (context.organizationId) {
+        const { data: organization } = await supabase
+          .from("organizations")
+          .select("wholesaler_id")
+          .eq("id", context.organizationId)
+          .maybeSingle();
 
-      wholesalerId = (organization?.wholesaler_id as string | null) ?? null;
-    }
+        wholesalerId = (organization?.wholesaler_id as string | null) ?? null;
+      }
 
-    // super_admin은 조직 소속(wholesalerId)이 없는 한 자기 profile_id로 업체를 자동
-    // 매칭하지 않는다 (lib/supplier/scope.ts의 getSupplierScope()와 동일한 방어).
-    const shouldLookupByProfile = !wholesalerId && !context.isSuperAdmin;
-
-    const { data: wholesaler } = wholesalerId
-      ? await supabase
+      // super_admin은 조직 소속(wholesalerId)이 없는 한 자기 profile_id로 업체를 자동
+      // 매칭하지 않는다 (lib/supplier/scope.ts의 getSupplierScope()와 동일한 방어).
+      // getSupplierAccount()는 이 방어가 없어서 여기서는 그 결과를 쓰지 않는다.
+      if (wholesalerId) {
+        const { data } = await supabase
           .from("wholesalers")
           .select("id, business_name, shop_token")
           .eq("id", wholesalerId)
-          .maybeSingle()
-      : shouldLookupByProfile
-        ? await supabase
-            .from("wholesalers")
-            .select("id, business_name, shop_token")
-            .eq("profile_id", context.userId)
-            .maybeSingle()
-        : { data: null };
+          .maybeSingle();
+
+        wholesaler = data;
+      }
+    }
 
     if (wholesaler) {
       hasWholesaler = true;
