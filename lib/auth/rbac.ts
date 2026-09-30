@@ -1,4 +1,11 @@
+import { cache } from "react";
+import { cookies, headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import {
+  STAFF_CONTEXT_HEADER,
+  verifyStaffContext,
+  type TrustedStaffContext,
+} from "@/lib/auth/request-context";
 import type { UserRole } from "@/types/database";
 
 /** 조직 내 직원 역할 (DB: public.organization_role) */
@@ -52,10 +59,42 @@ export class RbacError extends Error {
 }
 
 /**
+ * 미들웨어(/dashboard 가드)가 같은 요청에서 검증·서명해 넘긴 컨텍스트.
+ * 서명·세션 쿠키 지문·만료 중 하나라도 안 맞거나 헤더가 없으면 null이다(lib/auth/request-context.ts).
+ * 한 요청 안에서는 값이 바뀌지 않으므로 cache()로 검증을 한 번만 한다.
+ */
+export const getTrustedStaffContext = cache(async (): Promise<TrustedStaffContext | null> => {
+  try {
+    const [headerStore, cookieStore] = await Promise.all([headers(), cookies()]);
+
+    return await verifyStaffContext(
+      headerStore.get(STAFF_CONTEXT_HEADER),
+      cookieStore.getAll(),
+      Date.now()
+    );
+  } catch {
+    return null;
+  }
+});
+
+/**
  * 현재 세션의 플랫폼 역할 + 조직 소속/역할을 한 번에 조회한다.
  * 미인증이면 null.
  */
 export async function getOrgStaffContext(): Promise<OrgStaffContext | null> {
+  const trusted = await getTrustedStaffContext();
+
+  if (trusted) {
+    return {
+      userId: trusted.userId,
+      email: trusted.email,
+      platformRole: trusted.platformRole,
+      organizationId: trusted.organizationId,
+      orgRole: trusted.orgRole,
+      isSuperAdmin: trusted.platformRole === "super_admin",
+    };
+  }
+
   const supabase = await createClient();
   const {
     data: { user },

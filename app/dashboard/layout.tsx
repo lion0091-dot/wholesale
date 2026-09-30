@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { getOrgStaffContext } from "@/lib/auth/rbac";
+import { getOrgStaffContext, getTrustedStaffContext } from "@/lib/auth/rbac";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { FALLBACK_DISPLAY_NAME, resolveDisplayName } from "@/lib/auth/display-name";
 import { DashboardShell, type DashboardNavItem } from "./dashboard-shell";
@@ -101,7 +101,8 @@ const MOBILE_DASHBOARD_ITEM: DashboardNavItem = {
 export default async function DashboardLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const context = await getOrgStaffContext();
+  // 미들웨어가 이미 조회·서명한 값이 있으면 표시용 조회(getUser/profiles/organizations)를 건너뛴다.
+  const [context, trusted] = await Promise.all([getOrgStaffContext(), getTrustedStaffContext()]);
 
   let organizationName = "마장동 태양축산 (테스트 도매)";
   let roleLabel = "데모 열람 모드";
@@ -120,19 +121,27 @@ export default async function DashboardLayout({
 
     const supabase = await createClient();
 
-    // 표시 이름: profiles.name → 카카오 닉네임(user_metadata) → "사용자".
-    // 이메일 없는 카카오 계정도 정상 로그인이므로 이메일은 판단에 쓰지 않는다.
-    const [{ data: profile }, { data: auth }] = await Promise.all([
-      supabase.from("profiles").select("name").eq("id", context.userId).maybeSingle(),
-      supabase.auth.getUser(),
-    ]);
+    if (trusted) {
+      displayName = trusted.displayName;
+    } else {
+      // 표시 이름: profiles.name → 카카오 닉네임(user_metadata) → "사용자".
+      // 이메일 없는 카카오 계정도 정상 로그인이므로 이메일은 판단에 쓰지 않는다.
+      const [{ data: profile }, { data: auth }] = await Promise.all([
+        supabase.from("profiles").select("name").eq("id", context.userId).maybeSingle(),
+        supabase.auth.getUser(),
+      ]);
 
-    displayName = resolveDisplayName(
-      profile?.name as string | null | undefined,
-      auth.user?.user_metadata
-    );
+      displayName = resolveDisplayName(
+        profile?.name as string | null | undefined,
+        auth.user?.user_metadata
+      );
+    }
 
-    if (context.organizationId) {
+    if (context.organizationId && trusted?.organization) {
+      organizationName = trusted.organization.name || organizationName;
+      subscriptionStatus = trusted.organization.subscriptionStatus;
+      todoWholesalerId = trusted.organization.wholesalerId;
+    } else if (context.organizationId) {
       const { data: organization } = await supabase
         .from("organizations")
         .select("name, wholesaler_id, wholesalers ( subscription_status )")

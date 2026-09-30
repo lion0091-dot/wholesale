@@ -3,6 +3,10 @@ import { updateSession, withSessionCookies } from "@/lib/supabase/middleware";
 import { isDevOrgBypassEnabled } from "@/lib/auth/dev-mode";
 import { isSuperAdminEmail } from "@/lib/auth/super-admin";
 import { isBillingBlocked } from "@/lib/supplier/billing";
+import { resolveDisplayName } from "@/lib/auth/display-name";
+import { STAFF_CONTEXT_HEADER, signStaffContext } from "@/lib/auth/request-context";
+import type { OrgRole } from "@/lib/auth/rbac";
+import type { SubscriptionStatus, UserRole } from "@/types/database";
 
 /** 공급사 백오피스 — 로그인 + 조직 소속(organization_staff) 필수 */
 const SUPPLIER_PREFIXES = ["/dashboard"];
@@ -46,8 +50,18 @@ function redirectTo(request: NextRequest, pathname: string, params?: Record<stri
   return NextResponse.redirect(url);
 }
 
+function firstOf<T>(value: T | T[] | null | undefined): T | null {
+  return (Array.isArray(value) ? value[0] : value) ?? null;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // 클라이언트가 보낸 같은 이름의 헤더는 모든 경로에서 먼저 지운다. NextResponse.next({ request })는
+  // 이 시점의 request.headers를 통째로 다운스트림에 넘기므로(지우지 않으면 그대로 도달한다),
+  // updateSession()이 응답을 만들기 전에 해야 한다. 신뢰는 어차피 서명 검증으로만 한다.
+  request.headers.delete(STAFF_CONTEXT_HEADER);
+
   const { response, user, supabase } = await updateSession(request);
 
   // ------------------------------------------------------------------
@@ -109,64 +123,83 @@ export async function middleware(request: NextRequest) {
 
     // 조직 세션 바인딩 검증: organization_staff 소속이 없으면 온보딩으로 유도.
     // 온보딩(/onboarding)은 /dashboard 밖이므로 리다이렉트 루프가 생기지 않는다.
-    // 구독료 확인에 쓰는 organizations/wholesalers를 같이 묶어 왕복 한 번을 줄인다.
-    const { data: staff } = await supabase
-      .from("organization_staff")
-      .select(
-        "organization_id, role, organizations ( wholesalers ( subscription_status, trial_started_at, billing_starts_at ) )"
-      )
-      .eq("user_id", user.id)
-      .maybeSingle();
+    // 구독료 확인·레이아웃 표시에 쓰는 organizations/wholesalers를 같이 묶고, profiles는
+    // 병렬로 읽어 왕복 한 번으로 끝낸다(결과는 아래에서 서명해 다운스트림에 넘긴다).
+    const [
+      { data: staff, error: staffError },
+      { data: profile, error: profileError },
+    ] = await Promise.all([
+      supabase
+        .from("organization_staff")
+        .select(
+          "organization_id, role, organizations ( name, wholesaler_id, wholesalers ( subscription_status, trial_started_at, billing_starts_at ) )"
+        )
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabase.from("profiles").select("role, name").eq("id", user.id).maybeSingle(),
+    ]);
+
+    const isSuperAdmin = profile?.role === "super_admin";
+    const organization = firstOf(staff?.organizations);
+    const wholesaler = firstOf(organization?.wholesalers);
 
     if (!staff) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
       // 슈퍼관리자는 조직 소속 없이도 백오피스 접근 허용
-      if (profile?.role !== "super_admin") {
+      if (!isSuperAdmin) {
         // 개발/테스트 환경에서는 온보딩으로 튕기지 않고 통과시킨다.
         // 기본 테스트 조직 연결은 Node 런타임(로그인 액션 / 온보딩 화면)에서 수행한다.
+        // 그 연결이 같은 요청 안에서 생기므로 여기서는 컨텍스트를 서명하지 않는다.
         if (!isDevOrgBypassEnabled()) {
           return withSessionCookies(redirectTo(request, ORG_ONBOARDING_PATH), response);
         }
 
         response.headers.set("x-dev-org-bypass", "1");
-      }
-    } else {
-      // 다운스트림(Server Component)에서 재조회 없이 사용할 수 있도록 전달
-      response.headers.set("x-organization-id", String(staff.organization_id));
-      response.headers.set("x-organization-role", String(staff.role));
 
+        return response;
+      }
+    } else if (
       // 구독료(거래처 수 비례 종량제) 연체/해지/체험만료 시 백오피스 접근 차단.
       // /billing-locked는 /dashboard 밖이라 이 블록을 다시 타지 않으므로 루프가 없다.
-      const organization = Array.isArray(staff.organizations)
-        ? staff.organizations[0]
-        : staff.organizations;
+      wholesaler &&
+      isBillingBlocked(
+        wholesaler.subscription_status,
+        wholesaler.trial_started_at,
+        wholesaler.billing_starts_at
+      ) &&
+      !isSuperAdmin
+    ) {
+      return withSessionCookies(redirectTo(request, BILLING_LOCKED_PATH), response);
+    }
 
-      const wholesaler = Array.isArray(organization?.wholesalers)
-        ? organization.wholesalers[0]
-        : organization?.wholesalers;
+    // 조회가 하나라도 실패했으면 서명하지 않는다 — 다운스트림이 직접 다시 조회한다.
+    if (!staffError && !profileError) {
+      const token = await signStaffContext(
+        {
+          userId: user.id,
+          email: user.email ?? null,
+          platformRole: (profile?.role as UserRole | undefined) ?? null,
+          organizationId: staff ? String(staff.organization_id) : null,
+          orgRole: staff ? (staff.role as OrgRole) : null,
+          displayName: resolveDisplayName(profile?.name as string | null | undefined, user.user_metadata),
+          organization: staff
+            ? {
+                name: (organization?.name as string | null | undefined) ?? null,
+                wholesalerId: (organization?.wholesaler_id as string | null | undefined) ?? null,
+                subscriptionStatus:
+                  (wholesaler?.subscription_status as SubscriptionStatus | null | undefined) ?? null,
+              }
+            : null,
+        },
+        request.cookies.getAll(),
+        Date.now()
+      );
 
-      if (
-        wholesaler &&
-        isBillingBlocked(
-          wholesaler.subscription_status,
-          wholesaler.trial_started_at,
-          wholesaler.billing_starts_at
-        )
-      ) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .maybeSingle();
+      if (token) {
+        // 응답 헤더가 아니라 "요청" 헤더로 실어야 headers()에 보인다. next({ request })가
+        // 헤더를 생성 시점에 복사하므로 updateSession이 만든 응답 대신 새로 만들고 쿠키만 옮긴다.
+        request.headers.set(STAFF_CONTEXT_HEADER, token);
 
-        if (profile?.role !== "super_admin") {
-          return withSessionCookies(redirectTo(request, BILLING_LOCKED_PATH), response);
-        }
+        return withSessionCookies(NextResponse.next({ request }), response);
       }
     }
 
