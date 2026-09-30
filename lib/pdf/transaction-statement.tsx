@@ -1,7 +1,7 @@
 /**
  * 거래명세서(Transaction Statement) 서버사이드 PDF 렌더러.
  *
- * ⚠️ 이 문서는 세금계산서를 대체하지 않는다 — 부가가치세법상 법정 증빙서류가
+ * ⚠️ 이 문서는 계산서(면세)·세금계산서를 대체하지 않는다 — 부가가치세법상 법정 증빙서류가
  * 아닌, 발주 내역을 정리한 상관례상 참고 문서다(lib/orders/statement.ts 참고).
  * PDF 본문 하단에도 동일한 취지를 명시한다.
  *
@@ -115,6 +115,7 @@ const styles = StyleSheet.create({
   },
   cellNo: { width: 28, padding: 6, textAlign: "center" },
   cellName: { flex: 1, padding: 6 },
+  cellOrigin: { width: 64, padding: 6, textAlign: "center" },
   cellPrice: { width: 80, padding: 6, textAlign: "right" },
   cellQty: { width: 56, padding: 6, textAlign: "right" },
   cellAmount: { width: 90, padding: 6, textAlign: "right" },
@@ -210,6 +211,7 @@ function TransactionStatementDocument({ data }: { data: StatementData }) {
           <View style={styles.tableHeaderRow}>
             <Text style={[styles.cellNo, styles.headerCell]}>No</Text>
             <Text style={[styles.cellName, styles.headerCell]}>품목명</Text>
+            <Text style={[styles.cellOrigin, styles.headerCell]}>원산지</Text>
             <Text style={[styles.cellPrice, styles.headerCell]}>단가</Text>
             <Text style={[styles.cellQty, styles.headerCell]}>수량</Text>
             <Text style={[styles.cellAmount, styles.headerCell]}>공급가액</Text>
@@ -217,7 +219,10 @@ function TransactionStatementDocument({ data }: { data: StatementData }) {
           {data.items.map((item, index) => (
             <View key={`${item.productName}-${index}`} style={styles.tableRow}>
               <Text style={styles.cellNo}>{index + 1}</Text>
-              <Text style={styles.cellName}>{item.productName}</Text>
+              <Text style={styles.cellName}>
+                {item.storageState ? `${item.productName} (${item.storageState})` : item.productName}
+              </Text>
+              <Text style={styles.cellOrigin}>{item.origin ?? "-"}</Text>
               <Text style={styles.cellPrice}>{formatWon(item.unitPrice)}</Text>
               <Text style={styles.cellQty}>{item.quantity}</Text>
               <Text style={styles.cellAmount}>{formatWon(item.subtotalAmount)}</Text>
@@ -260,8 +265,8 @@ function TransactionStatementDocument({ data }: { data: StatementData }) {
         )}
 
         <Text style={styles.disclaimer}>
-          본 문서는 플랫폼에 적재된 발주 데이터를 기준으로 자동 생성된 거래명세서이며, 부가가치세법상
-          세금계산서를 대체하지 않습니다. 세금계산서는 공급사(도매)가 별도로 발행합니다.
+          본 문서는 플랫폼에 적재된 발주 데이터를 기준으로 자동 생성된 거래명세서이며, 계산서(면세)·
+          세금계산서 등 세법상 증빙을 대체하지 않습니다. 세법상 증빙은 공급사(도매)가 별도로 발행합니다.
         </Text>
       </Page>
     </Document>

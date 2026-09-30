@@ -18,6 +18,10 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 export interface StatementItem {
   productName: string;
+  /** 축산물 거래명세 필수 표기(원산지). 상품에 없으면 null. */
+  origin: string | null;
+  /** 냉장/냉동. 상품에 없으면 null. */
+  storageState: string | null;
   unitPrice: number;
   quantity: number;
   subtotalAmount: number;
@@ -74,6 +78,7 @@ type OrderRow = {
 };
 
 type OrderItemRow = {
+  product_id: string | null;
   product_name: string;
   category: string | null;
   unit_price: number | string;
@@ -128,11 +133,32 @@ async function fetchOrderCore(
 
   const { data: items } = await supabase
     .from("order_items")
-    .select("product_name, category, unit_price, quantity, shipped_quantity, subtotal_amount")
+    .select("product_id, product_name, category, unit_price, quantity, shipped_quantity, subtotal_amount")
     .eq("order_id", orderId)
     .order("created_at", { ascending: true });
 
   return { order: order as OrderRow, items: (items ?? []) as OrderItemRow[] };
+}
+
+/** 품목의 원산지·냉장냉동 — 주문 품목엔 스냅샷이 없어 상품에서 읽는다. 못 읽어도 발행은 막지 않는다. */
+async function fetchProductOrigins(
+  supabase: SupabaseServerClient,
+  items: OrderItemRow[]
+): Promise<Map<string, { origin: string | null; storageState: string | null }>> {
+  const ids = [...new Set(items.map((item) => item.product_id).filter((id): id is string => Boolean(id)))];
+  const map = new Map<string, { origin: string | null; storageState: string | null }>();
+
+  if (ids.length === 0) {
+    return map;
+  }
+
+  const { data } = await supabase.from("products").select("id, origin, storage_state").in("id", ids);
+
+  for (const row of (data ?? []) as Array<{ id: string; origin: string | null; storage_state: string | null }>) {
+    map.set(row.id, { origin: row.origin, storageState: row.storage_state });
+  }
+
+  return map;
 }
 
 /** 공급사(wholesaler)/바이어(retailer) 사업자 정보 + 대표자 연락처(profiles.phone)를 함께 조회 */
@@ -223,7 +249,8 @@ function toStatementData(
   order: OrderRow,
   items: OrderItemRow[],
   parties: { supplier: StatementParty; buyer: StatementParty },
-  traces: StatementTrace[]
+  traces: StatementTrace[],
+  productInfo: Map<string, { origin: string | null; storageState: string | null }> = new Map()
 ): StatementData {
   return {
     orderId: order.id,
@@ -235,6 +262,8 @@ function toStatementData(
     totalAmount: Number(order.total_amount),
     items: items.map((item) => ({
       productName: composeProductDisplayName(item.category, item.product_name),
+      origin: (item.product_id && productInfo.get(item.product_id)?.origin) || null,
+      storageState: (item.product_id && productInfo.get(item.product_id)?.storageState) || null,
       unitPrice: Number(item.unit_price),
       // 출고 마감이 끝났으면 실제 나간 양을 찍는다. 금액(subtotal_amount)도
       // 그때 같이 확정되므로 단가 × 수량이 항상 맞는다.
@@ -259,12 +288,13 @@ export async function loadStatementDataForSupplier(
     return null;
   }
 
-  const [parties, traces] = await Promise.all([
+  const [parties, traces, productInfo] = await Promise.all([
     fetchParties(supabase, wholesalerId, core.order.retailer_id),
     fetchTraces(supabase, orderId),
+    fetchProductOrigins(supabase, core.items),
   ]);
 
-  return toStatementData(core.order, core.items, parties, traces);
+  return toStatementData(core.order, core.items, parties, traces, productInfo);
 }
 
 /**
@@ -316,10 +346,11 @@ export async function loadStatementDataForBuyer(
     return null;
   }
 
-  const [parties, traces] = await Promise.all([
+  const [parties, traces, productInfo] = await Promise.all([
     fetchParties(supabase, wholesalerId, retailerId),
     fetchTraces(supabase, orderId),
+    fetchProductOrigins(supabase, core.items),
   ]);
 
-  return toStatementData(core.order, core.items, parties, traces);
+  return toStatementData(core.order, core.items, parties, traces, productInfo);
 }

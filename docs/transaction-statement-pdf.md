@@ -5,7 +5,7 @@
 
 ### 아키텍처
 - `lib/orders/statement.ts` — 주문+품목+공급자(도매업자)/공급받는자(바이어) 사업자정보를 조회하는 공용 로더. 공급사용(`loadStatementDataForSupplier`, wholesaler_id만 확인)/바이어용(`loadStatementDataForBuyer`, wholesaler_id+retailer_id 둘 다 확인, 교차 조회 차단)으로 인가 조건만 분리.
-- `lib/pdf/transaction-statement.tsx` — `@react-pdf/renderer` 기반 PDF 문서. 하단에 "세금계산서를 대체하지 않는다" 문구 명시.
+- `lib/pdf/transaction-statement.tsx` — `@react-pdf/renderer` 기반 PDF 문서. 하단에 "계산서(면세)·세금계산서 등 세법상 증빙을 대체하지 않는다" 문구 명시. 품목 표에 원산지 열과 (냉장/냉동) 표기 포함(2026-09-30, 상품 `origin`·`storage_state`에서 읽음 — 못 읽으면 "-", 발행은 막지 않음).
 - `app/dashboard/orders/[id]/statement/route.ts` / `app/shop/[shop_token]/orders/[id]/statement/route.ts` — 각각 공급사 백오피스/바이어 미니샵용 라우트. `export const runtime = "nodejs"` 필수(`@react-pdf/renderer`가 `fs` 등 Node API 의존, Edge 런타임에서 동작 안 함).
 - `components/statement-preview-button.tsx` — 새 탭 대신 페이지 안에서 `<iframe>`으로 바로 펼쳐 보는 인앱 미리보기. 열기 전엔 iframe을 렌더링하지 않아(lazy) 불필요한 PDF 생성을 막는다. 발행 불가 경고 HTML도 그대로 iframe 안에 나타나 별도 에러 처리가 필요 없다.
 
