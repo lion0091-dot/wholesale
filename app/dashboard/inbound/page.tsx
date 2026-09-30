@@ -8,6 +8,7 @@ import { pickFieldNextStep } from "@/lib/livestock/inbound-next-step";
 import { InboundNextStepCard } from "./inbound-next-step-card";
 import { InboundTabs } from "../section-tabs";
 import { InboundAutoRetry } from "./inbound-auto-retry";
+import { InboundImportPanel } from "./inbound-import-panel";
 
 /** 이력 조회 기관 표기 — 설정 안내 문구에 쓴다. */
 const SOURCE_LABELS: Record<string, string> = {
@@ -119,6 +120,15 @@ export default async function InboundPage() {
         suppliers={suppliers}
         partOptions={partOptions}
       />
+
+      <details>
+        <summary style={{ fontSize: "13px", color: "#475569", cursor: "pointer", padding: "4px 0" }}>
+          고급: 엑셀로 한꺼번에 입고하기
+        </summary>
+        <div style={{ marginTop: "10px" }}>
+          <InboundImportPanel />
+        </div>
+      </details>
     </div>
   );
 }
