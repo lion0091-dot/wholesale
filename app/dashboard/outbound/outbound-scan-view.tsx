@@ -15,6 +15,7 @@ import {
   type PickingRow,
   type ShipmentPreviewRow,
 } from "./actions";
+import { getScanLocationPhotoUrlAction } from "../inbound/actions";
 
 export interface ShippableOrder {
   id: string;
@@ -50,6 +51,17 @@ export function OutboundScanView({ orders }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const traceInputRef = useRef<HTMLInputElement>(null);
+
+  const handleViewLocationPhoto = async (photoPath: string) => {
+    const result = await getScanLocationPhotoUrlAction(photoPath);
+
+    if (!result.success || !result.data) {
+      setError(result.error ?? "사진을 불러오지 못했습니다.");
+      return;
+    }
+
+    window.open(result.data, "_blank", "noopener,noreferrer");
+  };
 
   const loadProgress = useCallback(async (id: string) => {
     if (!id) {
@@ -457,6 +469,41 @@ export function OutboundScanView({ orders }: Props) {
                     <div style={{ fontSize: "11px", color: "#94a3b8" }}>
                       도축 {row.slaughterDate} · 박스 {row.boxWeight}
                       {row.unit}
+                    </div>
+                  )}
+                  {!row.alreadyPicked && (row.storageLocation || row.storageLocationPhotoPath) && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginTop: "3px" }}>
+                      {row.storageLocation && (
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            backgroundColor: "#f1f5f9",
+                            color: "#334155",
+                            borderRadius: "4px",
+                            padding: "3px 7px",
+                          }}
+                        >
+                          📍 {row.storageLocation}
+                        </span>
+                      )}
+                      {row.storageLocationPhotoPath && (
+                        <button
+                          type="button"
+                          onClick={() => void handleViewLocationPhoto(row.storageLocationPhotoPath!)}
+                          style={{
+                            padding: "3px 8px",
+                            fontSize: "11px",
+                            borderRadius: "4px",
+                            border: "1px solid #cbd5e1",
+                            backgroundColor: "#fff",
+                            color: "#334155",
+                            cursor: "pointer",
+                          }}
+                        >
+                          위치 사진 보기
+                        </button>
+                      )}
                     </div>
                   )}
                   {row.daysLeft !== null && row.daysLeft <= 3 && (

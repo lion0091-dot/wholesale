@@ -58,6 +58,9 @@ export interface PickingRow {
   alreadyPicked: boolean;
   bestBefore: string | null;
   daysLeft: number | null;
+  /** 입고 때 남긴 보관 위치 메모/사진(선택) — 현장에서 박스를 찾는 데 쓴다. */
+  storageLocation: string | null;
+  storageLocationPhotoPath: string | null;
 }
 
 /** DB가 던지는 코드를 현장에서 읽을 문장으로 바꾼다. */
@@ -300,6 +303,8 @@ export async function getPickingListAction(
         bestBefore: (row.best_before as string | null) ?? null,
         daysLeft:
           row.days_left === null || row.days_left === undefined ? null : Number(row.days_left),
+        storageLocation: (row.storage_location as string | null) ?? null,
+        storageLocationPhotoPath: (row.storage_location_photo_path as string | null) ?? null,
       })),
     };
   } catch (error) {
