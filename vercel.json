@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/purge-unconsented-accounts",
       "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/cron/purge-expired-personal-data",
+      "schedule": "0 7 * * 0"
     }
   ]
 }
