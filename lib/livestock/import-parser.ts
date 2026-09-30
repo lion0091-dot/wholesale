@@ -6,7 +6,7 @@
  *   ① CSV 파일 업로드 (엑셀 > 다른 이름으로 저장 > CSV)
  *   ② 엑셀에서 범위를 복사해 붙여넣기 (탭 구분 TSV)
  *
- * 칸 순서: 이력번호, 중량, 냉장/냉동(선택).
+ * 칸 순서: 이력번호, 중량, 냉장/냉동(선택), 부위(선택).
  * 구분자는 첫 줄을 보고 자동 판별한다. 헤더가 있으면 건너뛴다.
  * 이력번호는 GS1-128/QR로 들어와도 되게 barcode-parser를 태운다 — 엑셀에
  * 스캐너로 찍어 넣은 값이 그대로 들어있는 경우가 흔하다.
@@ -21,6 +21,8 @@ export interface ImportRow {
   weight: number | null;
   /** 셋째 칸의 냉장/냉동 표기 (없거나 알 수 없으면 null) */
   storageHint: "냉장" | "냉동" | null;
+  /** 넷째 칸의 부위 표기(예: "등심"). 비어 있으면 null */
+  partHint: string | null;
   /** 이 줄을 처리할 수 없는 이유 (있으면 업로드에서 제외) */
   error: string | null;
   raw: string;
@@ -129,6 +131,7 @@ export function parseImportTable(text: string): ParsedImport {
 
     const cellHint = (cells[2] ?? "").trim();
     const storageHint = parseStorageHint(cellHint);
+    const partHint = (cells[3] ?? "").trim().slice(0, 40) || null;
 
     let error: string | null = null;
 
@@ -145,6 +148,7 @@ export function parseImportTable(text: string): ParsedImport {
       traceNo: parsed.traceNo ?? (cells[0] ?? "").trim(),
       weight,
       storageHint,
+      partHint,
       error,
       raw: line,
     });

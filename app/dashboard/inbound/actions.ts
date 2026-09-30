@@ -1125,7 +1125,7 @@ async function countImportRows(
 
 export async function createImportJobAction(input: {
   fileName: string;
-  rows: Array<{ rowNo: number; traceNo: string; weight: number; storageHint?: "냉장" | "냉동" | null }>;
+  rows: Array<{ rowNo: number; traceNo: string; weight: number; storageHint?: "냉장" | "냉동" | null; partHint?: string | null }>;
 }): Promise<ActionResult<ImportJobProgress>> {
   try {
     const { supabase, wholesalerId, context } = await resolveInboundScope();
@@ -1138,6 +1138,31 @@ export async function createImportJobAction(input: {
 
     if (rows.length > 5_000) {
       throw new RbacError("한 번에 5,000행까지만 올릴 수 있습니다. 파일을 나눠주세요.");
+    }
+
+    // 화면 입고와 같은 규칙: 현장에서 부위를 새로 만들지 않고 이미 등록된 상품의 부위만 쓴다.
+    // 오타가 그대로 새 상품("냉장 한우 ㅁㄴㅇ 1+")이 되는 걸 막는다. 하나라도 모르는 부위면 아무것도 올리지 않는다.
+    const requestedParts = [...new Set(rows.map((row) => row.partHint?.trim()).filter((part): part is string => Boolean(part)))];
+
+    if (requestedParts.length > 0) {
+      const { data: partRows, error: partError } = await supabase.rpc("inbound_part_options");
+
+      if (partError) {
+        throw new Error(partError.message);
+      }
+
+      const known = new Set(
+        ((partRows ?? []) as Array<{ supplier_id: string | null; part: string }>)
+          .filter((row) => row.supplier_id === null)
+          .map((row) => row.part)
+      );
+      const unknown = requestedParts.filter((part) => !known.has(part));
+
+      if (unknown.length > 0) {
+        throw new RbacError(
+          `등록되지 않은 부위가 있습니다: ${unknown.slice(0, 5).join(", ")}${unknown.length > 5 ? " 외" : ""}. 상품 관리에 그 부위 상품을 먼저 등록하거나 부위 칸을 고쳐주세요.`
+        );
+      }
     }
 
     const { data: job, error: jobError } = await supabase
@@ -1163,6 +1188,7 @@ export async function createImportJobAction(input: {
         trace_no: row.traceNo,
         weight: row.weight,
         storage_hint: row.storageHint === "냉장" || row.storageHint === "냉동" ? row.storageHint : null,
+        part_hint: row.partHint?.trim().slice(0, 40) || null,
       }))
     );
 
@@ -1203,7 +1229,7 @@ export async function processImportChunkAction(
 
     const { data: pendingRows } = await supabase
       .from("inbound_import_rows")
-      .select("id, row_no, trace_no, weight, storage_hint")
+      .select("id, row_no, trace_no, weight, storage_hint, part_hint")
       .eq("job_id", jobId)
       .eq("status", "PENDING")
       .order("row_no", { ascending: true })
@@ -1247,6 +1273,7 @@ export async function processImportChunkAction(
         confirmDuplicate: true,
         importRowId: rowId,
         storageHint: row.storage_hint === "냉장" || row.storage_hint === "냉동" ? row.storage_hint : null,
+        partHint: typeof row.part_hint === "string" ? row.part_hint : null,
       });
 
       const scanned = result.success && result.data && "scanId" in result.data ? result.data : null;

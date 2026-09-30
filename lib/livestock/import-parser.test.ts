@@ -26,4 +26,11 @@ describe("parseImportTable 냉장/냉동 열", () => {
 
     expect(rows[0].error).toContain("냉장/냉동");
   });
+
+  it("넷째 칸은 부위로 읽는다", () => {
+    const { rows } = parseImportTable("002123456789\t8.2\t냉장\t등심\n002999888777\t7.5\t냉동");
+
+    expect(rows[0].partHint).toBe("등심");
+    expect(rows[1].partHint).toBeNull();
+  });
 });

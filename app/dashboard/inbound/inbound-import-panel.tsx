@@ -106,6 +106,7 @@ export function InboundImportPanel() {
         traceNo: row.traceNo,
         weight: row.weight as number,
         storageHint: row.storageHint,
+        partHint: row.partHint,
       })),
     });
 
@@ -229,7 +230,7 @@ export function InboundImportPanel() {
                 applyText(event.target.value, "붙여넣기");
               }}
               rows={5}
-              placeholder={"002123456789\t8.2\n002999888777\t7.5"}
+              placeholder={"002123456789\t8.2\t냉장\t등심\n002999888777\t7.5\t냉동\t갈비살"}
               style={{
                 width: "100%",
                 padding: "10px",
@@ -240,7 +241,7 @@ export function InboundImportPanel() {
               }}
             />
             <p style={{ fontSize: "11px", color: "#94a3b8", margin: "4px 0 0" }}>
-              첫 칸은 이력번호(바코드 값 그대로도 됩니다), 둘째 칸은 중량, 셋째 칸은 냉장 또는 냉동입니다(소·돼지·닭·오리는 꼭 적어주세요. 비우면 \"상품 확인 필요\"로 보관됩니다). 머리글 줄은 자동으로 건너뜁니다.
+              첫 칸은 이력번호(바코드 값 그대로도 됩니다), 둘째 칸은 중량, 셋째 칸은 냉장 또는 냉동, 넷째 칸은 부위(예: 등심)입니다. 이력조회는 부위를 주지 않으니 부위를 적으면 그 부위 상품으로 들어갑니다. 소·돼지·닭·오리는 냉장/냉동을 꼭 적어주세요(비우면 \"상품 확인 필요\"로 보관됩니다). 머리글 줄은 자동으로 건너뜁니다.
             </p>
           </div>
 
