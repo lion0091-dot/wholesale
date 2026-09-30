@@ -16,6 +16,7 @@ vi.mock("@/lib/supabase/service-role-client", () => ({
 
 import { encryptCredential } from "@/lib/security/credential-crypto";
 import {
+  isAlimtalkConfiguredForWholesaler,
   sendOrderNotificationToWholesaler,
   sendReceivablesReminderToRetailer,
   type OrderNotificationPayload,
@@ -359,5 +360,108 @@ describe("전화번호 형식 — 정규화 없이 받은 값을 그대로 `to`�
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result.status).toBe("error");
+  });
+});
+
+const PLATFORM_ENV_KEYS = [
+  "ALIMTALK_PLATFORM_ACCOUNT",
+  "ALIMTALK_PLATFORM_PASSWORD",
+  "ALIMTALK_PLATFORM_SENDER_KEY",
+  "ALIMTALK_PLATFORM_SENDER_PHONE",
+  "ALIMTALK_PLATFORM_TEMPLATE_ORDER_NEW",
+] as const;
+
+function setPlatformEnv({ templateCode }: { templateCode?: string } = { templateCode: "TPL_PLATFORM_ORDER" }) {
+  process.env.ALIMTALK_PLATFORM_ACCOUNT = "platform-acct";
+  process.env.ALIMTALK_PLATFORM_PASSWORD = "platform-pw";
+  process.env.ALIMTALK_PLATFORM_SENDER_KEY = "platform-senderkey";
+  process.env.ALIMTALK_PLATFORM_SENDER_PHONE = "029999999";
+
+  if (templateCode) {
+    process.env.ALIMTALK_PLATFORM_TEMPLATE_ORDER_NEW = templateCode;
+  } else {
+    delete process.env.ALIMTALK_PLATFORM_TEMPLATE_ORDER_NEW;
+  }
+}
+
+describe("플랫폼 기본 채널 폴백 — 공급사가 자기 계정을 등록 안 했을 때(2026-09-30)", () => {
+  afterEach(() => {
+    for (const key of PLATFORM_ENV_KEYS) {
+      delete process.env[key];
+    }
+  });
+
+  it("공급사 미등록 + 플랫폼 채널도 없음 — 여전히 not_configured", async () => {
+    credentialRow.current = null;
+
+    const result = await sendOrderNotificationToWholesaler(orderPayload());
+
+    expect(result.status).toBe("not_configured");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("공급사 미등록이지만 플랫폼 채널이 있으면 플랫폼 계정으로 발송한다", async () => {
+    credentialRow.current = null;
+    setPlatformEnv();
+    mockTokenThenSend(jsonResponse({ code: 1000 }));
+
+    const result = await sendOrderNotificationToWholesaler(orderPayload());
+
+    expect(result.status).toBe("sent");
+
+    const [, tokenInit] = fetchMock.mock.calls[0];
+    expect(tokenInit.headers.Authorization).toBe(
+      `Basic ${Buffer.from("platform-acct:platform-pw").toString("base64")}`
+    );
+
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(body).toMatchObject({
+      account: "platform-acct",
+      from: "029999999",
+      content: { senderkey: "platform-senderkey", templatecode: "TPL_PLATFORM_ORDER" },
+    });
+  });
+
+  it("이 알림의 플랫폼 템플릿 코드만 없으면 not_configured로 안내한다", async () => {
+    credentialRow.current = null;
+    setPlatformEnv({ templateCode: undefined });
+
+    const result = await sendOrderNotificationToWholesaler(orderPayload());
+
+    expect(result.status).toBe("not_configured");
+    expect(result.error).toContain("템플릿 코드가 아직 등록되지 않았습니다");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("공급사가 자기 계정을 등록했으면 플랫폼 채널보다 그게 우선한다", async () => {
+    credentialRow.current = readyRow();
+    setPlatformEnv();
+    mockTokenThenSend(jsonResponse({ code: 1000 }));
+
+    const result = await sendOrderNotificationToWholesaler(orderPayload());
+
+    expect(result.status).toBe("sent");
+
+    const [, tokenInit] = fetchMock.mock.calls[0];
+    expect(tokenInit.headers.Authorization).toBe(`Basic ${Buffer.from("acct-a:pw-plain").toString("base64")}`);
+  });
+
+  it("isAlimtalkConfiguredForWholesaler — 공급사 미등록이어도 플랫폼 채널 있으면 true", async () => {
+    credentialRow.current = null;
+    setPlatformEnv();
+
+    await expect(isAlimtalkConfiguredForWholesaler(WHOLESALER_ID)).resolves.toBe(true);
+  });
+
+  it("isAlimtalkConfiguredForWholesaler — 둘 다 없으면 false", async () => {
+    credentialRow.current = null;
+
+    await expect(isAlimtalkConfiguredForWholesaler(WHOLESALER_ID)).resolves.toBe(false);
+  });
+
+  it("isAlimtalkConfiguredForWholesaler — 공급사 등록만 있어도 true", async () => {
+    credentialRow.current = readyRow();
+
+    await expect(isAlimtalkConfiguredForWholesaler(WHOLESALER_ID)).resolves.toBe(true);
   });
 });

@@ -49,7 +49,7 @@
 
 ## 카카오 알림톡 실제 발송 연동 (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
 
-- [docs/alimtalk-integration.md](docs/alimtalk-integration.md) — 기존 스텁(플랫폼 공용 키 가정)을 공급사별 자격정보(비즈뿌리오 1:1 계약) 구조로 전면 재설계. 잠긴 설계 결정(비밀번호 AES 암호화 저장, 플랫폼이 대행사 계정 관리 안 함, 설정 화면 owner/manager 전용), 비즈뿌리오 API 스펙, 코드 전부 완료. 실계정 미검증.
+- [docs/alimtalk-integration.md](docs/alimtalk-integration.md) — 기존 스텁(플랫폼 공용 키 가정)을 공급사별 자격정보(비즈뿌리오 1:1 계약) 구조로 전면 재설계. 잠긴 설계 결정(비밀번호 AES 암호화 저장, 설정 화면 owner/manager 전용), 비즈뿌리오 API 스펙, 코드 전부 완료. 실계정 미검증. **2026-09-30 추가(사장님 결정)**: "플랫폼은 대행사 계정을 대신 관리하지 않는다"가 절대 규칙에서 기본값 우선순위로 바뀜 — 공급사 개별 등록(`wholesalers.alimtalk_*`)이 항상 우선하되, 없으면 플랫폼 대표 채널(`ALIMTALK_PLATFORM_*` 환경변수, 아직 비어있음)로 폴백. 대량 방송 기능이 코드에 없어(전부 이벤트 1건=수신자 1명) 비용 폭증 위험은 낮지만 종량제 비용 자체는 발생. 환경변수 채워 실제 가동 시 `app/privacy/page.tsx` 5조(비즈뿌리오를 "공급사가 직접 계약"→"회사가 위탁"으로 이동) 동시 수정 필수, 아직 안 함.
 
 ## 플랫폼 구독료 (거래처 수 비례 종량제) (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
 

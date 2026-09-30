@@ -1,11 +1,16 @@
 /**
  * B2B 육류 도매 발주 SaaS - 카카오 알림톡(AlimTalk) 알림 발송 서비스 모듈
  *
- * 플랫폼은 알림톡 발송대행사(현재 비즈뿌리오 고정)와 계약을 대신 해주지 않는다 —
- * 공급사가 각자 자기 명의로 대행사와 1:1 계약하고, 그 계정 정보를 대시보드
- * (/dashboard/invites, app/actions/alimtalk-settings.ts)에 직접 입력한다. 그래서
- * 이 모듈은 플랫폼 전체가 공유하는 API 키가 아니라 매 호출마다 wholesalerId로
- * 그 공급사의 자격정보를 DB에서 찾아 쓴다.
+ * 공급사가 직접 대행사(비즈뿌리오)와 1:1 계약해 자기 계정을 대시보드
+ * (/dashboard/invites, app/actions/alimtalk-settings.ts)에 등록하면 그 자격정보를
+ * 쓴다. **2026-09-30부터**: 공급사가 아직 등록 안 했으면 플랫폼이 대표로 운영하는
+ * 채널(ALIMTALK_PLATFORM_* 환경변수)로 대신 발송한다(사장님 결정 — "처음엔 플랫폼
+ * 채널로 시작, 원하는 공급사는 나중에 독립"). 공급사가 언제든 자기 계정을 설정
+ * 화면에 입력하면 그 순간부터 그 공급사만 자기 계정으로 전환된다(DB 값이 항상
+ * 우선). 플랫폼 채널로 발송되는 공급사가 하나라도 생기면 개인정보처리방침 5조의
+ * "비즈뿌리오는 공급사가 직접 계약" 문구를 "회사가 위탁"으로 옮겨야 한다 — 아직
+ * 안 고쳤다(환경변수 미설정 상태라 실제로 플랫폼 채널이 쓰이는 공급사가 없어서
+ * 급하지 않음, 환경변수 설정 시점에 같이 고칠 것).
  *
  * 미설정(아직 등록 안 함) / 인증정보 오류(복호화 실패 등) / 실제 API 오류 세 가지를
  * 구분해서 반환한다 — 미설정은 정상적인 상태(알림톡을 아직 안 쓰는 공급사)라 조용히
@@ -185,39 +190,91 @@ type CredentialLoadResult =
   | { state: "not_configured" }
   | { state: "invalid" };
 
+/** AlimtalkTemplateKey → 플랫폼 기본 채널 템플릿 코드 환경변수 이름. */
+const PLATFORM_TEMPLATE_ENV_KEYS: Record<AlimtalkTemplateKey, string> = {
+  orderNew: "ALIMTALK_PLATFORM_TEMPLATE_ORDER_NEW",
+  orderEdited: "ALIMTALK_PLATFORM_TEMPLATE_ORDER_EDITED",
+  cancelRequest: "ALIMTALK_PLATFORM_TEMPLATE_CANCEL_REQUEST",
+  creditExceeded: "ALIMTALK_PLATFORM_TEMPLATE_CREDIT_EXCEEDED",
+  receivablesReminder: "ALIMTALK_PLATFORM_TEMPLATE_RECEIVABLES_REMINDER",
+  creditLimitIncreased: "ALIMTALK_PLATFORM_TEMPLATE_CREDIT_LIMIT_INCREASED",
+  creditLimitExceededRetailer: "ALIMTALK_PLATFORM_TEMPLATE_CREDIT_LIMIT_EXCEEDED_RETAILER",
+  creditLimitChangedWholesaler: "ALIMTALK_PLATFORM_TEMPLATE_CREDIT_LIMIT_CHANGED_WHOLESALER",
+  retailerBlocked: "ALIMTALK_PLATFORM_TEMPLATE_RETAILER_BLOCKED",
+  retailerBlockedRetailer: "ALIMTALK_PLATFORM_TEMPLATE_RETAILER_BLOCKED_RETAILER",
+  retailerResumed: "ALIMTALK_PLATFORM_TEMPLATE_RETAILER_RESUMED",
+  retailerResumedRetailer: "ALIMTALK_PLATFORM_TEMPLATE_RETAILER_RESUMED_RETAILER",
+};
+
+/**
+ * 공급사가 아직 자기 계정을 등록 안 했을 때 쓰는 플랫폼 대표 채널. 비밀번호도
+ * 평문 그대로 환경변수(Vercel)에 둔다 — DB에 저장되는 공급사 자격정보와 달리
+ * 이건 회사 자신의 비밀값이라 SUPABASE_SERVICE_ROLE_KEY 등 다른 서버 전용
+ * 환경변수와 같은 신뢰 등급이다(별도 암호화 불필요).
+ */
+function loadPlatformCredentials(): CredentialLoadResult {
+  const account = process.env.ALIMTALK_PLATFORM_ACCOUNT;
+  const password = process.env.ALIMTALK_PLATFORM_PASSWORD;
+  const senderKey = process.env.ALIMTALK_PLATFORM_SENDER_KEY;
+  const senderPhone = process.env.ALIMTALK_PLATFORM_SENDER_PHONE;
+
+  if (!account || !password || !senderKey || !senderPhone) {
+    return { state: "not_configured" };
+  }
+
+  const templateCodes: Partial<Record<AlimtalkTemplateKey, string>> = {};
+
+  for (const key of Object.keys(PLATFORM_TEMPLATE_ENV_KEYS) as AlimtalkTemplateKey[]) {
+    const code = process.env[PLATFORM_TEMPLATE_ENV_KEYS[key]];
+
+    if (code) {
+      templateCodes[key] = code;
+    }
+  }
+
+  return { state: "ready", creds: { account, password, senderKey, senderPhone, templateCodes } };
+}
+
 /**
  * 이 공급사가 비즈뿌리오 자격정보를 등록해뒀는지(=실제로 알림톡이 나가는지)만 가볍게
  * 확인한다. loadCredentials와 같은 필수 컬럼 기준을 쓰되, 비밀번호 복호화는 하지 않는다
  * (주문 목록/상세 화면의 "실발송" 배지 표시용 — 실제 발송 시점엔 dispatchAlimtalk가
  * loadCredentials로 다시 검증하므로 여기서 복호화 실패까지 구분할 필요는 없다).
+ * 공급사 자체 등록이 없어도 플랫폼 기본 채널이 설정돼 있으면 true다.
  */
 export async function isAlimtalkConfiguredForWholesaler(wholesalerId: string): Promise<boolean> {
   const supabase = createServiceRoleClient();
 
-  if (!supabase) {
-    return false;
-  }
+  if (supabase) {
+    const { data } = await supabase
+      .from("wholesalers")
+      .select("alimtalk_account, alimtalk_password_encrypted, alimtalk_sender_key, alimtalk_sender_phone")
+      .eq("id", wholesalerId)
+      .maybeSingle();
 
-  const { data } = await supabase
-    .from("wholesalers")
-    .select("alimtalk_account, alimtalk_password_encrypted, alimtalk_sender_key, alimtalk_sender_phone")
-    .eq("id", wholesalerId)
-    .maybeSingle();
-
-  return Boolean(
-    data?.alimtalk_account &&
+    if (
+      data?.alimtalk_account &&
       data?.alimtalk_password_encrypted &&
       data?.alimtalk_sender_key &&
       data?.alimtalk_sender_phone
-  );
+    ) {
+      return true;
+    }
+  }
+
+  return loadPlatformCredentials().state === "ready";
 }
 
-/** 공급사의 알림톡 자격정보를 service_role로 조회하고 비밀번호를 복호화한다. */
+/**
+ * 공급사의 알림톡 자격정보를 service_role로 조회하고 비밀번호를 복호화한다.
+ * 공급사가 등록 안 했으면 플랫폼 기본 채널로 폴백한다(독립 전환 전까지의 기본
+ * 서비스 — 공급사가 나중에 직접 등록하면 그 즉시 이 폴백보다 우선한다).
+ */
 async function loadCredentials(wholesalerId: string): Promise<CredentialLoadResult> {
   const supabase = createServiceRoleClient();
 
   if (!supabase) {
-    return { state: "not_configured" };
+    return loadPlatformCredentials();
   }
 
   const { data } = await supabase
@@ -235,7 +292,7 @@ async function loadCredentials(wholesalerId: string): Promise<CredentialLoadResu
     !data.alimtalk_sender_key ||
     !data.alimtalk_sender_phone
   ) {
-    return { state: "not_configured" };
+    return loadPlatformCredentials();
   }
 
   let password: string;
