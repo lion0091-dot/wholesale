@@ -29,6 +29,11 @@ insert into public.supplier_statement_files (wholesaler_id,file_name,storage_pat
 insert into public.suppliers (id,wholesaler_id,name,name_key,phone,note) values
  ('e6999999-0000-0000-0000-000000000001','a6999999-0000-0000-0000-000000000001','발주처1','발주처1','010-1','메모'),
  ('e6999999-0000-0000-0000-000000000002','a6999999-0000-0000-0000-000000000002','발주처2','발주처2','010-2','메모2');
+insert into public.audit_log (table_name,row_id,action,old_data) values
+ ('orders','c6999999-0000-0000-0000-000000000001','update','{"delivery_address":"서울 강남"}'),
+ ('orders','c6999999-0000-0000-0000-000000000002','update','{"delivery_address":"서울 서초"}');
+insert into public.retailer_match_requests (restaurant_name,contact_name,contact_phone,created_at) values
+ ('오래된문의','김','010',now()-interval '2 years'),('최근문의','이','010',now()-interval '1 month');
 create temp table paths (p text); insert into paths select * from public.purge_expired_withdrawn_personal_data();
 insert into results (what,expected,result) values
  ('반환된 사업자등록증 경로','96999999/lic',(select string_agg(p,',') from paths)),
@@ -47,6 +52,10 @@ reset role;
 insert into results (what,expected,result) values
  ('W1 발주처 전화·메모 파기, 상호 유지','null/null/발주처1',(select coalesce(phone,'null')||'/'||coalesce(note,'null')||'/'||name from public.suppliers where id='e6999999-0000-0000-0000-000000000001')),
  ('W2(유지) 발주처 그대로','010-2/메모2',(select phone||'/'||note from public.suppliers where id='e6999999-0000-0000-0000-000000000002'));
+insert into results (what,expected,result) values
+ ('W1 주문의 변경이력 복사본 파기(자체 UPDATE가 남긴 것 포함)','0',(select count(*)::text from public.audit_log where table_name='orders' and row_id='c6999999-0000-0000-0000-000000000001')),
+ ('W2 주문 변경이력은 유지(시드 1+주문 생성 시 자동 1)','2',(select count(*)::text from public.audit_log where table_name='orders' and row_id='c6999999-0000-0000-0000-000000000002')),
+ ('입점 문의: 2년 전 삭제, 1개월 전 유지','0/1',(select count(*) filter (where restaurant_name='오래된문의')::text||'/'||count(*) filter (where restaurant_name='최근문의')::text from public.retailer_match_requests));
 -- 168: 식별정보 정리 + 고객 탈퇴 시 상호 유지
 insert into auth.identities (provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at)
  values ('k123','96999999-0000-0000-0000-000000000002','{"sub":"k123","email":"x@k.com","name":"닉"}','kakao',now(),now(),now());
