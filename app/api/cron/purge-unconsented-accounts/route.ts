@@ -43,12 +43,37 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const candidates = ((data ?? []) as Array<{ user_id: string }>).map((row) => row.user_id);
+  // 고객(소매) 미완료 계정 — 거래 흔적이 없는 것만(마이그레이션 166). 로그인과 동시에 만들어진
+  // retailers 행이 auth.users 삭제를 막으므로(RESTRICT), 대상 재검증 후 그 행을 먼저 지운다.
+  const { data: retailData, error: retailError } = await supabase.rpc("list_stale_unconsented_retail_accounts");
+
+  if (retailError) {
+    console.error("[cron purge-unconsented-accounts] 고객 대상 조회 실패:", retailError.message);
+    return NextResponse.json({ error: retailError.message }, { status: 500 });
+  }
+
+  const supplierCandidates = ((data ?? []) as Array<{ user_id: string }>).map((row) => row.user_id);
+  const retailCandidates = ((retailData ?? []) as Array<{ user_id: string }>).map((row) => row.user_id);
+  const candidates = [...supplierCandidates, ...retailCandidates];
+  const retailSet = new Set(retailCandidates);
   const targets = candidates.slice(0, MAX_DELETES_PER_RUN);
   let deleted = 0;
   let failed = 0;
 
   for (const userId of targets) {
+    if (retailSet.has(userId)) {
+      const { data: removed, error: rowError } = await supabase.rpc("delete_stale_retailer_rows", {
+        p_user_id: userId,
+      });
+
+      if (rowError || !removed) {
+        // 조회 이후 거래 흔적이 생겼으면 0을 돌려받는다 — 건드리지 않고 넘어간다.
+        if (rowError) console.error("[cron purge-unconsented-accounts] 고객 행 삭제 실패:", userId, rowError.message);
+        failed += 1;
+        continue;
+      }
+    }
+
     const { error: deleteError } = await supabase.auth.admin.deleteUser(userId);
 
     if (deleteError) {

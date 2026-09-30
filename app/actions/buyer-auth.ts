@@ -324,8 +324,13 @@ export async function withdrawBuyerAccountAction(): Promise<ActionResult> {
 
     if (admin) {
       // 사실상 영구 차단(약 100년). Supabase는 무기한 값을 별도로 지원하지 않는다.
+      // 로그인 수단 정보(카카오 이메일·닉네임)는 거래 증빙에 쓰이지 않으므로 탈퇴 시 함께 지운다.
+      // 계정 ID는 주문·명세서가 가리키므로 유지한다.
       const { error: banError } = await admin.auth.admin.updateUserById(user.id, {
         ban_duration: "876000h",
+        email: `withdrawn-${user.id}@withdrawn.invalid`,
+        email_confirm: true,
+        user_metadata: {},
       });
 
       if (banError) {
