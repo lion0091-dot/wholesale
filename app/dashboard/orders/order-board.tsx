@@ -21,7 +21,7 @@ type OrderGroup = "active" | "historical";
 
 export type { OrderRow } from "@/lib/orders/order-row";
 
-/** 발주번호가 길어서 모바일에서 길게 눌러 선택하기 번거로우므로 한 번에 복사하는 버튼. */
+/** 주문번호가 길어서 모바일에서 길게 눌러 선택하기 번거로우므로 한 번에 복사하는 버튼. */
 function CopyOrderNumberButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -42,7 +42,7 @@ function CopyOrderNumberButton({ value }: { value: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      title="발주번호 복사"
+      title="주문번호 복사"
       style={{
         border: "1px solid #e2e8f0",
         background: copied ? "#dcfce7" : "#ffffff",
@@ -88,7 +88,7 @@ export function OrderBoard({
   const filterScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  // 구간(30일/3개월/전체) + 더보기 — 발주이력 대상찾기·미니샵 발주내역과 같은 공용
+  // 구간(30일/3개월/전체) + 더보기 — 주문이력 대상찾기·미니샵 주문내역과 같은 공용
   // 훅을 쓴다(2026-09-21 code-review 지적: 이 화면만 세 번째 복사본으로 남아있었음).
   const {
     entries: historicalOrders,
@@ -106,7 +106,7 @@ export function OrderBoard({
     getHistoricalOrdersAction
   );
 
-  // 완료·취소 탭 검색 — 조회 구간(30일/3개월)에 갇히면 예전 발주를 못 찾으므로
+  // 완료·취소 탭 검색 — 조회 구간(30일/3개월)에 갇히면 예전 주문를 못 찾으므로
   // 전체 기간을 서버에서 재조회한다. keyword는 진행중 탭의 클라이언트 필터에도
   // 그대로 쓰이므로 group과 무관하게 하나의 입력창을 공유한다.
   const {
@@ -313,8 +313,8 @@ export function OrderBoard({
             onChange={(event) => setKeyword(event.target.value)}
             placeholder={
               group === "historical"
-                ? "발주번호 또는 발주처(소매) 상호 검색 (전체 기간 대상)"
-                : "발주번호 또는 발주처(소매) 상호 검색"
+                ? "주문번호 또는 주문처(소매) 상호 검색 (전체 기간 대상)"
+                : "주문번호 또는 주문처(소매) 상호 검색"
             }
             style={{
               width: "100%",
@@ -441,7 +441,7 @@ export function OrderBoard({
 
       {visibleOrders.length === 0 ? (
         <p style={{ padding: "40px 16px", textAlign: "center", fontSize: "13px", color: "#94a3b8" }}>
-          조건에 맞는 발주서가 없습니다.
+          조건에 맞는 주문서가 없습니다.
         </p>
       ) : (
         <>
@@ -449,11 +449,11 @@ export function OrderBoard({
           <table className="dash-table">
             <thead>
               <tr>
-                <th>발주번호 / 접수일시</th>
-                <th>발주처(소매)</th>
-                <th>발주 품목</th>
+                <th>주문번호 / 접수일시</th>
+                <th>주문처(소매)</th>
+                <th>주문 품목</th>
                 <th>총 금액</th>
-                <th>발주 상태</th>
+                <th>주문 상태</th>
                 <th>알림톡 발송</th>
                 <th>관리</th>
               </tr>

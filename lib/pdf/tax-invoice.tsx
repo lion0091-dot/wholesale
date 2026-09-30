@@ -1,7 +1,7 @@
 /**
  * 계산서(면세) 작성 도우미 — 서버사이드 PDF 렌더러.
  *
- * ⚠️ 국세청에 정식 발행되는 전자계산서가 아니다. 발주 데이터를 계산서 표준 항목에
+ * ⚠️ 국세청에 정식 발행되는 전자계산서가 아니다. 주문 데이터를 계산서 표준 항목에
  * 맞춰 정리해주는 "초안 도우미"일 뿐이며, 실제 발행은 사용자가 이 내용을 보고
  * 홈택스에 직접 입력해야 한다(자동 발행 아님 — ROADMAP §7).
  *
@@ -239,8 +239,8 @@ function TaxInvoiceDocument({
 
         <View style={styles.metaRow}>
           <Text>작성연월일: {formatIssueDate(overrides.issueDate)}</Text>
-          <Text>참조 발주번호: {data.orderNumber}</Text>
-          <Text>발주일시: {formatOrderedAt(data.orderedAt)}</Text>
+          <Text>참조 주문번호: {data.orderNumber}</Text>
+          <Text>주문일시: {formatOrderedAt(data.orderedAt)}</Text>
         </View>
 
         <View style={styles.partyRow}>
@@ -290,7 +290,7 @@ function TaxInvoiceDocument({
         )}
 
         <Text style={styles.disclaimer}>
-          본 문서는 발주 데이터를 계산서 표준 항목에 맞춰 정리한 작성 초안이며, 국세청에 정식
+          본 문서는 주문 데이터를 계산서 표준 항목에 맞춰 정리한 작성 초안이며, 국세청에 정식
           발행된 전자계산서가 아닙니다. 이 내용을 확인한 뒤 홈택스 등에서 직접 발행해야 합니다.
           업태/종목은 자동으로 채워지지 않으니 발행 전 반드시 실제 값으로 확인·수정하세요.
         </Text>

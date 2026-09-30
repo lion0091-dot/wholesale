@@ -18,8 +18,8 @@ interface OrderHistoryPickerProps {
 }
 
 /**
- * 발주이력 "대상 찾기" — 상태 무관 전체 발주를 대상으로 조회 구간(30일/3개월/전체)
- * + 더보기(useOrderHistoryPagination 공용 로직), 그리고 발주번호/거래처명 검색
+ * 주문이력 "대상 찾기" — 상태 무관 전체 주문를 대상으로 조회 구간(30일/3개월/전체)
+ * + 더보기(useOrderHistoryPagination 공용 로직), 그리고 주문번호/거래처명 검색
  * (구간과 무관하게 전체 기간에서 찾음)을 제공한다.
  */
 export function OrderHistoryPicker({
@@ -63,7 +63,7 @@ export function OrderHistoryPicker({
         type="text"
         value={keyword}
         onChange={(event) => setKeyword(event.target.value)}
-        placeholder="발주번호 또는 거래처명으로 검색 (전체 기간)"
+        placeholder="주문번호 또는 거래처명으로 검색 (전체 기간)"
         style={{
           width: "100%",
           padding: "10px 12px",
@@ -137,7 +137,7 @@ export function OrderHistoryPicker({
         </p>
       ) : rows.length === 0 ? (
         <p style={{ fontSize: "13px", color: "#94a3b8", padding: "20px 0", textAlign: "center" }}>
-          해당 조건의 발주가 없습니다.
+          해당 조건의 주문가 없습니다.
         </p>
       ) : (
         <OrderHistoryRows rows={rows} />

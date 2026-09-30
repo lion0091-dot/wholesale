@@ -153,7 +153,7 @@ export default async function DashboardInvitesPage() {
       <SettingsHeader />
 
       <p style={{ fontSize: "13px", color: "#64748b", margin: 0, lineHeight: 1.7 }}>
-        고객(소매)에게 보낼 미니샵 전용 초대장(카카오톡 문구 + 발주 링크)을 발부합니다. 링크를 받은
+        고객(소매)에게 보낼 미니샵 전용 초대장(카카오톡 문구 + 주문 링크)을 발부합니다. 링크를 받은
         고객(소매)만 내 상품과 단가를 볼 수 있습니다.
       </p>
 
@@ -322,7 +322,7 @@ export default async function DashboardInvitesPage() {
       {account.wholesalerId && orderPolicySettings && (
         <section style={cardStyle}>
           <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>
-            발주 정책 설정
+            주문 정책 설정
           </div>
           <MinOrderAmountForm initial={orderPolicySettings} />
         </section>

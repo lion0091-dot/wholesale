@@ -13,7 +13,7 @@ interface Props {
 
 /**
  * 전화로 흥정한 단가를 실제로 적용하는 인라인 편집 — 고객 희망가 바로 아래 둔다.
- * 서버 액션이 owner/manager 권한과 발주 잠금 여부를 확인하므로, 여기서는 역할을
+ * 서버 액션이 owner/manager 권한과 주문 잠금 여부를 확인하므로, 여기서는 역할을
  * 미리 가려내지 않고(매입단가 화면과 동일 관례) 실패 메시지를 그대로 보여준다.
  */
 export function OrderItemPriceEditor({ orderItemId, unitPrice, requestedUnitPrice }: Props) {

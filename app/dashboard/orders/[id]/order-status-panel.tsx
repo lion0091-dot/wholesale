@@ -79,7 +79,7 @@ export function OrderStatusPanel({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-        <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>발주 상태 처리</span>
+        <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>주문 상태 처리</span>
         <span
           style={{
             fontSize: "11px",
@@ -111,7 +111,7 @@ export function OrderStatusPanel({
 
       {nextStatuses.length === 0 ? (
         <p style={{ fontSize: "12px", color: "#94a3b8" }}>
-          처리가 완료된 발주서입니다. 더 이상 변경할 수 있는 상태가 없습니다.
+          처리가 완료된 주문서입니다. 더 이상 변경할 수 있는 상태가 없습니다.
         </p>
       ) : (
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>

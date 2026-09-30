@@ -27,7 +27,7 @@ export interface ActionResult<T = undefined> {
 const REVALIDATE_PATH = "/dashboard/products";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** 상품 관리 권한 — PRD 기준 manager 이상 (staff는 발주 처리만) */
+/** 상품 관리 권한 — PRD 기준 manager 이상 (staff는 주문 처리만) */
 const PRODUCT_ROLES: OrgRole[] = ["owner", "manager"];
 
 function toResult(error: unknown): ActionResult<never> {
@@ -102,7 +102,7 @@ interface ProductInput {
   hot_deal_price: number | null;
   hot_deal_quantity_limit: number | null;
   hot_deal_quota_alert_threshold: number | null;
-  /** "none"이면 발주정지 상태를 건드리지 않는다 — 폼이 로드된 뒤 DB에서(예: 자동정지) 먼저 바뀐 값을 덮어쓰지 않기 위함. */
+  /** "none"이면 주문정지 상태를 건드리지 않는다 — 폼이 로드된 뒤 DB에서(예: 자동정지) 먼저 바뀐 값을 덮어쓰지 않기 위함. */
   order_stopped_action: "none" | "stop" | "resume";
 }
 
@@ -377,13 +377,13 @@ export async function updateProductAction(
 
     const input = parseProductForm(formData, { requireIdentityFields: false });
     const expectedUpdatedAt = ((formData.get("updated_at") as string) || "").trim();
-    // 핫딜을 끌 때 발주정지 자동해제 여부를 판단하는 데만 쓰는 폼 로드 시점 재고 스냅샷
+    // 핫딜을 끌 때 주문정지 자동해제 여부를 판단하는 데만 쓰는 폼 로드 시점 재고 스냅샷
     // (아래 stock_quantity 입력과 달리 사용자가 못 건드리는 hidden 값).
     const stockSnapshotRaw = (formData.get("stock_quantity_snapshot") as string) || "";
     const stockSnapshot = stockSnapshotRaw ? Number.parseFloat(stockSnapshotRaw) : null;
     // 저장 전 hot_deal_active 값 — 이번 저장에서 "핫딜을 껐다"는 전환이 실제로 일어났는지
     // 판단한다. 이게 없으면 원래부터 핫딜을 안 쓰는 일반 상품도 매번 저장할 때마다
-    // 수동 발주정지가 조용히 풀린다(hot_deal_active가 항상 false이기 때문).
+    // 수동 주문정지가 조용히 풀린다(hot_deal_active가 항상 false이기 때문).
     const wasHotDealActive = (formData.get("hot_deal_active_snapshot") as string) === "on";
 
     // 축종/상품명/원산지는 상품 마스터의 정체성 키다 — 이 셋이 같으면 같은 상품으로
@@ -493,7 +493,7 @@ export async function updateProductAction(
       updated_at: new Date().toISOString(),
     };
 
-    // 발주정지는 "건드렸을 때만" 반영한다 — 폼을 열어둔 사이 재고 0으로 자동정지가
+    // 주문정지는 "건드렸을 때만" 반영한다 — 폼을 열어둔 사이 재고 0으로 자동정지가
     // 걸렸는데 관리자가 이 토글을 만지지 않았다면, 여기서 그 자동정지를 조용히
     // 되돌리면 안 된다(updated_at 낙관적 잠금과 별개의 추가 안전장치).
     if (input.order_stopped_action === "stop") {
@@ -510,12 +510,12 @@ export async function updateProductAction(
       stockSnapshot !== null &&
       stockSnapshot > 0
     ) {
-      // "핫딜 오프 = 정상판매 온"이 기본 페어(2026-09-24 확정) — 발주정지 토글을
+      // "핫딜 오프 = 정상판매 온"이 기본 페어(2026-09-24 확정) — 주문정지 토글을
       // 관리자가 이번 저장에서 직접 만지지 않았어도, 핫딜을 끄면 기본적으로 함께
       // 풀어준다. 단 재고가 여전히 0이면(정상매장 기준으로도 매진) 풀지 않는다.
       // wasHotDealActive로 "이번 저장에서 실제로 껐는지"(전환)만 잡는다 — 그냥
       // hot_deal_active가 false라는 것만 보면, 원래부터 핫딜을 안 쓰는 일반 상품의
-      // 수동 발주정지까지 아무 저장에서나 매번 풀려버린다.
+      // 수동 주문정지까지 아무 저장에서나 매번 풀려버린다.
       updatePayload.order_stopped = false;
       updatePayload.order_stopped_reason = null;
       updatePayload.order_stopped_at = null;

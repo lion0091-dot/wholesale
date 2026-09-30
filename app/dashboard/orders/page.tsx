@@ -76,7 +76,7 @@ export default async function DashboardOrdersPage() {
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>고객 주문</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          미니샵으로 접수된 발주서를 상태별로 확인하고 출고·배송 처리를 진행합니다. 알림톡은 발주
+          미니샵으로 접수된 주문서를 상태별로 확인하고 출고·배송 처리를 진행합니다. 알림톡은 주문
           접수 및 상태 변경 시점에 자동 발송됩니다.
         </p>
       </header>
@@ -85,7 +85,7 @@ export default async function DashboardOrdersPage() {
         {[
           { label: "접수대기", value: `${pendingCount}건`, accent: "#b45309" },
           { label: "진행중 (확정/배송중)", value: `${inProgressCount}건`, accent: "#1d4ed8" },
-          { label: "누적 발주 금액 (취소 제외)", value: formatWon(activeAmount), accent: "#0f172a" },
+          { label: "누적 주문 금액 (취소 제외)", value: formatWon(activeAmount), accent: "#0f172a" },
         ].map((card) => (
           <div
             key={card.label}

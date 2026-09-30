@@ -89,7 +89,7 @@ export function ShopHeader({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
         <div>
           <span style={{ fontSize: "11px", fontWeight: 700, color: "#dc2626", letterSpacing: "0.5px" }}>
-            {title ?? "단골 전용 1:1 직거래 발주"}
+            {title ?? "단골 전용 1:1 직거래 주문"}
           </span>
           <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>
             {wholesaler.business_name}
@@ -157,7 +157,7 @@ export function ShopFooter({ businessName }: { businessName: string }) {
       }}
     >
       <p style={{ fontSize: "13px", color: "#475569", lineHeight: 1.5 }}>
-        본 상점은 <strong>{businessName}</strong>과 계약된 고객(소매)를 위한 비공개 1:1 발주 공간입니다.
+        본 상점은 <strong>{businessName}</strong>과 계약된 고객(소매)를 위한 비공개 1:1 주문 공간입니다.
         <br />
         타 공급사(도매)에게 정보가 일체 공유되지 않습니다.
       </p>

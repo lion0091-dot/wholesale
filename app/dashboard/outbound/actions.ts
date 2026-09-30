@@ -68,10 +68,10 @@ const SCAN_ERRORS: Record<string, string> = {
   BOX_NOT_AVAILABLE: "재고에 없는 이력번호입니다. 입고된 박스인지, 이미 다 나간 박스는 아닌지 확인해주세요.",
   PRODUCT_NOT_IN_ORDER: "이 주문에 없는 상품입니다. 박스를 다시 확인해주세요.",
   PRODUCT_ALREADY_FULFILLED: "이 상품은 주문 수량을 이미 다 채웠습니다.",
-  ORDER_NOT_FOUND: "발주서를 찾을 수 없습니다.",
+  ORDER_NOT_FOUND: "주문서를 찾을 수 없습니다.",
   EMPTY_TRACE_NO: "이력번호를 읽지 못했습니다.",
   INVALID_WEIGHT: "가져올 수 있는 중량이 없습니다.",
-  ALREADY_FINALIZED: "이미 마감(금액 확정)된 발주서입니다. 추가로 나가는 물건은 별도로 처리해주세요.",
+  ALREADY_FINALIZED: "이미 마감(금액 확정)된 주문서입니다. 추가로 나가는 물건은 별도로 처리해주세요.",
 };
 
 type Client = Awaited<ReturnType<typeof createClient>>;
@@ -206,7 +206,7 @@ export async function recordOutboundScanAction(
       }
 
       if (error.message.includes("ORDER_NOT_SHIPPABLE")) {
-        throw new RbacError("확정 또는 배송중 상태의 발주서만 출고할 수 있습니다.");
+        throw new RbacError("확정 또는 배송중 상태의 주문서만 출고할 수 있습니다.");
       }
 
       throw new Error(error.message);
@@ -389,19 +389,19 @@ export async function finalizeShipmentAction(
       }
 
       if (error.message.includes("ALREADY_FINALIZED")) {
-        throw new RbacError("이미 마감된 발주서입니다.");
+        throw new RbacError("이미 마감된 주문서입니다.");
       }
 
       if (error.message.includes("ORDER_NOT_SHIPPABLE:awaiting_stock")) {
-        throw new RbacError("재고 확보 대기 중인 발주서는 마감할 수 없습니다. 재고가 채워져 발주서가 '확정'된 뒤에 마감하세요.");
+        throw new RbacError("재고 확보 대기 중인 주문서는 마감할 수 없습니다. 재고가 채워져 주문서가 '확정'된 뒤에 마감하세요.");
       }
 
       if (error.message.includes("ORDER_NOT_SHIPPABLE")) {
-        throw new RbacError("확정 상태의 발주서만 마감할 수 있습니다.");
+        throw new RbacError("확정 상태의 주문서만 마감할 수 있습니다.");
       }
 
       if (error.message.includes("ORDER_NOT_FOUND")) {
-        throw new RbacError("발주서를 찾을 수 없습니다.");
+        throw new RbacError("주문서를 찾을 수 없습니다.");
       }
 
       throw new Error(error.message);

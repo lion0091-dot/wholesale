@@ -96,7 +96,7 @@ export default async function DashboardBillingPage() {
       <SettingsHeader />
 
       <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>
-        이번 달 실제로 발주(취소 제외)한 거래처 수를 기준으로 계산되는 구간별 누진 구독료입니다.
+        이번 달 실제로 주문(취소 제외)한 거래처 수를 기준으로 계산되는 구간별 누진 구독료입니다.
       </p>
 
       <div
@@ -168,7 +168,7 @@ export default async function DashboardBillingPage() {
                 </p>
               )}
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                이번 달 남은 기간 동안 새로 발주하는 거래처가 있으면 금액이 늘어날 수 있습니다.
+                이번 달 남은 기간 동안 새로 주문하는 거래처가 있으면 금액이 늘어날 수 있습니다.
                 최종 금액은 월말 기준입니다.
               </p>
             </div>
@@ -201,7 +201,7 @@ export default async function DashboardBillingPage() {
               ))}
               {breakdown.length === 0 && (
                 <div style={{ fontSize: "12px", color: "#94a3b8" }}>
-                  이번 달 아직 발주한 거래처가 없습니다.
+                  이번 달 아직 주문한 거래처가 없습니다.
                 </div>
               )}
             </div>

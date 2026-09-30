@@ -21,7 +21,7 @@ describe("pickProductsNextStep", () => {
     expect(pickProductsNextStep(base)).toBeNull();
   });
 
-  it("여러 문제가 동시에 있어도 카드는 가장 급한 것 하나만 강조한다 — 발주막힘이 1순위", () => {
+  it("여러 문제가 동시에 있어도 카드는 가장 급한 것 하나만 강조한다 — 주문막힘이 1순위", () => {
     const step = pickProductsNextStep({
       ...base,
       autoStoppedCount: 2,
@@ -37,7 +37,7 @@ describe("pickProductsNextStep", () => {
     expect(step?.secondaries).toHaveLength(4);
   });
 
-  it("발주막힘이 없으면 판매가 미설정이 1순위로 올라온다", () => {
+  it("주문막힘이 없으면 판매가 미설정이 1순위로 올라온다", () => {
     const step = pickProductsNextStep({ ...base, unpricedCount: 5, partlessCount: 2 });
 
     expect(step?.key).toBe("unpriced");

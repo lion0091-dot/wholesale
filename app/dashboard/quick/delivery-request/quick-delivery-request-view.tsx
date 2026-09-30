@@ -40,8 +40,8 @@ export function QuickDeliveryRequestView({ rows }: { rows: QuickDeliveryRequestR
         type="text"
         value={search}
         onChange={(event) => setSearch(event.target.value)}
-        placeholder="거래처명 또는 발주번호 검색"
-        aria-label="발주 검색"
+        placeholder="거래처명 또는 주문번호 검색"
+        aria-label="주문 검색"
         style={{
           padding: "10px 12px",
           borderRadius: "8px",
@@ -52,7 +52,7 @@ export function QuickDeliveryRequestView({ rows }: { rows: QuickDeliveryRequestR
 
       {filtered.length === 0 ? (
         <p style={{ fontSize: "13px", color: "#94a3b8", margin: 0 }}>
-          {rows.length === 0 ? "진행중 발주가 없습니다." : "검색 결과가 없습니다."}
+          {rows.length === 0 ? "진행중 주문가 없습니다." : "검색 결과가 없습니다."}
         </p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>

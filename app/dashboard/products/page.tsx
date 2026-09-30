@@ -89,7 +89,7 @@ export default async function DashboardProductsPage() {
 
   const lowStockCount = products.filter((product) => Number(product.stock_quantity) <= 3).length;
 
-  // 재고 0으로 자동 발주정지된 상품 — 핫딜/일반 공통(2026-09-24 확장). 재입고돼도
+  // 재고 0으로 자동 주문정지된 상품 — 핫딜/일반 공통(2026-09-24 확장). 재입고돼도
   // 자동으로 안 풀리므로 여기서 인앱 배너로만 알린다. 외부 발송 채널(알림톡/SMS)은 아직 없다.
   const autoStoppedProducts = products.filter(
     (product) =>
@@ -246,7 +246,7 @@ export default async function DashboardProductsPage() {
             color: "#991b1b",
           }}
         >
-          ⛔ 상품 {autoStoppedProducts.length}개가 재고 0으로 발주가 자동정지됐습니다. 재입고해도 자동으로
+          ⛔ 상품 {autoStoppedProducts.length}개가 재고 0으로 주문가 자동정지됐습니다. 재입고해도 자동으로
           다시 열리지 않으니, 상품 수정 화면에서 확인 후 직접 재개해주세요.
           <ul style={{ margin: "8px 0 0", paddingLeft: "18px" }}>
             {autoStoppedProducts.map((product) => (

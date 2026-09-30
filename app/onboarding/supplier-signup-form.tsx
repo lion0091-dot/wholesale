@@ -52,7 +52,7 @@ const checkboxRowStyle: React.CSSProperties = {
  *
  * 카카오 로그인으로 계정은 이미 만들어졌고, 여기서 받는 것은
  * 필수 약관 동의 + 연락처 + 상호뿐이다. 제출 즉시 미니샵 토큰과 조직 스코프가
- * 생성되어 상품 등록·발주 관리를 바로 시작할 수 있다.
+ * 생성되어 상품 등록·주문 관리를 바로 시작할 수 있다.
  * (사업자등록번호는 선택 — 승인 심사 단계에서 받아도 된다)
  */
 export function SupplierSignupForm({ defaultName, defaultPhone }: SupplierSignupFormProps) {
@@ -160,7 +160,7 @@ export function SupplierSignupForm({ defaultName, defaultPhone }: SupplierSignup
           disabled={pending}
           style={inputStyle}
         />
-        <p style={hintStyle}>발주 접수 알림과 승인 결과 안내를 받을 번호입니다.</p>
+        <p style={hintStyle}>주문 접수 알림과 승인 결과 안내를 받을 번호입니다.</p>
       </div>
 
       <div style={{ marginBottom: "14px" }}>
@@ -300,7 +300,7 @@ export function SupplierSignupForm({ defaultName, defaultPhone }: SupplierSignup
             시)
           </div>
           <div>
-            <strong>이용 목적:</strong> 회원 식별, 입점 심사, 발주 처리·알림 전송, 정산
+            <strong>이용 목적:</strong> 회원 식별, 입점 심사, 주문 처리·알림 전송, 정산
           </div>
           <div>
             <strong>보유·이용기간:</strong> 회원 탈퇴 시까지 (법령상 보존해야 하는 거래 기록은 해당

@@ -1,5 +1,5 @@
 /**
- * 2. 상품 관리 — 서버 액션 한 겹(역할 게이트·폼 검증·정체성 잠금·낙관적 잠금·발주정지 페어·삭제/보관 안내) + 실제 DB.
+ * 2. 상품 관리 — 서버 액션 한 겹(역할 게이트·폼 검증·정체성 잠금·낙관적 잠금·주문정지 페어·삭제/보관 안내) + 실제 DB.
  * DB 함수 레벨은 scripts/db-test-product-management.sql 등이 이미 한다. 외부 API 없음.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -294,7 +294,7 @@ describe("updateProductAction", () => {
     expect(missing.error).toContain("상품을 찾을 수 없거나");
   });
 
-  it("발주정지 — stop 은 수동 정지, resume 은 해제, none 은 건드리지 않는다", async () => {
+  it("주문정지 — stop 은 수동 정지, resume 은 해제, none 은 건드리지 않는다", async () => {
     const product = await world.createProduct();
 
     expect((await updateProductAction(product.id, form({ order_stopped_action: "stop" }))).success).toBe(true);
@@ -307,7 +307,7 @@ describe("updateProductAction", () => {
     expect(await row(product.id)).toMatchObject({ order_stopped: false, order_stopped_reason: null });
   });
 
-  it("핫딜을 끄면 발주정지가 함께 풀리지만, 재고가 0이면 유지하고, 원래 핫딜을 안 쓰던 상품의 수동 정지는 건드리지 않는다", async () => {
+  it("핫딜을 끄면 주문정지가 함께 풀리지만, 재고가 0이면 유지하고, 원래 핫딜을 안 쓰던 상품의 수동 정지는 건드리지 않는다", async () => {
     const hotOff = await world.createProduct({ hot_deal_active: true, hot_deal_price: 10000, order_stopped: true, order_stopped_reason: "manual", order_stopped_at: new Date().toISOString() });
     const hotOffNoStock = await world.createProduct({ hot_deal_active: true, hot_deal_price: 10000, order_stopped: true, order_stopped_reason: "manual", order_stopped_at: new Date().toISOString() });
     const plain = await world.createProduct({ order_stopped: true, order_stopped_reason: "manual", order_stopped_at: new Date().toISOString() });

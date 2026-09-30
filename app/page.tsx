@@ -68,11 +68,11 @@ export default async function Home() {
         <p style={{ color: "#334155", fontSize: "15px", lineHeight: 1.7 }}>
           축산물 공급사(도매)와 고객(소매)을 연결하는
           <br />
-          폐쇄형 B2B 발주 플랫폼입니다.
+          폐쇄형 B2B 주문 플랫폼입니다.
         </p>
         <p style={{ color: "#64748b", fontSize: "13px", marginTop: "10px", lineHeight: 1.7 }}>
           오픈 마켓이 아닙니다 — 입점 공급사(도매)는 사업자등록증·국세청 진위확인을 거쳐
-          검수되고, 고객(소매)은 공급사(도매)의 초대를 통해서만 발주할 수 있습니다.
+          검수되고, 고객(소매)은 공급사(도매)의 초대를 통해서만 주문할 수 있습니다.
         </p>
       </header>
 
@@ -103,7 +103,7 @@ export default async function Home() {
               <span style={{ color: "#cbd5e1" }}>→</span>
               <span>거래처 초대 링크 발급</span>
               <span style={{ color: "#cbd5e1" }}>→</span>
-              <span>발주 접수·출고</span>
+              <span>주문 접수·출고</span>
             </div>
           </div>
 
@@ -123,7 +123,7 @@ export default async function Home() {
             >
               <span>초대 링크로 카카오 로그인</span>
               <span style={{ color: "#cbd5e1" }}>→</span>
-              <span>미니샵에서 발주</span>
+              <span>미니샵에서 주문</span>
               <span style={{ color: "#cbd5e1" }}>→</span>
               <span>알림톡으로 진행상황 확인</span>
             </div>
@@ -167,7 +167,7 @@ export default async function Home() {
         </h2>
         <p style={{ fontSize: "13px", color: "#64748b", lineHeight: 1.6, marginBottom: "14px" }}>
           카카오 계정으로 3초 만에 가입하고, 거래처(고객)에 미니샵 링크를 발급해
-          모바일로 발주를 받아보세요.
+          모바일로 주문를 받아보세요.
         </p>
         <HomeKakaoCta authDisabled={!authEnabled} />
       </section>
@@ -197,7 +197,7 @@ export default async function Home() {
           구독료 안내
         </h2>
         <p style={{ fontSize: "13px", color: "#64748b", lineHeight: 1.6, marginBottom: "14px" }}>
-          가입 후 30일은 무료로 체험하실 수 있습니다. 이후에는 그 달에 실제로 발주가 있었던
+          가입 후 30일은 무료로 체험하실 수 있습니다. 이후에는 그 달에 실제로 주문가 있었던
           거래처(고객) 수에 비례해 매월 구독료가 발생하며, 거래처가 많아질수록 구간별로
           단가가 낮아지는 게 아니라 <strong>그 구간만큼만</strong> 다음 단가가 적용됩니다
           (구간이 올라가도 이전 구간 단가는 그대로 유지).
@@ -228,8 +228,8 @@ export default async function Home() {
         </div>
 
         <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "10px", lineHeight: 1.6 }}>
-          예) 이번 달 발주한 거래처 60곳 = 50곳 × 5,000원 + 10곳 × 7,000원 = 320,000원/월.
-          발주가 없었던 거래처는 과금 대상에서 제외됩니다.
+          예) 이번 달 주문한 거래처 60곳 = 50곳 × 5,000원 + 10곳 × 7,000원 = 320,000원/월.
+          주문가 없었던 거래처는 과금 대상에서 제외됩니다.
         </p>
         <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "6px", lineHeight: 1.6 }}>
           첫 달은 실제 과금 시작일부터 그 달 말일까지 일수만큼만 일할 계산됩니다.

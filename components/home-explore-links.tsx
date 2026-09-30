@@ -40,7 +40,7 @@ export function HomeExploreLinks({ showAdminEntry }: HomeExploreLinksProps) {
             고객(소매) 전용 모바일 미니샵 (카톡 초대 링크 체험) →
           </a>
           <a href="/dashboard/orders" style={{ fontSize: "12px", color: "#64748b" }}>
-            공급사(도매) 발주 접수 관리 대시보드 →
+            공급사(도매) 주문 접수 관리 대시보드 →
           </a>
           {showAdminEntry && (
             <a href="/admin/suppliers" style={{ fontSize: "12px", color: "#64748b" }}>

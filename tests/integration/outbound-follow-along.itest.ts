@@ -82,7 +82,7 @@ async function orders() {
   return loadOutboundOrders(scope);
 }
 
-/** 화면이 그리는 안내 — 목록에서 고른 발주서와 진행표를 그대로 넘긴다. */
+/** 화면이 그리는 안내 — 목록에서 고른 주문서와 진행표를 그대로 넘긴다. */
 async function guideFor(orderId: string) {
   const list = await orders();
   const selected = list.find((order) => order.id === orderId) ?? null;
@@ -107,15 +107,15 @@ async function assignedSum(orderId: string): Promise<number> {
   return ((data ?? []) as Array<{ qty_delta: number }>).reduce((sum, row) => sum - Number(row.qty_delta), 0);
 }
 
-describe("따라가기 1 — 발주서 두 건, 찍고 마감하고 다음 발주서로 넘어가는 하루", () => {
-  it("단계마다 안내가 다음 할 일을 말하고, 마감된 발주서는 목록 뒤로 가며 더 못 찍는다는 안내가 나온다", async () => {
+describe("따라가기 1 — 주문서 두 건, 찍고 마감하고 다음 주문서로 넘어가는 하루", () => {
+  it("단계마다 안내가 다음 할 일을 말하고, 마감된 주문서는 목록 뒤로 가며 더 못 찍는다는 안내가 나온다", async () => {
     const [p1, p2] = [await newProduct(), await newProduct()];
     const [b1, b2] = [await intake(p1, 5), await intake(p1, 5)];
     const b3 = await intake(p2, 6);
     const first = await confirmedOrder(p1, 8);
     const second = await confirmedOrder(p2, 3);
 
-    // 1. 발주서가 목록에 있고, 아직 아무것도 안 찍었으면 "가져올 박스를 찍으세요"
+    // 1. 주문서가 목록에 있고, 아직 아무것도 안 찍었으면 "가져올 박스를 찍으세요"
     let list = await orders();
 
     expect(list.map((order) => order.id)).toEqual(expect.arrayContaining([first, second]));
@@ -135,7 +135,7 @@ describe("따라가기 1 — 발주서 두 건, 찍고 마감하고 다음 발�
     expect(finalizeGuide.key).toBe("finalize");
     expect(finalizeGuide.action).toMatchObject({ kind: "finalize" });
 
-    // 4. 마감 — 금액이 확정되고, 그 발주서는 목록 뒤로 가서 "마감됨"이 된다
+    // 4. 마감 — 금액이 확정되고, 그 주문서는 목록 뒤로 가서 "마감됨"이 된다
     expect(await finalizeShipmentAction(first)).toEqual({ success: true, data: { wasShort: false, prevAmount: 120000, totalAmount: 120000 } });
     list = await orders();
 
@@ -146,7 +146,7 @@ describe("따라가기 1 — 발주서 두 건, 찍고 마감하고 다음 발�
     expect(list.slice(list.findIndex((order) => order.finalized)).every((order) => order.finalized)).toBe(true);
     expect((await guideFor(first)).key).toBe("finalized");
 
-    // 5. 마감된 발주서에 또 찍으면 사유를 알려 주고, 다음 발주서(아직 안 마감)는 그대로 찍힌다
+    // 5. 마감된 주문서에 또 찍으면 사유를 알려 주고, 다음 주문서(아직 안 마감)는 그대로 찍힌다
     const again = await recordOutboundScanAction(first, b1);
 
     expect(again.success).toBe(false);
@@ -156,11 +156,11 @@ describe("따라가기 1 — 발주서 두 건, 찍고 마감하고 다음 발�
   });
 });
 
-describe("따라가기 2 — 발주서가 많아도, 마감된 발주서가 쌓여도 새 발주서가 목록에서 사라지지 않는다", () => {
-  it("마감된 발주서는 뒤로 가고 아직 마감 안 된 발주서가 앞에 있으며, 50건이 넘어도 가장 최근 발주서가 보인다", async () => {
+describe("따라가기 2 — 주문서가 많아도, 마감된 주문서가 쌓여도 새 주문서가 목록에서 사라지지 않는다", () => {
+  it("마감된 주문서는 뒤로 가고 아직 마감 안 된 주문서가 앞에 있으며, 50건이 넘어도 가장 최근 주문서가 보인다", async () => {
     const product = await newProduct();
 
-    // 오래전에 마감돼 배송 대기 중인 발주서 5건 — 예전 목록에서는 이것들이 맨 앞을 차지했다.
+    // 오래전에 마감돼 배송 대기 중인 주문서 5건 — 예전 목록에서는 이것들이 맨 앞을 차지했다.
     const finalizedIds: string[] = [];
 
     for (let i = 0; i < 5; i += 1) {
@@ -261,7 +261,7 @@ describe("따라가기 3 — 박스를 못 찾았을 때 이유별로 다음 할
   });
 });
 
-describe("따라가기 4 — 재고 확보 대기 발주서는 마감이 막힌 이유와 다음 할 일을 알려 준다", () => {
+describe("따라가기 4 — 재고 확보 대기 주문서는 마감이 막힌 이유와 다음 할 일을 알려 준다", () => {
   it("목록에 나오고 안내가 '확정 뒤에 마감'이라고 하며, 마감하려 하면 같은 안내 문구로 거부된다", async () => {
     const product = await newProduct();
     const orderId = await world.createOrder({ product, status: "awaiting_stock", quantity: 3 });

@@ -139,7 +139,7 @@ export async function finalizePaidOrder(
         // 대기 행을 남겨 재대조가 다음 기회에 환불을 다시 시도하게 한다.
         return {
           error:
-            "핫딜이 방금 매진돼 발주를 접수하지 못했고, 자동 환불도 실패했습니다. 결제는 공급사가 확인 후 환불해드립니다. 공급사에 문의해주세요.",
+            "핫딜이 방금 매진돼 주문를 접수하지 못했고, 자동 환불도 실패했습니다. 결제는 공급사가 확인 후 환불해드립니다. 공급사에 문의해주세요.",
           refunded: false,
         };
       }
@@ -147,7 +147,7 @@ export async function finalizePaidOrder(
       await supabase.from("pg_pending_payments").delete().eq("id", pending.id);
 
       return {
-        error: "핫딜이 방금 매진돼 발주를 접수하지 못했습니다. 결제하신 금액은 자동으로 환불 처리됐습니다(카드사 사정에 따라 며칠 걸릴 수 있습니다).",
+        error: "핫딜이 방금 매진돼 주문를 접수하지 못했습니다. 결제하신 금액은 자동으로 환불 처리됐습니다(카드사 사정에 따라 며칠 걸릴 수 있습니다).",
         refunded: true,
       };
     }

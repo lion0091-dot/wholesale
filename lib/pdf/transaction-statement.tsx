@@ -2,7 +2,7 @@
  * 거래명세서(Transaction Statement) 서버사이드 PDF 렌더러.
  *
  * ⚠️ 이 문서는 계산서(면세)·세금계산서를 대체하지 않는다 — 부가가치세법상 법정 증빙서류가
- * 아닌, 발주 내역을 정리한 상관례상 참고 문서다(lib/orders/statement.ts 참고).
+ * 아닌, 주문 내역을 정리한 상관례상 참고 문서다(lib/orders/statement.ts 참고).
  * PDF 본문 하단에도 동일한 취지를 명시한다.
  *
  * 한글 렌더링을 위해 Noto Sans KR 정적 인스턴스(Regular/Bold)를 assets/fonts에
@@ -197,8 +197,8 @@ function TransactionStatementDocument({ data }: { data: StatementData }) {
         <Text style={styles.subtitle}>Transaction Statement</Text>
 
         <View style={styles.metaRow}>
-          <Text>발주번호: {data.orderNumber}</Text>
-          <Text>발주일시: {formatOrderedAt(data.orderedAt)}</Text>
+          <Text>주문번호: {data.orderNumber}</Text>
+          <Text>주문일시: {formatOrderedAt(data.orderedAt)}</Text>
           <Text>발행일: {issuedAt}</Text>
         </View>
 
@@ -274,7 +274,7 @@ function TransactionStatementDocument({ data }: { data: StatementData }) {
         )}
 
         <Text style={styles.disclaimer}>
-          본 문서는 플랫폼에 적재된 발주 데이터를 기준으로 자동 생성된 거래명세서이며, 계산서(면세)·
+          본 문서는 플랫폼에 적재된 주문 데이터를 기준으로 자동 생성된 거래명세서이며, 계산서(면세)·
           세금계산서 등 세법상 증빙을 대체하지 않습니다. 세법상 증빙은 공급사(도매)가 별도로 발행합니다. 이 문서의
           판매자(공급자)는 위에 표기된 공급사이며, 장터(미트 파트너스)는 공급사의 주문 데이터를 문서로 생성해 드리는
           역할만 합니다.

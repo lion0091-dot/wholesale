@@ -206,7 +206,7 @@ const RETAILER_STATUS_ERROR_MESSAGES: Record<string, string> = {
 
 /**
  * 거래처 거래중지/재개. 실제 검증(정지 시 사유 필수)은 DB 함수(set_wholesaler_retailer_status)에서
- * 수행한다(과금 기준이 실발주로 전환되어 7일 재개 냉각기간은 제거됨).
+ * 수행한다(과금 기준이 실주문로 전환되어 7일 재개 냉각기간은 제거됨).
  * 돈과 직결되는 조작이라 여신 한도와 동일하게 owner/manager만 허용.
  */
 export async function updateRetailerStatusAction(

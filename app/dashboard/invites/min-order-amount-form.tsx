@@ -53,7 +53,7 @@ export function MinOrderAmountForm({ initial }: MinOrderAmountFormProps) {
           최소 주문 금액 (배송 1건 기준)
         </div>
         <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px" }}>
-          손님이 이 금액 미만으로는 발주할 수 없습니다. 미니샵 장바구니/체크아웃 화면에 바로 반영됩니다.
+          손님이 이 금액 미만으로는 주문할 수 없습니다. 미니샵 장바구니/체크아웃 화면에 바로 반영됩니다.
         </div>
       </div>
 

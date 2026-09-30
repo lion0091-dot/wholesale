@@ -2,8 +2,8 @@
  * 미니샵 주문 내역 로더.
  *
  * /shop/<shop_token>/orders 가 사용한다.
- * - 접속 고객(바이어)이 해당 공급사에 넣은 발주서만 조회 (교차 조회 차단)
- * - 발주 품목은 order_items에 적재된 '발주 시점 단가'를 그대로 노출한다
+ * - 접속 고객(바이어)이 해당 공급사에 넣은 주문서만 조회 (교차 조회 차단)
+ * - 주문 품목은 order_items에 적재된 '주문 시점 단가'를 그대로 노출한다
  *   (카탈로그 단가가 이후에 바뀌어도 주문 내역은 변하지 않아야 한다)
  *
  * 서버 전용 모듈(next/headers 의존). 클라이언트 컴포넌트는 타입·순수 함수만 있는
@@ -86,7 +86,7 @@ function sanitizeRangeDays(rangeDays: number | null): number | null {
 }
 
 /**
- * 조회 구간/더보기 페이지 단위로 발주 목록 + 품목을 가져온다.
+ * 조회 구간/더보기 페이지 단위로 주문 목록 + 품목을 가져온다.
  * 최초 로드(loadShopOrderHistory)와 "구간 변경/더보기" 클라이언트 액션
  * (app/shop/[shop_token]/actions.ts의 loadShopOrderHistoryPageAction)이 공용으로 쓴다.
  */
@@ -184,8 +184,8 @@ export async function fetchShopOrderPage(
  * 접속 고객의 주문 내역 조회(최초 페이지 로드용).
  * 고객 식별은 항상 서버(카탈로그 로더)가 해석한 값만 사용한다.
  *
- * 오래 거래한 단골일수록 발주 건수가 무한정 쌓일 수 있어(예전엔 최근 30건 고정 상한) 공급사
- * 쪽 발주 관리(app/dashboard/orders)와 동일하게 조회 구간(30일/3개월/전체)과
+ * 오래 거래한 단골일수록 주문 건수가 무한정 쌓일 수 있어(예전엔 최근 30건 고정 상한) 공급사
+ * 쪽 주문 관리(app/dashboard/orders)와 동일하게 조회 구간(30일/3개월/전체)과
  * ORDER_HISTORY_PAGE_SIZE 단위 더보기로 바꾼다.
  */
 export async function loadShopOrderHistory(
@@ -218,11 +218,11 @@ export async function loadShopOrderHistory(
     return {
       ...EMPTY_HISTORY,
       // 구간이 지정된 상태에서 0건이면 "그 구간엔 없다"는 뜻이라 다른 구간을 안내하고,
-      // 전체 기간(rangeDays=null)까지 0건이면 애초에 발주 이력이 없는 것이다.
+      // 전체 기간(rangeDays=null)까지 0건이면 애초에 주문 이력이 없는 것이다.
       notice:
         rangeDays !== null
-          ? `최근 ${rangeDays}일간 발주 내역이 없습니다. 다른 기간을 선택해보세요.`
-          : "아직 접수된 발주서가 없습니다.",
+          ? `최근 ${rangeDays}일간 주문 내역이 없습니다. 다른 기간을 선택해보세요.`
+          : "아직 접수된 주문서가 없습니다.",
       totalCount,
     };
   }

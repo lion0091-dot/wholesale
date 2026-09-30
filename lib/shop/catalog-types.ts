@@ -128,7 +128,7 @@ export function toCartLines(catalog: ShopCatalog, entries: CartEntryInput[]): Ca
       return lines;
     }
 
-    // 발주정지된 상품은 재고가 남아 있어도(수동 정지) 담을 수 없다 — 품절과 동일하게
+    // 주문정지된 상품은 재고가 남아 있어도(수동 정지) 담을 수 없다 — 품절과 동일하게
     // 장바구니/체크아웃에서 조용히 제외한다(클라이언트는 버튼을 미리 막지만, 최종
     // 판단은 항상 서버 카탈로그 기준).
     if (item.product.order_stopped) {

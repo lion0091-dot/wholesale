@@ -27,7 +27,7 @@ const STATUS_LABELS: Record<OrderStatus, { label: string; bg: string; color: str
   delivered: { label: "배송 완료", bg: "#dcfce7", color: "#166534" },
   cancel_requested: { label: "취소 요청", bg: "#ffedd5", color: "#9a3412" },
   cancel_rejected: { label: "취소 반려", bg: "#f1f5f9", color: "#475569" },
-  cancelled: { label: "발주 취소", bg: "#fee2e2", color: "#991b1b" },
+  cancelled: { label: "주문 취소", bg: "#fee2e2", color: "#991b1b" },
 };
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -196,14 +196,14 @@ export default async function DashboardPage() {
           {businessName ? `${businessName} ` : ""}대시보드
         </h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          오늘의 발주 현황과 매출 요약을 확인하고, 고객(소매) 전용 미니샵 초대 링크를
+          오늘의 주문 현황과 매출 요약을 확인하고, 고객(소매) 전용 미니샵 초대 링크를
           전달하세요.
         </p>
       </header>
 
       <section className="dash-cards">
         <SummaryCard
-          label="오늘의 발주 건수"
+          label="오늘의 주문 건수"
           value={`${todayOrders.length}건`}
           hint={`처리 대기(신규 접수) ${pendingCount}건`}
           accent="#dc2626"
@@ -211,13 +211,13 @@ export default async function DashboardPage() {
         <SummaryCard
           label="오늘 매출"
           value={formatWon(todaySales)}
-          hint="취소 발주 제외 · KST 기준"
+          hint="취소 주문 제외 · KST 기준"
           accent="#0f172a"
         />
         <SummaryCard
           label="이번 달 매출"
           value={formatWon(monthSales)}
-          hint={`누적 발주 ${orders.length}건`}
+          hint={`누적 주문 ${orders.length}건`}
           accent="#2563eb"
         />
       </section>
@@ -231,7 +231,7 @@ export default async function DashboardPage() {
           미니샵 초대 링크
         </div>
         <p style={{ fontSize: "13px", color: "#64748b", lineHeight: 1.6, marginBottom: "12px" }}>
-          카카오톡으로 전달할 초대 문구와 전용 발주 링크를 한 번에 복사합니다. 링크를 받은
+          카카오톡으로 전달할 초대 문구와 전용 주문 링크를 한 번에 복사합니다. 링크를 받은
           고객(소매)만 내 미니샵과 단가를 볼 수 있습니다.
         </p>
         <CopyInviteButton
@@ -265,14 +265,14 @@ export default async function DashboardPage() {
             marginBottom: "12px",
           }}
         >
-          <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a" }}>최근 발주</div>
+          <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a" }}>최근 주문</div>
           <Link href="/dashboard/orders" style={{ fontSize: "12px", color: "#2563eb" }}>
             전체 보기 →
           </Link>
         </div>
 
         {recentOrders.length === 0 ? (
-          <p style={{ fontSize: "13px", color: "#94a3b8" }}>이번 달 접수된 발주서가 없습니다.</p>
+          <p style={{ fontSize: "13px", color: "#94a3b8" }}>이번 달 접수된 주문서가 없습니다.</p>
         ) : (
           <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "8px" }}>
             {recentOrders.map((order) => {

@@ -209,7 +209,7 @@ export function CustomerCardGrid({
               )}
             </p>
 
-            {/* 발주 실적 요약 */}
+            {/* 주문 실적 요약 */}
             <div
               style={{
                 display: "grid",
@@ -219,10 +219,10 @@ export function CustomerCardGrid({
                 borderTop: "1px solid #f1f5f9",
               }}
             >
-              <StatCell label="누적 발주" value={`${customer.orderCount}건`} />
+              <StatCell label="누적 주문" value={`${customer.orderCount}건`} />
               <StatCell label="누적 금액" value={formatWon(customer.totalOrderAmount)} />
               <StatCell
-                label="최근 발주"
+                label="최근 주문"
                 value={
                   customer.lastOrderedAt ? formatOrderedAt(customer.lastOrderedAt) : "이력 없음"
                 }

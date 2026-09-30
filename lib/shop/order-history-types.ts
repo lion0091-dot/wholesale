@@ -21,7 +21,7 @@ export interface ShopOrderLine {
   unitPrice: number;
   quantity: number;
   subtotalAmount: number;
-  /** 발주 시점에 고객이 제안한 희망 단가(네고). 재주문/수정 시 장바구니에 그대로 이어 담는다. */
+  /** 주문 시점에 고객이 제안한 희망 단가(네고). 재주문/수정 시 장바구니에 그대로 이어 담는다. */
   requestedUnitPrice: number | null;
 }
 
@@ -32,7 +32,7 @@ export interface ShopOrder {
   totalAmount: number;
   deliveryAddress: string;
   deliveryNotes: string | null;
-  /** 접수대기(pending)·PG 아닌 발주서만 "수정" 가능 여부 판단에 쓴다. */
+  /** 접수대기(pending)·PG 아닌 주문서만 "수정" 가능 여부 판단에 쓴다. */
   paymentMethod: PaymentMethod;
   orderedAt: string;
   cancelReason: string | null;
@@ -82,7 +82,7 @@ export function describeCancelProgress(order: ShopOrder): string | null {
     case "cancel_requested":
       return "공급사에 취소 요청이 접수되었습니다. 승인 시 취소가 확정됩니다.";
     case "cancel_rejected":
-      return "공급사가 취소 요청을 반려했습니다. 발주는 기존 일정대로 진행됩니다.";
+      return "공급사가 취소 요청을 반려했습니다. 주문는 기존 일정대로 진행됩니다.";
     case "cancelled":
       return "주문이 최종 취소되었습니다.";
     default:

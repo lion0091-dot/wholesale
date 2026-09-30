@@ -28,7 +28,7 @@ import type { AdminSupplierItem } from "./page";
 
 interface SupplierApprovalListProps {
   initialSuppliers: AdminSupplierItem[];
-  /** wholesaler_id → 이번 달 실발주(취소 제외) 거래처 수 (구독료는 구간별 누진 단가로 computeMonthlyFee가 계산) */
+  /** wholesaler_id → 이번 달 실주문(취소 제외) 거래처 수 (구독료는 구간별 누진 단가로 computeMonthlyFee가 계산) */
   billedRetailerCounts: Record<string, number>;
   /** wholesaler_id → 이번 달 적용 중인 이벤트 할인(없으면 discountRate 0) */
   eventDiscounts: Record<string, ActiveEventDiscount>;
@@ -441,7 +441,7 @@ export function SupplierApprovalList({
                       대표자: {supplier.representative_name} | 신청일: {formatDate(supplier.created_at)}
                     </p>
                     <p style={{ fontSize: "12px", color: "#334155", marginTop: "4px", fontWeight: 600 }}>
-                      이번 달 구독료: {monthlyFee.toLocaleString("ko-KR")}원 (이번 달 발주 거래처{" "}
+                      이번 달 구독료: {monthlyFee.toLocaleString("ko-KR")}원 (이번 달 주문 거래처{" "}
                       {billedRetailerCount}곳, 구간별 누진 단가)
                       {isProrated && (
                         <span style={{ color: "#0f172a" }}>

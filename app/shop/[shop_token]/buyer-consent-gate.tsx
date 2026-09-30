@@ -100,7 +100,7 @@ export function BuyerConsentGate({ shopToken, displayName }: BuyerConsentGatePro
             textAlign: "center",
           }}
         >
-          발주 서비스 이용을 위해 아래 동의가 필요합니다.
+          주문 서비스 이용을 위해 아래 동의가 필요합니다.
         </p>
 
         {error && (
@@ -212,7 +212,7 @@ export function BuyerConsentGate({ shopToken, displayName }: BuyerConsentGatePro
                 <Link href="/privacy" target="_blank" style={{ color: "#2563eb", textDecoration: "underline" }}>
                   개인정보 수집·이용
                 </Link>
-                에 동의합니다. (발주 처리를 위한 상호·연락처·배송지)
+                에 동의합니다. (주문 처리를 위한 상호·연락처·배송지)
               </span>
             </label>
 
@@ -256,7 +256,7 @@ export function BuyerConsentGate({ shopToken, displayName }: BuyerConsentGatePro
               <strong>수집 항목:</strong> 상호, 담당자 성명, 연락처, 배송지
             </div>
             <div>
-              <strong>이용 목적:</strong> 발주 처리, 배송, 거래 상대 공급사와의 발주 이행
+              <strong>이용 목적:</strong> 주문 처리, 배송, 거래 상대 공급사와의 주문 이행
             </div>
             <div>
               <strong>보유·이용기간:</strong> 회원 탈퇴 시까지 (법령상 보존해야 하는 거래 기록은 해당
@@ -264,7 +264,7 @@ export function BuyerConsentGate({ shopToken, displayName }: BuyerConsentGatePro
             </div>
             <div>
               <strong>동의 거부:</strong> 동의를 거부할 권리가 있습니다. 다만 [필수] 항목에 동의하지
-              않으면 발주 서비스를 이용할 수 없고, [선택] 항목은 거부해도 서비스 이용에 불이익이
+              않으면 주문 서비스를 이용할 수 없고, [선택] 항목은 거부해도 서비스 이용에 불이익이
               없습니다.
             </div>
           </div>

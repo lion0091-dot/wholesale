@@ -169,7 +169,7 @@ export interface BuyerIdentity {
   allowedPaymentMethods: string[];
 }
 
-/** 거래 관계까지 확인된 바이어 — 발주/취소 요청의 전제 조건 */
+/** 거래 관계까지 확인된 바이어 — 주문/취소 요청의 전제 조건 */
 export interface LinkedBuyer {
   userId: string;
   retailerId: string;
@@ -288,7 +288,7 @@ export async function resolveBuyerIdentity(
 }
 
 /**
- * 발주/취소 요청 전용 신원 검증.
+ * 주문/취소 요청 전용 신원 검증.
  *
  * shop_token → 공급사 → 활성 거래 관계 → retailer_id 를 서버에서 모두 재확인한다.
  * 클라이언트가 보내는 값은 shop_token(URL과 동일)뿐이고, retailer_id/wholesaler_id 는
@@ -324,7 +324,7 @@ export async function requireLinkedBuyer(
   if (role === "wholesaler" || role === "super_admin") {
     throw new BuyerAuthError(
       "not_a_buyer",
-      "공급사/관리자 계정으로는 발주할 수 없습니다. 고객(소매) 카카오 계정으로 로그인해주세요."
+      "공급사/관리자 계정으로는 주문할 수 없습니다. 고객(소매) 카카오 계정으로 로그인해주세요."
     );
   }
 

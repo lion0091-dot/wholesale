@@ -38,7 +38,7 @@ const CSV_HEADERS = [
   "공급사명",
   "사업자번호",
   "청구월",
-  "실발주거래처수",
+  "실주문거래처수",
   "정가",
   "확정청구액",
   "상태",
@@ -433,7 +433,7 @@ export function BillingInvoiceList({ from, to, initialInvoices }: BillingInvoice
                   </span>
                 </div>
                 <p style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
-                  {formatMonth(invoice.billingMonth)} · 실발주 거래처 {invoice.billedRetailerCount}곳 ·{" "}
+                  {formatMonth(invoice.billingMonth)} · 실주문 거래처 {invoice.billedRetailerCount}곳 ·{" "}
                   {invoice.businessNumber}
                 </p>
                 <p style={{ fontSize: "13px", color: "#334155", marginTop: "4px", fontWeight: 700 }}>

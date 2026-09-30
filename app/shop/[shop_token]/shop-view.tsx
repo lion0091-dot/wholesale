@@ -170,7 +170,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
           </button>
         </div>
 
-        {/* 발주 내역 조회 / 주문 취소 요청 진입점 */}
+        {/* 주문 내역 조회 / 주문 취소 요청 진입점 */}
         {!previewOnly && (
         <Link
           href={`/shop/${catalog.shopToken}/orders`}
@@ -189,7 +189,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
             textDecoration: "none",
           }}
         >
-          <span>📋 내 발주 내역 · 발주 취소 요청</span>
+          <span>📋 내 주문 내역 · 주문 취소 요청</span>
           <span style={{ color: "#475569" }}>→</span>
         </Link>
         )}
@@ -295,7 +295,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
               marginBottom: "12px",
             }}
           >
-            🔥 핫딜 특가 상품도 일반 상품과 동일하게, 발주 취소는 공급사 승인이 있어야 처리됩니다.
+            🔥 핫딜 특가 상품도 일반 상품과 동일하게, 주문 취소는 공급사 승인이 있어야 처리됩니다.
           </div>
         )}
 
@@ -491,7 +491,7 @@ function ProductCard({ item, quantity, onStep, previewOnly = false }: ProductCar
   const { product, effectivePrice, isCustomPrice, isHotDeal, orderableQuantity } = item;
   const stock = Number(product.stock_quantity);
   const isSoldOut = stock <= 0;
-  // 발주정지는 재고와 별개로 걸릴 수 있다(핫딜 상품 수동 정지) — 재고가 남아있어도 주문은 막는다.
+  // 주문정지는 재고와 별개로 걸릴 수 있다(핫딜 상품 수동 정지) — 재고가 남아있어도 주문은 막는다.
   const isOrderStopped = Boolean(product.order_stopped);
   const isUnavailable = isSoldOut || isOrderStopped;
   const unavailableLabel = isOrderStopped ? "일시 품절" : "품절";

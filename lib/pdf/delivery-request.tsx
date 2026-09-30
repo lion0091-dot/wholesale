@@ -181,8 +181,8 @@ function DeliveryRequestDocument({ data }: { data: DeliveryRequestData }) {
         <Text style={styles.subtitle}>Delivery Request</Text>
 
         <View style={styles.metaRow}>
-          <Text>발주번호: {data.orderNumber}</Text>
-          <Text>발주일시: {formatOrderedAt(data.orderedAt)}</Text>
+          <Text>주문번호: {data.orderNumber}</Text>
+          <Text>주문일시: {formatOrderedAt(data.orderedAt)}</Text>
           <Text>작성일: {issuedAt}</Text>
         </View>
 
@@ -223,7 +223,7 @@ function DeliveryRequestDocument({ data }: { data: DeliveryRequestData }) {
         )}
 
         <Text style={styles.disclaimer}>
-          본 문서는 플랫폼에 적재된 발주 데이터를 기준으로 자동 생성된 배송 의뢰 참고 문서이며,
+          본 문서는 플랫폼에 적재된 주문 데이터를 기준으로 자동 생성된 배송 의뢰 참고 문서이며,
           운송장이나 법적 운송계약서가 아닙니다. 실제 배송 접수/계약은 공급사와 운송사(택배사·화물차주)
           사이에서 별도로 이뤄집니다. 가격 정보는 포함하지 않습니다.
         </Text>

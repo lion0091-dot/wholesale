@@ -72,7 +72,7 @@ export function ReceivablesView({ groups, alimtalkReady = false }: ReceivablesVi
     const orderIds = group.orders.filter((order) => selected.has(order.id)).map((order) => order.id);
 
     if (orderIds.length === 0) {
-      setErrorByGroup((prev) => ({ ...prev, [group.retailerId]: "정산할 발주를 선택해주세요." }));
+      setErrorByGroup((prev) => ({ ...prev, [group.retailerId]: "정산할 주문를 선택해주세요." }));
       return;
     }
 
@@ -179,7 +179,7 @@ export function ReceivablesView({ groups, alimtalkReady = false }: ReceivablesVi
           textAlign: "center",
         }}
       >
-        <p style={{ fontSize: "13px", color: "#94a3b8" }}>미정산 외상 발주가 없습니다.</p>
+        <p style={{ fontSize: "13px", color: "#94a3b8" }}>미정산 외상 주문가 없습니다.</p>
       </section>
     );
   }
@@ -422,8 +422,8 @@ export function ReceivablesView({ groups, alimtalkReady = false }: ReceivablesVi
                         aria-label={`${group.restaurantName} 전체 선택`}
                       />
                     </th>
-                    <th>발주번호</th>
-                    <th>발주일</th>
+                    <th>주문번호</th>
+                    <th>주문일</th>
                     <th>정산 기한</th>
                     <th>금액</th>
                   </tr>
@@ -481,7 +481,7 @@ export function ReceivablesView({ groups, alimtalkReady = false }: ReceivablesVi
                       <span style={{ fontSize: "14px", fontWeight: 700 }}>{formatWon(order.totalAmount)}</span>
                     </div>
                     <div style={{ fontSize: "12px", color: "#64748b" }}>
-                      발주일 {formatOrderedAt(order.orderedAt)}
+                      주문일 {formatOrderedAt(order.orderedAt)}
                     </div>
                     <div style={{ fontSize: "12px", color: order.isOverdue ? "#b91c1c" : "#64748b" }}>
                       정산 기한 {formatOrderedAt(order.dueAt)}

@@ -11,7 +11,7 @@ export type TodoCounts = Record<TodoKey, number>;
  * 링크는 PC·폰 공용 화면 하나로 통일했다(폰 전용 /dashboard/quick/* 로 갈라지지 않게).
  */
 export const TODO_ITEMS: Array<{ key: TodoKey; label: string; href: string; officeOnly?: boolean }> = [
-  { key: "newOrders", label: "새 발주 (접수 대기)", href: "/dashboard/orders" },
+  { key: "newOrders", label: "새 주문 (접수 대기)", href: "/dashboard/orders" },
   { key: "cancelRequests", label: "취소 요청", href: "/dashboard/orders" },
   { key: "needsCheckBoxes", label: "확인 필요 박스", href: `/dashboard/inbound${INBOUND_ANCHORS.nextStep}` },
 ];

@@ -18,9 +18,9 @@ export interface ActionResult<T = undefined> {
 }
 
 /**
- * 발주이력 "대상 찾기" 전용 조회 — app/dashboard/orders/actions.ts의
- * getHistoricalOrdersAction과 달리 상태 무관 전체 발주를 대상으로 한다
- * (감사이력은 진행 중인 발주에도 필요하다 — 완료/취소된 것만 볼 이유가 없음).
+ * 주문이력 "대상 찾기" 전용 조회 — app/dashboard/orders/actions.ts의
+ * getHistoricalOrdersAction과 달리 상태 무관 전체 주문를 대상으로 한다
+ * (감사이력은 진행 중인 주문에도 필요하다 — 완료/취소된 것만 볼 이유가 없음).
  */
 export async function listOrdersForHistoryAction(
   rangeDays: number | null,
@@ -54,7 +54,7 @@ export async function listOrdersForHistoryAction(
       .range(safeOffset, safeOffset + ORDER_HISTORY_PAGE_SIZE - 1);
 
     if (error) {
-      return { success: false, error: "발주 조회에 실패했습니다." };
+      return { success: false, error: "주문 조회에 실패했습니다." };
     }
 
     const entries = ((data ?? []) as OrderJoinRow[]).map(mapOrderJoinRow);
@@ -67,12 +67,12 @@ export async function listOrdersForHistoryAction(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : "발주 조회 중 오류가 발생했습니다.",
+      error: error instanceof Error ? error.message : "주문 조회 중 오류가 발생했습니다.",
     };
   }
 }
 
-/** 발주번호/거래처명으로 전체 기간 검색 (상태 무관) */
+/** 주문번호/거래처명으로 전체 기간 검색 (상태 무관) */
 export async function searchOrdersForHistoryAction(
   keyword: string
 ): Promise<ActionResult<{ entries: OrderRow[] }>> {
@@ -110,7 +110,7 @@ export async function searchOrdersForHistoryAction(
     ]);
 
     if (byOrderNumber.error || byRetailerName.error) {
-      return { success: false, error: "발주 검색에 실패했습니다." };
+      return { success: false, error: "주문 검색에 실패했습니다." };
     }
 
     const merged = new Map<string, OrderJoinRow>();
@@ -123,9 +123,9 @@ export async function searchOrdersForHistoryAction(
       merged.set(row.id, row);
     }
 
-    // 발주번호 일치와 거래처명 일치를 각각 이미 ORDER_HISTORY_SEARCH_LIMIT개로 캡한
+    // 주문번호 일치와 거래처명 일치를 각각 이미 ORDER_HISTORY_SEARCH_LIMIT개로 캡한
     // 상태라 합친 결과를 여기서 다시 자르지 않는다 — 합친 뒤 자르면 거래처명 일치가
-    // 많을 때 발주번호로 정확히 찾은 진짜 결과가 뒤로 밀려 조용히 빠질 수 있다.
+    // 많을 때 주문번호로 정확히 찾은 진짜 결과가 뒤로 밀려 조용히 빠질 수 있다.
     const entries = Array.from(merged.values())
       .sort((a, b) => (a.ordered_at < b.ordered_at ? 1 : -1))
       .map(mapOrderJoinRow);
@@ -134,7 +134,7 @@ export async function searchOrdersForHistoryAction(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : "발주 검색 중 오류가 발생했습니다.",
+      error: error instanceof Error ? error.message : "주문 검색 중 오류가 발생했습니다.",
     };
   }
 }

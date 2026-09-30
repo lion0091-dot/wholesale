@@ -102,9 +102,9 @@ function TrackingLookupButton({ shopToken, order }: { shopToken: string; order: 
 
 /** 취소 사유 예시 — 모바일에서 장문 입력이 번거로운 바이어를 위한 빠른 선택 */
 const REASON_PRESETS = [
-  "발주 수량을 잘못 입력했습니다.",
+  "주문 수량을 잘못 입력했습니다.",
   "당일 예약 취소로 물량이 필요 없어졌습니다.",
-  "다른 품목으로 재발주하겠습니다.",
+  "다른 품목으로 재주문하겠습니다.",
   "납품 일정이 변경되었습니다.",
 ];
 
@@ -114,9 +114,9 @@ interface ApplyOrderLinesResult {
 }
 
 /**
- * 발주 품목을 현재 카탈로그 기준으로 다시 검증하며 장바구니에 담는다(재주문/수정 공용).
+ * 주문 품목을 현재 카탈로그 기준으로 다시 검증하며 장바구니에 담는다(재주문/수정 공용).
  * 품절·판매중지·삭제된 상품은 건너뛴다 — 단가는 여기서 정하지 않고 항상 체크아웃 시점의
- * 서버 카탈로그가 최종 결정한다(다른 발주 경로와 동일 원칙).
+ * 서버 카탈로그가 최종 결정한다(다른 주문 경로와 동일 원칙).
  */
 function applyOrderLinesToCart(
   order: ShopOrder,
@@ -179,7 +179,7 @@ export function OrderHistoryView({
     const { appliedCount, skippedNames } = applyOrderLinesToCart(order, catalog, cart);
 
     if (appliedCount === 0) {
-      setCartNotice("이 발주의 품목을 더 이상 담을 수 없습니다(품절 또는 판매 중지).");
+      setCartNotice("이 주문의 품목을 더 이상 담을 수 없습니다(품절 또는 판매 중지).");
       return;
     }
 
@@ -194,7 +194,7 @@ export function OrderHistoryView({
     const { appliedCount, skippedNames } = applyOrderLinesToCart(order, catalog, cart);
 
     if (appliedCount === 0) {
-      setCartNotice("이 발주의 품목을 더 이상 담을 수 없어 수정할 수 없습니다. 공급사에 문의해주세요.");
+      setCartNotice("이 주문의 품목을 더 이상 담을 수 없어 수정할 수 없습니다. 공급사에 문의해주세요.");
       return;
     }
 
@@ -254,8 +254,8 @@ export function OrderHistoryView({
       setEmptyNotice(
         data.entries.length === 0
           ? appliedRangeDays !== null
-            ? `최근 ${appliedRangeDays}일간 발주 내역이 없습니다. 다른 기간을 선택해보세요.`
-            : "아직 접수된 발주서가 없습니다."
+            ? `최근 ${appliedRangeDays}일간 주문 내역이 없습니다. 다른 기간을 선택해보세요.`
+            : "아직 접수된 주문서가 없습니다."
           : null
       );
     }
@@ -325,7 +325,7 @@ export function OrderHistoryView({
       <ShopHeader
         wholesaler={wholesaler}
         customer={customer}
-        title="내 발주 내역"
+        title="내 주문 내역"
         backHref={`/shop/${shopToken}`}
       />
 
@@ -429,7 +429,7 @@ export function OrderHistoryView({
 
           return (
             <article key={order.id} style={{ ...cardStyle, padding: "16px" }}>
-              {/* 주문 헤더 — 발주번호 / 접수시각 / 현재 상태 */}
+              {/* 주문 헤더 — 주문번호 / 접수시각 / 현재 상태 */}
               <div
                 style={{
                   display: "flex",
@@ -465,7 +465,7 @@ export function OrderHistoryView({
                 </span>
               </div>
 
-              {/* 발주 품목 — 발주 시점에 확정된 단가를 그대로 노출 */}
+              {/* 주문 품목 — 주문 시점에 확정된 단가를 그대로 노출 */}
               <ul
                 style={{
                   listStyle: "none",
@@ -530,7 +530,7 @@ export function OrderHistoryView({
                   borderTop: "1px solid #f1f5f9",
                 }}
               >
-                <span style={{ fontSize: "13px", color: "#334155" }}>총 발주 금액</span>
+                <span style={{ fontSize: "13px", color: "#334155" }}>총 주문 금액</span>
                 <strong style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
                   {formatWon(order.totalAmount)}
                 </strong>
@@ -589,7 +589,7 @@ export function OrderHistoryView({
                       cursor: "pointer",
                     }}
                   >
-                    ✏️ 발주 수정
+                    ✏️ 주문 수정
                   </button>
                 )}
               </div>
@@ -668,7 +668,7 @@ export function OrderHistoryView({
                     cursor: "pointer",
                   }}
                 >
-                  발주 취소 요청
+                  주문 취소 요청
                 </button>
               )}
 
@@ -693,7 +693,7 @@ export function OrderHistoryView({
                       value={reason}
                       maxLength={CANCEL_REASON_MAX_LENGTH}
                       onChange={(event) => setReason(event.target.value)}
-                      placeholder="예: 발주 수량을 잘못 입력했습니다."
+                      placeholder="예: 주문 수량을 잘못 입력했습니다."
                       style={{ ...inputStyle, resize: "vertical" }}
                     />
                     <div

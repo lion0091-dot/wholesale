@@ -1,9 +1,9 @@
 /**
- * 구독료 과금 대상 거래처 집계 — "당월 실발주(주문 발생) 거래처 수" 기준.
+ * 구독료 과금 대상 거래처 집계 — "당월 실주문(주문 발생) 거래처 수" 기준.
  *
  * 잠긴 설계 결정 (2026-09-18, active 상태 기준에서 전환):
  * - 이전엔 wholesaler_retailers.status='active'(거래중 관계)를 기준으로 과금했는데,
- *   이러면 발주가 한 건도 없는 "유령" 거래처도 계속 과금 대상이 되고, 공급사가
+ *   이러면 주문가 한 건도 없는 "유령" 거래처도 계속 과금 대상이 되고, 공급사가
  *   거래중지/재개를 반복해 관계 상태만 조작하면 과금을 회피할 수 있다는 문제가 있었다.
  * - 이번 달(KST 달력 기준, 1일 00:00 ~ 다음달 1일 00:00 직전) 취소(cancelled)가 아닌
  *   주문이 1건이라도 있었던 거래처만 과금 대상으로 센다. [[retailer-suspend-permission]]
@@ -13,7 +13,7 @@
  * - middleware(Edge 런타임)에서는 이 모듈을 import하지 않는다 — createClient()가
  *   next/headers에 의존하는 서버 전용 모듈이기 때문. 접근 차단 판정(lib/supplier/billing.ts
  *   의 isBillingBlocked)은 subscription_status/trial_started_at/billing_starts_at만 보고,
- *   실발주 집계와는 무관하게 동작한다 — 금액 "표시"만 이 모듈을 쓴다.
+ *   실주문 집계와는 무관하게 동작한다 — 금액 "표시"만 이 모듈을 쓴다.
  */
 
 import type { createClient } from "@/lib/supabase/server";
@@ -47,7 +47,7 @@ export function monthRangeUtc(monthKey: string): { startUtc: string; endUtc: str
 }
 
 /**
- * 특정 공급사의 실발주(취소 제외) 거래처 수. monthRangeUtc를 생략하면 이번 달 기준
+ * 특정 공급사의 실주문(취소 제외) 거래처 수. monthRangeUtc를 생략하면 이번 달 기준
  * (구독료 청구서 화면용), 넘기면 그 달 기준(app/api/cron/finalize-subscription-invoices의
  * 과거 달 확정용)으로 집계한다.
  */
@@ -69,7 +69,7 @@ export async function countBilledRetailers(
   return new Set(((data ?? []) as Array<{ retailer_id: string }>).map((row) => row.retailer_id)).size;
 }
 
-/** 전체 공급사의 이번 달 실발주 거래처 수 — wholesaler_id별 집계 (관리자 목록 화면용). */
+/** 전체 공급사의 이번 달 실주문 거래처 수 — wholesaler_id별 집계 (관리자 목록 화면용). */
 export async function countBilledRetailersForAllSuppliers(
   supabase: SupabaseServerClient
 ): Promise<Record<string, number>> {

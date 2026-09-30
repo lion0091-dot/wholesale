@@ -33,7 +33,7 @@ export interface ActionResult<T = undefined> {
 const REVALIDATE_PATH = "/dashboard/orders";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** 발주 처리는 staff까지 허용한다 (PRD: 직원은 발주 접수/출고 처리 담당) */
+/** 주문 처리는 staff까지 허용한다 (PRD: 직원은 주문 접수/출고 처리 담당) */
 const ORDER_ROLES: OrgRole[] = ["owner", "manager", "staff"];
 
 const VALID_STATUSES: OrderStatus[] = [
@@ -106,7 +106,7 @@ async function resolveOrderScope() {
   }
 
   if (!wholesalerId) {
-    throw new RbacError("공급사 업체 정보가 없어 발주를 처리할 수 없습니다.");
+    throw new RbacError("공급사 업체 정보가 없어 주문를 처리할 수 없습니다.");
   }
 
   return { supabase, context, wholesalerId };
@@ -124,11 +124,11 @@ export async function updateOrderStatusAction(
     const { supabase, context, wholesalerId } = await resolveOrderScope();
 
     if (!UUID_PATTERN.test(orderId)) {
-      throw new RbacError("올바른 발주 식별자가 아닙니다.");
+      throw new RbacError("올바른 주문 식별자가 아닙니다.");
     }
 
     if (!VALID_STATUSES.includes(nextStatus)) {
-      throw new RbacError("변경할 수 없는 발주 상태입니다.");
+      throw new RbacError("변경할 수 없는 주문 상태입니다.");
     }
 
     // 취소 '요청'은 바이어만 생성할 수 있고, 공급사는 승인/반려만 한다.
@@ -143,11 +143,11 @@ export async function updateOrderStatusAction(
       .maybeSingle();
 
     if (!order) {
-      throw new RbacError("해당 발주서를 찾을 수 없습니다.");
+      throw new RbacError("해당 주문서를 찾을 수 없습니다.");
     }
 
     if (!context.isSuperAdmin && order.wholesaler_id !== wholesalerId) {
-      throw new RbacError("다른 공급사의 발주서는 처리할 수 없습니다.");
+      throw new RbacError("다른 공급사의 주문서는 처리할 수 없습니다.");
     }
 
     const currentStatus = order.status as OrderStatus;
@@ -232,11 +232,11 @@ export async function updateOrderStatusAction(
           .eq("id", orderId);
 
         throw new RbacError(
-          "환불은 완료됐지만 그 사이 발주 상태가 다른 사람에 의해 바뀌어 취소 처리는 되지 않았습니다. 결제 상태는 '환불됨'으로 기록했습니다. 새로고침 후 발주 상태를 확인해주세요."
+          "환불은 완료됐지만 그 사이 주문 상태가 다른 사람에 의해 바뀌어 취소 처리는 되지 않았습니다. 결제 상태는 '환불됨'으로 기록했습니다. 새로고침 후 주문 상태를 확인해주세요."
         );
       }
 
-      throw new RbacError("발주 상태가 방금 다른 사람에 의해 변경되었습니다. 새로고침 후 다시 확인해주세요.");
+      throw new RbacError("주문 상태가 방금 다른 사람에 의해 변경되었습니다. 새로고침 후 다시 확인해주세요.");
     }
 
     revalidatePath(REVALIDATE_PATH);
@@ -253,7 +253,7 @@ async function loadOwnedOrder(orderId: string, wholesalerId: string, isSuperAdmi
   const supabase = await createClient();
 
   if (!UUID_PATTERN.test(orderId)) {
-    throw new RbacError("올바른 발주 식별자가 아닙니다.");
+    throw new RbacError("올바른 주문 식별자가 아닙니다.");
   }
 
   const { data: order } = await supabase
@@ -263,11 +263,11 @@ async function loadOwnedOrder(orderId: string, wholesalerId: string, isSuperAdmi
     .maybeSingle();
 
   if (!order) {
-    throw new RbacError("해당 발주서를 찾을 수 없습니다.");
+    throw new RbacError("해당 주문서를 찾을 수 없습니다.");
   }
 
   if (!isSuperAdmin && order.wholesaler_id !== wholesalerId) {
-    throw new RbacError("다른 공급사의 발주서는 처리할 수 없습니다.");
+    throw new RbacError("다른 공급사의 주문서는 처리할 수 없습니다.");
   }
 
   return { supabase, order };
@@ -397,7 +397,7 @@ export async function getHistoricalOrdersAction(
       .range(offset, offset + ORDER_HISTORY_PAGE_SIZE - 1);
 
     if (error) {
-      return { success: false, error: "발주서 조회에 실패했습니다." };
+      return { success: false, error: "주문서 조회에 실패했습니다." };
     }
 
     const entries = ((data ?? []) as OrderJoinRow[]).map(mapOrderJoinRow);
@@ -416,8 +416,8 @@ export async function getHistoricalOrdersAction(
 }
 
 /**
- * 배송완료/취소 목록에서 발주번호 또는 거래처(소매) 상호로 검색한다.
- * 조회 구간(30일/3개월)에 갇히면 예전 발주를 못 찾으므로, 검색은 전체 기간을
+ * 배송완료/취소 목록에서 주문번호 또는 거래처(소매) 상호로 검색한다.
+ * 조회 구간(30일/3개월)에 갇히면 예전 주문를 못 찾으므로, 검색은 전체 기간을
  * 대상으로 하되 결과가 무한정 커지는 걸 막기 위해 ORDER_HISTORY_SEARCH_LIMIT으로
  * 상한만 둔다(페이지네이션 없음 — 특정 건을 찾는 용도이지 목록 훑어보기가 아니라서).
  *
@@ -464,7 +464,7 @@ export async function searchHistoricalOrdersAction(
     ]);
 
     if (byOrderNumber.error || byRetailerName.error) {
-      return { success: false, error: "발주서 검색에 실패했습니다." };
+      return { success: false, error: "주문서 검색에 실패했습니다." };
     }
 
     const merged = new Map<string, OrderJoinRow>();
@@ -476,9 +476,9 @@ export async function searchHistoricalOrdersAction(
       merged.set(row.id, row);
     }
 
-    // 발주번호 일치와 거래처명 일치를 각각 이미 ORDER_HISTORY_SEARCH_LIMIT개로 캡한
+    // 주문번호 일치와 거래처명 일치를 각각 이미 ORDER_HISTORY_SEARCH_LIMIT개로 캡한
     // 상태라 합친 결과를 여기서 다시 자르지 않는다 — 합친 뒤 자르면 거래처명 일치가
-    // 많을 때 발주번호로 정확히 찾은 진짜 결과가 뒤로 밀려 조용히 빠질 수 있다
+    // 많을 때 주문번호로 정확히 찾은 진짜 결과가 뒤로 밀려 조용히 빠질 수 있다
     // (app/dashboard/history/orders/actions.ts의 searchOrdersForHistoryAction과 동일한
     // 버그였고 2026-09-21에 그쪽만 먼저 고쳐졌던 것을 여기도 맞춤, 2026-09-23).
     const entries = Array.from(merged.values())
@@ -521,7 +521,7 @@ export interface OrderItemPriceUpdateResult {
 }
 
 /**
- * 전화로 흥정한 단가를 발주 품목에 실제로 반영한다(네고 32단계 완성).
+ * 전화로 흥정한 단가를 주문 품목에 실제로 반영한다(네고 32단계 완성).
  * 매출 단가라 매입단가와 동일하게 owner/manager만 고칠 수 있다.
  */
 export async function updateOrderItemPriceAction(
@@ -544,11 +544,11 @@ export async function updateOrderItemPriceAction(
 
     if (error) {
       if (error.message.includes("ITEM_NOT_FOUND")) {
-        throw new RbacError("해당 발주 품목을 찾을 수 없습니다.");
+        throw new RbacError("해당 주문 품목을 찾을 수 없습니다.");
       }
 
       if (error.message.includes("ORDER_LOCKED")) {
-        throw new RbacError("이미 마감되었거나 확정 전 단계가 지난 발주서는 단가를 고칠 수 없습니다.");
+        throw new RbacError("이미 마감되었거나 확정 전 단계가 지난 주문서는 단가를 고칠 수 없습니다.");
       }
 
       throw new Error(error.message);

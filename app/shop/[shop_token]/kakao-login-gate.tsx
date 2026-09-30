@@ -72,13 +72,13 @@ export function KakaoLoginGate({
         <div style={{ fontSize: "36px", marginBottom: "14px" }}>🥩</div>
 
         <h1 style={{ fontSize: "19px", fontWeight: 800, color: "#0f172a", marginBottom: "8px" }}>
-          {businessName ? `${businessName} 발주 미니샵` : "발주 미니샵"}
+          {businessName ? `${businessName} 주문 미니샵` : "주문 미니샵"}
         </h1>
 
         <p style={{ fontSize: "13px", color: "#475569", lineHeight: 1.7, marginBottom: "24px" }}>
           계약 단가와 핫딜 특가는 <strong>인증된 단골 거래처</strong>에게만 공개됩니다.
           <br />
-          카카오 로그인 한 번이면 다음부터는 바로 발주할 수 있습니다.
+          카카오 로그인 한 번이면 다음부터는 바로 주문할 수 있습니다.
         </p>
 
         {errorMessage && (
@@ -119,7 +119,7 @@ export function KakaoLoginGate({
         </button>
 
         <p style={{ fontSize: "13px", color: "#475569", lineHeight: 1.6, marginTop: "16px" }}>
-          링크가 다른 사람에게 전달되어도 본인의 카카오 계정 없이는 발주 내역을 볼 수 없습니다.
+          링크가 다른 사람에게 전달되어도 본인의 카카오 계정 없이는 주문 내역을 볼 수 없습니다.
         </p>
       </div>
     </main>

@@ -74,7 +74,7 @@ function fullAddress(
 }
 
 /**
- * 카카오 로그인만 하고 첫 발주서를 아직 안 써본 거래처는 상호/배송지가
+ * 카카오 로그인만 하고 첫 주문서를 아직 안 써본 거래처는 상호/배송지가
  * claim_shop_access() RPC가 채워둔 자리표시자("카카오 회원", 빈 배송지)로 남아있다.
  * 담당자 정보도 같은 카카오 계정 하나로 결정되므로 이 두 필드만 보면 충분하다.
  */
@@ -85,7 +85,7 @@ function hasIncompleteProfile(
   return isRetailerNamePlaceholder(restaurantName) || !deliveryAddress;
 }
 
-/** 취소 건은 실적 금액에서 제외하고, 최근 발주 일시는 전체 기준으로 집계한다. */
+/** 취소 건은 실적 금액에서 제외하고, 최근 주문 일시는 전체 기준으로 집계한다. */
 function aggregateOrderStats(rows: OrderStatRow[]): Map<string, OrderStat> {
   const stats = new Map<string, OrderStat>();
 
@@ -273,7 +273,7 @@ export default async function DashboardCustomersPage() {
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>고객 관리</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-          단골 고객(소매)의 사업자 정보와 발주 실적을 확인하고, 미니샵 전용 초대 링크를
+          단골 고객(소매)의 사업자 정보와 주문 실적을 확인하고, 미니샵 전용 초대 링크를
           발송합니다.
         </p>
       </header>
@@ -286,7 +286,7 @@ export default async function DashboardCustomersPage() {
         {[
           { label: "거래중 고객", value: `${activeCount}곳`, accent: "#0f172a" },
           { label: "맞춤 단가 적용", value: `${customPricedCount}곳`, accent: "#5b21b6" },
-          { label: "누적 발주 금액", value: formatWon(totalAmount), accent: "#b91c1c" },
+          { label: "누적 주문 금액", value: formatWon(totalAmount), accent: "#b91c1c" },
         ].map((card) => (
           <div
             key={card.label}

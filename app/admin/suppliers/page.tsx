@@ -38,7 +38,7 @@ export default async function AdminSuppliersPage() {
   }
 
   let suppliers: AdminSupplierItem[] = [];
-  // 구독료(구간별 누진 단가) 계산용 — wholesaler_id → 이번 달 실발주(취소 제외) 거래처 수.
+  // 구독료(구간별 누진 단가) 계산용 — wholesaler_id → 이번 달 실주문(취소 제외) 거래처 수.
   let billedRetailerCounts: Record<string, number> = {};
   let eventDiscounts: Record<string, ActiveEventDiscount> = {};
   // wholesaler_id → 확정된 미납 청구서 합계·건수. 청구서 문자에 "이전 미납액"으로 같이 보여준다.

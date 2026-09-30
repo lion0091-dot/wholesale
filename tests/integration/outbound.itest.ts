@@ -116,8 +116,8 @@ describe("출고 — 권한·격리", () => {
 
     await actAs(world.users.ownerB);
 
-    expect(await recordOutboundScanAction(orderId, traceNo)).toEqual({ success: false, error: "발주서를 찾을 수 없습니다." });
-    expect(await finalizeShipmentAction(orderId)).toEqual({ success: false, error: "발주서를 찾을 수 없습니다." });
+    expect(await recordOutboundScanAction(orderId, traceNo)).toEqual({ success: false, error: "주문서를 찾을 수 없습니다." });
+    expect(await finalizeShipmentAction(orderId)).toEqual({ success: false, error: "주문서를 찾을 수 없습니다." });
     expect((await getPickingListAction(orderId)).data).toEqual([]);
     expect((await previewShipmentAction(orderId)).data).toEqual([]);
     expect((await orderRow(orderId)).status).toBe("confirmed");
@@ -211,12 +211,12 @@ describe("출고 — 정상 흐름(피킹 → 정정 스캔 → 진행률 → �
     expect((await recordOutboundScanAction(orderId, traceNo)).success).toBe(true);
     expect((await finalizeShipmentAction(orderId)).success).toBe(true);
 
-    expect(await finalizeShipmentAction(orderId)).toEqual({ success: false, error: "이미 마감된 발주서입니다." });
+    expect(await finalizeShipmentAction(orderId)).toEqual({ success: false, error: "이미 마감된 주문서입니다." });
 
     const scan = await recordOutboundScanAction(orderId, traceNo);
 
     expect(scan.success).toBe(false);
-    expect(scan.error).toContain("이미 마감(금액 확정)된 발주서");
+    expect(scan.error).toContain("이미 마감(금액 확정)된 주문서");
   });
 });
 
@@ -282,15 +282,15 @@ describe("출고 스캔 — DB 오류 코드가 현장 문구로 번역된다", 
     const scan = await recordOutboundScanAction(orderId, traceNo);
     const finalized = await finalizeShipmentAction(orderId);
 
-    expect(scan).toEqual({ success: false, error: "확정 또는 배송중 상태의 발주서만 출고할 수 있습니다." });
-    expect(finalized).toEqual({ success: false, error: "확정 상태의 발주서만 마감할 수 있습니다." });
+    expect(scan).toEqual({ success: false, error: "확정 또는 배송중 상태의 주문서만 출고할 수 있습니다." });
+    expect(finalized).toEqual({ success: false, error: "확정 상태의 주문서만 마감할 수 있습니다." });
   });
 
-  it("존재하지 않는 주문 ID는 '발주서를 찾을 수 없습니다'", async () => {
+  it("존재하지 않는 주문 ID는 '주문서를 찾을 수 없습니다'", async () => {
     const missing = "00000000-0000-4000-8000-000000000000";
 
-    expect(await recordOutboundScanAction(missing, "999999999999")).toEqual({ success: false, error: "발주서를 찾을 수 없습니다." });
-    expect(await finalizeShipmentAction(missing)).toEqual({ success: false, error: "발주서를 찾을 수 없습니다." });
+    expect(await recordOutboundScanAction(missing, "999999999999")).toEqual({ success: false, error: "주문서를 찾을 수 없습니다." });
+    expect(await finalizeShipmentAction(missing)).toEqual({ success: false, error: "주문서를 찾을 수 없습니다." });
   });
 });
 

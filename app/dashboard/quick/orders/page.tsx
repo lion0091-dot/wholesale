@@ -10,9 +10,9 @@ export const metadata = {
 };
 
 /**
- * 모바일 현장용 발주 처리 — 전체 화면(/dashboard/orders)은 완료·취소 이력 구간
- * 조회까지 같이 있어 무겁다. 여긴 지금 처리해야 하는 진행중 발주만 보여주고,
- * 상태 변경은 발주 상세 화면과 완전히 같은 컴포넌트(OrderStatusPanel)를 그대로 쓴다.
+ * 모바일 현장용 주문 처리 — 전체 화면(/dashboard/orders)은 완료·취소 이력 구간
+ * 조회까지 같이 있어 무겁다. 여긴 지금 처리해야 하는 진행중 주문만 보여주고,
+ * 상태 변경은 주문 상세 화면과 완전히 같은 컴포넌트(OrderStatusPanel)를 그대로 쓴다.
  */
 export default async function QuickOrdersPage() {
   const scope = await getSupplierScope();

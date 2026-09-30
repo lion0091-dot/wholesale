@@ -3,7 +3,7 @@
  *
  * 권한 모델:
  *   is_supplier = true, is_verified = false → Pending Supplier
- *       상품 등록·단가·발주·마이페이지 등 기본 기능은 정회원과 동일하게 허용하고,
+ *       상품 등록·단가·주문·마이페이지 등 기본 기능은 정회원과 동일하게 허용하고,
  *       핵심 영업 기능인 '초대장 발부'만 차단한다.
  *   is_supplier = true, is_verified = true  → 정회원 공급사
  *

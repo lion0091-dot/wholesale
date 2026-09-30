@@ -69,7 +69,7 @@ export function pickFieldNextStep(input: InboundNextStepInput): InboundNextStep 
       who: "현장",
       title: `확인이 필요한 박스 ${needsCheckScanCount}개를 먼저 처리하세요`,
       detail:
-        "이 박스들은 아직 재고에 안 들어갔습니다. 아래 '확인이 필요한 박스'에서 그 박스 옆의 '상품 지정'을 하세요(이력 못 찾음이면 '번호 바꾸기'). 다 처리하면 이 안내가 사라집니다. 새 박스는 그다음에 찍으세요.",
+        "이 박스들은 아직 재고에 안 들어갔습니다. 아래 '확인이 필요한 박스'에서 박스마다 안내에 따라 고르세요(전표 후보·냉장/냉동·상품 지정, 이력 못 찾음이면 '번호 바꾸기'). 다 처리하면 이 안내가 사라집니다. 새 박스는 그다음에 찍으세요.",
       buttonLabel: "확인 필요 박스로 가기",
       href: firstNeedsCheckScanId ? `#scan-${firstNeedsCheckScanId}` : INBOUND_ANCHORS.unresolved,
       waitNote: null,

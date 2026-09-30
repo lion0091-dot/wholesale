@@ -144,7 +144,7 @@ export default async function AdminBillingPage({ searchParams }: PageProps) {
           구독료 청구·수납 관리
         </h1>
         <p style={{ fontSize: "13px", color: "#64748b", lineHeight: 1.6 }}>
-          매달 1일 새벽 자동으로 지난달 청구서가 여기 확정돼서 쌓입니다(발주 취소 등으로
+          매달 1일 새벽 자동으로 지난달 청구서가 여기 확정돼서 쌓입니다(주문 취소 등으로
           나중에 원본이 바뀌어도 이미 확정된 금액은 그대로 유지됩니다). 이번 달은 아직
           확정 전이라 다음 달 초에 나타납니다 — 지금 진행 중인 잠정 금액은{" "}
           <Link href="/admin/suppliers" style={{ color: "#1d4ed8", textDecoration: "underline" }}>

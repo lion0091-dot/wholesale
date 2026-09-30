@@ -73,7 +73,7 @@ export function translateHotDealQuotaError(message: string, displayNames?: Reado
   // DB는 별칭을 모르고 상품 원래 이름으로 알린다 — 고객에게는 화면에 보이던 이름 하나만 나가게 바꿔 준다.
   const productName = displayNames?.get(catalogName) ?? catalogName;
 
-  return `${productName} 핫딜 매진 — 방금 다른 주문이 먼저 가져갔습니다. 일반 단가로 다시 담아 발주해주세요.`;
+  return `${productName} 핫딜 매진 — 방금 다른 주문이 먼저 가져갔습니다. 일반 단가로 다시 담아 주문해주세요.`;
 }
 
 /**
@@ -124,7 +124,7 @@ export async function createOrderWithItems(
     const message = orderError?.message ?? "";
 
     return {
-      error: message || "발주서 저장에 실패했습니다. 잠시 후 다시 시도해주세요.",
+      error: message || "주문서 저장에 실패했습니다. 잠시 후 다시 시도해주세요.",
       code: classifyCreateOrderError(message),
     };
   }
@@ -150,25 +150,25 @@ export async function createOrderWithItems(
       quantity: line.quantity,
       subtotal_amount: lineSubtotal(line),
       requested_unit_price: line.requestedUnitPrice ?? null,
-      // 이 발주가 핫딜가로 팔린 줄인지 스냅샷 — hot_deal_active가 나중에 바뀌어도
+      // 이 주문가 핫딜가로 팔린 줄인지 스냅샷 — hot_deal_active가 나중에 바뀌어도
       // 이 주문이 핫딜 소비였는지는 변하지 않아야 한도 반환(취소 시)이 정확하다.
       is_hot_deal: line.isHotDeal,
     }))
   );
 
   if (itemsError) {
-    // 품목 없는 빈 발주서가 남지 않도록 헤더를 지운다.
+    // 품목 없는 빈 주문서가 남지 않도록 헤더를 지운다.
     await discardUnfulfilledOrder(supabase, orderId);
     // 바이어 경로에서는 품목 트리거가 핫딜 한도를 이 자리에서 소진하므로 매진 오류가
     // 여기서 먼저 나온다 — 아래 reserve 단계와 같은 분류·문구로 돌려준다.
     return {
       error:
-        translateHotDealQuotaError(itemsError.message, displayNames) ?? "발주 품목 저장에 실패했습니다. 다시 시도해주세요.",
+        translateHotDealQuotaError(itemsError.message, displayNames) ?? "주문 품목 저장에 실패했습니다. 다시 시도해주세요.",
       code: classifyCreateOrderError(itemsError.message),
     };
   }
 
-  // 핫딜 한도는 "결제(발주 생성)" 순간에 소비된다(확정 시점이 아님) — 손님들이 실시간으로
+  // 핫딜 한도는 "결제(주문 생성)" 순간에 소비된다(확정 시점이 아님) — 손님들이 실시간으로
   // 경쟁 구매하는 상황이라 여기서 막아야 의미가 있다. 상품 행을 잠그고 순서대로
   // 처리하므로 두 손님이 동시에 눌러도 한도를 넘기는 일 자체가 안 생긴다.
   // 바이어 세션은 위 품목 트리거가 이미 소진·예약해 두므로 이 호출은 no-op이고,

@@ -71,7 +71,7 @@ export default async function BillingLockedPage() {
         }}
       >
         <div style={{ fontSize: "13px", color: "#64748b" }}>
-          이번 달 구독료 (이번 달 발주 거래처 {billedRetailerCount}곳, 구간별 누진 단가)
+          이번 달 구독료 (이번 달 주문 거래처 {billedRetailerCount}곳, 구간별 누진 단가)
         </div>
         <div style={{ fontSize: "24px", fontWeight: 800, color: "#0f172a", marginTop: "4px" }}>
           {monthlyFee.toLocaleString("ko-KR")}원

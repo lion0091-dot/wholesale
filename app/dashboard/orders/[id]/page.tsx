@@ -270,14 +270,14 @@ export default async function OrderDetailPage({ params }: PageProps) {
 
       {/* 주문 상품 목록 */}
       <section style={cardStyle}>
-        <div style={cardTitleStyle}>발주 품목 ({order.items.length}개)</div>
+        <div style={cardTitleStyle}>주문 품목 ({order.items.length}개)</div>
 
         <div className="dash-table-wrap dash-desktop-only">
           <table className="dash-table">
             <thead>
               <tr>
                 <th>상품명</th>
-                <th>발주 단가</th>
+                <th>주문 단가</th>
                 <th>수량</th>
                 <th>금액</th>
               </tr>
@@ -395,7 +395,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
             borderTop: "1px solid #f1f5f9",
           }}
         >
-          <span style={{ fontSize: "12px", color: "#64748b" }}>총 발주 금액</span>
+          <span style={{ fontSize: "12px", color: "#64748b" }}>총 주문 금액</span>
           <span style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>
             {formatWon(order.totalAmount)}
           </span>
@@ -408,7 +408,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
           <div style={cardTitleStyle}>배송지 정보</div>
           <dl style={{ display: "flex", flexDirection: "column", gap: "9px", fontSize: "13px" }}>
             {[
-              { term: "발주처(소매)", value: order.retailer.restaurant_name },
+              { term: "주문처(소매)", value: order.retailer.restaurant_name },
               { term: "대표자", value: order.retailer.representative_name ?? "미등록" },
               { term: "사업자번호", value: order.retailer.business_number ?? "미등록" },
               { term: "배송 주소", value: order.deliveryAddress },

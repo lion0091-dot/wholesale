@@ -64,7 +64,7 @@ export function CartView({ catalog }: CartViewProps) {
       <ShopHeader
         wholesaler={catalog.wholesaler}
         customer={catalog.customer}
-        title="발주 장바구니"
+        title="주문 장바구니"
         backHref={`/shop/${catalog.shopToken}`}
       />
 
@@ -82,7 +82,7 @@ export function CartView({ catalog }: CartViewProps) {
               marginBottom: "12px",
             }}
           >
-            ✏️ 기존 발주서를 수정하는 중입니다. 저장하면 새 발주가 아니라 이 발주서의 품목이
+            ✏️ 기존 주문서를 수정하는 중입니다. 저장하면 새 주문가 아니라 이 주문서의 품목이
             바뀝니다.
           </div>
         )}
@@ -328,18 +328,18 @@ export function CartView({ catalog }: CartViewProps) {
                   paddingTop: "10px",
                 }}
               >
-                <span style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>총 발주 금액</span>
+                <span style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>총 주문 금액</span>
                 <span style={{ fontSize: "20px", fontWeight: 800, color: "#dc2626" }}>
                   {formatWon(totals.totalAmount)}
                 </span>
               </div>
 
               <p style={{ fontSize: "13px", color: "#475569", marginTop: "8px" }}>
-                최소 발주 금액 {minOrderAmount.toLocaleString()}원 (부가세 별도, 배송비는 공급사 정책에 따름)
+                최소 주문 금액 {minOrderAmount.toLocaleString()}원 (부가세 별도, 배송비는 공급사 정책에 따름)
               </p>
             </div>
 
-            {/* 최소 발주 금액/수량·재고 미충족 안내 */}
+            {/* 최소 주문 금액/수량·재고 미충족 안내 */}
             {blockingMessages.length > 0 && (
               <div
                 style={{
@@ -415,7 +415,7 @@ export function CartView({ catalog }: CartViewProps) {
                 textDecoration: "none",
               }}
             >
-              {formatWon(totals.totalAmount)} 발주서 작성하기 →
+              {formatWon(totals.totalAmount)} 주문서 작성하기 →
             </Link>
           ) : (
             <button
@@ -433,8 +433,8 @@ export function CartView({ catalog }: CartViewProps) {
               }}
             >
               {shortfallAmount > 0
-                ? `${formatWon(shortfallAmount)} 더 담으면 발주 가능`
-                : "발주 조건을 확인해주세요"}
+                ? `${formatWon(shortfallAmount)} 더 담으면 주문 가능`
+                : "주문 조건을 확인해주세요"}
             </button>
           )}
         </div>

@@ -14,7 +14,7 @@ import { normalizeQuantity, quantityStepFor } from "@/lib/shop/order-policy";
 export interface CartEntry {
   productId: string;
   quantity: number;
-  /** 고객이 이번 발주에 한해 제안하는 희망 단가 (네고 켜진 공급사만). */
+  /** 고객이 이번 주문에 한해 제안하는 희망 단가 (네고 켜진 공급사만). */
   requestedUnitPrice?: number;
 }
 

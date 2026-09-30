@@ -8,7 +8,7 @@ export interface SupplierScope {
   orgRole: OrgRole | null;
   platformRole: UserRole | null;
   isSuperAdmin: boolean;
-  /** 레거시 wholesalers.id — 상품/발주/단가 데이터의 실제 스코프 키 */
+  /** 레거시 wholesalers.id — 상품/주문/단가 데이터의 실제 스코프 키 */
   wholesalerId: string | null;
   businessName: string;
   shopToken: string | null;

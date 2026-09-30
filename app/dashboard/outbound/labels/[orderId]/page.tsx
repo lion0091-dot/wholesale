@@ -75,7 +75,7 @@ export default async function OrderLabelsPage({
   if (labels.length === 0) {
     return (
       <div style={{ padding: "20px", fontSize: "14px", color: "#64748b" }}>
-        출고된 박스가 없습니다. 출고 스캔을 먼저 하거나, 발주서를 확정해주세요.
+        출고된 박스가 없습니다. 출고 스캔을 먼저 하거나, 주문서를 확정해주세요.
       </div>
     );
   }

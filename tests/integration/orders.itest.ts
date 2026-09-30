@@ -76,7 +76,7 @@ describe("updateOrderStatusAction — 권한·입력 게이트", () => {
     expect((await orderRow(orderId)).status).toBe("pending");
   });
 
-  it("다른 공급사 사장은 남의 발주를 못 바꾼다", async () => {
+  it("다른 공급사 사장은 남의 주문를 못 바꾼다", async () => {
     const product = await world.createProduct();
     const orderId = await world.createOrder({ product });
 
@@ -90,7 +90,7 @@ describe("updateOrderStatusAction — 권한·입력 게이트", () => {
   it("UUID 형식이 아닌 ID는 DB를 치기 전에 거부한다", async () => {
     const result = await updateOrderStatusAction("not-a-uuid", "confirmed");
 
-    expect(result).toEqual({ success: false, error: "올바른 발주 식별자가 아닙니다." });
+    expect(result).toEqual({ success: false, error: "올바른 주문 식별자가 아닙니다." });
   });
 
   it("정의되지 않은 상태값은 거부한다", async () => {
@@ -99,7 +99,7 @@ describe("updateOrderStatusAction — 권한·입력 게이트", () => {
 
     const result = await updateOrderStatusAction(orderId, "hacked" as never);
 
-    expect(result).toEqual({ success: false, error: "변경할 수 없는 발주 상태입니다." });
+    expect(result).toEqual({ success: false, error: "변경할 수 없는 주문 상태입니다." });
   });
 
   it("공급사는 취소 '요청' 상태를 만들 수 없다(바이어 전용)", async () => {
@@ -113,15 +113,15 @@ describe("updateOrderStatusAction — 권한·입력 게이트", () => {
     expect((await orderRow(orderId)).status).toBe("pending");
   });
 
-  it("존재하지 않는 발주는 '찾을 수 없다'", async () => {
+  it("존재하지 않는 주문는 '찾을 수 없다'", async () => {
     const result = await updateOrderStatusAction("00000000-0000-4000-8000-000000000000", "confirmed");
 
-    expect(result).toEqual({ success: false, error: "해당 발주서를 찾을 수 없습니다." });
+    expect(result).toEqual({ success: false, error: "해당 주문서를 찾을 수 없습니다." });
   });
 });
 
 describe("updateOrderStatusAction — 상태 전이와 재고", () => {
-  it("사장이 접수대기 발주를 확정하면 상태가 바뀌고 재고가 차감된다", async () => {
+  it("사장이 접수대기 주문를 확정하면 상태가 바뀌고 재고가 차감된다", async () => {
     const product = await world.createProduct({ stock_quantity: 5 });
     const orderId = await world.createOrder({ product, quantity: 2 });
 
@@ -132,7 +132,7 @@ describe("updateOrderStatusAction — 상태 전이와 재고", () => {
     expect(await stockOf(product.id)).toBe(3);
   });
 
-  it("직원(staff)도 발주 확정을 처리할 수 있다", async () => {
+  it("직원(staff)도 주문 확정을 처리할 수 있다", async () => {
     const product = await world.createProduct();
     const orderId = await world.createOrder({ product });
 
@@ -255,7 +255,7 @@ describe("updateOrderStatusAction — PG 결제 주문 취소(환불)", () => {
 });
 
 describe("updateOrderTrackingAction", () => {
-  it("확정된 발주에 운송장을 넣으면 배송중으로 자동 전환된다", async () => {
+  it("확정된 주문에 운송장을 넣으면 배송중으로 자동 전환된다", async () => {
     const product = await world.createProduct();
     const orderId = await world.createOrder({ product, status: "confirmed" });
 
@@ -271,7 +271,7 @@ describe("updateOrderTrackingAction", () => {
     expect(row.courier_code).toBe("04");
   });
 
-  it("접수대기 발주는 운송장만 저장하고 상태는 그대로 둔다", async () => {
+  it("접수대기 주문는 운송장만 저장하고 상태는 그대로 둔다", async () => {
     const product = await world.createProduct();
     const orderId = await world.createOrder({ product, status: "pending" });
 
@@ -296,7 +296,7 @@ describe("updateOrderTrackingAction", () => {
     expect((await orderRow(orderId)).tracking_number).toBeNull();
   });
 
-  it("다른 공급사 사장은 남의 발주 운송장을 못 넣는다", async () => {
+  it("다른 공급사 사장은 남의 주문 운송장을 못 넣는다", async () => {
     const product = await world.createProduct();
     const orderId = await world.createOrder({ product, status: "confirmed" });
 
@@ -309,7 +309,7 @@ describe("updateOrderTrackingAction", () => {
 });
 
 describe("getHistoricalOrdersAction", () => {
-  it("내 공급사의 배송완료·취소 발주만 돌려주고 진행 중·타사 발주는 섞이지 않는다", async () => {
+  it("내 공급사의 배송완료·취소 주문만 돌려주고 진행 중·타사 주문는 섞이지 않는다", async () => {
     const product = await world.createProduct();
     const delivered = await world.createOrder({ product, status: "delivered" });
     const cancelled = await world.createOrder({ product, status: "cancelled" });
@@ -326,7 +326,7 @@ describe("getHistoricalOrdersAction", () => {
     expect(result.data!.totalCount).toBeGreaterThanOrEqual(2);
   });
 
-  it("다른 공급사 사장에겐 A사 발주가 한 건도 안 보인다", async () => {
+  it("다른 공급사 사장에겐 A사 주문가 한 건도 안 보인다", async () => {
     const product = await world.createProduct();
     const delivered = await world.createOrder({ product, status: "delivered" });
 

@@ -4,7 +4,7 @@
  * 이 파일은 순수 계산 함수만 담는다(middleware Edge 런타임에서도 import되므로
  * next/headers 등 서버 전용 의존성 금지). "과금 대상 거래처 수를 실제로 세는" 로직은
  * lib/supplier/billed-retailers.ts(서버 컴포넌트 전용)에 있다 — 2026-09-18부터
- * wholesaler_retailers.status='active' 기준에서 **이번 달 실발주(주문 발생) 거래처 수**
+ * wholesaler_retailers.status='active' 기준에서 **이번 달 실주문(주문 발생) 거래처 수**
  * 기준으로 전환됨(자세한 배경/이유는 그 파일 주석 참고).
  *
  * 잠긴 설계 결정:
@@ -208,7 +208,7 @@ export function buildBillingInvoiceMessage({
 ${businessName} ${representativeName} 대표님, 안녕하세요.
 이번 달 플랫폼 이용 구독료 산정 내역을 안내해 드립니다.
 
-■ 당월 실발주 거래처: ${billedCount}곳
+■ 당월 실주문 거래처: ${billedCount}곳
 ${feeLine}
 ${previousUnpaidBlock}${accountLine}■ 입금 기한: 매월 말일까지
 

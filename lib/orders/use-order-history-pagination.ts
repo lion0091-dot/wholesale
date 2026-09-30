@@ -17,8 +17,8 @@ export interface OrderHistoryPageResult<T, TExtra = unknown> {
 /**
  * "조회 구간(30일/3개월/전체) + 더보기" 공용 상태/로직.
  *
- * app/dashboard/history/orders/order-history-picker.tsx(발주 이력 대상 찾기)와
- * app/shop/[shop_token]/orders/order-history-view.tsx(고객 발주내역)가 거의 똑같은
+ * app/dashboard/history/orders/order-history-picker.tsx(주문 이력 대상 찾기)와
+ * app/shop/[shop_token]/orders/order-history-view.tsx(고객 주문내역)가 거의 똑같은
  * state+핸들러를 각자 들고 있다가(2026-09-21 code-review 지적) 하나로 합쳤다.
  *
  * 구간 변경 실패 시 rangeDays를 성공했을 때만 반영한다 — 실패해도 버튼이 그 값으로

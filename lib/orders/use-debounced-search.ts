@@ -13,8 +13,8 @@ const DEFAULT_DEBOUNCE_MS = 400;
 /**
  * 검색어 입력 디바운스 + 응답 순서 역전 방지 공용 로직.
  *
- * 발주 이력 대상찾기(app/dashboard/history/orders/order-history-picker.tsx)와
- * 발주 관리 완료·취소 탭 검색(app/dashboard/orders/order-board.tsx)이 각자
+ * 주문 이력 대상찾기(app/dashboard/history/orders/order-history-picker.tsx)와
+ * 주문 관리 완료·취소 탭 검색(app/dashboard/orders/order-board.tsx)이 각자
  * 비슷한 디바운스를 따로 만들다 하나는 디바운스가 아예 빠져 있던 것을
  * (2026-09-21 code-review) 계기로 하나로 합쳤다.
  *

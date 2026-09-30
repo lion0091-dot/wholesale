@@ -144,18 +144,18 @@ describe("submitOrderAction — 신원·링크 게이트", () => {
     expect(orderNotify).not.toHaveBeenCalled();
   });
 
-  it("공급사·관리자 계정은 발주할 수 없다", async () => {
+  it("공급사·관리자 계정은 주문할 수 없다", async () => {
     const product = await newProduct();
 
     await actAs(world.users.ownerA);
     const result = await submit({ items: [{ productId: product.id, quantity: 4 }] });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("공급사/관리자 계정으로는 발주할 수 없습니다");
+    expect(result.error).toContain("공급사/관리자 계정으로는 주문할 수 없습니다");
     expect(orderNotify).not.toHaveBeenCalled();
   });
 
-  it("거래중지된 고객은 발주할 수 없고 주문이 남지 않는다", async () => {
+  it("거래중지된 고객은 주문할 수 없고 주문이 남지 않는다", async () => {
     const product = await newProduct();
     const blocked = await world.createRetailer({ status: "blocked" });
 
@@ -179,7 +179,7 @@ describe("submitOrderAction — 신원·링크 게이트", () => {
     expect(missing.error).not.toContain("NEXT_");
   });
 
-  it("고객이 거래관계가 없는 다른 공급사(B)의 미니샵으로는 발주할 수 없다", async () => {
+  it("고객이 거래관계가 없는 다른 공급사(B)의 미니샵으로는 주문할 수 없다", async () => {
     const product = await newProduct();
     const result = await submit({ shopToken: world.shopTokenB, items: [{ productId: product.id, quantity: 4 }] });
 
@@ -350,7 +350,7 @@ describe("submitOrderAction — 카탈로그·수량 규칙", () => {
     expect((await itemsOf(String(order.id)))[0].quantity).toBe(5);
   });
 
-  it("발주정지·품절·타사·없는 상품은 카탈로그에서 빠져 담을 수 없다(전부 빠지면 빈 장바구니 안내)", async () => {
+  it("주문정지·품절·타사·없는 상품은 카탈로그에서 빠져 담을 수 없다(전부 빠지면 빈 장바구니 안내)", async () => {
     const stopped = await newProduct({ order_stopped: true, order_stopped_reason: "manual" });
     const soldOut = await newProduct({ stock_quantity: 0 });
     const { data: foreign } = await adminClient()
@@ -466,7 +466,7 @@ describe("submitOrderAction — 외상", () => {
     const result = await submit({ items: [{ productId: product.id, quantity: 4 }], paymentMethod: "on_credit" });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("여신 한도를 초과하여 발주할 수 없습니다");
+    expect(result.error).toContain("여신 한도를 초과하여 주문할 수 없습니다");
     expect(await ordersOf(buyer.retailerId)).toHaveLength(0);
     expect(await relationOf(buyer.relationshipId)).toBe(80000);
     expect(orderNotify).not.toHaveBeenCalled();
@@ -513,7 +513,7 @@ describe("requestOrderCancelAction", () => {
     const orderId = await world.createOrder({ product });
 
     expect((await requestOrderCancelAction({ shopToken: "bad", orderId, reason })).error).toContain("올바른 미니샵 주소가 아닙니다");
-    expect((await requestOrderCancelAction({ shopToken: world.shopTokenA, orderId: "bad", reason })).error).toContain("올바른 발주서 식별자가 아닙니다");
+    expect((await requestOrderCancelAction({ shopToken: world.shopTokenA, orderId: "bad", reason })).error).toContain("올바른 주문서 식별자가 아닙니다");
   });
 
   it("비로그인은 로그인 안내(requiresAuth)가 나온다", async () => {
@@ -559,7 +559,7 @@ describe("requestOrderCancelAction", () => {
       const result = await requestOrderCancelAction({ shopToken: world.shopTokenA, orderId, reason });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("이미 출고가 진행된 발주서");
+      expect(result.error).toContain("이미 출고가 진행된 주문서");
     }
 
     expect(cancelNotify).not.toHaveBeenCalled();
@@ -574,14 +574,14 @@ describe("requestOrderCancelAction", () => {
 
     const result = await requestOrderCancelAction({ shopToken: world.shopTokenA, orderId: theirs, reason });
 
-    expect(result).toEqual({ success: false, error: "해당 발주서를 찾을 수 없습니다." });
+    expect(result).toEqual({ success: false, error: "해당 주문서를 찾을 수 없습니다." });
     expect((await ordersOf(other.retailerId))[0].status).toBe("pending");
     expect(cancelNotify).not.toHaveBeenCalled();
   });
 });
 
 describe("loadEditableOrderAction", () => {
-  it("접수대기·PG 아닌 본인 발주서의 배송정보·결제방식·품목을 돌려준다", async () => {
+  it("접수대기·PG 아닌 본인 주문서의 배송정보·결제방식·품목을 돌려준다", async () => {
     const product = await newProduct();
     const orderId = await world.createOrder({ product, quantity: 4, unitPrice: 15000 });
 
@@ -592,7 +592,7 @@ describe("loadEditableOrderAction", () => {
     expect(result.data!.items).toEqual([{ productId: product.id, quantity: 4, requestedUnitPrice: null }]);
   });
 
-  it("확정·PG·다른 고객의 발주서는 거절한다", async () => {
+  it("확정·PG·다른 고객의 주문서는 거절한다", async () => {
     const product = await newProduct();
     const confirmed = await world.createOrder({ product, status: "confirmed" });
     const pg = await world.createOrder({ product, paymentMethod: "pg" });
@@ -608,7 +608,7 @@ describe("loadEditableOrderAction", () => {
 });
 
 describe("editOrderAction — 정상 수정", () => {
-  it("접수대기 발주서의 수량·배송지를 바꾸면 같은 발주서(주문번호 유지)가 갱신된다", async () => {
+  it("접수대기 주문서의 수량·배송지를 바꾸면 같은 주문서(주문번호 유지)가 갱신된다", async () => {
     const product = await newProduct({ stock_quantity: 20 });
     const orderId = await world.createOrder({ product, quantity: 4, unitPrice: 15000 });
 
@@ -645,7 +645,7 @@ describe("editOrderAction — 정상 수정", () => {
 });
 
 describe("editOrderAction — 권한·상태 게이트", () => {
-  it("다른 고객의 발주서는 '찾을 수 없다'로 거절되고 바뀌지 않는다", async () => {
+  it("다른 고객의 주문서는 '찾을 수 없다'로 거절되고 바뀌지 않는다", async () => {
     const product = await newProduct();
     const other = await world.createRetailer();
     const theirs = await world.createOrder({ product, quantity: 4, unitPrice: 15000 });
@@ -654,11 +654,11 @@ describe("editOrderAction — 권한·상태 게이트", () => {
 
     const result = await edit({ orderId: theirs, items: [{ productId: product.id, quantity: 1 }] });
 
-    expect(result).toEqual({ success: false, error: "해당 발주서를 찾을 수 없습니다." });
+    expect(result).toEqual({ success: false, error: "해당 주문서를 찾을 수 없습니다." });
     expect((await orderRow(theirs))?.total_amount).toBe(60000);
   });
 
-  it("이미 확정된 발주서는 수정할 수 없다", async () => {
+  it("이미 확정된 주문서는 수정할 수 없다", async () => {
     const product = await newProduct();
     const orderId = await world.createOrder({ product, status: "confirmed", quantity: 4, unitPrice: 15000 });
 
@@ -670,7 +670,7 @@ describe("editOrderAction — 권한·상태 게이트", () => {
     expect(orderEditedNotify).not.toHaveBeenCalled();
   });
 
-  it("PG 결제 발주서는 수정할 수 없다", async () => {
+  it("PG 결제 주문서는 수정할 수 없다", async () => {
     const product = await newProduct();
     const orderId = await world.createOrder({ product, paymentMethod: "pg", quantity: 4, unitPrice: 15000 });
 

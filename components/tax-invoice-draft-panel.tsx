@@ -18,7 +18,7 @@ interface TaxInvoiceDraftPanelProps {
   baseHref: string;
   /** 국세청 실제 발행/정정 Server Action이 필요로 하는 주문 ID */
   orderId: string;
-  /** 작성일자 입력 기본값 — 보통 발주일 */
+  /** 작성일자 입력 기본값 — 보통 주문일 */
   defaultIssueDate: string;
   /**
    * 카카오톡 인앱 브라우저에서 "외부 브라우저에서 열기"를 누를 때 대신 쓸 기본 경로

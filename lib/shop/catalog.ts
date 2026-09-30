@@ -187,7 +187,7 @@ export async function loadShopCatalog(
     .maybeSingle();
 
   // 승인 전 미리보기는 호출부가 명시적으로 켠 경우(미니샵 메인 페이지)에만 허용한다.
-  // 장바구니·결제·발주 생성 경로는 옵션을 안 넘기므로 계속 활성 공급사만 통과한다.
+  // 장바구니·결제·주문 생성 경로는 옵션을 안 넘기므로 계속 활성 공급사만 통과한다.
   let previewStatus: string | null = null;
   let previewViewer: "admin" | "supplier" | null = null;
 

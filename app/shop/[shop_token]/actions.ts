@@ -54,10 +54,10 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 /**
- * 카카오 로그인 직후 자동 생성된 거래처 자리표시자를 발주서 입력값으로 채운다.
+ * 카카오 로그인 직후 자동 생성된 거래처 자리표시자를 주문서 입력값으로 채운다.
  *
  * claim_shop_access() 는 카카오 닉네임만으로 retailers 행을 만들기 때문에
- * 상호/배송지가 비어 있다. 최초 발주 시 한 번만 보완하고, 이미 값이 있으면
+ * 상호/배송지가 비어 있다. 최초 주문 시 한 번만 보완하고, 이미 값이 있으면
  * 건드리지 않는다 (공급사가 정리해 둔 거래처 정보를 덮어쓰지 않기 위해).
  */
 async function backfillRetailerProfile(
@@ -127,7 +127,7 @@ async function notifyCreditLimitExceeded(
 }
 
 /**
- * 발주서 최종 제출.
+ * 주문서 최종 제출.
  * 1) 서버 카탈로그로 단가 재해석 → 2) 최소 주문 금액/수량·재고 검증 →
  * 3) auth.uid() 기반 바이어 신원·거래 관계 검증 → 4) orders/order_items 저장
  * (외상 주문이면 apply_credit_order RPC로 미수금 잔액도 원자적으로 반영) →
@@ -196,7 +196,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
     const paymentMethod: PaymentMethod = input.paymentMethod === "on_credit" ? "on_credit" : "prepaid";
     const buyer = await requireLinkedBuyer(supabase, input.shopToken);
 
-    // 1) 발주서 저장
+    // 1) 주문서 저장
     if (paymentMethod === "on_credit") {
       if (buyer.creditLimit <= 0) {
         return {
@@ -212,7 +212,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
 
         return {
           success: false,
-          error: "여신 한도를 초과하여 발주할 수 없습니다. 미수금 정산 후 다시 시도해주세요.",
+          error: "여신 한도를 초과하여 주문할 수 없습니다. 미수금 정산 후 다시 시도해주세요.",
         };
       }
     }
@@ -261,7 +261,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
         return {
           success: false,
           error: isCreditLimitExceeded
-            ? "여신 한도를 초과하여 발주할 수 없습니다. 미수금 정산 후 다시 시도해주세요."
+            ? "여신 한도를 초과하여 주문할 수 없습니다. 미수금 정산 후 다시 시도해주세요."
             : "외상 잔액 반영에 실패했습니다. 잠시 후 다시 시도해주세요.",
         };
       }
@@ -333,7 +333,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
       error:
         error instanceof Error
           ? error.message
-          : "발주 처리 중 알 수 없는 오류가 발생했습니다.",
+          : "주문 처리 중 알 수 없는 오류가 발생했습니다.",
     };
   }
 }
@@ -366,7 +366,7 @@ export interface RequestOrderCancelResult {
  *
  * 바이어는 요청까지만 생성할 수 있고 최종 취소/반려는 공급사가 대시보드에서 처리한다.
  * 1) 사유·식별자 검증 → 2) auth.uid() 기반 바이어 신원·거래 관계 검증 →
- * 3) 발주서 소유권 확인 → 4) 상태 전이 가능 여부 확인 →
+ * 3) 주문서 소유권 확인 → 4) 상태 전이 가능 여부 확인 →
  * 5) status/cancel_reason 저장(영향 행 수 확인) → 6) 공급사 카카오 알림톡 트리거
  *
  * retailer_id/wholesaler_id 는 언제나 Auth 세션에서 도출한다. 링크가 유출되어도
@@ -391,13 +391,13 @@ export async function requestOrderCancelAction(
     }
 
     if (!UUID_PATTERN.test(input.orderId ?? "")) {
-      return { success: false, error: "올바른 발주서 식별자가 아닙니다." };
+      return { success: false, error: "올바른 주문서 식별자가 아닙니다." };
     }
 
     const supabase = await createClient();
     const buyer = await requireLinkedBuyer(supabase, input.shopToken);
 
-    // 소유권 검증 — 다른 거래처/다른 공급사의 발주서는 조회 자체가 되지 않아야 한다.
+    // 소유권 검증 — 다른 거래처/다른 공급사의 주문서는 조회 자체가 되지 않아야 한다.
     const { data: order } = await supabase
       .from("orders")
       .select("id, order_number, status, total_amount")
@@ -407,19 +407,19 @@ export async function requestOrderCancelAction(
       .maybeSingle();
 
     if (!order) {
-      return { success: false, error: "해당 발주서를 찾을 수 없습니다." };
+      return { success: false, error: "해당 주문서를 찾을 수 없습니다." };
     }
 
     const currentStatus = order.status as OrderStatus;
 
     if (currentStatus === "cancel_requested") {
-      return { success: false, error: "이미 취소 요청이 접수된 발주서입니다. 공급사 확인을 기다려주세요." };
+      return { success: false, error: "이미 취소 요청이 접수된 주문서입니다. 공급사 확인을 기다려주세요." };
     }
 
     if (!canRequestCancel(currentStatus)) {
       return {
         success: false,
-        error: "이미 출고가 진행된 발주서는 직접 취소할 수 없습니다. 공급사에 유선으로 문의해주세요.",
+        error: "이미 출고가 진행된 주문서는 직접 취소할 수 없습니다. 공급사에 유선으로 문의해주세요.",
       };
     }
 
@@ -455,7 +455,7 @@ export async function requestOrderCancelAction(
       return {
         success: false,
         error:
-          "취소 요청을 접수하지 못했습니다. 발주 상태가 방금 변경되었을 수 있으니 발주 내역을 새로고침한 뒤 다시 시도해주세요.",
+          "취소 요청을 접수하지 못했습니다. 주문 상태가 방금 변경되었을 수 있으니 주문 내역을 새로고침한 뒤 다시 시도해주세요.",
       };
     }
 
@@ -541,7 +541,7 @@ export async function fetchBuyerTrackingStatusAction(
       .maybeSingle();
 
     if (!order) {
-      return { success: false, error: "해당 발주서를 찾을 수 없습니다." };
+      return { success: false, error: "해당 주문서를 찾을 수 없습니다." };
     }
 
     if (!order.courier_code || !order.tracking_number) {
@@ -584,8 +584,8 @@ export interface LoadShopOrderHistoryPageResult {
 
 /**
  * 초기 페이지 로드(order-history.ts의 loadShopOrderHistory) 이후, 조회 구간(30일/3개월/전체)을
- * 바꾸거나 "더보기"를 누를 때 클라이언트에서 호출한다. shopToken으로 재확인한 본인 발주만
- * 조회되므로 남의 발주서를 offset/rangeDays 조작으로 엿볼 수 없다.
+ * 바꾸거나 "더보기"를 누를 때 클라이언트에서 호출한다. shopToken으로 재확인한 본인 주문만
+ * 조회되므로 남의 주문서를 offset/rangeDays 조작으로 엿볼 수 없다.
  */
 export async function loadShopOrderHistoryPageAction(
   shopToken: string,
@@ -649,7 +649,7 @@ export async function loadShopOrderHistoryPageAction(
 }
 
 // ====================================================================
-// 발주 수정 (접수대기 상태에 한해 바이어 본인이 품목을 다시 담아 교체) — 바이어
+// 주문 수정 (접수대기 상태에 한해 바이어 본인이 품목을 다시 담아 교체) — 바이어
 // ====================================================================
 
 export interface LoadEditableOrderResult {
@@ -686,13 +686,13 @@ export async function loadEditableOrderAction(
       .maybeSingle();
 
     if (!order) {
-      return { success: false, error: "해당 발주서를 찾을 수 없습니다." };
+      return { success: false, error: "해당 주문서를 찾을 수 없습니다." };
     }
 
     if (!canEditOrderItems(order.status as OrderStatus) || order.payment_method === "pg") {
       return {
         success: false,
-        error: "이미 공급사가 확인했거나 카드(PG) 결제 발주서라 직접 수정할 수 없습니다.",
+        error: "이미 공급사가 확인했거나 카드(PG) 결제 주문서라 직접 수정할 수 없습니다.",
       };
     }
 
@@ -723,7 +723,7 @@ export async function loadEditableOrderAction(
 
     return {
       success: false,
-      error: error instanceof Error ? error.message : "발주서 조회 중 오류가 발생했습니다.",
+      error: error instanceof Error ? error.message : "주문서 조회 중 오류가 발생했습니다.",
     };
   }
 }
@@ -746,7 +746,7 @@ export interface EditOrderResult {
 }
 
 /**
- * 발주 품목 수정 최종 제출 — 접수대기·PG 아닌 발주서만.
+ * 주문 품목 수정 최종 제출 — 접수대기·PG 아닌 주문서만.
  *
  * submitOrderAction과 동일하게 서버 카탈로그로 단가를 재해석하고 최소 주문 금액/재고를
  * 검증한 뒤, 실제 교체는 단일 트랜잭션 RPC(replace_pending_order_items)에 맡긴다.
@@ -777,13 +777,13 @@ export async function editOrderAction(input: EditOrderInput): Promise<EditOrderR
       .maybeSingle();
 
     if (!order) {
-      return { success: false, error: "해당 발주서를 찾을 수 없습니다." };
+      return { success: false, error: "해당 주문서를 찾을 수 없습니다." };
     }
 
     if (!canEditOrderItems(order.status as OrderStatus) || order.payment_method === "pg") {
       return {
         success: false,
-        error: "이미 공급사가 확인했거나 카드(PG) 결제 발주서라 직접 수정할 수 없습니다.",
+        error: "이미 공급사가 확인했거나 카드(PG) 결제 주문서라 직접 수정할 수 없습니다.",
       };
     }
 
@@ -815,7 +815,7 @@ export async function editOrderAction(input: EditOrderInput): Promise<EditOrderR
         : `${firstLineDisplayName} ${firstLine.quantity}${firstLine.unit}`;
 
     // 공급사가 대시보드를 안 열어봐도 알 수 있도록 수정 사실을 알림톡으로 알린다 —
-    // 확정 전 발주서만 수정 가능하므로 항상 "아직 확인 전" 상태에 대한 안내다.
+    // 확정 전 주문서만 수정 가능하므로 항상 "아직 확인 전" 상태에 대한 안내다.
     const { data: profile } = await supabase
       .from("profiles")
       .select("phone")
@@ -862,7 +862,7 @@ export async function editOrderAction(input: EditOrderInput): Promise<EditOrderR
 
     return {
       success: false,
-      error: error instanceof Error ? error.message : "발주 수정 중 알 수 없는 오류가 발생했습니다.",
+      error: error instanceof Error ? error.message : "주문 수정 중 알 수 없는 오류가 발생했습니다.",
     };
   }
 }

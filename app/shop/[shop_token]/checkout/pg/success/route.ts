@@ -105,7 +105,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       // 묻으면 안 된다. pg_pending_payments는 지우지 않고 남겨서(finalizePaidOrder가
       // 실패 시 안 지움), 다음 페이지 방문/매일 크론의 복구 대상에 들어가게 한다.
       return failRedirect(
-        `결제는 완료됐지만 발주 저장에 실패했습니다(결제키: ${confirmed.paymentKey}). 공급사에 문의해주세요.`
+        `결제는 완료됐지만 주문 저장에 실패했습니다(결제키: ${confirmed.paymentKey}). 공급사에 문의해주세요.`
       );
     }
 

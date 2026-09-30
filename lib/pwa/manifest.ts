@@ -12,7 +12,7 @@ export function buildManifest({ id, start_url }: ManifestOverrides): MetadataRou
     id,
     name: "미트 파트너스",
     short_name: "미트파트너스",
-    description: "도매업체와 고객(소매)를 위한 1:1 모바일 발주 플랫폼",
+    description: "도매업체와 고객(소매)를 위한 1:1 모바일 주문 플랫폼",
     start_url,
     scope: "/",
     display: "standalone",

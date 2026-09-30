@@ -1,5 +1,5 @@
 /**
- * B2B 육류 도매 발주 SaaS - 카카오 알림톡(AlimTalk) 알림 발송 서비스 모듈
+ * B2B 육류 도매 주문 SaaS - 카카오 알림톡(AlimTalk) 알림 발송 서비스 모듈
  *
  * 공급사가 직접 대행사(비즈뿌리오)와 1:1 계약해 자기 계정을 대시보드
  * (/dashboard/invites, app/actions/alimtalk-settings.ts)에 등록하면 그 자격정보를
@@ -451,58 +451,58 @@ async function dispatchAlimtalk({
 }
 
 /**
- * 도매업자 대상 신규 발주 접수 알림톡 메시지 생성 및 발송 트리거
+ * 도매업자 대상 신규 주문 접수 알림톡 메시지 생성 및 발송 트리거
  */
 export async function sendOrderNotificationToWholesaler(
   payload: OrderNotificationPayload
 ): Promise<NotificationResult> {
   // 카카오 알림톡 승인 템플릿으로 등록해야 하는 기준 문구
-  const formattedMessage = `[신규 B2B 육류 발주 접수 알림]
+  const formattedMessage = `[신규 B2B 육류 주문 접수 알림]
 
-${payload.wholesalerName} 대표님, 고객(소매)로부터 새로운 발주서가 접수되었습니다.
+${payload.wholesalerName} 대표님, 고객(소매)로부터 새로운 주문서가 접수되었습니다.
 
-■ 발주 번호: ${payload.orderNumber}
-■ 발주처(소매): ${payload.restaurantName}
-■ 발주 내역: ${payload.itemsSummary}
-■ 총 발주 금액: ${payload.totalAmount.toLocaleString()}원
+■ 주문 번호: ${payload.orderNumber}
+■ 주문처(소매): ${payload.restaurantName}
+■ 주문 내역: ${payload.itemsSummary}
+■ 총 주문 금액: ${payload.totalAmount.toLocaleString()}원
 ■ 배송지: ${payload.deliveryAddress}
 ${payload.deliveryNotes ? `■ 배송 요청사항: ${payload.deliveryNotes}
 ` : ""}
-공급사(도매) 관리 대시보드에서 발주 상세 내역을 확인하시고 출고 준비를 진행해 주시기 바랍니다.`;
+공급사(도매) 관리 대시보드에서 주문 상세 내역을 확인하시고 출고 준비를 진행해 주시기 바랍니다.`;
 
   return dispatchAlimtalk({
     wholesalerId: payload.wholesalerId,
     templateKey: "orderNew",
-    templateTitle: "신규 발주 접수 알림",
+    templateTitle: "신규 주문 접수 알림",
     formattedMessage,
     targetPhone: payload.wholesalerPhone,
   });
 }
 
 /**
- * 도매업자 대상 '발주 내용 수정' 알림톡.
+ * 도매업자 대상 '주문 내용 수정' 알림톡.
  *
- * 접수대기 상태의 발주서를 바이어가 직접 다시 담아 교체했을 때(발주 수정, editOrderAction)
- * 트리거된다. 확정 이후엔 수정 자체가 불가능하므로 이 알림은 항상 "아직 확인 전" 발주서에만 간다.
+ * 접수대기 상태의 주문서를 바이어가 직접 다시 담아 교체했을 때(주문 수정, editOrderAction)
+ * 트리거된다. 확정 이후엔 수정 자체가 불가능하므로 이 알림은 항상 "아직 확인 전" 주문서에만 간다.
  */
 export async function sendOrderEditedNotificationToWholesaler(
   payload: OrderEditedNotificationPayload
 ): Promise<NotificationResult> {
-  const formattedMessage = `[발주 내용 수정 알림]
+  const formattedMessage = `[주문 내용 수정 알림]
 
-${payload.wholesalerName} 대표님, 고객(소매)가 접수대기 중인 발주서의 내용을 직접 수정했습니다.
+${payload.wholesalerName} 대표님, 고객(소매)가 접수대기 중인 주문서의 내용을 직접 수정했습니다.
 
-■ 발주 번호: ${payload.orderNumber}
-■ 발주처(소매): ${payload.restaurantName}
-■ 수정된 발주 내역: ${payload.itemsSummary}
-■ 수정 후 총 발주 금액: ${payload.totalAmount.toLocaleString()}원
+■ 주문 번호: ${payload.orderNumber}
+■ 주문처(소매): ${payload.restaurantName}
+■ 수정된 주문 내역: ${payload.itemsSummary}
+■ 수정 후 총 주문 금액: ${payload.totalAmount.toLocaleString()}원
 
-아직 확인 전인 발주서라면 대시보드에서 최신 내용을 다시 확인한 뒤 처리해 주시기 바랍니다.`;
+아직 확인 전인 주문서라면 대시보드에서 최신 내용을 다시 확인한 뒤 처리해 주시기 바랍니다.`;
 
   return dispatchAlimtalk({
     wholesalerId: payload.wholesalerId,
     templateKey: "orderEdited",
-    templateTitle: "발주 내용 수정 알림",
+    templateTitle: "주문 내용 수정 알림",
     formattedMessage,
     targetPhone: payload.wholesalerPhone,
   });
@@ -519,11 +519,11 @@ export async function sendCancelRequestNotificationToWholesaler(
 ): Promise<NotificationResult> {
   const formattedMessage = `[주문 취소 요청 접수 알림]
 
-${payload.wholesalerName} 대표님, 고객(소매)가 접수된 발주서의 취소를 요청했습니다.
+${payload.wholesalerName} 대표님, 고객(소매)가 접수된 주문서의 취소를 요청했습니다.
 
-■ 발주 번호: ${payload.orderNumber}
-■ 발주처(소매): ${payload.restaurantName}
-■ 발주 금액: ${payload.totalAmount.toLocaleString()}원
+■ 주문 번호: ${payload.orderNumber}
+■ 주문처(소매): ${payload.restaurantName}
+■ 주문 금액: ${payload.totalAmount.toLocaleString()}원
 ■ 요청 사유: ${payload.cancelReason}
 
 아직 취소가 확정된 것은 아닙니다.
@@ -632,7 +632,7 @@ ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
  * sendCreditLimitExceededNotificationToWholesaler와 같은 이벤트에서 함께 트리거되지만
  * 수신자가 다르다(공급사 vs 바이어). 바이어 화면에서는 체크아웃 시도 중에만 에러
  * 문구가 보이고 그 외엔 알 방법이 없었던 문제를 보완한다. "여신 한도"라는 용어와
- * 정확한 한도/미수금 금액은 넣지 않고, 정산을 서두르지 않으면 발주가 계속 막힌다는
+ * 정확한 한도/미수금 금액은 넣지 않고, 정산을 서두르지 않으면 주문가 계속 막힌다는
  * 행동 유도만 담는다.
  */
 export async function sendCreditLimitExceededNotificationToRetailer(
@@ -643,7 +643,7 @@ export async function sendCreditLimitExceededNotificationToRetailer(
 ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
 
 미수금이 있어 외상 주문이 접수되지 않았습니다.
-미수금을 빠르게 정산해 주지 않으시면 앞으로도 발주가 계속 제한됩니다.
+미수금을 빠르게 정산해 주지 않으시면 앞으로도 주문가 계속 제한됩니다.
 정산 후 다시 이용해주시기 바랍니다.`;
 
   return dispatchAlimtalk({
@@ -710,7 +710,7 @@ ${payload.wholesalerName} 대표님, ${payload.actorName}님이 ${payload.retail
  * 거래처(식당) 대상 '거래 제한' 알림톡.
  *
  * "여신 한도" 알림과 같은 원칙 — 정지 사유는 내부 사정(대금 미납 등)일 수 있어
- * 고객에게는 노출하지 않고, 발주가 제한됐다는 결과와 문의 유도만 담는다.
+ * 고객에게는 노출하지 않고, 주문가 제한됐다는 결과와 문의 유도만 담는다.
  */
 export async function sendRetailerBlockedNotificationToRetailer(
   payload: RetailerStatusRetailerNotificationPayload
@@ -719,7 +719,7 @@ export async function sendRetailerBlockedNotificationToRetailer(
 
 ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
 
-현재 거래가 일시 제한되어 발주가 어렵습니다.
+현재 거래가 일시 제한되어 주문가 어렵습니다.
 자세한 사항은 공급사에 직접 문의해주세요.`;
 
   return dispatchAlimtalk({
@@ -741,7 +741,7 @@ export async function sendRetailerResumedNotificationToWholesaler(
 
 ${payload.wholesalerName} 대표님, ${payload.actorName}님이 ${payload.retailerName}와의 거래를 재개하였습니다.
 
-다시 발주가 가능한 상태입니다.`;
+다시 주문가 가능한 상태입니다.`;
 
   return dispatchAlimtalk({
     wholesalerId: payload.wholesalerId,
@@ -753,7 +753,7 @@ ${payload.wholesalerName} 대표님, ${payload.actorName}님이 ${payload.retail
 }
 
 /**
- * 거래처(식당) 대상 '거래 재개' 알림톡. 다시 발주 가능해졌다는 좋은 소식이라
+ * 거래처(식당) 대상 '거래 재개' 알림톡. 다시 주문 가능해졌다는 좋은 소식이라
  * 여신 한도 상향 안내와 같은 톤으로 별도 사유 없이 결과만 전달한다.
  */
 export async function sendRetailerResumedNotificationToRetailer(
@@ -763,7 +763,7 @@ export async function sendRetailerResumedNotificationToRetailer(
 
 ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
 
-거래가 재개되어 다시 발주하실 수 있습니다.`;
+거래가 재개되어 다시 주문하실 수 있습니다.`;
 
   return dispatchAlimtalk({
     wholesalerId: payload.wholesalerId,

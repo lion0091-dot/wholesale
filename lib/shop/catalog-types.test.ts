@@ -85,7 +85,7 @@ function makeCatalog(overrides: Partial<ShopCatalog> = {}): ShopCatalog {
 }
 
 describe("toCartLines", () => {
-  it("발주정지된 상품은 조용히 제외한다", () => {
+  it("주문정지된 상품은 조용히 제외한다", () => {
     const product = makeProduct({ id: "p1", order_stopped: true, stock_quantity: 10 });
     const catalog = makeCatalog({ items: [resolveCatalogItem(product, undefined)] });
 

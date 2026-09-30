@@ -54,7 +54,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
-  /** 수정 모드일 때만 쓴다 — 원래 발주서의 배송정보/결제방식/발주번호를 서버에서 다시 확인해 채운다. */
+  /** 수정 모드일 때만 쓴다 — 원래 주문서의 배송정보/결제방식/주문번호를 서버에서 다시 확인해 채운다. */
   const [editLoadError, setEditLoadError] = useState<string | null>(null);
   const [isEditLoaded, setIsEditLoaded] = useState(false);
   const [editOrderNumber, setEditOrderNumber] = useState<string | null>(null);
@@ -78,7 +78,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
       if (cancelled) return;
 
       if (!result.success || !result.data) {
-        setEditLoadError(result.error ?? "발주서를 불러오지 못했습니다.");
+        setEditLoadError(result.error ?? "주문서를 불러오지 못했습니다.");
         return;
       }
 
@@ -123,7 +123,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
   }, [customer.allowedPaymentMethods, customer.creditLimit, pgAvailable]);
 
   useEffect(() => {
-    // 수정 모드는 원래 발주서의 결제방식을 그대로 유지한다 — 지금 고객에게 열린
+    // 수정 모드는 원래 주문서의 결제방식을 그대로 유지한다 — 지금 고객에게 열린
     // 결제수단 목록이 그 사이 바뀌었어도 화면 표시를 되돌리지 않는다(실제 제출값은
     // 항상 서버가 저장된 payment_method를 그대로 쓰므로 여기는 표시용일 뿐이다).
     if (isEditMode) {
@@ -170,7 +170,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
     await window.TossPayments(initiated.clientKey).requestPayment("카드", {
       amount: initiated.amount,
       orderId: initiated.pgOrderId,
-      orderName: initiated.orderName ?? "발주",
+      orderName: initiated.orderName ?? "주문",
       customerName: restaurantName,
       successUrl: `${origin}/shop/${shopToken}/checkout/pg/success`,
       failUrl: `${origin}/shop/${shopToken}/checkout/pg/fail`,
@@ -211,7 +211,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
           });
           clear();
         } else {
-          setErrorMessage(result.error ?? "발주 수정에 실패했습니다.");
+          setErrorMessage(result.error ?? "주문 수정에 실패했습니다.");
         }
         return;
       }
@@ -245,10 +245,10 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
         });
         clear();
       } else {
-        setErrorMessage(result.error ?? "발주서 접수에 실패했습니다.");
+        setErrorMessage(result.error ?? "주문서 접수에 실패했습니다.");
       }
     } catch {
-      setErrorMessage("발주서 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+      setErrorMessage("주문서 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       if (paymentMethod !== "pg" || isEditMode) {
         setIsSubmitting(false);
@@ -256,21 +256,21 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
     }
   };
 
-  // 발주 완료 화면
+  // 주문 완료 화면
   if (receipt) {
     return (
       <div style={shopPageStyle}>
-        <ShopHeader wholesaler={wholesaler} customer={customer} title="발주 완료" />
+        <ShopHeader wholesaler={wholesaler} customer={customer} title="주문 완료" />
 
         <div style={{ padding: "16px" }}>
           <div style={{ ...cardStyle, padding: "28px 20px", textAlign: "center" }}>
             <div style={{ fontSize: "40px", marginBottom: "12px" }}>🎉</div>
             <h2 style={{ fontSize: "18px", fontWeight: 800, color: "#0f172a", marginBottom: "8px" }}>
-              {isEditMode ? "발주 내용이 수정되었습니다!" : "발주서가 접수되었습니다!"}
+              {isEditMode ? "주문 내용이 수정되었습니다!" : "주문서가 접수되었습니다!"}
             </h2>
             <p style={{ fontSize: "13px", color: "#334155", lineHeight: 1.6, marginBottom: "18px" }}>
               {isEditMode ? (
-                "수정된 내용으로 발주서가 갱신되었습니다."
+                "수정된 내용으로 주문서가 갱신되었습니다."
               ) : (
                 <>
                   {wholesaler.business_name} 대표님께 카카오 알림톡이 발송되었습니다.
@@ -279,7 +279,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                   {paymentMethod !== "pg" && (
                     <>
                       <br />
-                      공급사가 확인하기 전(접수대기 상태)까지는 발주 내역을 &ldquo;내 발주 내역&rdquo;에서 직접 수정할 수 있어요.
+                      공급사가 확인하기 전(접수대기 상태)까지는 주문 내역을 &ldquo;내 주문 내역&rdquo;에서 직접 수정할 수 있어요.
                     </>
                   )}
                 </>
@@ -297,13 +297,13 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               }}
             >
               <div>
-                <strong>발주 번호:</strong> {receipt.orderNumber}
+                <strong>주문 번호:</strong> {receipt.orderNumber}
               </div>
               <div>
-                <strong>발주 내역:</strong> {receipt.itemsSummary}
+                <strong>주문 내역:</strong> {receipt.itemsSummary}
               </div>
               <div>
-                <strong>총 발주 금액:</strong> {formatWon(receipt.totalAmount)}
+                <strong>총 주문 금액:</strong> {formatWon(receipt.totalAmount)}
               </div>
               <div>
                 <strong>배송지:</strong> {deliveryAddress}
@@ -329,7 +329,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 textDecoration: "none",
               }}
             >
-              {isEditMode ? "발주 내역으로 돌아가기" : "미니샵으로 돌아가기"}
+              {isEditMode ? "주문 내역으로 돌아가기" : "미니샵으로 돌아가기"}
             </Link>
           </div>
         </div>
@@ -346,7 +346,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
         <ShopHeader
           wholesaler={wholesaler}
           customer={customer}
-          title="발주서 작성"
+          title="주문서 작성"
           backHref={`/shop/${shopToken}/cart`}
         />
 
@@ -361,7 +361,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
             }}
           >
             <p style={{ fontSize: "14px", color: "#334155", marginBottom: "20px" }}>
-              발주할 품목이 없습니다. 먼저 품목을 담아주세요.
+              주문할 품목이 없습니다. 먼저 품목을 담아주세요.
             </p>
             <Link
               href={`/shop/${shopToken}`}
@@ -391,7 +391,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
       <ShopHeader
         wholesaler={wholesaler}
         customer={customer}
-        title={isEditMode ? "발주 수정" : "발주서 작성"}
+        title={isEditMode ? "주문 수정" : "주문서 작성"}
         backHref={`/shop/${shopToken}/cart`}
       />
 
@@ -414,10 +414,10 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
       )}
 
       <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
-        {/* 발주 품목 확인 */}
+        {/* 주문 품목 확인 */}
         <div style={{ ...cardStyle, padding: "16px" }}>
           <span style={{ fontSize: "13px", fontWeight: 700, color: "#475569" }}>
-            발주 품목 ({totals.itemCount})
+            주문 품목 ({totals.itemCount})
           </span>
 
           <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -470,14 +470,14 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               alignItems: "baseline",
             }}
           >
-            <span style={{ fontSize: "14px", fontWeight: 800 }}>총 발주 금액</span>
+            <span style={{ fontSize: "14px", fontWeight: 800 }}>총 주문 금액</span>
             <span style={{ fontSize: "20px", fontWeight: 800, color: "#dc2626" }}>
               {formatWon(totals.totalAmount)}
             </span>
           </div>
 
           <p style={{ fontSize: "13px", color: "#475569", marginTop: "6px" }}>
-            최소 발주 금액 {minOrderAmount.toLocaleString()}원 · 부가세 별도
+            최소 주문 금액 {minOrderAmount.toLocaleString()}원 · 부가세 별도
           </p>
         </div>
 
@@ -497,7 +497,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 lineHeight: 1.6,
               }}
             >
-              ⚠️ 카카오 계정 정보로만 가입되어 있어요. 아래 상호명·배송지는 이번 발주를
+              ⚠️ 카카오 계정 정보로만 가입되어 있어요. 아래 상호명·배송지는 이번 주문를
               접수하면 앞으로의 기본 정보로 저장됩니다 — 사업자등록번호 등록이나 나중에
               다시 고치는 건{" "}
               <Link href="/my-shops" style={{ fontWeight: 700, color: "#b45309" }}>
@@ -541,7 +541,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
 
           {isEditMode && (
             <p style={{ fontSize: "12px", color: "#475569", marginTop: "-8px" }}>
-              상호명·연락처는 발주 수정에서는 바꿀 수 없습니다.{" "}
+              상호명·연락처는 주문 수정에서는 바꿀 수 없습니다.{" "}
               <Link href="/my-shops" style={{ fontWeight: 700, color: "#475569" }}>
                 내 정보 수정
               </Link>
@@ -603,7 +603,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
             <div>
               <label style={labelStyle}>결제 방식</label>
               <p style={{ fontSize: "13px", color: "#334155", padding: "10px", backgroundColor: "#f8fafc", borderRadius: "8px" }}>
-                {PAYMENT_METHOD_LABELS[paymentMethod]} — 발주 수정에서는 결제 방식을 바꿀 수 없습니다.
+                {PAYMENT_METHOD_LABELS[paymentMethod]} — 주문 수정에서는 결제 방식을 바꿀 수 없습니다.
               </p>
             </div>
           ) : (
@@ -650,7 +650,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               )}
               {paymentMethod === "pg" && (
                 <p style={{ fontSize: "13px", color: "#475569", marginTop: "6px" }}>
-                  토스페이먼츠 결제창으로 이동합니다. 결제가 완료되어야 발주서가 접수됩니다.
+                  토스페이먼츠 결제창으로 이동합니다. 결제가 완료되어야 주문서가 접수됩니다.
                 </p>
               )}
             </div>
@@ -673,10 +673,10 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
             }}
           >
             {isEditMode ? (
-              <>ℹ️ 저장하면 새 발주가 아니라 기존 발주서({editOrderNumber ?? "..."})의 품목이 바뀝니다. 최종 단가는 저장 시점의 계약 단가로 다시 계산됩니다.</>
+              <>ℹ️ 저장하면 새 주문가 아니라 기존 주문서({editOrderNumber ?? "..."})의 품목이 바뀝니다. 최종 단가는 저장 시점의 계약 단가로 다시 계산됩니다.</>
             ) : (
               <>
-                ℹ️ 발주서 전송 즉시 <strong>{wholesaler.business_name}</strong> 대표님께 카카오 알림톡이 발송됩니다.
+                ℹ️ 주문서 전송 즉시 <strong>{wholesaler.business_name}</strong> 대표님께 카카오 알림톡이 발송됩니다.
                 최종 단가는 공급사 확인 시점의 계약 단가로 확정됩니다.
               </>
             )}
@@ -720,15 +720,15 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
           >
             {isSubmitting
               ? isEditMode
-                ? "발주 수정 저장 중..."
+                ? "주문 수정 저장 중..."
                 : paymentMethod === "pg"
                   ? "결제창으로 이동 중..."
-                  : "발주서 접수 및 알림톡 발송 중..."
+                  : "주문서 접수 및 알림톡 발송 중..."
               : isEditMode
                 ? "수정 내용 저장"
                 : paymentMethod === "pg"
-                  ? "결제하고 발주서 전송"
-                  : "도매처로 발주서 최종 전송"}
+                  ? "결제하고 주문서 전송"
+                  : "도매처로 주문서 최종 전송"}
           </button>
         </form>
       </div>

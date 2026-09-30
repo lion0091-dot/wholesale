@@ -23,7 +23,7 @@ export function QuickSettleView({ groups }: { groups: ReceivableCustomerGroup[] 
   const [errorByRetailer, setErrorByRetailer] = useState<Record<string, string>>({});
 
   const handleSettleAll = (group: ReceivableCustomerGroup) => {
-    // 모바일 간이판은 개별 발주 선택 없이 "이 거래처가 방금 다 냈다"를 한 번에 처리한다
+    // 모바일 간이판은 개별 주문 선택 없이 "이 거래처가 방금 다 냈다"를 한 번에 처리한다
     // (개별 선택이 필요하면 PC 전체 화면으로). 정산은 되돌릴 수 없어 한 번 더 확인받는다.
     if (
       !window.confirm(

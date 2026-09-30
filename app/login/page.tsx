@@ -102,7 +102,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             lineHeight: 1.8,
           }}
         >
-          <li>즉시 이용: 상품 등록, 맞춤 단가, 발주 접수, 마이페이지</li>
+          <li>즉시 이용: 상품 등록, 맞춤 단가, 주문 접수, 마이페이지</li>
           <li>승인 후 이용: 고객(소매) 초대장 발부 (사업자 검증 등 행정 절차 완료 시 활성화)</li>
         </ul>
       </section>

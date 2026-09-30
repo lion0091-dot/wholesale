@@ -109,7 +109,7 @@ export function canRequestCancel(status: OrderStatus): boolean {
 }
 
 /**
- * 바이어가 발주 품목·배송정보를 직접 다시 담아 수정할 수 있는 상태.
+ * 바이어가 주문 품목·배송정보를 직접 다시 담아 수정할 수 있는 상태.
  * 접수대기(공급사가 아직 확인 전)뿐이다 — 확정 이후엔 이미 준비가 시작됐을 수 있어
  * 취소 요청처럼 공급사 승인을 거쳐야 한다. PG 결제는 이미 대금이 결제됐으므로
  * 상태와 무관하게 별도로 막는다(호출부가 payment_method도 함께 확인해야 한다).
@@ -133,25 +133,25 @@ export const ORDER_STATUS_ACTIONS: Record<OrderStatus, StatusActionConfig> = {
     label: "확보 대기 (공급처 발주)",
     tone: "info",
   },
-  confirmed: { status: "confirmed", label: "발주 확정 (접수 확인)", tone: "primary" },
+  confirmed: { status: "confirmed", label: "주문 확정 (접수 확인)", tone: "primary" },
   shipping: { status: "shipping", label: "출고 / 배송 시작", tone: "info" },
   delivered: { status: "delivered", label: "배송 완료 처리", tone: "success" },
   cancel_requested: {
     status: "cancel_requested",
-    label: "발주 취소 요청",
-    confirmMessage: "이 발주서의 취소를 요청하시겠습니까? 공급사 승인 후 취소가 확정됩니다.",
+    label: "주문 취소 요청",
+    confirmMessage: "이 주문서의 취소를 요청하시겠습니까? 공급사 승인 후 취소가 확정됩니다.",
     tone: "danger",
   },
   cancel_rejected: {
     status: "cancel_rejected",
     label: "취소 요청 반려",
-    confirmMessage: "취소 요청을 반려하시겠습니까? 발주는 기존 일정대로 진행됩니다.",
+    confirmMessage: "취소 요청을 반려하시겠습니까? 주문는 기존 일정대로 진행됩니다.",
     tone: "primary",
   },
   cancelled: {
     status: "cancelled",
-    label: "발주 취소",
-    confirmMessage: "이 발주서를 취소 처리하시겠습니까? 취소 후에는 되돌릴 수 없습니다.",
+    label: "주문 취소",
+    confirmMessage: "이 주문서를 취소 처리하시겠습니까? 취소 후에는 되돌릴 수 없습니다.",
     tone: "danger",
   },
 };
@@ -186,13 +186,13 @@ const ALIMTALK_BY_STATUS: Record<OrderStatus, AlimtalkStatus> = {
     color: "#475569",
   },
   pending: {
-    label: "신규 발주 접수 알림",
+    label: "신규 주문 접수 알림",
     target: "공급사 담당자",
     bg: "#fef3c7",
     color: "#92400e",
   },
   confirmed: {
-    label: "발주 확정 안내",
+    label: "주문 확정 안내",
     target: "고객(소매)",
     bg: "#dbeafe",
     color: "#1e40af",

@@ -440,7 +440,7 @@ export function CustomerTable({
                   <th>사업자 정보</th>
                   <th>배송지</th>
                   <th>맞춤 단가</th>
-                  <th>발주 실적</th>
+                  <th>주문 실적</th>
                   <th>여신 한도</th>
                   <th>거래 상태</th>
                   <th>관리</th>
@@ -508,7 +508,7 @@ export function CustomerTable({
                         <div style={{ color: "#94a3b8", fontSize: "11px", marginTop: "2px" }}>
                           {customer.lastOrderedAt
                             ? `최근 ${formatOrderedAt(customer.lastOrderedAt)}`
-                            : "발주 이력 없음"}
+                            : "주문 이력 없음"}
                         </div>
                       </td>
 
@@ -644,7 +644,7 @@ export function CustomerTable({
                   미니샵 전용 초대 링크
                 </h2>
                 <p style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
-                  {inviteTarget.restaurantName} 사장님께 카카오톡으로 발송할 발주 링크입니다.
+                  {inviteTarget.restaurantName} 사장님께 카카오톡으로 발송할 주문 링크입니다.
                 </p>
               </div>
               <button
@@ -690,7 +690,7 @@ export function CustomerTable({
                   marginBottom: "5px",
                 }}
               >
-                발주 링크
+                주문 링크
               </label>
               <div style={{ display: "flex", gap: "6px" }}>
                 <input
@@ -889,7 +889,7 @@ export function CustomerTable({
                 }}
               />
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                0으로 설정하면 이 거래처는 외상 발주를 선택할 수 없습니다.
+                0으로 설정하면 이 거래처는 외상 주문를 선택할 수 없습니다.
               </p>
             </div>
 
@@ -920,7 +920,7 @@ export function CustomerTable({
                 }}
               />
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                발주일로부터 이 일수가 지나면 미수금 정산 화면에서 연체로 표시됩니다.
+                주문일로부터 이 일수가 지나면 미수금 정산 화면에서 연체로 표시됩니다.
               </p>
             </div>
 
@@ -1132,7 +1132,7 @@ export function CustomerTable({
                 <textarea
                   value={blockReasonValue}
                   onChange={(event) => setBlockReasonValue(event.target.value)}
-                  placeholder="예: 3개월째 대금 미납, 반복 발주 취소 등"
+                  placeholder="예: 3개월째 대금 미납, 반복 주문 취소 등"
                   rows={3}
                   style={{
                     width: "100%",
@@ -1144,7 +1144,7 @@ export function CustomerTable({
                   }}
                 />
                 <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                  거래중지 중에는 이 거래처가 발주할 수 없습니다. 언제든 다시 거래를 재개할 수 있습니다.
+                  거래중지 중에는 이 거래처가 주문할 수 없습니다. 언제든 다시 거래를 재개할 수 있습니다.
                 </p>
               </div>
             )}

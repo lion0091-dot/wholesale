@@ -4,11 +4,11 @@
  */
 
 export interface OutboundGuideInput {
-  /** 목록에 있는 발주서 수. */
+  /** 목록에 있는 주문서 수. */
   orderCount: number;
-  /** 아직 마감 안 된 발주서 수(다음에 고를 수 있는 것). */
+  /** 아직 마감 안 된 주문서 수(다음에 고를 수 있는 것). */
   openOrderCount: number;
-  /** 고른 발주서. 없으면 null. */
+  /** 고른 주문서. 없으면 null. */
   selected: { status: string; finalized: boolean } | null;
   /** 상품별 진행. 진행 정보를 아직 못 불러왔으면 빈 배열. */
   progress: Array<{ orderedQty: number; scannedQty: number }>;
@@ -47,11 +47,11 @@ export function pickOutboundGuide(input: OutboundGuideInput): OutboundGuide {
     return {
       key: "pick-order",
       tone: "info",
-      title: "출고할 발주서를 고르세요",
+      title: "출고할 주문서를 고르세요",
       detail:
         input.openOrderCount > 0
-          ? "위 목록에서 발주서를 고르면 가져올 박스가 나옵니다."
-          : "모두 마감된 발주서입니다. 새 발주서가 확정되면 나타납니다.",
+          ? "위 목록에서 주문서를 고르면 가져올 박스가 나옵니다."
+          : "모두 마감된 주문서입니다. 새 주문서가 확정되면 나타납니다.",
     };
   }
 
@@ -59,11 +59,11 @@ export function pickOutboundGuide(input: OutboundGuideInput): OutboundGuide {
     return {
       key: "finalized",
       tone: "done",
-      title: "이미 마감된 발주서입니다",
+      title: "이미 마감된 주문서입니다",
       detail:
         input.openOrderCount > 0
-          ? "더 찍을 수 없습니다. 다음 발주서를 위 목록에서 고르세요. (소분 라벨은 인쇄할 수 있습니다)"
-          : "더 찍을 수 없습니다. 새 발주서가 확정되면 나타납니다. (소분 라벨은 인쇄할 수 있습니다)",
+          ? "더 찍을 수 없습니다. 다음 주문서를 위 목록에서 고르세요. (소분 라벨은 인쇄할 수 있습니다)"
+          : "더 찍을 수 없습니다. 새 주문서가 확정되면 나타납니다. (소분 라벨은 인쇄할 수 있습니다)",
     };
   }
 
@@ -74,8 +74,8 @@ export function pickOutboundGuide(input: OutboundGuideInput): OutboundGuide {
     return {
       key: "awaiting-stock",
       tone: "warn",
-      title: "재고 확보 대기 중인 발주서입니다",
-      detail: "박스를 찍어 둘 수는 있지만, 마감은 재고가 채워져 발주서가 '확정'된 뒤에 할 수 있습니다.",
+      title: "재고 확보 대기 중인 주문서입니다",
+      detail: "박스를 찍어 둘 수는 있지만, 마감은 재고가 채워져 주문서가 '확정'된 뒤에 할 수 있습니다.",
       action: { label: "고객 주문으로", kind: "link", href: "/dashboard/orders" },
     };
   }

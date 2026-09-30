@@ -22,7 +22,7 @@ export interface ShippableOrder {
   orderNumber: string;
   status: string;
   orderedAt: string;
-  /** 출고 마감(금액 확정)이 끝났나 — 마감된 발주서에는 더 찍을 수 없다. */
+  /** 출고 마감(금액 확정)이 끝났나 — 마감된 주문서에는 더 찍을 수 없다. */
   finalized: boolean;
   retailerName: string;
 }
@@ -38,7 +38,7 @@ function formatDate(iso: string): string {
 export function OutboundScanView({ orders }: Props) {
   const router = useRouter();
 
-  // 아직 마감 안 된 발주서부터 — 마감된 발주서가 기본 선택이면 첫 스캔이 "이미 마감됨"으로 거부된다.
+  // 아직 마감 안 된 주문서부터 — 마감된 주문서가 기본 선택이면 첫 스캔이 "이미 마감됨"으로 거부된다.
   const [orderId, setOrderId] = useState((orders.find((order) => !order.finalized) ?? orders[0])?.id ?? "");
   const [traceNo, setTraceNo] = useState("");
   const [progress, setProgress] = useState<OutboundProgressRow[]>([]);
@@ -91,7 +91,7 @@ export function OutboundScanView({ orders }: Props) {
 
   const submit = async (rawValue: string) => {
     if (!orderId) {
-      setError("먼저 발주서를 선택해주세요.");
+      setError("먼저 주문서를 선택해주세요.");
       return;
     }
 
@@ -180,13 +180,13 @@ export function OutboundScanView({ orders }: Props) {
     setFinalizing(false);
     setConfirming(null);
 
-    // 마감한 발주서는 더 찍을 수 없다 — 다음 발주서를 저절로 골라 준다(없으면 고른 채로 두고 안내 카드가 알려 준다).
+    // 마감한 주문서는 더 찍을 수 없다 — 다음 주문서를 저절로 골라 준다(없으면 고른 채로 두고 안내 카드가 알려 준다).
     const nextOrder = orders.find((order) => !order.finalized && order.id !== orderId) ?? null;
     const doneText = result.data?.wasShort
       ? `출고 마감. 실제 중량 기준 ${result.data.totalAmount.toLocaleString()}원으로 확정했습니다.`
       : "출고 마감했습니다.";
 
-    setMessage(nextOrder ? `${doneText} 다음 발주서: ${nextOrder.orderNumber} · ${nextOrder.retailerName}` : doneText);
+    setMessage(nextOrder ? `${doneText} 다음 주문서: ${nextOrder.orderNumber} · ${nextOrder.retailerName}` : doneText);
 
     if (nextOrder) {
       setOrderId(nextOrder.id);
@@ -262,7 +262,7 @@ export function OutboundScanView({ orders }: Props) {
 
       <section style={panelStyle}>
         <label htmlFor="order" style={labelStyle}>
-          발주서
+          주문서
         </label>
         <select
           id="order"

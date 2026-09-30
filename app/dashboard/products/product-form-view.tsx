@@ -482,7 +482,7 @@ export function ProductFormView({
       : null;
 
   // 폼이 로드된 뒤 실제로 토글을 건드렸을 때만 서버에 의도를 전달한다("none"이면
-  // 발주정지 컬럼 자체를 건드리지 않음 — 자동정지가 폼을 여는 사이 걸렸어도 보존).
+  // 주문정지 컬럼 자체를 건드리지 않음 — 자동정지가 폼을 여는 사이 걸렸어도 보존).
   const orderStoppedAction: "none" | "stop" | "resume" =
     orderStopped === initialOrderStopped ? "none" : orderStopped ? "stop" : "resume";
 
@@ -1012,14 +1012,14 @@ export function ProductFormView({
           <input type="hidden" name="is_active" value={isActive ? "on" : "off"} />
           {/* 폼을 열어둔 사이 목록의 빠른 토글 등으로 다른 곳에서 먼저 저장되면 감지용 */}
           {product && <input type="hidden" name="updated_at" value={product.updated_at} />}
-          {/* 폼 로드 시점 재고 스냅샷 — 핫딜을 끌 때 발주정지 자동해제 여부를 서버가 판단하는 데 쓴다.
+          {/* 폼 로드 시점 재고 스냅샷 — 핫딜을 끌 때 주문정지 자동해제 여부를 서버가 판단하는 데 쓴다.
               값이 바뀌었으면 위 updated_at 낙관적 잠금이 먼저 저장 충돌로 걸러준다. */}
           {product && (
             <input type="hidden" name="stock_quantity_snapshot" value={product.stock_quantity} />
           )}
           {/* 저장 전 hot_deal_active 값 — "핫딜을 지금 이 저장에서 껐는지"(전환 여부)를
               판단하는 데 쓴다. 이게 없으면 원래부터 핫딜을 안 쓰던 일반 상품까지
-              매번 저장할 때마다 수동 발주정지가 조용히 풀려버린다. */}
+              매번 저장할 때마다 수동 주문정지가 조용히 풀려버린다. */}
           {product && (
             <input
               type="hidden"
@@ -1140,7 +1140,7 @@ export function ProductFormView({
             }}
           >
             <ToggleField
-              label="발주정지 (재고와 무관하게 주문만 막기)"
+              label="주문정지 (재고와 무관하게 주문만 막기)"
               checked={orderStopped}
               onChange={setOrderStopped}
               accentColor="#b91c1c"

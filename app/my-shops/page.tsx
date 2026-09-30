@@ -132,7 +132,7 @@ export default async function MyShopsPage() {
         <div>
           <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>내 거래처</h1>
           <p style={{ fontSize: "12px", color: "#64748b", marginTop: "6px", lineHeight: 1.6 }}>
-            연결된 도매업체 목록입니다. 각 거래처는 서로 독립된 1:1 발주 공간이며, 이 화면에서는 상품이나
+            연결된 도매업체 목록입니다. 각 거래처는 서로 독립된 1:1 주문 공간이며, 이 화면에서는 상품이나
             단가를 비교할 수 없습니다.
           </p>
         </div>

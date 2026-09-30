@@ -1,6 +1,6 @@
 /**
  * 관리자용 플랫폼 전체 통계 — 기존 데이터만으로 재구성한다. 새 스키마 없이
- * wholesalers.created_at(가입 시점)과 orders.ordered_at(실발주 이력)만 사용하므로
+ * wholesalers.created_at(가입 시점)과 orders.ordered_at(실주문 이력)만 사용하므로
  * 언제든 임의 과거 구간을 다시 계산할 수 있다.
  *
  * 잠긴 단순화 결정: 이벤트 할인·일할 계산은 과거 달 재구성에는 반영하지 않는다(그 두
@@ -202,7 +202,7 @@ export async function getMonthlyFeeStats(
     .gte("ordered_at", rangeStartUtc)
     .lt("ordered_at", rangeEndUtc);
 
-  // 월 → (wholesaler_id → 그 달에 실발주한 거래처 id 집합)
+  // 월 → (wholesaler_id → 그 달에 실주문한 거래처 id 집합)
   const billedRetailersByMonth = new Map<string, Map<string, Set<string>>>();
 
   for (const order of (orders ?? []) as Array<{

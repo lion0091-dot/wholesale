@@ -1,5 +1,5 @@
 /**
- * 미니샵 발주 정책 (최소 주문 금액/수량, 단위 스텝, 장바구니 검증).
+ * 미니샵 주문 정책 (최소 주문 금액/수량, 단위 스텝, 장바구니 검증).
  *
  * 서버 액션과 클라이언트 UI가 완전히 동일한 규칙으로 계산하도록 순수 함수로만 구성한다.
  * (금액 계산의 최종 권한은 항상 서버 액션에 있으며, 클라이언트는 미리보기 용도로만 사용한다.)
@@ -21,7 +21,7 @@ export function quantityStepFor(unit: string): number {
   return normalized === "kg" || normalized === "근" ? 0.5 : 1;
 }
 
-/** 품목별 최소 발주 수량 (증감 단위와 동일) */
+/** 품목별 최소 주문 수량 (증감 단위와 동일) */
 export function minQuantityFor(unit: string): number {
   return quantityStepFor(unit);
 }
@@ -109,7 +109,7 @@ export interface CartValidation {
 }
 
 /**
- * 발주 가능 여부 검증 — 빈 장바구니 / 최소 주문 금액 / 최소 수량 / 재고.
+ * 주문 가능 여부 검증 — 빈 장바구니 / 최소 주문 금액 / 최소 수량 / 재고.
  * minOrderAmount는 공급사별 설정(wholesalers.min_order_amount)을 항상 호출부에서 넘긴다.
  */
 export function validateCart(
@@ -130,7 +130,7 @@ export function validateCart(
       violations.push({
         code: "out_of_stock",
         productId: line.productId,
-        message: `${line.name}은(는) 품절되어 발주할 수 없습니다.`,
+        message: `${line.name}은(는) 품절되어 주문할 수 없습니다.`,
       });
       return;
     }
@@ -147,7 +147,7 @@ export function validateCart(
       violations.push({
         code: "min_quantity",
         productId: line.productId,
-        message: `${line.name}은(는) 최소 ${minQuantity}${line.unit}부터 발주할 수 있습니다.`,
+        message: `${line.name}은(는) 최소 ${minQuantity}${line.unit}부터 주문할 수 있습니다.`,
       });
     }
   });
