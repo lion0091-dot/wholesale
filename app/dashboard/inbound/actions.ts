@@ -820,7 +820,9 @@ export async function resolveScanStorageAction(
       const message =
         reason === "NEEDS_CHOICE" || reason === "NO_MATCH"
           ? "전표에서 상품을 하나로 정할 수 없습니다. 아래 목록에서 상품을 직접 골라주세요."
-          : "이 박스는 자동으로 상품을 정할 수 없습니다. 상품을 직접 골라주세요.";
+          : reason === "BREED_UNKNOWN" || reason === "INSUFFICIENT_TRACE_INFO"
+            ? "이력조회에서 품종(또는 축종)을 알 수 없어 자동으로 상품을 만들 수 없습니다. 냉장/냉동과 상관없이 아래 목록에서 상품을 직접 골라주세요."
+            : "이 박스는 자동으로 상품을 정할 수 없습니다. 상품을 직접 골라주세요.";
 
       throw new RbacError(message);
     }
@@ -879,13 +881,19 @@ export async function resolveMappingAction(
       throw new Error(error.message);
     }
 
+    revalidatePath(REVALIDATE_PATH, "layout");
+    revalidatePath("/dashboard/products");
+
+    const row = (data ?? {}) as Record<string, unknown>;
+
     // 이 박스에 상품코드가 있었다면 "이 코드 = 이 상품"으로 기억한다.
     // 이력조회가 부위를 주지 않아 trace_product_map 학습이 안 걸리는 경우에도
     // 이쪽은 걸린다 — 실제로 되묻는 횟수를 줄여주는 건 이 경로다(30단계).
     // remember=false(발주서 후보 중에서 고른 경우)여도 상품코드 학습은 한다: 상품코드는 품목 하나(냉장/냉동 포함)를
     // 가리키므로 다음 박스부터 되묻지 않게 해 준다. 안 하는 것은 축종·부위·등급 기준 기억(trace_product_map)뿐이다 —
     // 그건 냉장·냉동이 섞여 올 때 다음 박스를 같은 상품으로 몰고 간다.
-    {
+    // 발주서 기준으로 이미 거절(취소)된 박스는 학습하지 않는다 — 받지 않은 박스의 상품이 그 코드의 정답이 되면 안 된다.
+    if (row.status !== "REJECTED") {
       const { error: learnError } = await supabase.rpc("learn_gtin_product", {
         p_scan_id: scanId,
         p_product_id: productId,
@@ -896,10 +904,6 @@ export async function resolveMappingAction(
       }
     }
 
-    revalidatePath(REVALIDATE_PATH, "layout");
-    revalidatePath("/dashboard/products");
-
-    const row = (data ?? {}) as Record<string, unknown>;
 
     return {
       success: true,

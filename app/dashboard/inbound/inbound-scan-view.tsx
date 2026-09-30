@@ -160,6 +160,8 @@ interface Props {
 
 const SUPPLIER_STORAGE_KEY = "inbound:current-supplier";
 const PART_HINT_STORAGE_KEY = "inbound:part-hint";
+/** 후보가 이 수를 넘으면 버튼 대신 드롭박스로 고른다. */
+const MAX_CHOICE_BUTTONS = 6;
 const STORAGE_HINT_STORAGE_KEY = "inbound:storage-hint";
 
 /** 오픈 직전 Vercel에서 이 값을 지우거나 false로 바꾸면 샘플 패널이 전부 사라진다. */
@@ -276,38 +278,55 @@ export function InboundScanView({
   const [partHint, setPartHint] = useState("");
   const [storageHint, setStorageHint] = useState<"" | "냉장" | "냉동">("");
 
-  useEffect(() => {
-    try {
-      setPartHint(window.localStorage.getItem(PART_HINT_STORAGE_KEY) ?? "");
-      const storage = window.localStorage.getItem(STORAGE_HINT_STORAGE_KEY);
+  // "오늘은 무조건 등심"은 오늘만이다 — 어제 고른 값이 오늘 박스에 조용히 적용되지 않도록 고른 날짜와 함께 저장하고 같은 날만 복원한다.
+  const todayKey = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 
-      if (storage === "냉장" || storage === "냉동") setStorageHint(storage);
+  const readHint = (key: string): string => {
+    try {
+      const raw = window.localStorage.getItem(key);
+      const saved = raw ? (JSON.parse(raw) as { value?: string; day?: string }) : null;
+
+      return saved?.day === todayKey() && typeof saved.value === "string" ? saved.value : "";
     } catch {
-      // 저장소를 못 쓰는 환경 — 그냥 매번 고르게 둔다.
+      return "";
     }
+  };
+
+  const writeHint = (key: string, value: string) => {
+    try {
+      if (value) window.localStorage.setItem(key, JSON.stringify({ value, day: todayKey() }));
+      else window.localStorage.removeItem(key);
+    } catch {
+      // 저장 실패는 화면 동작에 영향이 없다.
+    }
+  };
+
+  useEffect(() => {
+    setPartHint(readHint(PART_HINT_STORAGE_KEY));
+
+    const storage = readHint(STORAGE_HINT_STORAGE_KEY);
+
+    if (storage === "냉장" || storage === "냉동") setStorageHint(storage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const changePartHint = (value: string) => {
     setPartHint(value);
-
-    try {
-      if (value) window.localStorage.setItem(PART_HINT_STORAGE_KEY, value);
-      else window.localStorage.removeItem(PART_HINT_STORAGE_KEY);
-    } catch {
-      // 저장 실패는 화면 동작에 영향이 없다.
-    }
+    writeHint(PART_HINT_STORAGE_KEY, value);
   };
 
   const changeStorageHint = (value: "" | "냉장" | "냉동") => {
     setStorageHint(value);
-
-    try {
-      if (value) window.localStorage.setItem(STORAGE_HINT_STORAGE_KEY, value);
-      else window.localStorage.removeItem(STORAGE_HINT_STORAGE_KEY);
-    } catch {
-      // 저장 실패는 화면 동작에 영향이 없다.
-    }
+    writeHint(STORAGE_HINT_STORAGE_KEY, value);
   };
+
+  // 저장돼 있던 부위가 지금 목록에 없으면(오늘 전표에 그 부위가 없음 등) 화면엔 "표기 없음"으로 보이면서 값만 계속 전송되므로 비운다.
+  const currentPartList = (partOptions?.byPo[supplierId]?.length ?? 0) > 0 ? partOptions!.byPo[supplierId] : (partOptions?.all ?? []);
+
+  useEffect(() => {
+    if (partHint && !currentPartList.includes(partHint)) changePartHint("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partHint, supplierId, partOptions]);
 
   useEffect(() => {
     try {
@@ -1383,6 +1402,22 @@ export function InboundScanView({
               <span style={{ fontSize: "12px", fontWeight: 700, color: "#92400e" }}>
                 발주서에 이 고기가 {scan.productChoices!.length}가지로 있습니다 — 박스 라벨을 보고 맞는 것을 누르세요
               </span>
+              {scan.productChoices!.length > MAX_CHOICE_BUTTONS ? (
+                // 전표 줄이 많아 후보가 많으면(부위를 모르는 박스) 버튼 수십 개 대신 드롭박스로 고른다.
+                <select
+                  defaultValue=""
+                  onChange={(event) => void handleResolve(scan.id, event.target.value, false)}
+                  aria-label="전표 후보 상품"
+                  style={{ ...inputStyle, ...HIGHLIGHT_FIELD, width: "auto", padding: "6px 8px", fontSize: "12px" }}
+                >
+                  <option value="">전표 후보 선택…</option>
+                  {scan.productChoices!.map((choice) => (
+                    <option key={choice.productId} value={choice.productId}>
+                      {choice.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                 {scan.productChoices!.map((choice) => (
                   <button
@@ -1396,6 +1431,7 @@ export function InboundScanView({
                   </button>
                 ))}
               </div>
+              )}
             </div>
           )}
 
@@ -1439,6 +1475,28 @@ export function InboundScanView({
                 ))}
               </select>
             </div>
+          )}
+
+          {needsProduct && (scan.poProducts?.length ?? 0) > 0 && products.length > 0 && (
+            // 전표 밖 상품(예: 전표에 없는 물건이 실제로 온 경우)은 전체 상품에서 고른다 — 전표 상품만 보이면 잘못된 상품에 붙이거나 막힌다.
+            <details style={{ width: "100%" }}>
+              <summary style={{ fontSize: "12px", color: "#475569", cursor: "pointer" }}>전표에 없는 상품이면 — 전체 상품에서 고르기</summary>
+              <select
+                defaultValue=""
+                onChange={(event) => void handleResolve(scan.id, event.target.value)}
+                aria-label="전체 상품 지정"
+                style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: "12px", marginTop: "6px" }}
+              >
+                <option value="">상품 선택…</option>
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {composeProductDisplayName(product.category, product.name)}
+                    {product.grade ? ` (${product.grade})` : ""}
+                    {product.is_active === false ? " · 판매중지" : ""}
+                  </option>
+                ))}
+              </select>
+            </details>
           )}
 
           {needsProduct && (scan.productChoices?.length ?? 0) === 0 && (scan.poProducts?.length ?? 0) === 0 && products.length > 0 && (
@@ -1615,7 +1673,7 @@ export function InboundScanView({
               style={{ ...inputStyle, ...(partHint ? { borderColor: "#0f172a", fontWeight: 700 } : {}) }}
             >
               <option value="">표기 없음 (전표대로)</option>
-              {(((partOptions?.byPo[supplierId]?.length ?? 0) > 0 ? partOptions!.byPo[supplierId] : partOptions?.all) ?? []).map((part) => (
+              {currentPartList.map((part) => (
                 <option key={part} value={part}>
                   {part}
                 </option>

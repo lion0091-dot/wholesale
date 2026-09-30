@@ -283,34 +283,96 @@ describe("스캔 — 발주서가 스캔이 모르는 칸을 채운다(174·175)
     expect(await productsOfPart(part)).toHaveLength(1);
   });
 
-  it("한쪽 줄이 이미 다 찼으면 남은 쪽으로 자동으로 정한다", async () => {
-    const part = `다참-${world.runId}`;
+  it("다 받은 전표 줄도 후보에 남는다 — 안심이 다 찬 뒤 온 안심 박스가 남은 등심으로 조용히 붙지 않는다(179)", async () => {
     const supplierId = await newSupplier();
-    const chilled = await newCattleProduct(part, "냉장");
-    const frozen = await newCattleProduct(part, "냉동");
+    const loin = await newCattleProduct(`남은등심-${world.runId}`, "냉장");
+    const tender = await newCattleProduct(`다찬안심-${world.runId}`, "냉장");
 
-    await newPurchaseOrder(supplierId, [{ productId: chilled, quantity: 20 }, { productId: frozen, quantity: 100 }]);
+    await newPurchaseOrder(supplierId, [{ productId: loin, quantity: 100 }, { productId: tender, quantity: 20 }]);
 
-    const first = await scanBox(part, supplierId, 20);
+    // 안심 줄을 다 채운다(사람이 안심을 고르는 경로 — 부위 입력).
+    const first = await scanBox(null, supplierId, 20, { partHint: `다찬안심-${world.runId}` });
 
-    expect(first.status).toBe("PENDING_MAPPING");
-    // 후보를 고른 결정은 기억하지 않는다(remember=false) — 기억하면 다음 박스가 발주서를 보지 않고 같은 상품으로 간다.
-    expect((await resolveMappingAction(first.scanId, chilled, false)).success).toBe(true);
+    expect(first.productId).toBe(tender);
 
-    const second = await scanBox(part, supplierId, 20);
+    // 부위 표기가 없는 다음 박스: 등심(남음)·안심(다 참) 둘 다 후보라 자동으로 정하지 않는다.
+    const second = await scanBox(null, supplierId, 20);
 
-    expect(second.productId).toBe(frozen);
-    expect(second.po).toMatchObject({ result: "ASSIGNED" });
+    expect(second.status).toBe("PENDING_MAPPING");
+    expect(second.productId).toBeNull();
   });
 
-  it("발주서가 없어도 냉장/냉동이 지정된 상품이 하나뿐이면 그 상품에 붙는다", async () => {
+  it("발주서도 박스 표기도 없으면 지정된 상품이 하나뿐이어도 짐작해 붙이지 않고 냉장/냉동을 묻는다(179)", async () => {
     const part = `후보하나-${world.runId}`;
-    const productId = await newCattleProduct(part, "냉동");
+
+    await newCattleProduct(part, "냉동");
 
     const scan = await scanBox(part, null);
 
-    expect(scan.productId).toBe(productId);
+    expect(scan.status).toBe("PENDING_MAPPING");
+    expect(scan.productId).toBeNull();
     expect(await productsOfPart(part)).toHaveLength(1);
+  });
+
+  it("박스에 냉장/냉동을 입력했으면 그 값의 기존 상품에 붙는다", async () => {
+    const part = `입력붙음-${world.runId}`;
+    const frozen = await newCattleProduct(part, "냉동");
+
+    await newCattleProduct(part, "냉장");
+
+    const scan = await scanBox(part, null, 20, { storageHint: "냉동" });
+
+    expect(scan.productId).toBe(frozen);
+    expect(await productsOfPart(part)).toHaveLength(2);
+  });
+
+  it("냉장/냉동이 빈 옛 전표 상품은 후보가 되지 않는다 — 빈 상품에 붙이지 않고 보관한다(179)", async () => {
+    const part = `옛상품-${world.runId}`;
+    const supplierId = await newSupplier();
+    const legacy = await newCattleProduct(part, null);
+
+    await newPurchaseOrder(supplierId, [{ productId: legacy }]);
+
+    const scan = await scanBox(part, supplierId);
+
+    expect(scan.status).toBe("PENDING_MAPPING");
+    expect(scan.productId).toBeNull();
+  });
+
+  it("전표대로라는 짐작만으로 정한 상품은 상품코드(GTIN)를 학습하지 않는다. 박스 표기를 입력해 정하면 학습한다(179)", async () => {
+    const supplierId = await newSupplier();
+    const guess = await newCattleProduct(`짐작-${world.runId}`, "냉장");
+    const gtinGuess = String(Math.floor(Math.random() * 1e13)).padStart(14, "7");
+
+    await newPurchaseOrder(supplierId, [{ productId: guess }]);
+
+    const traceA = world.newTraceNo();
+
+    await world.seedTrace(traceA, { part: null, grade: "1+" });
+
+    const guessed = await recordScanAction({ traceNo: traceA, weight: 20, scanType: "MANUAL", supplierId, gtin: gtinGuess });
+
+    expect((guessed.data as ScanResult).productId).toBe(guess);
+
+    const { data: none } = await adminClient().from("gtin_product_map").select("product_id").eq("wholesaler_id", world.wholesalerA).eq("gtin", gtinGuess);
+
+    expect(none ?? []).toHaveLength(0);
+
+    const confirmedPart = `확정-${world.runId}`;
+    const confirmed = await newCattleProduct(confirmedPart, "냉장");
+    const supplier2 = await newSupplier();
+    const gtinConfirmed = String(Math.floor(Math.random() * 1e13)).padStart(14, "6");
+
+    await newPurchaseOrder(supplier2, [{ productId: confirmed }]);
+
+    const traceB = world.newTraceNo();
+
+    await world.seedTrace(traceB, { part: null, grade: "1+" });
+    await recordScanAction({ traceNo: traceB, weight: 20, scanType: "MANUAL", supplierId: supplier2, gtin: gtinConfirmed, partHint: confirmedPart });
+
+    const { data: learned } = await adminClient().from("gtin_product_map").select("product_id").eq("wholesaler_id", world.wholesalerA).eq("gtin", gtinConfirmed).single();
+
+    expect(learned?.product_id).toBe(confirmed);
   });
 
   it("발주서가 없고 냉장·냉동 상품이 둘 다 있으면 자동으로 정하지 않고 냉장/냉동을 사람이 고르게 한다(상품을 새로 만들지 않는다)", async () => {
