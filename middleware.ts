@@ -109,9 +109,12 @@ export async function middleware(request: NextRequest) {
 
     // 조직 세션 바인딩 검증: organization_staff 소속이 없으면 온보딩으로 유도.
     // 온보딩(/onboarding)은 /dashboard 밖이므로 리다이렉트 루프가 생기지 않는다.
+    // 구독료 확인에 쓰는 organizations/wholesalers를 같이 묶어 왕복 한 번을 줄인다.
     const { data: staff } = await supabase
       .from("organization_staff")
-      .select("organization_id, role")
+      .select(
+        "organization_id, role, organizations ( wholesalers ( subscription_status, trial_started_at, billing_starts_at ) )"
+      )
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -139,11 +142,9 @@ export async function middleware(request: NextRequest) {
 
       // 구독료(거래처 수 비례 종량제) 연체/해지/체험만료 시 백오피스 접근 차단.
       // /billing-locked는 /dashboard 밖이라 이 블록을 다시 타지 않으므로 루프가 없다.
-      const { data: organization } = await supabase
-        .from("organizations")
-        .select("wholesalers ( subscription_status, trial_started_at, billing_starts_at )")
-        .eq("id", staff.organization_id)
-        .maybeSingle();
+      const organization = Array.isArray(staff.organizations)
+        ? staff.organizations[0]
+        : staff.organizations;
 
       const wholesaler = Array.isArray(organization?.wholesalers)
         ? organization.wholesalers[0]
