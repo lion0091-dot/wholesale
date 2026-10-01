@@ -146,6 +146,8 @@ Claude Max 요금제는 잔량 조회 API가 없어 실시간 동적 라우팅�
 
 ## 수입축산물 이력 조회 — data.mafra.go.kr 실연동 (2026-09-28, 별도 기능)
 
+**2026-10-01 사장님 결정: 아래 수동 조회 화면(`/dashboard/inbound/imported-lookup`)·`searchImportedTraceAction`·입고 탭 "수입육 조회"는 제거했다**(meatwatch.go.kr 조회오픈서비스 실시간 연동으로 대체 예정). `lib/livestock/meatwatch-client.ts`의 API 클라이언트는 남겨 뒀다.
+
 `lib/livestock/meatwatch-client.ts` — 수입육 이력은 `meatwatch.go.kr` 별도 기업심사가 아니라 **data.mafra.go.kr(농림축산식품부 공공데이터포털)**에서 키를 발급받아 실주소·실호출로 검증 완료(경로 방식 `/openapi/{API_KEY}/json/{GRID_ID}/{시작}/{끝}?IMPORT_DE=...`가 정상 동작, 쿼리스트링으로 API_KEY 넘기는 방식은 실패). **이 API는 이력번호로 직접 조회가 안 되고 수입일자(IMPORT_DE, 필수)로만 그날 목록을 받을 수 있다** — 그래서 국내산(mtrace)과 달리 현장 스캔 자동조회에는 안 붙였다(하루치 최대 몇백 건을 실시간 스캔 타임아웃 안에 다 훑는 건 무리). 대신 수입일자를 아는 사무실 직원이 직접 조회하는 화면 `/dashboard/inbound/imported-lookup`(보류함과 같은 급, PC 전용 탭)을 새로 만들었다 — 날짜+선택 필터로 조회해 목록에서 번호를 눈으로 대조한다, 조회 결과는 저장 안 함. `lib/livestock/mtrace-client.ts`의 기존 `meatwatch` TraceSource(REST 번호검색 가정)는 이 실제 API와 구조가 안 맞아 여전히 미사용 죽은 코드로 남아 있다. `.env.example`에 `MEATWATCH_API_BASE`·`MEATWATCH_GRID_ID` 추가(기본값 있어 보통 안 건드려도 됨). 실호출 검증 완료, 화면 클릭 검증은 아직.
 
 ## 개인정보 수명주기·접속기록·법률자문 (2026-09-30, 별도 기능)
