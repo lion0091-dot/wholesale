@@ -35,6 +35,8 @@ export default async function StockLedgerPage({
   const productId = pick("product") || "";
   const eventType = pick("event") || "";
   const traceNo = pick("trace") || "";
+  // 기본은 최신순. order=old면 오래된 순(줄마다 붙는 그 시점 재고를 위에서 아래로 따라 읽기 좋다).
+  const oldestFirst = pick("order") === "old";
 
   let rows: LedgerRow[] = [];
   let summary: LedgerSummary = { inbound: 0, outbound: 0, adjustment: 0, loss: 0, split: 0 };
@@ -54,6 +56,7 @@ export default async function StockLedgerPage({
         p_trace_no: traceNo || null,
         p_limit: 200,
         p_offset: 0,
+        p_newest_first: !oldestFirst,
       }),
       supabase.rpc("summarize_stock_ledger", {
         p_wholesaler_id: scope.wholesalerId,
@@ -114,7 +117,7 @@ export default async function StockLedgerPage({
         summary={summary}
         products={products}
         totalCount={totalCount}
-        filters={{ from, to, productId, eventType, traceNo }}
+        filters={{ from, to, productId, eventType, traceNo, oldestFirst }}
       />
     </div>
   );

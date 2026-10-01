@@ -75,3 +75,17 @@ describe("filterTree", () => {
     expect(filterTree(tree, "없는말")).toBeNull();
   });
 });
+
+describe("buildBoxTree — 묶음(boxCount)", () => {
+  it("boxCount가 있으면 그 수만큼 박스로 센다(없으면 1개)", () => {
+    const base = { tagSpecies: "소", tagPart: "등심", tagOrigin: "국내산", tagGrade: "1+", tagSex: null, tagBms: null, tagStorageState: "냉장" };
+    const tree = buildBoxTree([
+      { ...base, remainingWeight: 60, boxCount: 3 },
+      { ...base, remainingWeight: 10 },
+    ]);
+
+    expect(tree.boxes).toBe(4);
+    expect(tree.weight).toBe(70);
+    expect(tree.children[0].boxes).toBe(4);
+  });
+});

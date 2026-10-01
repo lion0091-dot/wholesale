@@ -38,7 +38,7 @@ interface Props {
   summary: LedgerSummary;
   products: LedgerProduct[];
   totalCount: number;
-  filters: { from: string; to: string; productId: string; eventType: string; traceNo: string };
+  filters: { from: string; to: string; productId: string; eventType: string; traceNo: string; oldestFirst: boolean };
 }
 
 function formatQty(value: number, unit: string): string {
@@ -217,6 +217,14 @@ export function StockLedgerView({ rows, summary, products, totalCount, filters }
           <span style={{ color: "#94a3b8", fontWeight: 400 }}>
             {totalCount > rows.length ? `${rows.length} / 총 ${totalCount}건` : `${rows.length}건`}
           </span>
+          <button
+            type="button"
+            onClick={() => applyFilter("order", filters.oldestFirst ? "" : "old")}
+            aria-label="정렬 순서 바꾸기"
+            style={{ marginLeft: "10px", padding: "4px 10px", border: "1px solid #cbd5e1", borderRadius: "999px", background: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#334155" }}
+          >
+            {filters.oldestFirst ? "오래된 순 ↑ (눌러서 최신순)" : "최신순 ↓ (눌러서 오래된 순)"}
+          </button>
         </div>
 
         {rows.length === 0 ? (

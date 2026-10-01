@@ -12,6 +12,8 @@ export interface TreeBox {
   tagBms: string | null;
   tagStorageState: string | null;
   remainingWeight: number;
+  /** 같은 꼬리표 박스를 묶어 보낼 때의 박스 수(없으면 1개). remainingWeight는 그 묶음의 합계다. */
+  boxCount?: number;
 }
 
 export const TREE_AXES = ["축종", "부위", "원산지", "등급", "성별", "BMS", "냉장/냉동"] as const;
@@ -63,7 +65,9 @@ export function buildBoxTree(boxes: TreeBox[]): TreeNode {
   const root: TreeNode = { axis: null, label: "전체", boxes: 0, weight: 0, children: [] };
 
   for (const box of boxes) {
-    root.boxes += 1;
+    const count = box.boxCount ?? 1;
+
+    root.boxes += count;
     root.weight += box.remainingWeight;
 
     let node = root;
@@ -77,7 +81,7 @@ export function buildBoxTree(boxes: TreeBox[]): TreeNode {
         node.children.push(child);
       }
 
-      child.boxes += 1;
+      child.boxes += count;
       child.weight += box.remainingWeight;
       node = child;
     });

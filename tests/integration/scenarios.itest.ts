@@ -163,11 +163,11 @@ describe("SC-4 주문 → 출고 → 고객이 받는 거래명세서 이력번�
     expect((labels.data as Array<Record<string, unknown>>).length).toBeGreaterThan(0);
     expect(Object.keys((labels.data as Array<Record<string, unknown>>)[0])).not.toContain("is_bundle");
 
-    // 재고 원장 요약: 세트투입 칸 없이 4개 합계
+    // 재고 원장 요약: 입고·출고·조정·손실 + 쪼개기(195) 5칸
     const summary = await getActorClient().rpc("summarize_stock_ledger", { p_wholesaler_id: world.wholesalerA });
 
     expect(summary.error).toBeNull();
-    expect(Object.keys((summary.data as Array<Record<string, unknown>>)[0]).sort()).toEqual(["adjustment_qty", "inbound_qty", "loss_qty", "outbound_qty"]);
+    expect(Object.keys((summary.data as Array<Record<string, unknown>>)[0]).sort()).toEqual(["adjustment_qty", "inbound_qty", "loss_qty", "outbound_qty", "split_qty"]);
 
     // 다른 공급사 사장은 이 주문의 이력번호·라벨을 못 본다
     await actAs(world.users.ownerB);

@@ -574,7 +574,7 @@ describe("createPurchaseOrderProductAction — 발주서에서 새 품목 만들
       expect((await createPurchaseOrderProductAction(spec({ origin: "스페인산" }))).success).toBe(false);
     }
 
-    const { count } = await adminClient().from("products").select("id", { count: "exact", head: true }).eq("category", "소").eq("subcategory", "다짐육").eq("origin", "스페인산");
+    const { count } = await adminClient().from("products").select("id", { count: "exact", head: true }).eq("wholesaler_id", world.wholesalerA).eq("category", "소").eq("subcategory", "다짐육").eq("origin", "스페인산");
 
     expect(count).toBe(0);
   });
