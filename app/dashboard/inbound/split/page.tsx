@@ -1,0 +1,82 @@
+import { createClient } from "@/lib/supabase/server";
+import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
+import { AdminScopeNotice } from "@/components/admin-scope-notice";
+import { InboundTabs } from "../../section-tabs";
+import { SplitView, type SplitBox, type SplitProduct } from "./split-view";
+
+export const metadata = {
+  title: "쪼개기 | 도매업체 통합관리시스템",
+};
+
+/** 쪼갤 수 있는 박스 목록 상한 — 오래된 것부터 아니라 최근 입고 순으로 본다. */
+const BOX_LIMIT = 300;
+
+export default async function SplitPage() {
+  const scope = await getSupplierScope();
+
+  if (isSuperAdminWithoutScope(scope)) {
+    return <AdminScopeNotice />;
+  }
+
+  let boxes: SplitBox[] = [];
+  let products: SplitProduct[] = [];
+
+  if (scope?.wholesalerId) {
+    const supabase = await createClient();
+
+    const [{ data: boxRows }, { data: productRows }] = await Promise.all([
+      supabase
+        .from("inbound_scans")
+        .select("id, trace_no, remaining_weight, unit, created_at, products(name)")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .eq("status", "NORMAL")
+        .gt("remaining_weight", 0)
+        .is("split_at", null)
+        .not("product_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(BOX_LIMIT),
+      supabase
+        .from("products")
+        .select("id, name, unit")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .order("name", { ascending: true }),
+    ]);
+
+    boxes = ((boxRows ?? []) as unknown as Array<{
+      id: string;
+      trace_no: string;
+      remaining_weight: number | string;
+      unit: string | null;
+      created_at: string;
+      products: { name: string } | { name: string }[] | null;
+    }>).map((row) => ({
+      id: row.id,
+      traceNo: row.trace_no,
+      remainingWeight: Number(row.remaining_weight),
+      unit: row.unit ?? "kg",
+      createdAt: row.created_at,
+      productName: (Array.isArray(row.products) ? row.products[0]?.name : row.products?.name) ?? "",
+    }));
+
+    products = ((productRows ?? []) as Array<{ id: string; name: string; unit: string | null }>).map((row) => ({
+      id: row.id,
+      name: row.name,
+      unit: row.unit ?? "kg",
+    }));
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      <InboundTabs />
+      <header>
+        <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>쪼개기</h1>
+        <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>
+          지육·대분할육 박스를 부위별 박스로 나눕니다. 쪼갠 박스는 원래 이력번호를 그대로 이어받고, 원래 박스의 남은 중량과
+          나눈 중량의 차이(뼈·지방·손실)는 손실로 기록됩니다.
+        </p>
+      </header>
+
+      <SplitView boxes={boxes} products={products} />
+    </div>
+  );
+}

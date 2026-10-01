@@ -1031,6 +1031,72 @@ export async function voidScanAction(scanId: string, reason?: string): Promise<A
 }
 
 /**
+ * 쪼개기(가공) — 지육·대분할육 박스 하나를 부위 박스 여러 개로 나눈다. 자식마다 상품(부위)과 실중량.
+ * 부모 잔량 − 자식 합 = 손실(수율)로 기록된다. 한 트랜잭션(split_inbound_scan, 마이그레이션 193).
+ */
+export async function splitScanAction(
+  scanId: string,
+  lines: Array<{ productId: string; weight: number }>,
+): Promise<ActionResult<{ childIds: string[]; loss: number }>> {
+  try {
+    const { supabase } = await resolveInboundScope();
+
+    if (!Array.isArray(lines) || lines.length === 0) {
+      throw new RbacError("나눈 부위를 한 줄 이상 입력해 주세요.");
+    }
+
+    for (const line of lines) {
+      if (!line.productId || !Number.isFinite(line.weight) || line.weight <= 0 || line.weight > MAX_SCAN_WEIGHT) {
+        throw new RbacError("부위와 중량(0보다 큰 값)을 모든 줄에 입력해 주세요.");
+      }
+    }
+
+    const { data, error } = await supabase.rpc("split_inbound_scan", {
+      p_scan_id: scanId,
+      p_lines: lines.map((line) => ({ product_id: line.productId, weight: line.weight })),
+    });
+
+    if (error) {
+      const message = error.message;
+
+      if (message.includes("CHILDREN_EXCEED_PARENT")) {
+        throw new RbacError("나눈 중량의 합이 원래 박스의 남은 중량보다 큽니다. 중량을 다시 확인해 주세요.");
+      }
+      if (message.includes("ALREADY_SPLIT")) {
+        throw new RbacError("이미 쪼갠 박스입니다.");
+      }
+      if (message.includes("NOTHING_TO_SPLIT") || message.includes("SCAN_NOT_SPLITTABLE")) {
+        throw new RbacError("이 박스는 쪼갤 수 없습니다(남은 중량이 없거나 확정되지 않은 박스).");
+      }
+      if (message.includes("SCAN_NOT_FOUND")) {
+        throw new RbacError("박스를 찾을 수 없습니다.");
+      }
+      if (message.includes("PRODUCT_UNIT_MISMATCH")) {
+        throw new RbacError("원래 박스와 단위(kg 등)가 다른 상품은 고를 수 없습니다.");
+      }
+      if (message.includes("PRODUCT_NOT_FOUND") || message.includes("INVALID_SPLIT_LINE")) {
+        throw new RbacError("부위(상품)와 중량을 모든 줄에 올바르게 입력해 주세요.");
+      }
+      if (message.includes("TOO_MANY_SPLIT_LINES")) {
+        throw new RbacError("한 번에 30줄까지만 나눌 수 있습니다.");
+      }
+
+      throw new Error(error.message);
+    }
+
+    const result = data as { children?: string[]; loss?: number | string } | null;
+
+    revalidatePath(REVALIDATE_PATH, "layout");
+    revalidatePath("/dashboard/stock-boxes");
+    revalidatePath("/dashboard/products");
+
+    return { success: true, data: { childIds: result?.children ?? [], loss: Number(result?.loss ?? 0) } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
  * 보류함 화면의 "발주서 추가 생성" — 발주서에 없거나(UNLISTED_HELD) 초과로 받은(OVER_HELD) 박스를
  * 사후에 발주서로 등록한다(전표도 같이 만들어짐). owner/manager만(대표의 의사결정 없이는 안 만들어진다).
  */
