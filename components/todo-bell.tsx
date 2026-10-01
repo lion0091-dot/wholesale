@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRealtimeRefresh } from "@/lib/hooks/use-realtime-refresh";
+import { PushToggle } from "@/components/push-toggle";
 import {
   countUnseen,
   describeNotice,
@@ -252,6 +253,8 @@ export function TodoBell({
             padding: "6px",
           }}
         >
+          <PushToggle />
+
           <div style={{ padding: "8px 10px 6px", fontSize: "12px", fontWeight: 700, color: "#64748b" }}>
             지금 할 일
           </div>

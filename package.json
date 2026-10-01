@@ -24,12 +24,14 @@
     "react-dom": "^19.0.0",
     "read-excel-file": "^9.3.10",
     "unpdf": "^1.8.1",
+    "web-push": "^3.6.7",
     "write-excel-file": "^4.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
+    "@types/web-push": "^3.6.4",
     "docx": "^9.8.0",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.4",

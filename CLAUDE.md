@@ -53,7 +53,7 @@
 
 ## 알림 채널 정리 — 알림톡 8종·화면 알림 Realtime (2026-10-01, 별도 기능)
 
-- [docs/alimtalk-integration.md](docs/alimtalk-integration.md) 맨 위 "2026-10-01 추가" 절 — 알림 14건을 "받는 사람이 그 순간 화면을 보는가"로 나눠 채널 확정. 알림톡 12종→8종(내부 통지 3종은 대시보드 알림함 예정, 고객 외상 거절은 삭제), 공급사용 4종은 웹푸시로 대체 예정(미착수), 종 배지·고객 배송 벨은 Realtime(마이그 187, `lib/hooks/use-realtime-refresh.ts`). ② 알림함 완료(마이그 188, 새 표 없이 `audit_log` 재사용, `lib/supplier/internal-notices.ts`, 대표·매니저만, 숫자 대신 파란 점). **배송 시작 알림톡은 추가하지 않는다(배송기사가 알림)**. 남은 단계: ③ 웹푸시(홈 화면 앱 설정과 같이).
+- [docs/alimtalk-integration.md](docs/alimtalk-integration.md) 맨 위 "2026-10-01 추가" 절 — 알림 14건을 "받는 사람이 그 순간 화면을 보는가"로 나눠 채널 확정. 알림톡 12종→8종(내부 통지 3종은 대시보드 알림함 예정, 고객 외상 거절은 삭제), 공급사용 4종은 웹푸시로 대체 예정(미착수), 종 배지·고객 배송 벨은 Realtime(마이그 187, `lib/hooks/use-realtime-refresh.ts`). ② 알림함 완료(마이그 188, 새 표 없이 `audit_log` 재사용, `lib/supplier/internal-notices.ts`, 대표·매니저만, 숫자 대신 파란 점). ③ 웹푸시 완료(마이그 189 `push_subscriptions`, `web-push` 의존성, `lib/notifications/wholesaler-alerts.ts`가 "켠 브라우저 있으면 푸시만, 없으면 알림톡" 선택, VAPID 키 없으면 버튼 숨김·알림톡만). **배송 시작 알림톡은 추가하지 않는다(배송기사가 알림)**. 입고 화면도 Realtime(`inbound-live-refresh.tsx`).
 
 ## 플랫폼 구독료 (거래처 수 비례 종량제) (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
 

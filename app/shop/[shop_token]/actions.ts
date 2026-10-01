@@ -4,11 +4,11 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { BUYER_AUTH_REQUIRED_MESSAGE, BuyerAuthError, requireLinkedBuyer, type LinkedBuyer } from "@/lib/auth/buyer-auth";
 import {
-  sendCancelRequestNotificationToWholesaler,
-  sendCreditLimitExceededNotificationToWholesaler,
-  sendOrderEditedNotificationToWholesaler,
-  sendOrderNotificationToWholesaler,
-} from "@/lib/notifications/alimtalk";
+  notifyWholesalerCancelRequest,
+  notifyWholesalerCreditExceeded,
+  notifyWholesalerNewOrder,
+  notifyWholesalerOrderEdited,
+} from "@/lib/notifications/wholesaler-alerts";
 import { canEditOrderItems, canRequestCancel } from "@/lib/orders/status";
 import { isShopNotFoundError, loadShopCatalog, toCartLines, type CartEntryInput } from "@/lib/shop/catalog";
 import { fetchShopOrderPage } from "@/lib/shop/order-history";
@@ -106,7 +106,7 @@ async function notifyCreditLimitExceeded(
     .eq("id", buyer.wholesalerProfileId)
     .maybeSingle();
 
-  await sendCreditLimitExceededNotificationToWholesaler({
+  await notifyWholesalerCreditExceeded({
     wholesalerId: buyer.wholesalerId,
     wholesalerName: buyer.wholesalerName,
     wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,
@@ -275,7 +275,7 @@ export async function submitOrderAction(input: SubmitOrderInput): Promise<Submit
 
     const wholesalerPhone = (profile?.phone as string | undefined) ?? undefined;
 
-    const notification = await sendOrderNotificationToWholesaler({
+    const notification = await notifyWholesalerNewOrder({
       wholesalerId: buyer.wholesalerId,
       wholesalerName: buyer.wholesalerName,
       wholesalerPhone,
@@ -459,7 +459,7 @@ export async function requestOrderCancelAction(
       .eq("id", buyer.wholesalerProfileId)
       .maybeSingle();
 
-    const notification = await sendCancelRequestNotificationToWholesaler({
+    const notification = await notifyWholesalerCancelRequest({
       wholesalerId: buyer.wholesalerId,
       wholesalerName: buyer.wholesalerName,
       wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,
@@ -813,7 +813,7 @@ export async function editOrderAction(input: EditOrderInput): Promise<EditOrderR
       .eq("id", buyer.wholesalerProfileId)
       .maybeSingle();
 
-    const notification = await sendOrderEditedNotificationToWholesaler({
+    const notification = await notifyWholesalerOrderEdited({
       wholesalerId: buyer.wholesalerId,
       wholesalerName: buyer.wholesalerName,
       wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,

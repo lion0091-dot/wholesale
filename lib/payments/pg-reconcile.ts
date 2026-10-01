@@ -19,7 +19,7 @@ import { cancelPayment, getPaymentByOrderId, TossPaymentsError } from "./tosspay
 import { decryptCredential, CredentialCryptoError } from "@/lib/security/credential-crypto";
 import { loadPgSecretEncrypted } from "@/lib/security/wholesaler-credentials";
 import { createOrderWithItems, buildOrderNumber } from "@/lib/orders/create-order";
-import { sendOrderNotificationToWholesaler } from "@/lib/notifications/alimtalk";
+import { notifyWholesalerNewOrder } from "@/lib/notifications/wholesaler-alerts";
 import { composeProductDisplayName } from "@/lib/products/display-name";
 import type { CartLine } from "@/lib/shop/order-policy";
 
@@ -170,7 +170,7 @@ export async function finalizePaidOrder(
       ? `${firstLineDisplayName} ${firstLine.quantity}${firstLine.unit} 외 ${lines.length - 1}건`
       : `${firstLineDisplayName} ${firstLine.quantity}${firstLine.unit}`;
 
-  await sendOrderNotificationToWholesaler({
+  await notifyWholesalerNewOrder({
     wholesalerId: pending.wholesaler_id,
     wholesalerName: (wholesaler?.business_name as string) ?? "",
     wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,

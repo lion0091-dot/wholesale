@@ -9,6 +9,11 @@ const nextConfig = {
     "/**": ["./assets/fonts/**", "./node_modules/pdfkit/js/standard-fonts/**"],
   },
 
+  // 웹푸시 서비스워커는 바뀌면 바로 새 버전을 받아야 한다(브라우저 기본은 하루 캐시).
+  async headers() {
+    return [{ source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }] }];
+  },
+
   experimental: {
     // 공급처 명세서를 현장에서 종이로 받아 폰으로 찍어 올리는 경로가 있다.
     // 요즘 폰 사진은 3~5MB가 예사라 Server Action 기본 한도(1MB)에 걸린다.
