@@ -12,6 +12,9 @@ export const metadata = {
 /** 트리는 화면에서 접어 보여주므로 박스 행 수천 건까지만 끌어온다(설계안 §6 부하 상한). */
 const BOX_LIMIT = 5000;
 
+/** PostgREST가 한 번에 돌려주는 행 수 상한(supabase/config.toml max_rows). 넘겨 요청해도 조용히 잘리므로 이 크기로 나눠 읽는다. */
+const PAGE_SIZE = 1000;
+
 export default async function StockBoxesPage() {
   const scope = await getSupplierScope();
 
@@ -26,18 +29,33 @@ export default async function StockBoxesPage() {
   if (scope?.wholesalerId) {
     const supabase = await createClient();
 
-    const [{ data: boxRows }, { data: shadowRows }] = await Promise.all([
+    const fetchBoxPage = (from: number) =>
       supabase
         .from("inbound_scans")
         .select("tag_species, tag_part, tag_origin, tag_grade, tag_sex, tag_bms, tag_storage_state, remaining_weight")
         .eq("wholesaler_id", scope.wholesalerId)
         .eq("status", "NORMAL")
         .gt("remaining_weight", 0)
-        .limit(BOX_LIMIT),
-      supabase.rpc("shadow_box_stock", { p_wholesaler_id: scope.wholesalerId }),
-    ]);
+        // 순서가 없으면 페이지 사이에 행이 겹치거나 빠진다.
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
 
-    boxes = ((boxRows ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    const shadowPromise = supabase.rpc("shadow_box_stock", { p_wholesaler_id: scope.wholesalerId });
+    const boxRows: Array<Record<string, unknown>> = [];
+
+    for (let from = 0; from < BOX_LIMIT; from += PAGE_SIZE) {
+      const { data: page } = await fetchBoxPage(from);
+      const rows = (page ?? []) as Array<Record<string, unknown>>;
+
+      boxRows.push(...rows);
+
+      if (rows.length < PAGE_SIZE) break;
+    }
+
+    const { data: shadowRows } = await shadowPromise;
+
+    boxes = boxRows.map((row) => ({
       tagSpecies: (row.tag_species as string | null) ?? null,
       tagPart: (row.tag_part as string | null) ?? null,
       tagOrigin: (row.tag_origin as string | null) ?? null,

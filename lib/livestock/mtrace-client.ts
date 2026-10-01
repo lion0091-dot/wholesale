@@ -71,7 +71,7 @@ interface SourceConfig {
  * 공식 가이드(수입쇠고기 유통이력관리시스템 시스템연계표준가이드, 2014.07)의
  * 예시 URL과 실제 호출 결과가 그대로 일치했다.
  */
-const MEATWATCH_QUERY_ENDPOINT = "http://www.meatwatch.go.kr/xml/selectDistbHistInfoWsrvDetail.do";
+const MEATWATCH_QUERY_ENDPOINT = "https://www.meatwatch.go.kr/xml/selectDistbHistInfoWsrvDetail.do";
 
 /**
  * 축산물품질평가원(KAPE) "축산물통합이력정보조회" 서비스(data.go.kr 개발계정
@@ -138,6 +138,9 @@ function sourceConfig(source: TraceSource): SourceConfig {
 }
 
 const REQUEST_TIMEOUT_MS = 8_000;
+
+/** 순차 폴백(국내산 → 수입)의 뒤쪽 호출이 최소한 보장받는 시간. 앞 호출이 오래 걸려도 이만큼은 기다린다. */
+const MIN_FALLBACK_TIMEOUT_MS = 2_000;
 
 /** 이력번호 종류 — 자릿수/접두어로 1차 판별한다. */
 export type TraceKind = "individual" | "group" | "imported" | "poultry";
@@ -419,7 +422,7 @@ function parseMeatwatchParams(tree: unknown): MeatwatchParams {
  * returnCode "0"=성공, "-401"=조회된 데이터 없음(2026-10-01 실호출로 확인한 값),
  * 그 외는 진짜 오류로 간주해 returnMsg를 그대로 올린다.
  */
-async function callMeatwatchSource(traceNo: string): Promise<MeatwatchParams | null> {
+async function callMeatwatchSource(traceNo: string, timeoutMs: number = REQUEST_TIMEOUT_MS): Promise<MeatwatchParams | null> {
   const sysId = process.env.MEATWATCH_SYS_ID;
 
   if (!sysId) {
@@ -431,7 +434,7 @@ async function callMeatwatchSource(traceNo: string): Promise<MeatwatchParams | n
   url.searchParams.set("DISTB_IDNTFC_NO", traceNo);
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   let tree: unknown;
 
@@ -475,9 +478,9 @@ async function callMeatwatchSource(traceNo: string): Promise<MeatwatchParams | n
  * 후보 주소를 순서대로 시도해 실제 이력이 담긴 응답을 찾는다.
  * 주소가 틀리면 보통 404/빈 응답이라 빠르게 넘어간다.
  */
-async function callSource(source: TraceSource, traceNo: string): Promise<unknown | null> {
+async function callSource(source: TraceSource, traceNo: string, timeoutMs?: number): Promise<unknown | null> {
   if (source === "meatwatch") {
-    return callMeatwatchSource(traceNo);
+    return callMeatwatchSource(traceNo, timeoutMs);
   }
 
   const config = sourceConfig(source);
@@ -776,6 +779,7 @@ export async function fetchTraceRecord(traceNoInput: string): Promise<MtraceReco
 
   let lastError: MtraceError | null = null;
   let attempted = 0;
+  const startedAt = Date.now();
 
   for (const attempt of attempts) {
     if (!sourceConfig(attempt.source).apiKey) {
@@ -784,8 +788,15 @@ export async function fetchTraceRecord(traceNoInput: string): Promise<MtraceReco
 
     attempted += 1;
 
+    // 앞 기관이 시간 초과까지 끌었어도 뒤 기관이 또 8초를 쓰지 않게, 전체 대기가 대략 한 번의 시간 초과 안에 끝나도록
+    // 남은 시간만 준다(최소 MIN_FALLBACK_TIMEOUT_MS). 동시에 부르지 않는 이유: 국내산 스캔마다 수입육 API까지 불러 호출량이 늘기 때문.
+    const remainingMs =
+      attempted > 1
+        ? Math.max(MIN_FALLBACK_TIMEOUT_MS, REQUEST_TIMEOUT_MS - (Date.now() - startedAt))
+        : undefined;
+
     try {
-      const tree = await callSource(attempt.source, traceNo);
+      const tree = await callSource(attempt.source, traceNo, remainingMs);
 
       if (tree !== null) {
         return toRecord(traceNo, attempt.kind, attempt.source, tree);

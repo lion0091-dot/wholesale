@@ -23,10 +23,10 @@ function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
-export function SplitView({ boxes, parts }: { boxes: SplitBox[]; parts: string[] }) {
+export function SplitView({ boxes, parts, initialQuery }: { boxes: SplitBox[]; parts: string[]; initialQuery: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lines, setLines] = useState<Line[]>([{ key: 1, part: "", weight: "" }]);
   const [nextKey, setNextKey] = useState(2);
@@ -102,14 +102,29 @@ export function SplitView({ boxes, parts }: { boxes: SplitBox[]; parts: string[]
 
       <section style={{ border: "1px solid #e2e8f0", borderRadius: "10px", background: "#fff", padding: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
         <h2 style={{ margin: 0, fontSize: "15px", fontWeight: 800 }}>1. 쪼갤 박스 고르기</h2>
-        <input
-          type="text"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="이력번호나 상품 이름으로 찾기"
-          aria-label="쪼갤 박스 검색"
-          style={{ padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", fontSize: "14px" }}
-        />
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            // 최근 입고 박스 밖의 오래된 박스도 찾도록 서버에 다시 묻는다.
+            router.push(query.trim() ? `/dashboard/inbound/split?q=${encodeURIComponent(query.trim())}` : "/dashboard/inbound/split");
+          }}
+          style={{ display: "flex", gap: "8px" }}
+        >
+          <input
+            type="text"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="이력번호나 상품 이름으로 찾기"
+            aria-label="쪼갤 박스 검색"
+            style={{ flex: 1, padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", fontSize: "14px" }}
+          />
+          <button type="submit" style={{ padding: "10px 14px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff", cursor: "pointer", fontSize: "14px" }}>
+            찾기
+          </button>
+        </form>
+        <p style={{ margin: 0, fontSize: "12px", color: "#64748b" }}>
+          최근 입고한 박스 300개까지 보여줍니다. 오래된 박스는 이력번호나 상품 이름을 넣고 &quot;찾기&quot;를 누르세요.
+        </p>
         {shownBoxes.length === 0 ? (
           <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
             {boxes.length === 0 ? "쪼갤 수 있는 박스가 없습니다." : "찾는 박스가 없습니다."}

@@ -37,7 +37,7 @@ export default async function StockLedgerPage({
   const traceNo = pick("trace") || "";
 
   let rows: LedgerRow[] = [];
-  let summary: LedgerSummary = { inbound: 0, outbound: 0, adjustment: 0, loss: 0 };
+  let summary: LedgerSummary = { inbound: 0, outbound: 0, adjustment: 0, loss: 0, split: 0 };
   let products: LedgerProduct[] = [];
   let totalCount = 0;
 
@@ -92,6 +92,7 @@ export default async function StockLedgerPage({
       outbound: Number(summaryRow?.outbound_qty ?? 0),
       adjustment: Number(summaryRow?.adjustment_qty ?? 0),
       loss: Number(summaryRow?.loss_qty ?? 0),
+      split: Number(summaryRow?.split_qty ?? 0),
     };
 
     products = (productRows ?? []) as LedgerProduct[];

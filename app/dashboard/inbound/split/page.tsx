@@ -11,8 +11,20 @@ export const metadata = {
 /** 쪼갤 수 있는 박스 목록 상한 — 오래된 것부터 아니라 최근 입고 순으로 본다. */
 const BOX_LIMIT = 300;
 
-export default async function SplitPage() {
+/** PostgREST 필터 문법(쉼표·괄호)과 LIKE 와일드카드가 검색어에 섞여 필터가 깨지지 않게 걷어낸다. */
+function cleanSearchTerm(value: string | undefined): string {
+  return (value ?? "").replace(/[,()%*_\\]/g, " ").trim().slice(0, 40);
+}
+
+export default async function SplitPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const scope = await getSupplierScope();
+  const params = await searchParams;
+  const rawQuery = Array.isArray(params.q) ? params.q[0] : params.q;
+  const query = cleanSearchTerm(rawQuery);
 
   if (isSuperAdminWithoutScope(scope)) {
     return <AdminScopeNotice />;
@@ -24,17 +36,37 @@ export default async function SplitPage() {
   if (scope?.wholesalerId) {
     const supabase = await createClient();
 
-    const [{ data: boxRows }, { data: partRows }] = await Promise.all([
-      supabase
+    // 검색어가 있으면 서버에서 이력번호·상품 이름으로 찾는다 — 최근 300개 밖의 오래된 박스도 찾을 수 있게.
+    let productIds: string[] = [];
+
+    if (query) {
+      const { data: matched } = await supabase
+        .from("products")
+        .select("id")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .ilike("name", `%${query}%`)
+        .limit(100);
+
+      productIds = ((matched ?? []) as Array<{ id: string }>).map((row) => row.id);
+    }
+
+    let boxQuery = supabase
         .from("inbound_scans")
         .select("id, trace_no, remaining_weight, unit, created_at, products(name)")
         .eq("wholesaler_id", scope.wholesalerId)
         .eq("status", "NORMAL")
         .gt("remaining_weight", 0)
         .is("split_at", null)
-        .not("product_id", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(BOX_LIMIT),
+        .not("product_id", "is", null);
+
+    if (query) {
+      boxQuery = boxQuery.or(
+        productIds.length > 0 ? `trace_no.ilike.%${query}%,product_id.in.(${productIds.join(",")})` : `trace_no.ilike.%${query}%`,
+      );
+    }
+
+    const [{ data: boxRows }, { data: partRows }] = await Promise.all([
+      boxQuery.order("created_at", { ascending: false }).limit(BOX_LIMIT),
       // 부위 드롭박스: 입고 화면과 같은 목록(이미 등록된 상품의 부위, DB가 DISTINCT로 돌려준다).
       supabase.rpc("inbound_part_options"),
     ]);
@@ -75,7 +107,7 @@ export default async function SplitPage() {
         </p>
       </header>
 
-      <SplitView boxes={boxes} parts={parts} />
+      <SplitView boxes={boxes} parts={parts} initialQuery={query} />
     </div>
   );
 }
