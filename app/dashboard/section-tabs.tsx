@@ -23,6 +23,7 @@ const PRODUCT_TABS = [
 ] as const;
 
 const STOCK_TABS = [
+  { label: "재고 보기", href: "/dashboard/stock-boxes" },
   { label: "입출고 내역", href: "/dashboard/stock-ledger" },
   { label: "매입 정산", href: "/dashboard/purchases" },
   { label: "발주 추천", href: "/dashboard/reorder-suggestions" },

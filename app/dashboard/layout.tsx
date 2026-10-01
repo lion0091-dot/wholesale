@@ -33,7 +33,7 @@ const NAV_GROUPS: DashboardNavItem[][] = [
       href: "/dashboard/stock-ledger",
       icon: "🔄",
       ready: true,
-      alsoActiveFor: ["/dashboard/purchases", "/dashboard/reorder-suggestions"],
+      alsoActiveFor: ["/dashboard/stock-boxes", "/dashboard/purchases", "/dashboard/reorder-suggestions"],
     },
     {
       label: "상품 관리",
