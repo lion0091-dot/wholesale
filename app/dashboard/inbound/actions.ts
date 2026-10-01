@@ -1031,13 +1031,14 @@ export async function voidScanAction(scanId: string, reason?: string): Promise<A
 }
 
 /**
- * 쪼개기(가공) — 지육·대분할육 박스 하나를 부위 박스 여러 개로 나눈다. 자식마다 상품(부위)과 실중량.
+ * 쪼개기(가공) — 지육·대분할육 박스 하나를 부위 박스 여러 개로 나눈다. 줄마다 부위와 실중량만 받는다 —
+ * 상품은 부모 박스의 조회 정보(품종·등급·성별·원산지·냉장/냉동)로 찾거나 새로 만든다(마이그레이션 194).
  * 부모 잔량 − 자식 합 = 손실(수율)로 기록된다. 한 트랜잭션(split_inbound_scan, 마이그레이션 193).
  */
 export async function splitScanAction(
   scanId: string,
-  lines: Array<{ productId: string; weight: number }>,
-): Promise<ActionResult<{ childIds: string[]; loss: number }>> {
+  lines: Array<{ part: string; weight: number }>,
+): Promise<ActionResult<{ childIds: string[]; loss: number; createdProducts: string[] }>> {
   try {
     const { supabase } = await resolveInboundScope();
 
@@ -1046,14 +1047,14 @@ export async function splitScanAction(
     }
 
     for (const line of lines) {
-      if (!line.productId || !Number.isFinite(line.weight) || line.weight <= 0 || line.weight > MAX_SCAN_WEIGHT) {
+      if (!line.part?.trim() || !Number.isFinite(line.weight) || line.weight <= 0 || line.weight > MAX_SCAN_WEIGHT) {
         throw new RbacError("부위와 중량(0보다 큰 값)을 모든 줄에 입력해 주세요.");
       }
     }
 
     const { data, error } = await supabase.rpc("split_inbound_scan", {
       p_scan_id: scanId,
-      p_lines: lines.map((line) => ({ product_id: line.productId, weight: line.weight })),
+      p_lines: lines.map((line) => ({ part: line.part.trim(), weight: line.weight })),
     });
 
     if (error) {
@@ -1077,6 +1078,12 @@ export async function splitScanAction(
       if (message.includes("PRODUCT_NOT_FOUND") || message.includes("INVALID_SPLIT_LINE")) {
         throw new RbacError("부위(상품)와 중량을 모든 줄에 올바르게 입력해 주세요.");
       }
+      if (message.includes("PART_NEEDS_STORAGE")) {
+        throw new RbacError("이 박스는 냉장/냉동이 정해져 있지 않아 부위로 자동 연결할 수 없습니다. 상품 관리에서 냉장/냉동을 먼저 정해 주세요.");
+      }
+      if (message.includes("PART_AUTORESOLVE_UNSUPPORTED") || message.includes("PART_BREED_UNKNOWN")) {
+        throw new RbacError("이 박스는 부위만으로 상품을 자동 연결할 수 없습니다(소·돼지 외 축종이거나 품종을 알 수 없음).");
+      }
       if (message.includes("TOO_MANY_SPLIT_LINES")) {
         throw new RbacError("한 번에 30줄까지만 나눌 수 있습니다.");
       }
@@ -1084,13 +1091,20 @@ export async function splitScanAction(
       throw new Error(error.message);
     }
 
-    const result = data as { children?: string[]; loss?: number | string } | null;
+    const result = data as { children?: string[]; loss?: number | string; created_products?: string[] } | null;
 
     revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/stock-boxes");
     revalidatePath("/dashboard/products");
 
-    return { success: true, data: { childIds: result?.children ?? [], loss: Number(result?.loss ?? 0) } };
+    return {
+      success: true,
+      data: {
+        childIds: result?.children ?? [],
+        loss: Number(result?.loss ?? 0),
+        createdProducts: result?.created_products ?? [],
+      },
+    };
   } catch (error) {
     return toResult(error);
   }
