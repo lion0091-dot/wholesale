@@ -15,24 +15,22 @@
  * 예상대로 확인됨. 개체번호는 소 한 마리를 가리킬 뿐이라 그렇다. 스캔은
  * PENDING_MAPPING으로 남고 사용자에게 한 번 되묻는다(잠긴 설계 결정 4번).
  *
- * 수입 축산물(②)은 2026-09-23 조사 결과 **①③과 운영 체계 자체가 다르다**는 것을
- * 확인했다. 2026-09-28에 실제로는 meatwatch.go.kr 기업심사가 아니라
- * **data.mafra.go.kr(농림축산식품부 공공데이터포털)**에서 키를 발급받았고, 실주소도
- * 확인됐다 — 자세한 내용과 실제 클라이언트는 `lib/livestock/meatwatch-client.ts` 참고.
- *
- * **아래 meatwatch 설정(sourceConfig·callSource 경로)은 여전히 안 쓴다** — 실제 API는
- * 이력번호로 직접 조회하는 파라미터가 없고 수입일자(필수)로만 목록을 받을 수 있어서,
- * 이 파일의 "번호 하나 → REST 호출 하나" 구조 자체가 안 맞는다. 그래서 현장 스캔
- * 자동조회(`fetchTraceRecord`)에는 수입육을 안 붙이고, 수입일자를 아는 사무실
- * 직원이 직접 조회하는 별도 화면(`/dashboard/inbound/imported-lookup`)만 만들었다.
- * 아래 endpoints/apiKey는 그 화면이 쓰지 않는 죽은 코드로 남아 있다 — 정리는
- * 나중에(사장님이 향후 실시간 조회로 바꾸고 싶어지면 그때 같이 정리).
- *
- *  - data.go.kr의 "농림축산검역본부_수입축산물이력정보"(15118023)는 "LINK형" 데이터라
- *    apis.data.go.kr 게이트웨이에 실제로 얹혀 있지 않다(아래 후보 주소가 죽은 이유).
- *  - data.go.kr 계정 공용 인증키(KAPE_MARKET_PRICE_API_KEY 등)로 되는 ①의 폴백
- *    전략은 여기는 통하지 않는다 — 인증 체계 자체가 분리돼 있다.
- *  - 그래서 아래 meatwatch 설정에는 fallbackDataGoKrKey()를 걸지 않는다.
+ * 수입 축산물(②)은 두 개의 서로 다른 API를 쓴다:
+ *  - data.mafra.go.kr(농림축산식품부 공공데이터포털, 2026-09-28 키 발급) — 이력번호
+ *    직접 조회가 안 되고 수입일자(필수)로만 목록을 받는다. 그래서 현장 스캔
+ *    자동조회에는 못 쓰고, 사무실 전용 날짜조회 화면(`/dashboard/inbound/imported-lookup`)
+ *    에서만 쓴다. 클라이언트는 `lib/livestock/meatwatch-client.ts`.
+ *  - **meatwatch.go.kr 조회오픈서비스**(2026-10-01, SYS_ID 발급) — 이게 진짜
+ *    "번호 하나 → 결과 하나" 조회다. `DISTB_IDNTFC_NO`(유통식별번호)로 바로 조회되고
+ *    실호출로 구조를 전부 확인했다(아래 callMeatwatchSource 참고). mafra에서 받은
+ *    유통식별번호를 그대로 이 API에 넣어봤더니 그대로 조회됐다 — 두 시스템이 같은
+ *    번호 체계를 쓴다는 것도 실증 확인됨. 응답이 다른 소스(mtrace/poultry)와 구조
+ *    자체가 달라(resultCode 표준 XML이 아니라 `<root><PARAMS><PARAM id="..">값</PARAM>...`)
+ *    공용 callUrl/pick 경로를 안 타고 전용 함수로 처리한다.
+ *  - ⚠️ **유통식별번호가 12자리 순수 숫자라 국내산 개체번호(12자리)와 자릿수로
+ *    구분이 안 된다**(실호출 샘플 "801000311592"·"915169500007" 전부 12자리였음).
+ *    그래서 12자리 숫자는 mtrace를 먼저 시도하고 없으면 meatwatch로 폴백한다
+ *    (`fetchTraceRecord`의 "individual" 분기 참고) — 자릿수만으로 한쪽으로 단정하지 않는다.
  *
  * 파싱은 정확한 XML 경로에 의존하지 않고 트리를 재귀 탐색해 후보 키를 찾는다
  * (kape-client.ts와 같은 전략). 원본 응답은 master_livestock.raw_payload에
@@ -66,6 +64,14 @@ interface SourceConfig {
   endpoints: string[];
   apiKey: string | undefined;
 }
+
+/**
+ * meatwatch.go.kr 조회오픈서비스(JSP-XML 방식, IF-CS-001) — 2026-10-01 실호출로 확정.
+ * GET 파라미터 SYS_ID(시스템ID)·DISTB_IDNTFC_NO(유통식별번호)만 있으면 된다.
+ * 공식 가이드(수입쇠고기 유통이력관리시스템 시스템연계표준가이드, 2014.07)의
+ * 예시 URL과 실제 호출 결과가 그대로 일치했다.
+ */
+const MEATWATCH_QUERY_ENDPOINT = "http://www.meatwatch.go.kr/xml/selectDistbHistInfoWsrvDetail.do";
 
 /**
  * 축산물품질평가원(KAPE) "축산물통합이력정보조회" 서비스(data.go.kr 개발계정
@@ -106,16 +112,11 @@ function sourceConfig(source: TraceSource): SourceConfig {
     case "meatwatch":
       return {
         label: "meatwatch_imported",
-        // ⚠️ 이 주소는 근거 없는 추정치다. data.go.kr 15118023이 "LINK형"으로 확인돼
-        //    apis.data.go.kr 게이트웨이에 실제로 존재하지 않을 가능성이 크다(위 헤더
-        //    코멘트 참고). meatwatch.go.kr 기업 회원가입 후 발급되는 가이드로 확정
-        //    전까지는 MEATWATCH_API_ENDPOINT로 덮어쓰기 전제.
-        endpoints: candidates(process.env.MEATWATCH_API_ENDPOINT, [
-          "http://apis.data.go.kr/B552895/imported/trace/traceNoSearch",
-        ]),
-        // meatwatch.go.kr은 data.go.kr과 별도의 회원가입·키 발급 체계다 — 공용키
-        // 폴백이 통할 수가 없어 걸지 않는다(위 헤더 코멘트 참고).
-        apiKey: process.env.MEATWATCH_API_KEY,
+        // 조회오픈서비스는 callMeatwatchSource()에서 SYS_ID 방식으로 직접 호출한다 —
+        // 이 endpoints 후보 목록은 다른 소스와 인터페이스를 맞추기 위한 자리만 차지할
+        // 뿐 실제로는 안 쓴다.
+        endpoints: [],
+        apiKey: process.env.MEATWATCH_SYS_ID,
       };
     case "poultry":
       // 공식 가이드(v2.10)에 닭/오리/계란(FOWL·DUCK·EGG)도 같은 animalTrace
@@ -371,11 +372,114 @@ async function callUrl(endpoint: string, apiKey: string, traceNo: string): Promi
   }
 }
 
+/** meatwatch 응답 PARAM id → 텍스트 값으로 평탄화한 맵. */
+type MeatwatchParams = Record<string, string>;
+
+/** PARAM 하나의 값을 꺼낸다 — 단순 텍스트(#text)거나, regn/regnName처럼 자식 태그(REGNCODE 등) 안에 든 경우 둘 다 처리한다. */
+function extractMeatwatchParamText(obj: Record<string, unknown>): string {
+  if ("#text" in obj) {
+    return String(obj["#text"]).trim();
+  }
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (key === "@_id") continue;
+    if (typeof value === "string" || typeof value === "number") {
+      return String(value).trim();
+    }
+  }
+
+  return "";
+}
+
+/** `<root><PARAMS><PARAM id="..">값</PARAM>...</PARAMS></root>`를 { id: 값 } 맵으로 평탄화한다. */
+function parseMeatwatchParams(tree: unknown): MeatwatchParams {
+  const root = (tree as Record<string, unknown> | undefined)?.root as Record<string, unknown> | undefined;
+  const paramsNode = root?.PARAMS as Record<string, unknown> | undefined;
+  const raw = paramsNode?.PARAM;
+  const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  const result: MeatwatchParams = {};
+
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+
+    const obj = item as Record<string, unknown>;
+    const id = obj["@_id"];
+
+    if (id === undefined) continue;
+
+    result[String(id)] = extractMeatwatchParamText(obj);
+  }
+
+  return result;
+}
+
+/**
+ * meatwatch.go.kr 조회오픈서비스 전용 호출 — 다른 소스와 응답 구조가 완전히 달라
+ * (resultCode 표준 XML이 아님) callUrl/pick 공용 경로를 안 타고 여기서 직접 처리한다.
+ * returnCode "0"=성공, "-401"=조회된 데이터 없음(2026-10-01 실호출로 확인한 값),
+ * 그 외는 진짜 오류로 간주해 returnMsg를 그대로 올린다.
+ */
+async function callMeatwatchSource(traceNo: string): Promise<MeatwatchParams | null> {
+  const sysId = process.env.MEATWATCH_SYS_ID;
+
+  if (!sysId) {
+    throw new MtraceNotConfiguredError("meatwatch 인증키 미설정");
+  }
+
+  const url = new URL(MEATWATCH_QUERY_ENDPOINT);
+  url.searchParams.set("SYS_ID", sysId);
+  url.searchParams.set("DISTB_IDNTFC_NO", traceNo);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let tree: unknown;
+
+  try {
+    const response = await fetch(url.toString(), { signal: controller.signal, cache: "no-store" });
+
+    if (!response.ok) {
+      throw new MtraceError(`이력 조회 응답 오류 (HTTP ${response.status})`);
+    }
+
+    tree = parser.parse(await response.text());
+  } catch (error) {
+    if (error instanceof MtraceError) {
+      throw error;
+    }
+
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new MtraceError("이력 조회 시간 초과");
+    }
+
+    throw new MtraceError(error instanceof Error ? error.message : "이력 조회 실패");
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const params = parseMeatwatchParams(tree);
+  const returnCode = params.returnCode ?? null;
+
+  if (returnCode === "-401") {
+    return null;
+  }
+
+  if (returnCode !== "0") {
+    throw new MtraceError(params.returnMsg || `수입육 조회 API가 오류를 반환했습니다 (코드 ${returnCode}).`);
+  }
+
+  return params;
+}
+
 /**
  * 후보 주소를 순서대로 시도해 실제 이력이 담긴 응답을 찾는다.
  * 주소가 틀리면 보통 404/빈 응답이라 빠르게 넘어간다.
  */
 async function callSource(source: TraceSource, traceNo: string): Promise<unknown | null> {
+  if (source === "meatwatch") {
+    return callMeatwatchSource(traceNo);
+  }
+
   const config = sourceConfig(source);
 
   if (!config.apiKey) {
@@ -534,23 +638,76 @@ function speciesGroupFromIdField(tree: unknown): string | null {
  * 실제로 그랬다). pick()은 재귀로 첫 번째 값만 집기 때문에, 이 필드들을 그대로
  * 쓰면 "이 로트 전체의 농장"인 것처럼 한 농장만 대표로 뜨는 허위표시가 된다.
  */
+/**
+ * kprodNm 실제 예시(2026-10-01 실호출): "소고기(냉동,정육(뼈없는것),소고기정육/지육)",
+ * "돼지고기(냉동,발,돼지고기부산물)" — "{축종}({냉동/냉장},{가공형태},{분류})" 구조.
+ * 축종만 뽑아 쓴다 — 냉동/냉장·가공형태는 쓰는 필드가 아직 없어 rawPayload에만 남는다
+ * (Optional Improvement: products에 보관상태 자동학습을 붙이고 싶어지면 여기서 뽑으면 됨).
+ */
+function speciesFromKprodNm(kprodNm: string): string | null {
+  const matched = kprodNm.match(/^([^(]+)\(/);
+  return matched ? matched[1].trim() || null : null;
+}
+
+/** "양지(BF008)" → "양지" — 부위코드 괄호를 떼고 부위명만 남긴다. */
+function stripPartCode(regnName: string): string | null {
+  const trimmed = regnName.trim();
+
+  if (!trimmed) return null;
+
+  return trimmed.replace(/\([^)]*\)\s*$/, "").trim() || null;
+}
+
+/**
+ * 수입육(meatwatch) 전용 레코드 빌더 — callMeatwatchSource()가 돌려준 PARAM 맵을 그대로 쓴다.
+ * 국내산(mtrace)과 달리 품종·등급 개념이 없고(2026-09-29 실조회로 이미 확인,
+ * product-identity-by-species.md 참고) 부위는 반대로 regn/regnName으로 코드까지 명확히 준다
+ * — 국내산엔 없는 필드라 2026-10-01 실호출로 확인한 수확이다.
+ */
+function toImportedRecord(traceNo: string, traceKind: TraceKind, params: MeatwatchParams): MtraceRecord {
+  const species = params.kprodNm ? speciesFromKprodNm(params.kprodNm) : null;
+
+  return {
+    traceNo,
+    traceKind,
+    source: sourceConfig("meatwatch").label,
+    species,
+    speciesGroup: normalizeSpeciesGroup(species),
+    partName: params.regnName ? stripPartCode(params.regnName) : null,
+    grade: null,
+    sex: null,
+    bms: null,
+    slaughterDate: normalizeDate(params.butchfromDt || null),
+    // 정확히는 "가공 시작일"이지 포장일은 아니다 — API에 별도 포장일 필드가 없어 근사치로 쓴다.
+    packingDate: normalizeDate(params.prcssBeginDe || null),
+    butcheryPlace: params.butchNm || null,
+    farmName: null,
+    originCountry: params.makeplcNm || null,
+    // 국내 수입업체(통관·수령처) 이름이다 — 우리 공급사가 아니다.
+    importerName: params.receiverNm || null,
+    rawPayload: params,
+  };
+}
+
 function toRecord(
   traceNo: string,
   traceKind: TraceKind,
   source: TraceSource,
   tree: unknown
 ): MtraceRecord {
+  if (source === "meatwatch") {
+    return toImportedRecord(traceNo, traceKind, tree as MeatwatchParams);
+  }
+
   const species = pick(tree, ["lsTypeNm", "lsType", "species", "animalKindNm"]);
 
+  // meatwatch는 위에서 이미 분기돼 여기 안 온다 — 남은 건 mtrace(국내산)·poultry뿐.
   const speciesGroup =
-    source === "meatwatch"
-      ? // 수입은 쇠고기·돈육이 섞여 들어온다 — 원문 축종으로 가르고, 못 가르면 null.
-        normalizeSpeciesGroup(species)
-      : source === "poultry"
-        ? // 닭·오리·계란은 응답 축종명으로 가르고, 없으면 번호 첫 자리(축종코드)로 보충한다.
-          (normalizeSpeciesGroup(species) ?? speciesGroupFromTraceNumber(traceNo))
-        : // 응답에 축종 이름도 개체번호 필드도 없으면 번호 첫 자리(축종코드)로 보충한다 — 원문 species는 API 값 그대로 둔다.
-          (normalizeSpeciesGroup(species) ?? speciesGroupFromIdField(tree) ?? speciesGroupFromTraceNumber(traceNo));
+    source === "poultry"
+      ? // 닭·오리·계란은 응답 축종명으로 가르고, 없으면 번호 첫 자리(축종코드)로 보충한다.
+        (normalizeSpeciesGroup(species) ?? speciesGroupFromTraceNumber(traceNo))
+      : // 응답에 축종 이름도 개체번호 필드도 없으면 번호 첫 자리(축종코드)로 보충한다 — 원문 species는 API 값 그대로 둔다.
+        (normalizeSpeciesGroup(species) ?? speciesGroupFromIdField(tree) ?? speciesGroupFromTraceNumber(traceNo));
 
   return {
     traceNo,
@@ -599,14 +756,23 @@ export async function fetchTraceRecord(traceNoInput: string): Promise<MtraceReco
 
   // 형식으로 갈렸으면 해당 기관만, 아니면 설정된 기관을 순서대로 시도한다.
   // 소·돼지만 취급하는 업체는 MTRACE_API_KEY만 있으므로 한 번만 호출된다.
+  //
+  // "individual"(12자리 숫자)은 예외다 — 수입 유통식별번호도 12자리 순수 숫자라서
+  // (2026-10-01 실호출 샘플 "801000311592"·"915169500007") 자릿수만으로 국내산이라고
+  // 단정할 수 없다. mtrace를 먼저 시도하고 못 찾으면 meatwatch로 폴백한다.
   const attempts: Array<{ source: TraceSource; kind: TraceKind }> =
-    detected !== null
-      ? [{ source: sourceForKind(detected), kind: detected }]
-      : [
+    detected === "individual"
+      ? [
           { source: "mtrace", kind: "individual" },
           { source: "meatwatch", kind: "imported" },
-          { source: "poultry", kind: "poultry" },
-        ];
+        ]
+      : detected !== null
+        ? [{ source: sourceForKind(detected), kind: detected }]
+        : [
+            { source: "mtrace", kind: "individual" },
+            { source: "meatwatch", kind: "imported" },
+            { source: "poultry", kind: "poultry" },
+          ];
 
   let lastError: MtraceError | null = null;
   let attempted = 0;
