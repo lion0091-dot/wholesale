@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { detectTraceKind, fetchTraceRecord, MtraceError, MtraceNotConfiguredError } from "./mtrace-client";
 
 const KAPE_URL = "http://data.ekape.or.kr/openapi-data/service/user/animalTrace/traceNoSearch";
-const MEATWATCH_URL = "http://www.meatwatch.go.kr/xml/selectDistbHistInfoWsrvDetail.do";
+const MEATWATCH_URL = "https://www.meatwatch.go.kr/xml/selectDistbHistInfoWsrvDetail.do";
 
 const fetchMock = vi.fn();
 
@@ -109,6 +109,47 @@ describe("12자리 숫자 — mtrace 먼저, 없으면 meatwatch로 폴백", () 
     expect(record?.source).toBe("meatwatch_imported");
     expect(record?.traceKind).toBe("imported");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("수입육 조회는 암호화된 https로 호출한다(시스템ID가 주소에 실린다)", async () => {
+    mockFetchByUrl({
+      kape: textResponse(MTRACE_EMPTY_XML),
+      meatwatch: textResponse(meatwatchFoundXml("801000311592")),
+    });
+
+    await fetchTraceRecord("801000311592");
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+
+    expect(urls.some((url) => url.startsWith("https://www.meatwatch.go.kr/"))).toBe(true);
+    expect(urls.some((url) => url.startsWith("http://www.meatwatch.go.kr/"))).toBe(false);
+  });
+
+  it("앞 조회가 오래 걸렸으면 뒤 조회는 남은 시간만 기다린다(전체 대기가 두 배가 되지 않는다)", async () => {
+    mockFetchByUrl({
+      kape: textResponse(MTRACE_EMPTY_XML),
+      meatwatch: textResponse(meatwatchFoundXml("801000311592")),
+    });
+
+    const timeouts: number[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => {
+      if (typeof ms === "number") timeouts.push(ms);
+
+      return realSetTimeout(fn, ms);
+    }) as typeof setTimeout);
+    // 시작 시각 0 → 이후 8초가 흐른 것으로 본다.
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValueOnce(0).mockReturnValue(8_000);
+
+    try {
+      await fetchTraceRecord("801000311592");
+    } finally {
+      timeoutSpy.mockRestore();
+      nowSpy.mockRestore();
+    }
+
+    // 첫 조회(mtrace)는 8초, 뒤 조회(meatwatch)는 남은 시간이 없어 최소 보장 2초.
+    expect(timeouts.filter((ms) => ms === 8_000 || ms === 2_000)).toEqual([8_000, 2_000]);
   });
 
   it("mtrace에서 찾으면 meatwatch는 아예 호출하지 않는다", async () => {

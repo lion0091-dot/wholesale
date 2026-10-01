@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { buildBoxTree, filterTree, type TreeBox, type TreeNode } from "@/lib/stock/box-tree";
 
@@ -13,10 +14,17 @@ export interface ShadowProduct {
   mixedBoxes: number;
 }
 
+export interface PendingSummary {
+  boxes: number;
+  weight: number;
+  capped: boolean;
+}
+
 interface Props {
   boxes: TreeBox[];
   products: ShadowProduct[];
   truncated: boolean;
+  pending: PendingSummary;
 }
 
 /** 축종·부위(깊이 0·1)까지는 처음부터 펼쳐 둔다. */
@@ -71,7 +79,7 @@ function TreeRow({ node, depth, forceOpen }: { node: TreeNode; depth: number; fo
   );
 }
 
-export function StockBoxesView({ boxes, products, truncated }: Props) {
+export function StockBoxesView({ boxes, products, truncated, pending }: Props) {
   const [query, setQuery] = useState("");
   const tree = useMemo(() => buildBoxTree(boxes), [boxes]);
   const shown = useMemo(() => filterTree(tree, query), [tree, query]);
@@ -86,6 +94,18 @@ export function StockBoxesView({ boxes, products, truncated }: Props) {
         aria-label="재고 검색"
         style={{ padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", fontSize: "14px" }}
       />
+
+      {pending.boxes > 0 ? (
+        <p
+          style={{ margin: 0, padding: "10px 12px", borderRadius: "8px", fontSize: "14px", background: "#fef3c7", color: "#92400e" }}
+        >
+          아직 재고에 들어가지 않은 박스가 {pending.boxes}개{pending.capped ? " 이상" : ""} 있습니다(약 {formatWeight(pending.weight)}
+          {pending.capped ? " 이상" : ""}). 부위나 상품을 정해야 재고로 잡힙니다.{" "}
+          <Link href="/dashboard/inbound" style={{ color: "#92400e", fontWeight: 700 }}>
+            입고 화면에서 확인하기
+          </Link>
+        </p>
+      ) : null}
 
       {truncated ? (
         <p style={{ margin: 0, fontSize: "13px", color: "#b45309" }}>
