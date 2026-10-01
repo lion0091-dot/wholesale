@@ -25,6 +25,7 @@ export default async function StockBoxesPage() {
   let boxes: TreeBox[] = [];
   let products: ShadowProduct[] = [];
   let truncated = false;
+  let pending = { boxes: 0, weight: 0, capped: false };
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -54,6 +55,23 @@ export default async function StockBoxesPage() {
     }
 
     const { data: shadowRows } = await shadowPromise;
+
+    // 아직 재고에 안 들어간 박스(상품 지정·이력 확인이 남은 것). 재고 보기에는 안 잡히므로 따로 알린다.
+    const { data: pendingRows, count: pendingCount } = await supabase
+      .from("inbound_scans")
+      .select("weight", { count: "exact" })
+      .eq("wholesaler_id", scope.wholesalerId)
+      .in("status", ["PENDING_MAPPING", "EXCEPTION"])
+      .limit(PAGE_SIZE);
+
+    const pendingList = (pendingRows ?? []) as Array<{ weight: number | string }>;
+
+    pending = {
+      boxes: pendingCount ?? pendingList.length,
+      weight: pendingList.reduce((sum, row) => sum + Number(row.weight), 0),
+      // 합계 중량은 읽어 온 행만 더한 값이라, 박스가 더 많으면 "이상"으로 표시한다.
+      capped: (pendingCount ?? 0) > pendingList.length,
+    };
 
     boxes = boxRows.map((row) => ({
       tagSpecies: (row.tag_species as string | null) ?? null,
@@ -92,7 +110,7 @@ export default async function StockBoxesPage() {
         </p>
       </header>
 
-      <StockBoxesView boxes={boxes} products={products} truncated={truncated} />
+      <StockBoxesView boxes={boxes} products={products} truncated={truncated} pending={pending} />
     </div>
   );
 }
