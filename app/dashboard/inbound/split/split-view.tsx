@@ -13,15 +13,9 @@ export interface SplitBox {
   productName: string;
 }
 
-export interface SplitProduct {
-  id: string;
-  name: string;
-  unit: string;
-}
-
 interface Line {
   key: number;
-  productId: string;
+  part: string;
   weight: string;
 }
 
@@ -29,20 +23,16 @@ function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
-export function SplitView({ boxes, products }: { boxes: SplitBox[]; products: SplitProduct[] }) {
+export function SplitView({ boxes, parts }: { boxes: SplitBox[]; parts: string[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [lines, setLines] = useState<Line[]>([{ key: 1, productId: "", weight: "" }]);
+  const [lines, setLines] = useState<Line[]>([{ key: 1, part: "", weight: "" }]);
   const [nextKey, setNextKey] = useState(2);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
   const selected = boxes.find((box) => box.id === selectedId) ?? null;
-  const candidates = useMemo(
-    () => (selected ? products.filter((product) => product.unit === selected.unit) : []),
-    [products, selected],
-  );
 
   const shownBoxes = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -54,12 +44,12 @@ export function SplitView({ boxes, products }: { boxes: SplitBox[]; products: Sp
 
   const total = lines.reduce((sum, line) => sum + (Number(line.weight) > 0 ? Number(line.weight) : 0), 0);
   const loss = selected ? round3(selected.remainingWeight - total) : 0;
-  const complete = lines.length > 0 && lines.every((line) => line.productId && Number(line.weight) > 0);
+  const complete = lines.length > 0 && lines.every((line) => line.part && Number(line.weight) > 0);
   const canSubmit = selected !== null && complete && loss >= 0 && !pending;
 
   function pick(box: SplitBox) {
     setSelectedId(box.id);
-    setLines([{ key: 1, productId: "", weight: "" }]);
+    setLines([{ key: 1, part: "", weight: "" }]);
     setNextKey(2);
     setMessage(null);
   }
@@ -74,7 +64,7 @@ export function SplitView({ boxes, products }: { boxes: SplitBox[]; products: Sp
     startTransition(async () => {
       const result = await splitScanAction(
         selected.id,
-        lines.map((line) => ({ productId: line.productId, weight: Number(line.weight) })),
+        lines.map((line) => ({ part: line.part, weight: Number(line.weight) })),
       );
 
       if (!result.success) {
@@ -83,12 +73,18 @@ export function SplitView({ boxes, products }: { boxes: SplitBox[]; products: Sp
         return;
       }
 
+      const created = result.data?.createdProducts ?? [];
+
       setMessage({
         tone: "ok",
-        text: `쪼개기를 마쳤습니다. 박스 ${result.data?.childIds.length ?? lines.length}개가 생겼고 손실은 ${result.data?.loss ?? loss}${selected.unit}입니다.`,
+        text:
+          `쪼개기를 마쳤습니다. 박스 ${result.data?.childIds.length ?? lines.length}개가 생겼고 손실은 ${result.data?.loss ?? loss}${selected.unit}입니다.` +
+          (created.length > 0
+            ? ` 새 상품 ${created.length}개가 만들어졌습니다(${created.join(", ")}) — 상품 관리에서 가격을 넣고 판매를 켜 주세요.`
+            : ""),
       });
       setSelectedId(null);
-      setLines([{ key: 1, productId: "", weight: "" }]);
+      setLines([{ key: 1, part: "", weight: "" }]);
       router.refresh();
     });
   }
@@ -160,21 +156,21 @@ export function SplitView({ boxes, products }: { boxes: SplitBox[]; products: Sp
           <h2 style={{ margin: 0, fontSize: "15px", fontWeight: 800 }}>2. 나눈 부위와 실중량</h2>
           <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
             {selected.productName} · 남은 {selected.remainingWeight}
-            {selected.unit}. 나눈 부위마다 한 줄씩, 저울에 잰 중량을 입력하세요.
+            {selected.unit}. 나눈 부위마다 한 줄씩, 저울에 잰 중량을 입력하세요. 품종·등급·원산지 같은 나머지는 이 박스 정보로 자동으로 채워집니다.
           </p>
 
           {lines.map((line, index) => (
             <div key={line.key} style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <select
-                value={line.productId}
-                onChange={(event) => updateLine(line.key, { productId: event.target.value })}
+                value={line.part}
+                onChange={(event) => updateLine(line.key, { part: event.target.value })}
                 aria-label={`${index + 1}번째 줄 부위`}
                 style={{ flex: 1, padding: "10px", border: "1px solid #cbd5e1", borderRadius: "8px", fontSize: "14px" }}
               >
-                <option value="">부위(상품) 선택</option>
-                {candidates.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name}
+                <option value="">부위 선택</option>
+                {parts.map((part) => (
+                  <option key={part} value={part}>
+                    {part}
                   </option>
                 ))}
               </select>
@@ -204,7 +200,7 @@ export function SplitView({ boxes, products }: { boxes: SplitBox[]; products: Sp
           <button
             type="button"
             onClick={() => {
-              setLines((current) => [...current, { key: nextKey, productId: "", weight: "" }]);
+              setLines((current) => [...current, { key: nextKey, part: "", weight: "" }]);
               setNextKey(nextKey + 1);
             }}
             disabled={lines.length >= 30}

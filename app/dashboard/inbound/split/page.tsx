@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { InboundTabs } from "../../section-tabs";
-import { SplitView, type SplitBox, type SplitProduct } from "./split-view";
+import { SplitView, type SplitBox } from "./split-view";
 
 export const metadata = {
   title: "쪼개기 | 도매업체 통합관리시스템",
@@ -19,12 +19,12 @@ export default async function SplitPage() {
   }
 
   let boxes: SplitBox[] = [];
-  let products: SplitProduct[] = [];
+  let parts: string[] = [];
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
 
-    const [{ data: boxRows }, { data: productRows }] = await Promise.all([
+    const [{ data: boxRows }, { data: partRows }] = await Promise.all([
       supabase
         .from("inbound_scans")
         .select("id, trace_no, remaining_weight, unit, created_at, products(name)")
@@ -35,11 +35,8 @@ export default async function SplitPage() {
         .not("product_id", "is", null)
         .order("created_at", { ascending: false })
         .limit(BOX_LIMIT),
-      supabase
-        .from("products")
-        .select("id, name, unit")
-        .eq("wholesaler_id", scope.wholesalerId)
-        .order("name", { ascending: true }),
+      // 부위 드롭박스: 입고 화면과 같은 목록(이미 등록된 상품의 부위, DB가 DISTINCT로 돌려준다).
+      supabase.rpc("inbound_part_options"),
     ]);
 
     boxes = ((boxRows ?? []) as unknown as Array<{
@@ -58,11 +55,13 @@ export default async function SplitPage() {
       productName: (Array.isArray(row.products) ? row.products[0]?.name : row.products?.name) ?? "",
     }));
 
-    products = ((productRows ?? []) as Array<{ id: string; name: string; unit: string | null }>).map((row) => ({
-      id: row.id,
-      name: row.name,
-      unit: row.unit ?? "kg",
-    }));
+    parts = Array.from(
+      new Set(
+        ((partRows ?? []) as Array<{ supplier_id: string | null; part: string }>)
+          .filter((row) => row.supplier_id === null)
+          .map((row) => row.part),
+      ),
+    ).sort((a, b) => a.localeCompare(b, "ko"));
   }
 
   return (
@@ -76,7 +75,7 @@ export default async function SplitPage() {
         </p>
       </header>
 
-      <SplitView boxes={boxes} products={products} />
+      <SplitView boxes={boxes} parts={parts} />
     </div>
   );
 }
