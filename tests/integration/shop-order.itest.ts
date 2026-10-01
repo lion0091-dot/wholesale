@@ -16,13 +16,11 @@ vi.mock("@/lib/notifications/alimtalk", async (importOriginal) => {
     sendOrderEditedNotificationToWholesaler: sent(),
     sendCancelRequestNotificationToWholesaler: sent(),
     sendCreditLimitExceededNotificationToWholesaler: sent(),
-    sendCreditLimitExceededNotificationToRetailer: sent(),
   };
 });
 
 import {
   sendCancelRequestNotificationToWholesaler,
-  sendCreditLimitExceededNotificationToRetailer,
   sendCreditLimitExceededNotificationToWholesaler,
   sendOrderEditedNotificationToWholesaler,
   sendOrderNotificationToWholesaler,
@@ -42,7 +40,6 @@ const orderNotify = vi.mocked(sendOrderNotificationToWholesaler);
 const orderEditedNotify = vi.mocked(sendOrderEditedNotificationToWholesaler);
 const cancelNotify = vi.mocked(sendCancelRequestNotificationToWholesaler);
 const creditNotifyWholesaler = vi.mocked(sendCreditLimitExceededNotificationToWholesaler);
-const creditNotifyRetailer = vi.mocked(sendCreditLimitExceededNotificationToRetailer);
 
 let world: World;
 
@@ -458,7 +455,7 @@ describe("submitOrderAction — 외상", () => {
     expect(await relationOf(buyer.relationshipId)).toBe(70000);
   });
 
-  it("한도를 넘는 외상 주문은 미리 거부되고 주문·미수금 변화 없이 공급사·고객에게 알림이 간다", async () => {
+  it("한도를 넘는 외상 주문은 미리 거부되고 주문·미수금 변화 없이 공급사에게만 알림이 간다", async () => {
     const product = await newProduct();
     const buyer = await world.createRetailer({ creditLimit: 100000, outstanding: 80000, allowedPaymentMethods: ["prepaid", "on_credit"] });
 
@@ -471,7 +468,6 @@ describe("submitOrderAction — 외상", () => {
     expect(await relationOf(buyer.relationshipId)).toBe(80000);
     expect(orderNotify).not.toHaveBeenCalled();
     expect(creditNotifyWholesaler).toHaveBeenCalledTimes(1);
-    expect(creditNotifyRetailer).toHaveBeenCalledTimes(1);
   });
 
   it("한도 60,000원 남았을 때 60,000원 주문 2건이 동시에 들어오면 하나만 접수되고 미수금이 한도를 넘지 않는다", async () => {

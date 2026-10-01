@@ -121,43 +121,6 @@ export interface CreditLimitIncreasedNotificationPayload {
   retailerPhone?: string;
 }
 
-export interface CreditLimitExceededRetailerNotificationPayload {
-  wholesalerId: string;
-  wholesalerName: string;
-  retailerName: string;
-  retailerPhone?: string;
-}
-
-export interface CreditLimitChangedNotificationPayload {
-  wholesalerId: string;
-  wholesalerName: string;
-  wholesalerPhone?: string;
-  /** 실제로 한도를 변경한 직원/대표 이름 ("님"은 메시지에서 붙인다) */
-  actorName: string;
-  retailerName: string;
-  previousLimit: number;
-  newLimit: number;
-}
-
-export interface RetailerBlockedNotificationPayload {
-  wholesalerId: string;
-  wholesalerName: string;
-  wholesalerPhone?: string;
-  /** 실제로 정지 처리한 직원/대표 이름 ("님"은 메시지에서 붙인다) */
-  actorName: string;
-  retailerName: string;
-  reason: string;
-}
-
-export interface RetailerResumedNotificationPayload {
-  wholesalerId: string;
-  wholesalerName: string;
-  wholesalerPhone?: string;
-  /** 실제로 재개 처리한 직원/대표 이름 ("님"은 메시지에서 붙인다) */
-  actorName: string;
-  retailerName: string;
-}
-
 export interface RetailerStatusRetailerNotificationPayload {
   wholesalerId: string;
   wholesalerName: string;
@@ -200,11 +163,7 @@ const PLATFORM_TEMPLATE_ENV_KEYS: Record<AlimtalkTemplateKey, string> = {
   creditExceeded: "ALIMTALK_PLATFORM_TEMPLATE_CREDIT_EXCEEDED",
   receivablesReminder: "ALIMTALK_PLATFORM_TEMPLATE_RECEIVABLES_REMINDER",
   creditLimitIncreased: "ALIMTALK_PLATFORM_TEMPLATE_CREDIT_LIMIT_INCREASED",
-  creditLimitExceededRetailer: "ALIMTALK_PLATFORM_TEMPLATE_CREDIT_LIMIT_EXCEEDED_RETAILER",
-  creditLimitChangedWholesaler: "ALIMTALK_PLATFORM_TEMPLATE_CREDIT_LIMIT_CHANGED_WHOLESALER",
-  retailerBlocked: "ALIMTALK_PLATFORM_TEMPLATE_RETAILER_BLOCKED",
   retailerBlockedRetailer: "ALIMTALK_PLATFORM_TEMPLATE_RETAILER_BLOCKED_RETAILER",
-  retailerResumed: "ALIMTALK_PLATFORM_TEMPLATE_RETAILER_RESUMED",
   retailerResumedRetailer: "ALIMTALK_PLATFORM_TEMPLATE_RETAILER_RESUMED_RETAILER",
 };
 
@@ -627,86 +586,6 @@ ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
 }
 
 /**
- * 거래처(식당) 대상 '여신 한도 초과로 외상 주문 거절' 알림톡.
- *
- * sendCreditLimitExceededNotificationToWholesaler와 같은 이벤트에서 함께 트리거되지만
- * 수신자가 다르다(공급사 vs 바이어). 바이어 화면에서는 체크아웃 시도 중에만 에러
- * 문구가 보이고 그 외엔 알 방법이 없었던 문제를 보완한다. "여신 한도"라는 용어와
- * 정확한 한도/미수금 금액은 넣지 않고, 정산을 서두르지 않으면 주문이 계속 막힌다는
- * 행동 유도만 담는다.
- */
-export async function sendCreditLimitExceededNotificationToRetailer(
-  payload: CreditLimitExceededRetailerNotificationPayload
-): Promise<NotificationResult> {
-  const formattedMessage = `[외상 거래 제한 안내]
-
-${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
-
-미수금이 있어 외상 주문이 접수되지 않았습니다.
-미수금을 빠르게 정산해 주지 않으시면 앞으로도 주문이 계속 제한됩니다.
-정산 후 다시 이용해주시기 바랍니다.`;
-
-  return dispatchAlimtalk({
-    wholesalerId: payload.wholesalerId,
-    templateKey: "creditLimitExceededRetailer",
-    templateTitle: "외상 거래 제한 안내(고객)",
-    formattedMessage,
-    targetPhone: payload.retailerPhone,
-  });
-}
-
-/**
- * 공급사(대표) 대상 '여신 한도 변경' 내부 알림톡.
- *
- * 거래처(식당)에게 가는 sendCreditLimitIncreasedNotificationToRetailer와는 별개의
- * 이벤트다 — 저건 상향일 때만, 이건 상향/하향 모두 "누가" 바꿨는지 대표에게
- * 통지하는 내부 감사용 알림이라 정확한 금액과 담당자 이름을 그대로 노출한다.
- */
-export async function sendCreditLimitChangedNotificationToWholesaler(
-  payload: CreditLimitChangedNotificationPayload
-): Promise<NotificationResult> {
-  const formattedMessage = `[여신 한도 변경 알림]
-
-${payload.wholesalerName} 대표님, ${payload.actorName}님이 ${payload.retailerName}의 여신 한도를
-${formatWon(payload.previousLimit)}에서 ${formatWon(payload.newLimit)}으로 변경하였습니다.`;
-
-  return dispatchAlimtalk({
-    wholesalerId: payload.wholesalerId,
-    templateKey: "creditLimitChangedWholesaler",
-    templateTitle: "여신 한도 변경 알림",
-    formattedMessage,
-    targetPhone: payload.wholesalerPhone,
-  });
-}
-
-/**
- * 공급사(대표) 대상 '거래처 정지 처리' 내부 알림톡.
- *
- * 누가/왜 정지시켰는지 대표에게 통지하는 내부 감사용 알림이라 정지 사유를
- * 그대로 노출한다. 거래처(고객) 본인에게 가는 sendRetailerBlockedNotificationToRetailer와는
- * 별개 이벤트/수신자다.
- */
-export async function sendRetailerBlockedNotificationToWholesaler(
-  payload: RetailerBlockedNotificationPayload
-): Promise<NotificationResult> {
-  const formattedMessage = `[거래처 정지 처리 알림]
-
-${payload.wholesalerName} 대표님, ${payload.actorName}님이 ${payload.retailerName}와의 거래를 정지하였습니다.
-
-■ 정지 사유: ${payload.reason}
-
-거래처 관리 화면에서 상태를 확인하실 수 있습니다.`;
-
-  return dispatchAlimtalk({
-    wholesalerId: payload.wholesalerId,
-    templateKey: "retailerBlocked",
-    templateTitle: "거래처 정지 처리 알림",
-    formattedMessage,
-    targetPhone: payload.wholesalerPhone,
-  });
-}
-
-/**
  * 거래처(식당) 대상 '거래 제한' 알림톡.
  *
  * "여신 한도" 알림과 같은 원칙 — 정지 사유는 내부 사정(대금 미납 등)일 수 있어
@@ -728,27 +607,6 @@ ${payload.retailerName} 담당자님, ${payload.wholesalerName}입니다.
     templateTitle: "거래 제한 안내",
     formattedMessage,
     targetPhone: payload.retailerPhone,
-  });
-}
-
-/**
- * 공급사(대표) 대상 '거래처 재개 처리' 내부 알림톡. 정지 해제 시 누가 처리했는지 통지한다.
- */
-export async function sendRetailerResumedNotificationToWholesaler(
-  payload: RetailerResumedNotificationPayload
-): Promise<NotificationResult> {
-  const formattedMessage = `[거래처 재개 처리 알림]
-
-${payload.wholesalerName} 대표님, ${payload.actorName}님이 ${payload.retailerName}와의 거래를 재개하였습니다.
-
-다시 주문이 가능한 상태입니다.`;
-
-  return dispatchAlimtalk({
-    wholesalerId: payload.wholesalerId,
-    templateKey: "retailerResumed",
-    templateTitle: "거래처 재개 처리 알림",
-    formattedMessage,
-    targetPhone: payload.wholesalerPhone,
   });
 }
 

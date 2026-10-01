@@ -41,11 +41,7 @@ const TEMPLATE_KEYS: AlimtalkTemplateKey[] = [
   "creditExceeded",
   "receivablesReminder",
   "creditLimitIncreased",
-  "creditLimitExceededRetailer",
-  "creditLimitChangedWholesaler",
-  "retailerBlocked",
   "retailerBlockedRetailer",
-  "retailerResumed",
   "retailerResumedRetailer",
 ];
 

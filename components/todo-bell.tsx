@@ -2,16 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRealtimeRefresh } from "@/lib/hooks/use-realtime-refresh";
 import { totalTodo, visibleTodoItems, type TodoCounts } from "@/lib/supplier/todo-counts";
 
-const REFRESH_MS = 30_000;
+/** Realtime이 조용히 끊긴 경우를 위한 안전망 주기 — 평소에는 Realtime 신호가 먼저 온다. */
+const FALLBACK_REFRESH_MS = 5 * 60_000;
 
 /**
- * 헤더의 "지금 할 일" 종 배지. 처음 값은 서버가 계산해서 내려주고, 화면이 보이는 동안
- * 30초마다·탭에 돌아올 때·화면을 옮길 때 다시 센다.
+ * 헤더의 "지금 할 일" 종 배지. 처음 값은 서버가 계산해서 내려주고, 그 뒤로는 주문·입고 박스 표에
+ * 변화가 생기는 순간(Realtime)·탭에 돌아올 때·화면을 옮길 때 다시 센다.
+ * (2026-10-01까지는 30초 주기 조회였다.)
  */
-export function TodoBell({ initialCounts }: { initialCounts: TodoCounts }) {
+export function TodoBell({ initialCounts, wholesalerId }: { initialCounts: TodoCounts; wholesalerId: string }) {
   const [counts, setCounts] = useState(initialCounts);
   const [open, setOpen] = useState(false);
   // 서버 렌더는 PC 기준으로 시작하고, 폰이면 브라우저에서 바로잡는다(사이드바와 같은 900px 기준).
@@ -39,11 +42,22 @@ export function TodoBell({ initialCounts }: { initialCounts: TodoCounts }) {
     void refresh();
   }, [pathname, refresh]);
 
+  // 종 배지가 세는 세 항목의 출처: orders(새 주문·취소 요청), inbound_scans(확인 필요 박스).
+  const watches = useMemo(
+    () => [
+      { table: "orders", filter: `wholesaler_id=eq.${wholesalerId}` },
+      { table: "inbound_scans", filter: `wholesaler_id=eq.${wholesalerId}` },
+    ],
+    [wholesalerId]
+  );
+
+  useRealtimeRefresh(watches, refresh);
+
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState === "visible") void refresh();
     };
-    const timer = window.setInterval(tick, REFRESH_MS);
+    const timer = window.setInterval(tick, FALLBACK_REFRESH_MS);
 
     document.addEventListener("visibilitychange", tick);
 

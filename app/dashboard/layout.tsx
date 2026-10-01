@@ -193,7 +193,11 @@ export default async function DashboardLayout({
       roleLabel={roleLabel}
       subscriptionStatus={subscriptionStatus}
       isDemoMode={!context || !isSupabaseConfigured()}
-      todoBell={todoCounts ? <TodoBell initialCounts={todoCounts} /> : null}
+      todoBell={
+        todoCounts && todoWholesalerId ? (
+          <TodoBell initialCounts={todoCounts} wholesalerId={todoWholesalerId} />
+        ) : null
+      }
     >
       {children}
     </DashboardShell>

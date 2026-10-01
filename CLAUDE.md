@@ -51,6 +51,10 @@
 
 - [docs/alimtalk-integration.md](docs/alimtalk-integration.md) — 기존 스텁(플랫폼 공용 키 가정)을 공급사별 자격정보(비즈뿌리오 1:1 계약) 구조로 전면 재설계. 잠긴 설계 결정(비밀번호 AES 암호화 저장, 설정 화면 owner/manager 전용), 비즈뿌리오 API 스펙, 코드 전부 완료. 실계정 미검증. **2026-09-30 추가(사장님 결정)**: "플랫폼은 대행사 계정을 대신 관리하지 않는다"가 절대 규칙에서 기본값 우선순위로 바뀜 — 공급사 개별 등록(`wholesalers.alimtalk_*`)이 항상 우선하되, 없으면 플랫폼 대표 채널(`ALIMTALK_PLATFORM_*` 환경변수, 아직 비어있음)로 폴백. 대량 방송 기능이 코드에 없어(전부 이벤트 1건=수신자 1명) 비용 폭증 위험은 낮지만 종량제 비용 자체는 발생. 환경변수 채워 실제 가동 시 `app/privacy/page.tsx` 5조(비즈뿌리오를 "공급사가 직접 계약"→"회사가 위탁"으로 이동) 동시 수정 필수, 아직 안 함.
 
+## 알림 채널 정리 — 알림톡 8종·화면 알림 Realtime (2026-10-01, 별도 기능)
+
+- [docs/alimtalk-integration.md](docs/alimtalk-integration.md) 맨 위 "2026-10-01 추가" 절 — 알림 14건을 "받는 사람이 그 순간 화면을 보는가"로 나눠 채널 확정. 알림톡 12종→8종(내부 통지 3종은 대시보드 알림함 예정, 고객 외상 거절은 삭제), 공급사용 4종은 웹푸시로 대체 예정(미착수), 종 배지·고객 배송 벨은 Realtime(마이그 187, `lib/hooks/use-realtime-refresh.ts`). **배송 시작 알림톡은 추가하지 않는다(배송기사가 알림)**. 남은 단계: ② 알림함(새 테이블·설계 보고 후) ③ 웹푸시(홈 화면 앱 설정과 같이).
+
 ## 플랫폼 구독료 (거래처 수 비례 종량제) (feat/platform-admin-allowlist 브랜치 위에서 진행, 별도 기능)
 
 - [docs/platform-subscription-billing.md](docs/platform-subscription-billing.md) — 공급사가 플랫폼에 내는 구독료(거래처 1곳당 월 5,000원, 거래중 상태만 카운트) + 무료체험 30일 + 연체/해지/체험만료 시 `/dashboard` 접근 차단(`/billing-locked`로 리다이렉트). 결제 자동화는 미정 — 지금은 `/admin/suppliers`에서 super_admin 수동 확인/전환.

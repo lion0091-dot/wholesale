@@ -8,6 +8,12 @@
  * "use client" 컴포넌트가 import하면 Node 전용 API가 클라이언트 번들에 끼어들어간다)
  */
 
+/**
+ * 2026-10-01 사장님 결정으로 12종에서 8종으로 줄였다 — 내부 통지 3종(여신 한도 변경·거래처 정지·
+ * 거래처 재개, 우리 직원이 한 일을 대표에게 알리는 것)은 카톡까지 보낼 일이 아니라 대시보드
+ * 알림함으로 옮기고, 고객 외상 거절 안내는 고객이 그 순간 화면에서 거절 문구를 이미 보므로 뺐다.
+ * 공급사용 4종(신규 주문·수정·취소 요청·여신 초과)은 웹푸시로 대체할 예정이다.
+ */
 export type AlimtalkTemplateKey =
   | "orderNew"
   | "orderEdited"
@@ -15,11 +21,7 @@ export type AlimtalkTemplateKey =
   | "creditExceeded"
   | "receivablesReminder"
   | "creditLimitIncreased"
-  | "creditLimitExceededRetailer"
-  | "creditLimitChangedWholesaler"
-  | "retailerBlocked"
   | "retailerBlockedRetailer"
-  | "retailerResumed"
   | "retailerResumedRetailer";
 
 /**
@@ -107,33 +109,6 @@ export const ALIMTALK_TEMPLATE_REFERENCE_TEXT: Record<
 지금 바로 외상 주문이 가능합니다.
 미수금이 있으시면 빠른 정산 부탁드립니다.`,
   },
-  creditLimitExceededRetailer: {
-    title: "여신 한도 초과 - 외상 주문 거절 안내(고객(소매)에게는 '한도' 미노출)",
-    text: `[외상 거래 제한 안내]
-
-#{바이어상호} 담당자님, #{공급사명}입니다.
-
-미수금이 있어 외상 주문이 접수되지 않았습니다.
-미수금을 빠르게 정산해 주지 않으시면 앞으로도 주문이 계속 제한됩니다.
-정산 후 다시 이용해주시기 바랍니다.`,
-  },
-  creditLimitChangedWholesaler: {
-    title: "여신 한도 변경 알림(내부용 — 누가 변경했는지 공급사 대표에게 통지)",
-    text: `[여신 한도 변경 알림]
-
-#{공급사명} 대표님, #{처리자}님이 #{바이어상호}의 여신 한도를
-#{이전한도}원에서 #{변경한도}원으로 변경하였습니다.`,
-  },
-  retailerBlocked: {
-    title: "거래처 정지 처리 알림(내부용 — 누가/왜 정지했는지 공급사 대표에게 통지)",
-    text: `[거래처 정지 처리 알림]
-
-#{공급사명} 대표님, #{처리자}님이 #{바이어상호}와의 거래를 정지하였습니다.
-
-■ 정지 사유: #{정지사유}
-
-거래처 관리 화면에서 상태를 확인하실 수 있습니다.`,
-  },
   retailerBlockedRetailer: {
     title: "거래 제한 안내(고객(소매)에게는 사유 미노출)",
     text: `[거래 제한 안내]
@@ -142,14 +117,6 @@ export const ALIMTALK_TEMPLATE_REFERENCE_TEXT: Record<
 
 현재 거래가 일시 제한되어 주문이 어렵습니다.
 자세한 사항은 공급사에 직접 문의해주세요.`,
-  },
-  retailerResumed: {
-    title: "거래처 재개 처리 알림(내부용 — 누가 재개했는지 공급사 대표에게 통지)",
-    text: `[거래처 재개 처리 알림]
-
-#{공급사명} 대표님, #{처리자}님이 #{바이어상호}와의 거래를 재개하였습니다.
-
-다시 주문이 가능한 상태입니다.`,
   },
   retailerResumedRetailer: {
     title: "거래 재개 안내",

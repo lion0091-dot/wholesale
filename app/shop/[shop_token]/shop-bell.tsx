@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRealtimeRefresh } from "@/lib/hooks/use-realtime-refresh";
 import { courierLabel } from "@/lib/verification/sweettracker";
 import { loadShopBellAction, markShopBellSeenAction, type ShopBellItem } from "./actions";
 
@@ -15,6 +16,7 @@ function formatShippedAt(value: string): string {
 /**
  * 미니샵 알림벨 — 배송이 시작된 주문을 알려준다. 단골 인증을 마친 고객에게만 보인다.
  * 벨을 열면 지금까지의 알림을 확인한 것으로 저장하고(DB), 폰·PC 어디서 열어도 같은 상태가 보인다.
+ * 화면을 열어둔 채로도 내 주문이 배송중으로 바뀌면 바로 갱신된다(Realtime). 2026-10-01까지는 열 때 한 번만 읽었다.
  */
 export function ShopBell() {
   const params = useParams<{ shop_token: string }>();
@@ -22,17 +24,31 @@ export function ShopBell() {
   const [items, setItems] = useState<ShopBellItem[]>([]);
   const [unseen, setUnseen] = useState(0);
   const [open, setOpen] = useState(false);
+  const [retailerId, setRetailerId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!shopToken) return;
 
     void loadShopBellAction(shopToken).then((result) => {
       if (result.success && result.data) {
         setItems(result.data.items);
         setUnseen(result.data.unseenCount);
+        setRetailerId(result.data.retailerId);
       }
     });
   }, [shopToken]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // 내 주문 행이 바뀌면(배송중 전환 등) 다시 읽는다. 어느 주문이 내 것인지는 서버(RLS)가 거른다.
+  const watches = useMemo(
+    () => (retailerId ? [{ table: "orders", filter: `retailer_id=eq.${retailerId}` }] : []),
+    [retailerId]
+  );
+
+  useRealtimeRefresh(watches, load, { enabled: retailerId !== null });
 
   const toggle = () => {
     const next = !open;

@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/server";
 import { BUYER_AUTH_REQUIRED_MESSAGE, BuyerAuthError, requireLinkedBuyer, type LinkedBuyer } from "@/lib/auth/buyer-auth";
 import {
   sendCancelRequestNotificationToWholesaler,
-  sendCreditLimitExceededNotificationToRetailer,
   sendCreditLimitExceededNotificationToWholesaler,
   sendOrderEditedNotificationToWholesaler,
   sendOrderNotificationToWholesaler,
@@ -91,9 +90,9 @@ async function backfillRetailerProfile(
 }
 
 /**
- * 여신 한도 초과로 외상 주문이 거절됐을 때 도매업자 + 바이어 양쪽에 알림톡을 보낸다.
+ * 여신 한도 초과로 외상 주문이 거절됐을 때 도매업자에게 알림톡을 보낸다.
  * 사전 체크(빠른 실패)와 apply_credit_order RPC 백스톱 두 경로 모두에서 호출된다.
- * 바이어에게는 "여신 한도"라는 용어/금액을 노출하지 않는다(정책 결정).
+ * 바이어 쪽 알림톡은 2026-10-01에 뺐다 — 바이어는 그 순간 화면에서 거절 문구를 이미 본다(사장님 결정).
  */
 async function notifyCreditLimitExceeded(
   supabase: SupabaseServerClient,
@@ -107,23 +106,15 @@ async function notifyCreditLimitExceeded(
     .eq("id", buyer.wholesalerProfileId)
     .maybeSingle();
 
-  await Promise.all([
-    sendCreditLimitExceededNotificationToWholesaler({
-      wholesalerId: buyer.wholesalerId,
-      wholesalerName: buyer.wholesalerName,
-      wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,
-      restaurantName,
-      creditLimit: buyer.creditLimit,
-      outstandingBalance: buyer.outstandingBalance,
-      attemptedAmount,
-    }),
-    sendCreditLimitExceededNotificationToRetailer({
-      wholesalerId: buyer.wholesalerId,
-      wholesalerName: buyer.wholesalerName,
-      retailerName: restaurantName,
-      retailerPhone: buyer.contactPhone ?? undefined,
-    }),
-  ]);
+  await sendCreditLimitExceededNotificationToWholesaler({
+    wholesalerId: buyer.wholesalerId,
+    wholesalerName: buyer.wholesalerName,
+    wholesalerPhone: (profile?.phone as string | undefined) ?? undefined,
+    restaurantName,
+    creditLimit: buyer.creditLimit,
+    outstandingBalance: buyer.outstandingBalance,
+    attemptedAmount,
+  });
 }
 
 /**
@@ -888,13 +879,19 @@ export interface ShopBellItem {
 export interface ShopBellResult {
   success: boolean;
   error?: string;
-  data?: { items: ShopBellItem[]; unseenCount: number };
+  data?: {
+    items: ShopBellItem[];
+    unseenCount: number;
+    /** 벨이 내 주문 변화를 Realtime으로 구독할 때 쓰는 필터 값. 미인증·미연결이면 null(구독 안 함). */
+    retailerId: string | null;
+  };
 }
 
 /**
  * 미니샵 알림벨 — 이 공급사에서 배송이 시작된 내 주문(최근 14일)과 새 알림 수.
  * 별도 알림 테이블 없이 orders.shipped_at(배송중이 된 시각)과 마지막 확인 시각(retailer_bell_reads)으로 계산한다.
  * 신원은 requireLinkedBuyer가 auth.uid()에서 도출하므로 남의 주문은 보이지 않는다.
+ * 화면은 처음 한 번 부른 뒤 내 주문 행이 바뀔 때마다(Realtime) 다시 부른다.
  */
 export async function loadShopBellAction(shopToken: string): Promise<ShopBellResult> {
   try {
@@ -940,11 +937,14 @@ export async function loadShopBellAction(shopToken: string): Promise<ShopBellRes
       isNew: seenAt === null || new Date(order.shipped_at as string).getTime() > seenAt,
     }));
 
-    return { success: true, data: { items, unseenCount: items.filter((item) => item.isNew).length } };
+    return {
+      success: true,
+      data: { items, unseenCount: items.filter((item) => item.isNew).length, retailerId: buyer.retailerId },
+    };
   } catch (error) {
     if (error instanceof BuyerAuthError) {
       // 미인증·미연결 고객에게는 벨을 그리지 않는다(오류 문구 대신 빈 결과).
-      return { success: true, data: { items: [], unseenCount: 0 } };
+      return { success: true, data: { items: [], unseenCount: 0, retailerId: null } };
     }
 
     console.error("[Shop Bell ERROR]", error);
