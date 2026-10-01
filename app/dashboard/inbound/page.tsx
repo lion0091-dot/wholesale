@@ -8,6 +8,7 @@ import { pickFieldNextStep } from "@/lib/livestock/inbound-next-step";
 import { InboundNextStepCard } from "./inbound-next-step-card";
 import { InboundTabs } from "../section-tabs";
 import { InboundAutoRetry } from "./inbound-auto-retry";
+import { InboundLiveRefresh } from "./inbound-live-refresh";
 import { InboundImportPanel } from "./inbound-import-panel";
 
 /** 이력 조회 기관 표기 — 설정 안내 문구에 쓴다. */
@@ -79,6 +80,7 @@ export default async function InboundPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <InboundTabs />
       <InboundAutoRetry />
+      {scope?.wholesalerId && <InboundLiveRefresh wholesalerId={scope.wholesalerId} />}
 
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>입고 스캔</h1>
