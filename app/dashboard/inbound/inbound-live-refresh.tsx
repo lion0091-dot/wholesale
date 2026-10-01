@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useRealtimeRefresh } from "@/lib/hooks/use-realtime-refresh";
+import { recentSelfChange } from "@/lib/livestock/self-change-marker";
+
+/** 내가 방금 바꾼 것(스캔·상품 지정 등)에 대한 Realtime 신호는 이 시간 안에 오므로 건너뛴다 — 그 화면은 이미 스스로 다시 그렸다. */
+const SELF_CHANGE_WINDOW_MS = 2_500;
 
 /**
  * 다른 사람(현장)이 찍은 박스가 이 화면에도 바로 보이게 한다 — 이 업체의 입고 박스(inbound_scans) 표에 변화가
@@ -28,6 +32,8 @@ export function InboundLiveRefresh({ wholesalerId }: { wholesalerId: string }) {
   }, [router]);
 
   const onChange = useCallback(() => {
+    if (recentSelfChange(SELF_CHANGE_WINDOW_MS)) return;
+
     if (document.visibilityState === "hidden" || isTyping()) {
       deferred.current = true;
 

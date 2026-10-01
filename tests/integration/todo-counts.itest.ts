@@ -4,7 +4,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { actAs, adminClient, seedWorld, type World } from "./harness";
+import { actAs, adminClient, getActorClient, seedWorld, type World } from "./harness";
 import { GET } from "@/app/api/dashboard/todo-counts/route";
 import type { TodoCounts } from "@/lib/supplier/todo-counts";
 
@@ -18,10 +18,14 @@ afterAll(async () => {
   await world?.cleanup();
 });
 
-async function readCounts(): Promise<TodoCounts | null> {
+async function readBody(): Promise<{ counts: TodoCounts | null; notices: unknown[] }> {
   const response = await GET();
 
-  return ((await response.json()) as { counts: TodoCounts | null }).counts;
+  return (await response.json()) as { counts: TodoCounts | null; notices: unknown[] };
+}
+
+async function readCounts(): Promise<TodoCounts | null> {
+  return (await readBody()).counts;
 }
 
 describe("종 배지 집계", () => {
@@ -61,6 +65,23 @@ describe("종 배지 집계", () => {
     });
 
     await admin.from("inbound_scans").delete().eq("trace_no", scanTrace);
+  });
+
+  it("알림함(notices)은 대표에게는 배열로 오고 직원에게는 빈 배열, 비로그인은 counts null", async () => {
+    const retailer = await world.createRetailer({ creditLimit: 10000 });
+
+    await actAs(world.users.ownerA);
+    expect((await getActorClient().from("wholesaler_retailers").update({ credit_limit: 20000 }).eq("id", retailer.relationshipId)).error).toBeNull();
+
+    const owner = await readBody();
+
+    expect(owner.notices.length).toBeGreaterThan(0);
+
+    await actAs(world.users.staffA);
+    expect((await readBody()).notices).toEqual([]);
+
+    await actAs(null);
+    expect(await readBody()).toEqual({ counts: null, notices: [] });
   });
 
   it("다른 업체 직원에게는 그 업체 것이 섞이지 않고, 매니저·직원도 같은 업체 숫자를 본다", async () => {

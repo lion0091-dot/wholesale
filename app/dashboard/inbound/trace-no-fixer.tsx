@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { markSelfChange } from "@/lib/livestock/self-change-marker";
 import { replaceScanTraceNoAction, type ReplaceTraceResult } from "./actions";
 
 /**
@@ -65,6 +66,7 @@ export function TraceNoFixer({ scanId, traceNo, compact = false }: { scanId: str
 
     setMessage(describe(result.data));
     setEditing(false);
+    markSelfChange();
     router.refresh();
   };
 

@@ -7,6 +7,7 @@ import { DashboardShell, type DashboardNavItem } from "./dashboard-shell";
 import { TodoBell } from "@/components/todo-bell";
 import { fetchTodoCounts, type TodoCounts } from "@/lib/supplier/todo-counts";
 import { fetchInternalNotices, type InternalNotice } from "@/lib/supplier/internal-notices";
+import { isWebPushConfigured } from "@/lib/notifications/web-push";
 import type { SubscriptionStatus } from "@/types/database";
 
 export const metadata: Metadata = {
@@ -201,7 +202,12 @@ export default async function DashboardLayout({
       isDemoMode={!context || !isSupabaseConfigured()}
       todoBell={
         todoCounts && todoWholesalerId ? (
-          <TodoBell initialCounts={todoCounts} initialNotices={notices} wholesalerId={todoWholesalerId} />
+          <TodoBell
+            initialCounts={todoCounts}
+            initialNotices={notices}
+            wholesalerId={todoWholesalerId}
+            pushConfigured={isWebPushConfigured()}
+          />
         ) : null
       }
     >

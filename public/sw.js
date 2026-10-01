@@ -1,7 +1,7 @@
 /*
  * 웹푸시 서비스워커 — 하는 일은 두 가지뿐이다.
  * 1) 서버가 보낸 푸시를 받아 알림으로 띄운다.
- * 2) 알림을 누르면 그 화면(기본: 고객 주문)을 연다 — 이미 열려 있는 탭이 있으면 그 탭으로 간다.
+ * 2) 알림을 누르면 그 화면(기본: 고객 주문)을 연다 — 같은 화면이 이미 열려 있으면 그 탭으로 간다.
  * 오프라인 캐시는 일부러 안 한다(화면이 옛 상태로 보이는 사고를 피하기 위해).
  */
 
@@ -37,19 +37,34 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const url = new URL((event.notification.data && event.notification.data.url) || "/dashboard/orders", self.location.origin).href;
+  const target = new URL((event.notification.data && event.notification.data.url) || "/dashboard/orders", self.location.origin);
+
+  // 경로만 비교한다 — 같은 화면이 ?탭=… 같은 꼬리를 달고 열려 있어도 그 탭을 쓴다.
+  const samePath = (client) => {
+    try {
+      return new URL(client.url).pathname === target.pathname;
+    } catch {
+      return false;
+    }
+  };
+
+  // navigate()는 이 서비스워커가 관리하지 않는 탭(워커 설치 전에 연 탭 등)에서는 거부된다 — 그땐 새 창으로.
+  const open = () => self.clients.openWindow(target.href);
 
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
-      const same = windows.find((client) => client.url === url && "focus" in client);
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((windows) => {
+        const same = windows.find((client) => samePath(client) && "focus" in client);
 
-      if (same) return same.focus();
+        if (same) return same.focus();
 
-      const any = windows.find((client) => "navigate" in client && "focus" in client);
+        const any = windows.find((client) => "navigate" in client && "focus" in client);
 
-      if (any) return any.navigate(url).then((client) => (client ? client.focus() : undefined));
+        if (any) return any.navigate(target.href).then((client) => (client ? client.focus() : open()));
 
-      return self.clients.openWindow(url);
-    })
+        return open();
+      })
+      .catch(open)
   );
 });

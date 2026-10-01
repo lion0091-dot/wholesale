@@ -1,6 +1,7 @@
 "use client";
 
 import { INBOUND_ANCHORS } from "@/lib/livestock/inbound-next-step";
+import { markSelfChange } from "@/lib/livestock/self-change-marker";
 import { TraceNoFixer } from "./trace-no-fixer";
 import { HIGHLIGHT_BUTTON, HIGHLIGHT_FIELD, ResultCardView, StepCard, type StepCardStep } from "./step-card";
 import {
@@ -267,6 +268,12 @@ export function InboundScanView({
   partOptions,
 }: Props) {
   const router = useRouter();
+
+  // 내가 바꾼 뒤 다시 그릴 때는 표시를 남긴다 — 입고 화면의 Realtime 재조회(inbound-live-refresh)가 같은 변화에 또 반응하지 않게.
+  const refreshAfterOwnChange = () => {
+    markSelfChange();
+    refreshAfterOwnChange();
+  };
 
   // 지금 온 거래처 — 한 번 고르면 다음 박스에도 그대로 남는다(한 차 분량은 대체로 한 거래처). 새로고침해도 기억한다.
   const [supplierId, setSupplierId] = useState("");
@@ -564,7 +571,7 @@ export function InboundScanView({
         }
       }
 
-      router.refresh();
+      refreshAfterOwnChange();
     },
     [router, labeledWeight, supplierId, canEditPurchasePrice, products, partHint, storageHint]
   );
@@ -898,7 +905,7 @@ export function InboundScanView({
       setNotice(`${storage}으로 정해 입고했습니다${result.data?.productName ? ` — ${result.data.productName}` : ""}.`);
     }
 
-    router.refresh();
+    refreshAfterOwnChange();
   };
 
   const handleResolve = async (scanId: string, productId: string, remember = true) => {
@@ -913,7 +920,7 @@ export function InboundScanView({
 
     if (result.data?.po?.result === "REJECTED") {
       setError(`상품은 지정했지만 이 박스는 받지 않았습니다 — ${rejectionSummary(result.data.po)} 재고에는 넣지 않았습니다.`);
-      router.refresh();
+      refreshAfterOwnChange();
       return;
     }
 
@@ -935,7 +942,7 @@ export function InboundScanView({
       setNotice("상품을 지정했습니다. 같은 부위는 다음부터 자동으로 연결됩니다.");
     }
 
-    router.refresh();
+    refreshAfterOwnChange();
   };
 
   const handleResolveToOrder = async (scanId: string) => {
@@ -963,7 +970,7 @@ export function InboundScanView({
       setOrderTargetScanId(null);
       setOrderTargetProductId("");
       setOrderTargetOrderId("");
-      router.refresh();
+      refreshAfterOwnChange();
       return;
     }
 
@@ -986,7 +993,7 @@ export function InboundScanView({
     setOrderTargetScanId(null);
     setOrderTargetProductId("");
     setOrderTargetOrderId("");
-    router.refresh();
+    refreshAfterOwnChange();
   };
 
   const addSplitRow = () => {
@@ -1075,7 +1082,7 @@ export function InboundScanView({
       { id: "split-1", productId: "", weight: "", traceNo: "" },
     ]);
     setSplitMode(false);
-    router.refresh();
+    refreshAfterOwnChange();
   };
 
   // 개발용 미리보기 — 데이터·빌더는 lib/dev-samples/inbound.ts에 모아뒀다.
@@ -1105,7 +1112,7 @@ export function InboundScanView({
 
     setResultCard(null);
     setNotice("방금 찍은 박스를 취소했습니다.");
-    router.refresh();
+    refreshAfterOwnChange();
   };
 
   const handleVoid = async (scan: InboundScanRow) => {
@@ -1120,7 +1127,7 @@ export function InboundScanView({
       return;
     }
 
-    router.refresh();
+    refreshAfterOwnChange();
   };
 
   // 박스 분류입고 — 코드 한 번 → 상품·무게 2개 이상 → 전체 입고. 카드와 칸 강조가 같은 판단을 쓴다.

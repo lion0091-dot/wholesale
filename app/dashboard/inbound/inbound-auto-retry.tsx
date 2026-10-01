@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { markSelfChange } from "@/lib/livestock/self-change-marker";
 import { retryUnresolvedScansAction } from "./actions";
 
 /** 화면이 열려 있는 동안 이력조회 실패 박스를 몇 분마다 시스템이 다시 조회한다(같은 박스는 서버가 30분에 한 번만). 눈에 보이는 것은 없다. */
@@ -19,7 +20,10 @@ export function InboundAutoRetry() {
       const result = await retryUnresolvedScansAction();
 
       // 조회가 되어 재고에 들어간 박스가 있으면 화면을 새로 그린다.
-      if (!cancelled && result.success && (result.data?.resolved ?? 0) > 0) router.refresh();
+      if (!cancelled && result.success && (result.data?.resolved ?? 0) > 0) {
+        markSelfChange();
+        router.refresh();
+      }
     };
 
     void run();

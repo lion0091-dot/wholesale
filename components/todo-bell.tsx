@@ -53,10 +53,13 @@ export function TodoBell({
   initialCounts,
   initialNotices,
   wholesalerId,
+  pushConfigured,
 }: {
   initialCounts: TodoCounts;
   initialNotices: InternalNotice[];
   wholesalerId: string;
+  /** 서버에 웹푸시 키가 전부 있는가 — 없으면 "알림 받기" 줄을 안 그린다(알림톡만 동작). */
+  pushConfigured: boolean;
 }) {
   const [counts, setCounts] = useState(initialCounts);
   const [notices, setNotices] = useState(initialNotices);
@@ -253,7 +256,7 @@ export function TodoBell({
             padding: "6px",
           }}
         >
-          <PushToggle />
+          <PushToggle configured={pushConfigured} />
 
           <div style={{ padding: "8px 10px 6px", fontSize: "12px", fontWeight: 700, color: "#64748b" }}>
             지금 할 일

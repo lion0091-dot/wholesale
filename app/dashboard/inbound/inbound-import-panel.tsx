@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { parseImportTable, type ImportRow } from "@/lib/livestock/import-parser";
 import { decodeDocumentFileText } from "@/lib/livestock/document-file-text";
+import { markSelfChange } from "@/lib/livestock/self-change-marker";
 import {
   createImportJobAction,
   processImportChunkAction,
@@ -86,6 +87,7 @@ export function InboundImportPanel() {
     }
 
     setRunning(false);
+    markSelfChange();
     router.refresh();
   };
 

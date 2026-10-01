@@ -1,10 +1,36 @@
 /**
- * 웹푸시 구독(마이그 189) — RLS(내 행만, 내가 속한 업체만)와 채널 선택 규칙(켠 사람 있으면 알림톡 생략)을 실제 DB로 본다.
- * 실제 브라우저 회사 서버로는 못 보내므로(가짜 주소) "보내려 했고 알림톡은 안 갔다"까지만 확인한다.
+ * 웹푸시 구독(마이그 189) — RLS(내 행만, 내가 속한 업체만)와 채널 선택 규칙(접수된 푸시가 있으면 알림톡 생략,
+ * 구독이 전부 죽었으면 지우고 알림톡)을 실제 DB로 본다. 브라우저 회사 서버는 흉내 낸다(web-push 모듈 mock).
  */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { actAs, adminClient, getActorClient, seedWorld, type World } from "./harness";
+
+/** endpoint별 흉내 — 숫자면 그 상태코드로 실패(410=구독 죽음), 없으면 접수 성공 */
+const pushBehavior = new Map<string, number>();
+
+vi.mock("web-push", () => {
+  class WebPushError extends Error {
+    statusCode: number;
+    constructor(message: string, statusCode: number) {
+      super(message);
+      this.statusCode = statusCode;
+    }
+  }
+
+  return {
+    WebPushError,
+    default: {
+      sendNotification: async (subscription: { endpoint: string }) => {
+        const code = pushBehavior.get(subscription.endpoint);
+
+        if (code) throw new WebPushError("push failed", code);
+
+        return { statusCode: 201 };
+      },
+    },
+  };
+});
 
 vi.mock("@/lib/notifications/alimtalk", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/notifications/alimtalk")>();
@@ -67,6 +93,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   alimtalk.mockClear();
+  pushBehavior.clear();
   delete process.env.WEB_PUSH_VAPID_PUBLIC_KEY;
   delete process.env.WEB_PUSH_VAPID_PRIVATE_KEY;
   delete process.env.WEB_PUSH_CONTACT;
@@ -82,6 +109,10 @@ describe("웹푸시 구독 RLS", () => {
     process.env.WEB_PUSH_VAPID_PRIVATE_KEY = TEST_VAPID.privateKey;
     process.env.WEB_PUSH_CONTACT = "mailto:test@example.com";
 
+    // 브라우저가 줄 리 없는 값(https 아님·키 빠짐)은 저장 전에 거른다.
+    expect((await savePushSubscriptionAction({ endpoint: "http://insecure/x", keys: { p256dh: "k", auth: "a" } })).success).toBe(false);
+    expect((await savePushSubscriptionAction({ endpoint: "https://ok/x", keys: { p256dh: "", auth: "a" } })).success).toBe(false);
+
     const result = await savePushSubscriptionAction(fakeSubscription("staffA"));
 
     expect(result.success).toBe(true);
@@ -89,6 +120,23 @@ describe("웹푸시 구독 RLS", () => {
     const mine = await getActorClient().from("push_subscriptions").select("wholesaler_id, user_id");
 
     expect(mine.data).toEqual([{ wholesaler_id: world.wholesalerA, user_id: world.users.staffA.id }]);
+  });
+
+  it("같은 브라우저를 다른 계정이 켜면 그 계정 것으로 바뀐다(사무실 PC 공용)", async () => {
+    process.env.WEB_PUSH_VAPID_PUBLIC_KEY = TEST_VAPID.publicKey;
+    process.env.WEB_PUSH_VAPID_PRIVATE_KEY = TEST_VAPID.privateKey;
+    process.env.WEB_PUSH_CONTACT = "mailto:test@example.com";
+
+    await actAs(world.users.managerA);
+    expect((await savePushSubscriptionAction(fakeSubscription("staffA"))).success).toBe(true);
+
+    const { data } = await adminClient().from("push_subscriptions").select("user_id").eq("endpoint", fakeSubscription("staffA").endpoint).single();
+
+    expect(data?.user_id).toBe(world.users.managerA.id);
+
+    // 되돌려 둔다(뒤 테스트는 staffA 것으로 가정).
+    await actAs(world.users.staffA);
+    expect((await savePushSubscriptionAction(fakeSubscription("staffA"))).success).toBe(true);
   });
 
   it("남의 구독은 안 보이고, 남의 업체로는 못 넣는다", async () => {
@@ -128,6 +176,28 @@ describe("채널 선택 — 푸시 켠 사람 있으면 알림톡 생략", () =>
 
     await notifyWholesalerNewOrder(orderPayload(world.wholesalerB));
     expect(alimtalk).toHaveBeenCalledTimes(1);
+  });
+
+  it("켠 브라우저가 전부 죽어 있으면(410) 그 자리에서 지우고 그 주문은 알림톡으로 간다", async () => {
+    process.env.WEB_PUSH_VAPID_PUBLIC_KEY = TEST_VAPID.publicKey;
+    process.env.WEB_PUSH_VAPID_PRIVATE_KEY = TEST_VAPID.privateKey;
+    process.env.WEB_PUSH_CONTACT = "mailto:test@example.com";
+
+    await actAs(world.users.staffA);
+    expect((await savePushSubscriptionAction(fakeSubscription("dead"))).success).toBe(true);
+    pushBehavior.set(fakeSubscription("staffA").endpoint, 410);
+    pushBehavior.set(fakeSubscription("dead").endpoint, 410);
+
+    await notifyWholesalerNewOrder(orderPayload(world.wholesalerA));
+
+    expect(alimtalk).toHaveBeenCalledTimes(1);
+
+    const { data: left } = await adminClient().from("push_subscriptions").select("endpoint").eq("wholesaler_id", world.wholesalerA);
+
+    expect(left).toEqual([]);
+
+    // 뒤 테스트를 위해 staffA 구독을 되살린다.
+    expect((await savePushSubscriptionAction(fakeSubscription("staffA"))).success).toBe(true);
   });
 
   it("끄면 다시 알림톡으로 간다", async () => {

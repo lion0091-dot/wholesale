@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { removePushSubscriptionAction, savePushSubscriptionAction } from "@/app/actions/push-subscription";
 
-/** 빌드 때 박히는 공개키 — 없으면 이 버튼은 아예 안 그린다(알림톡만 동작). */
+/** 빌드 때 박히는 공개키. 서버 쪽 키(비밀키·연락처)까지 다 있을 때만 그린다 — 부모가 configured로 알려준다. */
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY ?? "";
 
 type PushState =
@@ -41,7 +41,8 @@ function isStandalone(): boolean {
  * 종 패널 맨 위 "이 폰으로 알림 받기" 한 줄. 켜면 이 브라우저가 새 주문·주문 수정·취소 요청·여신 초과 알림을
  * 화면이 꺼져 있어도 받는다(웹푸시). 켜고 끄는 건 브라우저 하나 단위다 — 폰·PC 각각 켜야 한다.
  */
-export function PushToggle() {
+export function PushToggle({ configured }: { configured: boolean }) {
+  const enabled = configured && Boolean(VAPID_PUBLIC_KEY);
   const [state, setState] = useState<PushState>("checking");
   const [error, setError] = useState<string | null>(null);
 
@@ -52,7 +53,7 @@ export function PushToggle() {
   }, []);
 
   useEffect(() => {
-    if (!VAPID_PUBLIC_KEY) return;
+    if (!enabled) return;
 
     let cancelled = false;
 
@@ -81,16 +82,27 @@ export function PushToggle() {
 
         if (cancelled) return;
 
-        if (subscription) {
-          // 브라우저엔 구독이 남아 있는데 서버 행이 없을 수 있다(계정 바뀜·DB 정리). 조용히 다시 맞춰 둔다.
-          const json = subscription.toJSON();
+        if (!subscription) {
+          setState("off");
 
-          if (json.endpoint && json.keys?.p256dh && json.keys?.auth) {
-            void savePushSubscriptionAction({ endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } });
-          }
+          return;
+        }
 
+        // 브라우저엔 구독이 남아 있는데 서버 행이 없거나 다른 계정 것일 수 있다(계정 바뀜·DB 정리). 다시 맞춰 두되,
+        // 서버가 거절하면 "켜진 척"하지 않는다 — 구독을 풀고 꺼짐으로 보여 사용자가 다시 켤 수 있게 한다.
+        const json = subscription.toJSON();
+        const result =
+          json.endpoint && json.keys?.p256dh && json.keys?.auth
+            ? await savePushSubscriptionAction({ endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } })
+            : { success: false, error: "브라우저가 알림 주소를 주지 않았습니다." };
+
+        if (cancelled) return;
+
+        if (result.success) {
           setState("on");
         } else {
+          await subscription.unsubscribe().catch(() => undefined);
+          setError(result.error ?? "알림 설정을 다시 확인하지 못했습니다. 다시 켜주세요.");
           setState("off");
         }
       } catch {
@@ -103,7 +115,7 @@ export function PushToggle() {
     return () => {
       cancelled = true;
     };
-  }, [registration]);
+  }, [enabled, registration]);
 
   const enable = async () => {
     setError(null);
@@ -165,7 +177,7 @@ export function PushToggle() {
     }
   };
 
-  if (!VAPID_PUBLIC_KEY || state === "checking" || state === "unsupported") return null;
+  if (!enabled || state === "checking" || state === "unsupported") return null;
 
   const rowStyle: React.CSSProperties = {
     display: "flex",

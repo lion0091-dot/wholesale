@@ -14,9 +14,9 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import type { PushMessage } from "@/lib/notifications/push-messages";
 
 export interface PushSendResult {
-  /** 켜 둔 브라우저 수(발송 대상). 0이면 호출부가 알림톡으로 대신 보낸다. */
+  /** 켜 둔 브라우저 수(발송 대상) */
   subscribers: number;
-  /** 브라우저 회사 서버가 접수한 수(수신 보장 아님) */
+  /** 브라우저 회사 서버가 접수한 수(수신 보장 아님). 0이면 호출부가 알림톡으로 대신 보낸다. */
   accepted: number;
   /** 죽어서 지운 구독 수 */
   pruned: number;
@@ -43,22 +43,6 @@ function vapid(): { publicKey: string; privateKey: string; contact: string } | n
 
 export function isWebPushConfigured(): boolean {
   return vapid() !== null;
-}
-
-/** 이 업체에 알림 받기를 켠 브라우저가 하나라도 있는가 — 알림톡을 생략할지 정하는 기준. */
-export async function hasPushSubscribers(wholesalerId: string): Promise<boolean> {
-  if (!isWebPushConfigured()) return false;
-
-  const supabase = createServiceRoleClient();
-
-  if (!supabase) return false;
-
-  const { count } = await supabase
-    .from("push_subscriptions")
-    .select("id", { count: "exact", head: true })
-    .eq("wholesaler_id", wholesalerId);
-
-  return (count ?? 0) > 0;
 }
 
 /**
