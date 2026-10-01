@@ -17,11 +17,6 @@ import {
   type ScanPurchaseOrder,
 } from "@/lib/livestock/scan-purchase-order";
 import { retroactivePurchaseOrderFromDb, type RetroactivePurchaseOrderResult } from "@/lib/livestock/retroactive-purchase-order";
-import {
-  searchImportedTrace,
-  MeatwatchNotConfiguredError,
-  type ImportedTraceSearchResult,
-} from "@/lib/livestock/meatwatch-client";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -1529,42 +1524,6 @@ export async function getScanLocationPhotoUrlAction(
 
     return { success: true, data: data.signedUrl };
   } catch (error) {
-    return toResult(error);
-  }
-}
-
-/**
- * 수입축산물 이력 조회 (사무실용 별도 도구).
- *
- * 이 API는 이력번호로 직접 조회가 안 되고 수입일자(필수)로만 목록을 받을 수 있다
- * (meatwatch-client.ts 헤더 코멘트 참고). 그래서 현장 스캔 화면에는 안 붙이고,
- * 수입일자를 알고 있는 사무실 직원이 직접 조회해 번호가 맞는지 확인하는 용도로만 쓴다.
- */
-export async function searchImportedTraceAction(input: {
-  importDate: string;
-  productName?: string;
-  blNo?: string;
-  originNation?: string;
-}): Promise<ActionResult<ImportedTraceSearchResult>> {
-  try {
-    await requireOrgRole(INBOUND_ROLES);
-
-    if (!input.importDate?.trim()) {
-      throw new RbacError("수입일자를 입력해주세요.");
-    }
-
-    const data = await searchImportedTrace(input.importDate, {
-      productName: input.productName?.trim() || undefined,
-      blNo: input.blNo?.trim() || undefined,
-      originNation: input.originNation?.trim() || undefined,
-    });
-
-    return { success: true, data };
-  } catch (error) {
-    if (error instanceof MeatwatchNotConfiguredError) {
-      return { success: false, error: "수입육 이력 조회 키(MEATWATCH_API_KEY)가 설정되지 않았습니다." };
-    }
-
     return toResult(error);
   }
 }
