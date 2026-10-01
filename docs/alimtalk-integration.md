@@ -8,7 +8,7 @@
 |---|---|---|
 | 알림톡 **유지** (고객용, 화면 안 보는 상황·전달 확실해야 함) | `receivablesReminder` 미수금 독촉 · `creditLimitIncreased` 외상 가능 · `retailerBlockedRetailer` 거래 제한 · `retailerResumedRetailer` 거래 재개 | 그대로 |
 | 알림톡 **→ 웹푸시 예정** (공급사용) | `orderNew` · `orderEdited` · `cancelRequest` · `creditExceeded` | 웹푸시 구현 전까지는 알림톡 유지. 지금은 대표 1명 번호로만 가고 직원은 못 받는데, 웹푸시면 직원 전원이 받는다 |
-| 알림톡 **제거 → 대시보드 알림함 예정** (내부 기록, 급하지 않음) | 여신 한도 변경 · 거래처 정지 · 거래처 재개 (대표에게 "누가 했는지" 통지하던 3종) | 템플릿·발송 함수·호출부 삭제(2026-10-01). 알림함은 별도 단계 |
+| 알림톡 **제거 → 대시보드 알림함** (내부 기록, 급하지 않음) | 여신 한도 변경 · 거래처 정지 · 거래처 재개 (대표에게 "누가 했는지" 통지하던 3종) | 템플릿·발송 함수·호출부 삭제(2026-10-01). 알림함은 같은 날 2단계로 완료 — **새 표 없음**, `audit_log`(013 트리거)에서 RPC `list_wholesaler_internal_notices`(마이그 188)로 최근 14일·10건을 읽어 종 🔔 패널 "최근 알림" 칸에 표시. 대표·매니저만(RPC 게이트, 직원은 빈 배열). 빨간 숫자(할 일)에는 안 섞고 이 기기에서 안 본 항목이 있으면 종 옆 **파란 점**만(localStorage, 서버 읽음 저장 없음 — 사장님 A안). `wholesaler_retailers`도 Realtime 발행에 추가. 테스트 `tests/integration/internal-notices.itest.ts`(권한·문구·이력 3,000건 부하 400ms 상한) |
 | 알림톡 **제거** | 고객 외상 주문 거절 안내 | 고객이 그 순간 화면에서 거절 문구를 이미 본다. 삭제 |
 | 화면 알림 **Realtime** | 종 배지 3항목(`lib/supplier/todo-counts.ts`) · 고객 미니샵 배송 벨 | 30초 주기 조회 → `orders`·`inbound_scans` 변화 구독(마이그 187, `lib/hooks/use-realtime-refresh.ts`). 종 배지는 5분 안전망 주기만 남김 |
 | 추가 **안 함** | 배송 시작 알림톡 | "진짜 배송 알림은 배송기사가 보내준다"(사장님). 재제안 금지 |

@@ -6,6 +6,7 @@ import { FALLBACK_DISPLAY_NAME, resolveDisplayName } from "@/lib/auth/display-na
 import { DashboardShell, type DashboardNavItem } from "./dashboard-shell";
 import { TodoBell } from "@/components/todo-bell";
 import { fetchTodoCounts, type TodoCounts } from "@/lib/supplier/todo-counts";
+import { fetchInternalNotices, type InternalNotice } from "@/lib/supplier/internal-notices";
 import type { SubscriptionStatus } from "@/types/database";
 
 export const metadata: Metadata = {
@@ -113,6 +114,8 @@ export default async function DashboardLayout({
   // 종 배지용 업체 범위. 슈퍼관리자 미소속·업체 레코드 없음이면 null이라 배지를 숨긴다.
   let todoWholesalerId: string | null = null;
   let todoCounts: TodoCounts | null = null;
+  // 알림함(여신 한도·거래 정지/재개 기록) — 대표·매니저만. 직원이면 빈 배열이라 칸이 안 보인다.
+  let notices: InternalNotice[] = [];
 
   if (context) {
     roleLabel = context.isSuperAdmin
@@ -172,7 +175,10 @@ export default async function DashboardLayout({
     }
 
     if (todoWholesalerId) {
-      todoCounts = await fetchTodoCounts(supabase, todoWholesalerId);
+      [todoCounts, notices] = await Promise.all([
+        fetchTodoCounts(supabase, todoWholesalerId),
+        fetchInternalNotices(supabase, todoWholesalerId),
+      ]);
     }
   }
 
@@ -195,7 +201,7 @@ export default async function DashboardLayout({
       isDemoMode={!context || !isSupabaseConfigured()}
       todoBell={
         todoCounts && todoWholesalerId ? (
-          <TodoBell initialCounts={todoCounts} wholesalerId={todoWholesalerId} />
+          <TodoBell initialCounts={todoCounts} initialNotices={notices} wholesalerId={todoWholesalerId} />
         ) : null
       }
     >
