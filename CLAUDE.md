@@ -51,6 +51,10 @@
 
 - [docs/alimtalk-integration.md](docs/alimtalk-integration.md) — 기존 스텁(플랫폼 공용 키 가정)을 공급사별 자격정보(비즈뿌리오 1:1 계약) 구조로 전면 재설계. 잠긴 설계 결정(비밀번호 AES 암호화 저장, 설정 화면 owner/manager 전용), 비즈뿌리오 API 스펙, 코드 전부 완료. 실계정 미검증. **2026-09-30 추가(사장님 결정)**: "플랫폼은 대행사 계정을 대신 관리하지 않는다"가 절대 규칙에서 기본값 우선순위로 바뀜 — 공급사 개별 등록(`wholesalers.alimtalk_*`)이 항상 우선하되, 없으면 플랫폼 대표 채널(`ALIMTALK_PLATFORM_*` 환경변수, 아직 비어있음)로 폴백. 대량 방송 기능이 코드에 없어(전부 이벤트 1건=수신자 1명) 비용 폭증 위험은 낮지만 종량제 비용 자체는 발생. 환경변수 채워 실제 가동 시 `app/privacy/page.tsx` 5조(비즈뿌리오를 "공급사가 직접 계약"→"회사가 위탁"으로 이동) 동시 수정 필수, 아직 안 함.
 
+## 재고 재설계 "재고는 박스, 상품은 조건" (2026-10-01, 설계안·승인 대기, 코드 없음)
+
+- [docs/stock-redesign-boxes-and-conditions.md](docs/stock-redesign-boxes-and-conditions.md) — 등급 섞인 로트 박스가 첫 개체 등급으로 정밀 상품 재고에 들어가는 거짓 재고(실조회 `L02011163016114`로 확정) 해결. 박스 꼬리표(조회로만 채움, 로트는 구성 순회·"혼합") + 상품=조건(NULL=상관없음, 같은 박스가 여러 상품 재고에 동시 집계) + 접는 트리 재고 화면 + 쪼개기(지육→부위 박스) + 발주 대조는 부위·중량만. **승인 전엔 코드 손대지 말 것.** 원칙: 현장 수작업은 실중량뿐, 유저가 구조를 이해할 필요 없음.
+
 ## 알림 채널 정리 — 알림톡 8종·화면 알림 Realtime (2026-10-01, 별도 기능)
 
 - [docs/alimtalk-integration.md](docs/alimtalk-integration.md) 맨 위 "2026-10-01 추가" 절 — 알림 14건을 "받는 사람이 그 순간 화면을 보는가"로 나눠 채널 확정. 알림톡 12종→8종(내부 통지 3종은 대시보드 알림함 예정, 고객 외상 거절은 삭제), 공급사용 4종은 웹푸시로 대체 예정(미착수), 종 배지·고객 배송 벨은 Realtime(마이그 187, `lib/hooks/use-realtime-refresh.ts`). ② 알림함 완료(마이그 188, 새 표 없이 `audit_log` 재사용, `lib/supplier/internal-notices.ts`, 대표·매니저만, 숫자 대신 파란 점). ③ 웹푸시 완료(마이그 189 `push_subscriptions`, `web-push` 의존성, `lib/notifications/wholesaler-alerts.ts`가 "켠 브라우저 있으면 푸시만, 없으면 알림톡" 선택, VAPID 키 없으면 버튼 숨김·알림톡만). **배송 시작 알림톡은 추가하지 않는다(배송기사가 알림)**. 입고 화면도 Realtime(`inbound-live-refresh.tsx`).
