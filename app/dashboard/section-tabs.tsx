@@ -1,4 +1,5 @@
 import { PillTabs } from "./pill-tabs";
+import { FEATURE_KEYS, getMyUsableFeatures } from "@/lib/features/my-features";
 
 /**
  * 사이드바 메뉴 하나로 묶인 화면들의 공통 탭(2026-09-25 메뉴 통합).
@@ -25,6 +26,7 @@ const PRODUCT_TABS = [
 const STOCK_TABS = [
   { label: "재고 보기", href: "/dashboard/stock-boxes" },
   { label: "입출고 내역", href: "/dashboard/stock-ledger" },
+  { label: "소비기한", href: "/dashboard/stock-expiring" },
   { label: "매입 정산", href: "/dashboard/purchases" },
   { label: "발주 추천", href: "/dashboard/reorder-suggestions" },
 ] as const;
@@ -49,8 +51,14 @@ export function ProductTabs() {
   return <PillTabs tabs={PRODUCT_TABS} ariaLabel="상품 관련 화면" />;
 }
 
-export function StockTabs() {
-  return <PillTabs tabs={STOCK_TABS} ariaLabel="재고·매입 화면" />;
+// "원가 관리" 탭은 이 업체에서 기능이 켜져 있고, 대표이거나 대표가 허용한 사람에게만 보인다(마이그레이션 210).
+export async function StockTabs() {
+  const features = await getMyUsableFeatures();
+  const tabs = features.has(FEATURE_KEYS.costManagement)
+    ? [...STOCK_TABS, { label: "원가 관리", href: "/dashboard/stock-valuation" }]
+    : STOCK_TABS;
+
+  return <PillTabs tabs={tabs} ariaLabel="재고·매입 화면" />;
 }
 
 export function InboundTabs() {

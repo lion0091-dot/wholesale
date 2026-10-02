@@ -6,6 +6,7 @@ const counts = (overrides: Partial<TodoCounts> = {}): TodoCounts => ({
   newOrders: 0,
   cancelRequests: 0,
   needsCheckBoxes: 0,
+  expiringBoxes: 0,
   ...overrides,
 });
 
@@ -15,7 +16,7 @@ describe("종 배지 합계", () => {
   });
 
   it("모든 항목을 더한다", () => {
-    expect(totalTodo(counts({ newOrders: 3, cancelRequests: 1, needsCheckBoxes: 2 }))).toBe(6);
+    expect(totalTodo(counts({ newOrders: 3, cancelRequests: 1, needsCheckBoxes: 2, expiringBoxes: 4 }))).toBe(10);
   });
 
   it("목록 키가 카운트 키와 하나도 빠지거나 겹치지 않는다", () => {

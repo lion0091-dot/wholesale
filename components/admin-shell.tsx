@@ -11,7 +11,10 @@ const ADMIN_NAV_GROUPS: SidebarNavItem[][] = [
     { href: "/admin/retailer-leads", label: "입점 리드", icon: "📋" },
     { href: "/admin/suppliers", label: "공급사 승인", icon: "🏢" },
   ],
-  [{ href: "/admin/categories", label: "상품 카테고리", icon: "🗂️" }],
+  [
+    { href: "/admin/categories", label: "상품 카테고리", icon: "🗂️" },
+    { href: "/admin/features", label: "기능 관리", icon: "🧩" },
+  ],
   [
     { href: "/admin/billing", label: "청구·수납", icon: "🧾" },
     { href: "/admin/stats", label: "구독 추이", icon: "📈" },

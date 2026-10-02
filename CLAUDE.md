@@ -176,3 +176,7 @@ Claude Max 요금제는 잔량 조회 API가 없어 실시간 동적 라우팅�
 ## 원가 접근 제한 — 대표 + 전표 담당 직원, 업체별 정책 (2026-10-02, 별도 기능)
 
 - [docs/cost-access.md](docs/cost-access.md) — 원가(입고 박스 매입단가·금액, 전표 줄 단가, 기본 매입단가)를 누가 볼 수 있는지와 업체별 정책(`wholesalers.cost_access_policy`, 기본은 기존과 같게·요청한 업체만 좁힘, 변경은 슈퍼관리자만). 컬럼 직접 조회 차단(`get_scan_costs`/`get_po_line_prices`로만 읽음), 전표 담당 직원(최대 인원은 업체 설정, 기본 2), 주문별 원가·마진 패널(마이그 208, 대표 전용). **`inbound_scans`·`purchase_order_lines`에 컬럼을 추가하면 컬럼 권한을 같이 열 것**(테스트 가드 있음). 마이그 209 운영 미적용, 재고 평가금액 미착수.
+
+## 업체별 기능 켜기/끄기 + 원가 관리(마진 패널·재고 평가) (2026-10-02, 별도 기능)
+
+- [docs/wholesaler-features.md](docs/wholesaler-features.md) — 기능 메뉴판(`platform_features`)·업체별 켜짐(`wholesaler_features`)·업체 안 허용 명단(`wholesaler_feature_viewers`), 운영자가 `/admin/features`에서 켜고 끄고 대표가 팀원 관리에서 누가 볼지 정함. 기능별 월 이용료 칸은 뒀다가 뺐다(구독료 연결은 정책 확정 후). 첫 기능 `cost_management`(주문 마진 + 재고 평가 탭, 지금은 모든 업체 켜짐). **새 선택 기능은 메뉴판에 한 줄 등록 + 기능 DB 함수 맨 앞에서 `can_use_feature` 검사 + 켠/끈 경우 둘 다 테스트.** 켜진 기간 이력(`wholesaler_feature_periods`, 고칠 수 없음, 어드민 이력 화면), 알림벨 소비기한 임박 박스(211), 전표 조회 정책 속도(212). 마이그 210·211·212 운영 미적용.

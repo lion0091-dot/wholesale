@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { getOrgStaffContext } from "@/lib/auth/rbac";
-import { listOrganizationStaff, listStaffInvitesAction } from "@/app/actions/organization";
+import { listFeatureViewersAction, listOrganizationStaff, listStaffInvitesAction } from "@/app/actions/organization";
+import { FEATURE_KEYS, getMyUsableFeatures } from "@/lib/features/my-features";
 import { TeamManagementPanel } from "./team-management-panel";
 import { SettingsHeader } from "../settings-tabs";
 
@@ -69,6 +70,10 @@ export default async function TeamPage() {
 
   const canManage = context.orgRole === "owner" || context.orgRole === "manager";
 
+  // 원가 관리처럼 업체에 켜진 기능은 대표가 팀원별로 보기 허용을 정한다. 꺼진 업체에는 이 줄이 아예 안 보인다.
+  const costManagementEnabled = context.orgRole === "owner" && (await getMyUsableFeatures()).has(FEATURE_KEYS.costManagement);
+  const costViewers = costManagementEnabled ? await listFeatureViewersAction(FEATURE_KEYS.costManagement) : null;
+
   return (
     <main style={{ maxWidth: "720px", margin: "0 auto", padding: "24px 16px" }}>
       <SettingsHeader />
@@ -86,6 +91,8 @@ export default async function TeamPage() {
         canManage={canManage}
         initialStaff={staffResult.success ? staffResult.data ?? [] : []}
         initialInvites={inviteResult.success ? inviteResult.data ?? [] : []}
+        costManagementEnabled={costManagementEnabled}
+        initialCostViewerIds={costViewers?.success ? costViewers.data ?? [] : []}
       />
     </main>
   );

@@ -6,6 +6,7 @@ import {
   removeStaff,
   revokeStaffInviteAction,
   setDocumentClerkAction,
+  setFeatureViewerAction,
   updateStaffRole,
   type OrganizationStaffMember,
   type StaffInvite,
@@ -19,6 +20,9 @@ interface TeamManagementPanelProps {
   canManage: boolean;
   initialStaff: OrganizationStaffMember[];
   initialInvites: StaffInvite[];
+  /** 이 업체에서 "원가 관리"가 켜져 있고 내가 대표 — 팀원별 보기 허용 버튼을 보여준다. */
+  costManagementEnabled: boolean;
+  initialCostViewerIds: string[];
 }
 
 const ROLE_LABELS: Record<OrgRole, string> = {
@@ -63,9 +67,12 @@ export function TeamManagementPanel({
   canManage,
   initialStaff,
   initialInvites,
+  costManagementEnabled,
+  initialCostViewerIds,
 }: TeamManagementPanelProps) {
   const [staff, setStaff] = useState(initialStaff);
   const [invites, setInvites] = useState(initialInvites);
+  const [costViewerIds, setCostViewerIds] = useState(new Set(initialCostViewerIds));
   const [newInviteRole, setNewInviteRole] = useState<OrgRole>("staff");
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -153,6 +160,31 @@ export function TeamManagementPanel({
       }
 
       setStaff((prev) => prev.map((member) => (member.id === staffId ? { ...member, isDocumentClerk: value } : member)));
+      setBusyId(null);
+    });
+  };
+
+  const handleCostViewer = (staffId: string, userId: string, allowed: boolean) => {
+    setError(null);
+    setBusyId(staffId);
+
+    startTransition(async () => {
+      const result = await setFeatureViewerAction("cost_management", userId, allowed);
+
+      if (!result.success) {
+        setError(result.error ?? "허용을 바꾸지 못했습니다.");
+        setBusyId(null);
+        return;
+      }
+
+      setCostViewerIds((prev) => {
+        const next = new Set(prev);
+
+        if (allowed) next.add(userId);
+        else next.delete(userId);
+
+        return next;
+      });
       setBusyId(null);
     });
   };
@@ -267,6 +299,41 @@ export function TeamManagementPanel({
                     >
                       전표 담당
                     </span>
+                  )}
+
+                  {costManagementEnabled && member.role !== "owner" && costViewerIds.has(member.userId) && (
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "#1d4ed8",
+                        backgroundColor: "#dbeafe",
+                        borderRadius: "999px",
+                        padding: "3px 10px",
+                      }}
+                    >
+                      원가 관리 보기 허용
+                    </span>
+                  )}
+
+                  {costManagementEnabled && member.role !== "owner" && (
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => handleCostViewer(member.id, member.userId, !costViewerIds.has(member.userId))}
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        color: "#1d4ed8",
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #93c5fd",
+                        borderRadius: "6px",
+                        padding: "5px 10px",
+                        cursor: isBusy ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {costViewerIds.has(member.userId) ? "원가 관리 보기 해제" : "원가 관리 보기 허용"}
+                    </button>
                   )}
 
                   {orgRole === "owner" && member.role === "staff" && (

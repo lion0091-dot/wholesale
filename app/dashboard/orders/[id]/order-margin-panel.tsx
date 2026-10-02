@@ -31,7 +31,7 @@ export function OrderMarginPanel({ summary, status }: { summary: OrderMarginSumm
   return (
     <section style={{ ...cardStyle, borderColor: "#bbf7d0", backgroundColor: "#f0fdf4" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
-        <span style={{ fontSize: "13px", fontWeight: 700, color: "#14532d" }}>원가 · 마진</span>
+        <span style={{ fontSize: "13px", fontWeight: 700, color: "#14532d" }}>원가 관리 · 이 주문의 마진</span>
         <span
           style={{
             fontSize: "11px",
@@ -42,7 +42,7 @@ export function OrderMarginPanel({ summary, status }: { summary: OrderMarginSumm
             padding: "2px 7px",
           }}
         >
-          대표님만 보여요
+          허용된 사람만 보여요
         </span>
         {isEstimate && (
           <span

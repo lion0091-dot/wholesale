@@ -191,8 +191,13 @@ begin
 
             execute format('select count(*) from %s where wholesaler_id = %L', t.tbl, wa) into v_n;
             if v_n = 0 then v_ownblind := v_ownblind || t.relname || ' '; else v_meaningful := v_meaningful + 1; end if;
-        exception when others then
-            v_leaks := v_leaks || format('[읽기 오류 %s: %s] ', t.relname, left(sqlerrm, 60));
+        exception
+            when insufficient_privilege then
+                -- 일반 사용자에게 표 권한 자체를 주지 않은 표(예: 기능 켜짐 이력 wholesaler_feature_periods, 마이그레이션 210)는
+                -- 읽기가 통째로 막혀 있으니 남의 행이 보일 수 없다 — 격리가 지켜진 것으로 본다.
+                null;
+            when others then
+                v_leaks := v_leaks || format('[읽기 오류 %s: %s] ', t.relname, left(sqlerrm, 60));
         end;
 
         begin

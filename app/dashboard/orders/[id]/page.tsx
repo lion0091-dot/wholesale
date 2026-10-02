@@ -179,10 +179,10 @@ export default async function OrderDetailPage({ params }: PageProps) {
   const timeline = buildAlimtalkTimeline(order.status);
   const isLiveChannel = await isAlimtalkConfiguredForWholesaler(wholesalerId);
 
-  // 원가·마진은 대표만 본다. 매니저·직원·슈퍼관리자는 호출조차 하지 않고, 데이터도 DB 함수(get_order_margin)가 대표에게만 준다.
+  // 원가 관리(주문 마진)는 이 업체에서 기능이 켜져 있고, 대표이거나 대표가 허용한 사람만 본다(마이그레이션 210).
+  // 판단은 DB 함수(get_order_margin)가 하고, 안 되면 null이라 박스가 그냥 안 나온다. 슈퍼관리자는 부르지 않는다.
   const scope = await getSupplierScope();
-  const mayViewMargin = !!scope && !scope.isSuperAdmin && scope.orgRole !== "manager" && scope.orgRole !== "staff";
-  const margin = mayViewMargin ? await fetchOrderMargin(await createClient(), order.id) : null;
+  const margin = scope && !scope.isSuperAdmin ? await fetchOrderMargin(await createClient(), order.id) : null;
 
   // 카카오 인앱 브라우저 "외부에서 열기" 전용 — 세션 쿠키 없이도 인가되는 단발성 토큰.
   const statementExternalOpenHref = (() => {

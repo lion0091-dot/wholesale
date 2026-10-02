@@ -414,6 +414,52 @@ export async function listOrganizationStaff(): Promise<ActionResult<Organization
 }
 
 // ====================================================================
+// 6-1. 기능 사용 허용 목록 (대표 전용 — 켜진 기능을 업체 안에서 누가 쓸지, 마이그레이션 210)
+// ====================================================================
+const FEATURE_VIEWER_ERRORS: Record<string, string> = {
+  FORBIDDEN: "허용은 대표님만 할 수 있습니다.",
+  FEATURE_DISABLED: "이 기능은 아직 이 업체에서 켜져 있지 않습니다. 운영팀에 문의해 주세요.",
+  NOT_A_MEMBER: "우리 업체의 매니저·직원만 허용할 수 있습니다.",
+};
+
+export async function listFeatureViewersAction(featureKey: string): Promise<ActionResult<string[]>> {
+  try {
+    await requireSession();
+
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("list_feature_viewers", { p_key: featureKey });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return { success: true, data: ((data ?? []) as Array<{ user_id: string }>).map((row) => row.user_id) };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export async function setFeatureViewerAction(featureKey: string, userId: string, allowed: boolean): Promise<ActionResult> {
+  try {
+    await requireSession();
+
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("set_feature_viewer", { p_key: featureKey, p_user_id: userId, p_allowed: allowed });
+
+    if (error) {
+      const code = Object.keys(FEATURE_VIEWER_ERRORS).find((key) => error.message.includes(key));
+
+      throw new RbacError(code ? FEATURE_VIEWER_ERRORS[code] : "허용을 바꾸지 못했습니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+    return { success: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+// ====================================================================
 // 6. 전표 담당 지정·해제 (대표 전용, 회사당 최대 2명, 일반 직원만 — DB 함수 set_document_clerk가 강제)
 // ====================================================================
 const DOCUMENT_CLERK_ERRORS: Record<string, string> = {

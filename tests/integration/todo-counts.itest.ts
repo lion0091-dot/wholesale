@@ -62,6 +62,8 @@ describe("종 배지 집계", () => {
       newOrders: before!.newOrders + 2,
       cancelRequests: before!.cancelRequests + 1,
       needsCheckBoxes: before!.needsCheckBoxes + 1,
+      // 소비기한 임박·오래된 박스는 이 시나리오(주문·취소요청·확인 필요 박스)와 무관해 그대로다.
+      expiringBoxes: before!.expiringBoxes,
     });
 
     await admin.from("inbound_scans").delete().eq("trace_no", scanTrace);

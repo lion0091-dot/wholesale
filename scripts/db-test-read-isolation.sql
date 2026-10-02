@@ -32,7 +32,13 @@ begin
 
             perform set_config('request.jwt.claims', json_build_object('sub', w.profile_id, 'role', 'authenticated')::text, true);
             execute 'set local role authenticated';
-            execute format('select count(*) from public.%I where wholesaler_id is not null and wholesaler_id <> %L', t.relname, w.id) into v_vis;
+            begin
+                execute format('select count(*) from public.%I where wholesaler_id is not null and wholesaler_id <> %L', t.relname, w.id) into v_vis;
+            exception when insufficient_privilege then
+                -- 일반 사용자에게 표 권한 자체를 주지 않은 표(예: 기능 켜짐 이력 wholesaler_feature_periods, 마이그레이션 210)는
+                -- 읽기가 통째로 막혀 있으니 남의 행이 보일 수 없다 — 격리가 지켜진 것으로 본다.
+                v_vis := 0;
+            end;
             execute 'reset role';
 
             v_checked := v_checked + 1;
@@ -66,7 +72,11 @@ begin
 
             perform set_config('request.jwt.claims', json_build_object('sub', r.profile_id, 'role', 'authenticated')::text, true);
             execute 'set local role authenticated';
-            execute format('select count(*) from public.%I where retailer_id is not null and retailer_id <> %L', t.relname, r.id) into v_vis;
+            begin
+                execute format('select count(*) from public.%I where retailer_id is not null and retailer_id <> %L', t.relname, r.id) into v_vis;
+            exception when insufficient_privilege then
+                v_vis := 0;
+            end;
             execute 'reset role';
 
             v_checked := v_checked + 1;
