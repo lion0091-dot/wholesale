@@ -1,7 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
+import { formatWon } from "@/lib/orders/status";
+import { disposalReasonLabel, fetchBoxDisposals, type DisposalHistoryRow } from "@/lib/supplier/box-disposal";
 import { StockTabs } from "../section-tabs";
+import { DisposeBoxButton } from "./dispose-box-button";
 
 export const metadata = {
   title: "소비기한 임박 박스 | 도매업체 통합관리시스템",
@@ -43,9 +46,14 @@ export default async function StockExpiringPage() {
   }
 
   let boxes: ExpiringBox[] = [];
+  // 폐기는 대표만 — 이력 조회가 되면 대표다(DB가 대표가 아니면 거부한다).
+  let disposals: DisposalHistoryRow[] | null = null;
 
   if (scope?.wholesalerId) {
-    const { data } = await (await createClient()).rpc("get_expiring_boxes");
+    const supabase = await createClient();
+    const { data } = await supabase.rpc("get_expiring_boxes");
+
+    disposals = await fetchBoxDisposals(supabase);
 
     boxes = ((data ?? []) as Array<Record<string, unknown>>)
       .map((row) => ({
@@ -88,12 +96,13 @@ export default async function StockExpiringPage() {
                 <th>남은 양</th>
                 <th>소비기한</th>
                 <th>상태</th>
+                {disposals && <th>폐기</th>}
               </tr>
             </thead>
             <tbody>
               {boxes.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ color: "#64748b" }}>
+                  <td colSpan={disposals ? 6 : 5} style={{ color: "#64748b" }}>
                     소비기한이 임박했거나 오래된 박스가 없습니다.
                   </td>
                 </tr>
@@ -120,12 +129,54 @@ export default async function StockExpiringPage() {
                       </span>
                     )}
                   </td>
+                  {disposals && (
+                    <td>
+                      <DisposeBoxButton boxId={box.boxId} remaining={box.remaining} unit={box.unit} label={`${box.productName} ${box.traceNo}`} />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
+
+      {disposals && disposals.length > 0 && (
+        <section style={cardStyle}>
+          <h2 style={{ fontSize: "15px", fontWeight: 800, color: "#0f172a", margin: "8px 10px" }}>최근 폐기</h2>
+          <div className="dash-table-wrap">
+            <table className="dash-table">
+              <thead>
+                <tr>
+                  <th>일시</th>
+                  <th>상품</th>
+                  <th>이력번호</th>
+                  <th>폐기량</th>
+                  <th>사유</th>
+                  <th>손실 금액</th>
+                  <th>처리자</th>
+                </tr>
+              </thead>
+              <tbody>
+                {disposals.map((row) => (
+                  <tr key={row.id}>
+                    <td>{new Date(row.createdAt).toLocaleDateString("ko-KR")}</td>
+                    <td>{row.productName ?? "-"}</td>
+                    <td>{row.traceNo}</td>
+                    <td>{formatQty(row.weight)}</td>
+                    <td>
+                      {disposalReasonLabel(row.reasonCode)}
+                      {row.note ? ` — ${row.note}` : ""}
+                    </td>
+                    <td>{row.lossAmount === null ? "단가 없음" : formatWon(row.lossAmount)}</td>
+                    <td>{row.disposedByName}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
