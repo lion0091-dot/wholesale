@@ -34,6 +34,8 @@ export interface AlimtalkSettingsStatus {
   senderKey: string | null;
   senderPhone: string | null;
   templateCodes: AlimtalkTemplateCodes;
+  /** 공급사용 주문 알림에서 웹푸시를 아무도 못 받았을 때 알림톡으로 폴백할지(마이그 225, 기본 true) */
+  fallbackEnabled: boolean;
 }
 
 export interface SaveAlimtalkSettingsInput {
@@ -78,7 +80,7 @@ export async function getAlimtalkSettingsAction(): Promise<ActionResult<Alimtalk
 
     const { data, error } = await readWholesalerCredentials(
       scope.wholesalerId,
-      "alimtalk_account, alimtalk_password_encrypted, alimtalk_sender_key, alimtalk_sender_phone, alimtalk_template_codes"
+      "alimtalk_account, alimtalk_password_encrypted, alimtalk_sender_key, alimtalk_sender_phone, alimtalk_template_codes, alimtalk_fallback_enabled"
     );
 
     if (error) {
@@ -97,6 +99,7 @@ export async function getAlimtalkSettingsAction(): Promise<ActionResult<Alimtalk
         senderKey: (data.alimtalk_sender_key as string | null) ?? null,
         senderPhone: (data.alimtalk_sender_phone as string | null) ?? null,
         templateCodes: toTemplateCodes(data.alimtalk_template_codes),
+        fallbackEnabled: data.alimtalk_fallback_enabled !== false,
       },
     };
   } catch (error) {
@@ -147,6 +150,41 @@ export async function saveAlimtalkSettingsAction(
     // 위에서 owner/manager와 소속 공급사를 확인했다. wholesalers UPDATE 정책은 사장 본인만 통과시켜
     // 매니저 저장이 조용히 0행이 되므로 service_role로 쓴다.
     const { error } = await updateWholesalerCredentials(scope.wholesalerId, updates);
+
+    if (error) {
+      return { success: false, error };
+    }
+
+    revalidatePath("/dashboard/invites");
+
+    return { success: true };
+  } catch (error) {
+    if (error instanceof RbacError) {
+      return { success: false, error: error.message };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "저장 중 오류가 발생했습니다.",
+    };
+  }
+}
+
+/**
+ * 공급사용 주문 알림의 알림톡 폴백 켜기/끄기(마이그레이션 225). 웹푸시를 아무도 못 받았을 때만 쓰이는 안전망이라
+ * 끄면 그 주문은 알림톡 없이 지나간다 — 여신 한도 수정과 같은 기준으로 owner/manager만 바꾼다.
+ */
+export async function saveAlimtalkFallbackAction(enabled: boolean): Promise<ActionResult> {
+  try {
+    await requireOrgRole(["owner", "manager"]);
+
+    const scope = await getSupplierScope();
+
+    if (!scope?.wholesalerId) {
+      return { success: false, error: "로그인이 필요합니다. 다시 로그인 후 시도해주세요." };
+    }
+
+    const { error } = await updateWholesalerCredentials(scope.wholesalerId, { alimtalk_fallback_enabled: enabled === true });
 
     if (error) {
       return { success: false, error };

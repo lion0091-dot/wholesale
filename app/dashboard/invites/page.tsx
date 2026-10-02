@@ -14,6 +14,7 @@ import { BusinessLicenseForm } from "./business-license-form";
 import { ShopThumbnailForm } from "./shop-thumbnail-form";
 import { WithdrawWholesalerButton } from "./withdraw-wholesaler-button";
 import { AlimtalkSettingsForm } from "./alimtalk-settings-form";
+import { AlertFallbackToggle } from "./alert-fallback-toggle";
 import { getAlimtalkSettingsAction } from "@/app/actions/alimtalk-settings";
 import { PgSettingsForm } from "./pg-settings-form";
 import { getPgSettingsAction } from "@/app/actions/pg-settings";
@@ -291,6 +292,15 @@ export default async function DashboardInvitesPage() {
             고객(소매)의 &quot;내 거래처&quot; 목록에서 상호명 옆에 표시되는 업체 대표 사진/로고입니다.
           </p>
           <ShopThumbnailForm currentThumbnailUrl={account.shopThumbnailUrl} />
+        </section>
+      )}
+
+      {account.wholesalerId && alimtalkSettings && (
+        <section style={cardStyle}>
+          <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "8px" }}>
+            공급사 주문 알림 방식
+          </div>
+          <AlertFallbackToggle initialEnabled={alimtalkSettings.fallbackEnabled} />
         </section>
       )}
 

@@ -139,7 +139,7 @@ select 'authenticated','읽기 권한 없는 공개 컬럼: ' || column_name, 'g
    and column_name not like 'alimtalk\_%' and column_name <> 'pg_secret_key_encrypted'
    and not has_column_privilege('authenticated','public.wholesalers',column_name,'SELECT');
 insert into results (who,what,expected,result)
-values ('authenticated','숨김 컬럼 7개 전부 SELECT 권한 없음','7',
+values ('authenticated','숨김 컬럼 8개 전부 SELECT 권한 없음(알림톡 폴백 설정 컬럼 포함)','8',
         (select count(*)::text from information_schema.columns
           where table_schema='public' and table_name='wholesalers'
             and (column_name like 'alimtalk\_%' or column_name = 'pg_secret_key_encrypted')

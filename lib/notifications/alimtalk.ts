@@ -227,6 +227,26 @@ export async function isAlimtalkConfiguredForWholesaler(wholesalerId: string): P
 }
 
 /**
+ * 공급사용 주문 알림 4종에서 웹푸시를 아무도 못 받았을 때 알림톡으로 폴백할지(마이그 225, 기본 켜짐).
+ * 읽지 못하면(서비스 키 없음·조회 오류) 켜짐으로 본다 — 주문 알림이 조용히 사라지는 쪽이 더 나쁘다.
+ */
+export async function isAlimtalkFallbackEnabled(wholesalerId: string): Promise<boolean> {
+  const supabase = createServiceRoleClient();
+
+  if (!supabase) return true;
+
+  const { data, error } = await supabase
+    .from("wholesalers")
+    .select("alimtalk_fallback_enabled")
+    .eq("id", wholesalerId)
+    .maybeSingle();
+
+  if (error || !data) return true;
+
+  return data.alimtalk_fallback_enabled !== false;
+}
+
+/**
  * 공급사의 알림톡 자격정보를 service_role로 조회하고 비밀번호를 복호화한다.
  * 공급사가 등록 안 했으면 플랫폼 기본 채널로 폴백한다(독립 전환 전까지의 기본
  * 서비스 — 공급사가 나중에 직접 등록하면 그 즉시 이 폴백보다 우선한다).
