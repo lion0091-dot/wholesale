@@ -77,6 +77,34 @@ update public.products set stock_quantity = 10 where id = 'c9999999-0000-0000-00
 insert into results (who,what,expected,result) values
  ('시스템','되돌린 뒤 다시 전부 0','box_over_weight=0,box_remaining_vs_ledger=0,boxes_exceed_stock=0,normal_box_without_ledger=0,product_stock_vs_ledger=0,voided_box_with_remaining=0', pg_temp.check_counts());
 
+-- ========== 소수점(그램) 단위 정확성 ==========
+-- 박스 10.001kg을 입고하고 3.333kg을 내보낸 상태(잔량 6.668 = 원장 +10.001 −3.333). 정확히 맞으면 0건이다.
+insert into public.inbound_scans (id,wholesaler_id,trace_no,weight,unit,scan_type,status,product_id,remaining_weight) values
+ ('b9999999-0000-0000-0000-000000000006','a9999999-0000-0000-0000-000000000001','099900000006',10.001,'kg','MANUAL','NORMAL','c9999999-0000-0000-0000-000000000001',6.668);
+insert into public.stock_ledger (wholesaler_id,product_id,inbound_scan_id,qty_delta,event_type,source_type,source_id) values
+ ('a9999999-0000-0000-0000-000000000001','c9999999-0000-0000-0000-000000000001','b9999999-0000-0000-0000-000000000006',10.001,'INBOUND','inbound_scan','b9999999-0000-0000-0000-000000000006'),
+ ('a9999999-0000-0000-0000-000000000001','c9999999-0000-0000-0000-000000000001','b9999999-0000-0000-0000-000000000006',-3.333,'ORDER_OUT','order','e9999999-0000-0000-0000-000000000001');
+-- 상품 재고도 같은 원장 합계(10 + 6.668 = 16.668)로 맞춰 둔다
+update public.products set stock_quantity = 16.668 where id = 'c9999999-0000-0000-0000-000000000001';
+insert into results (who,what,expected,result) values
+ ('시스템','소수점 3자리(그램)까지 맞는 상태 → 박스·상품 일치 0건','0|0', (select (select violations::text from public.stock_integrity_violations('a9999999-0000-0000-0000-000000000001') where check_key='box_remaining_vs_ledger') || '|' || (select violations::text from public.stock_integrity_violations('a9999999-0000-0000-0000-000000000001') where check_key='product_stock_vs_ledger')));
+-- 1그램(0.001kg)만 어긋나도 잡는다
+update public.inbound_scans set remaining_weight = 6.669 where id = 'b9999999-0000-0000-0000-000000000006';
+update public.products set stock_quantity = 16.669 where id = 'c9999999-0000-0000-0000-000000000001';
+insert into results (who,what,expected,result) values
+ ('시스템','박스 잔량이 1그램 어긋나면(6.669 ≠ 6.668) 잡는다','1', (select violations::text from public.stock_integrity_violations('a9999999-0000-0000-0000-000000000001') where check_key='box_remaining_vs_ledger')),
+ ('시스템','상품 재고가 1그램 어긋나면(16.669 ≠ 16.668) 잡는다','1', (select violations::text from public.stock_integrity_violations('a9999999-0000-0000-0000-000000000001') where check_key='product_stock_vs_ledger'));
+update public.inbound_scans set remaining_weight = 6.668 where id = 'b9999999-0000-0000-0000-000000000006';
+update public.products set stock_quantity = 16.668 where id = 'c9999999-0000-0000-0000-000000000001';
+-- 셋째 자리를 넘는 입력은 DB가 반올림해서 저장한다 → 박스와 원장이 같은 값으로 저장돼 어긋나지 않는다
+insert into public.inbound_scans (id,wholesaler_id,trace_no,weight,unit,scan_type,status,product_id,remaining_weight) values
+ ('b9999999-0000-0000-0000-000000000007','a9999999-0000-0000-0000-000000000001','099900000007',2.00049,'kg','MANUAL','NORMAL','c9999999-0000-0000-0000-000000000001',2.00049);
+insert into public.stock_ledger (wholesaler_id,product_id,inbound_scan_id,qty_delta,event_type,source_type,source_id) values
+ ('a9999999-0000-0000-0000-000000000001','c9999999-0000-0000-0000-000000000001','b9999999-0000-0000-0000-000000000007',2.00049,'INBOUND','inbound_scan','b9999999-0000-0000-0000-000000000007');
+update public.products set stock_quantity = 18.668 where id = 'c9999999-0000-0000-0000-000000000001';
+insert into results (who,what,expected,result) values
+ ('시스템','셋째 자리 넘는 값(2.00049)은 2.000으로 같이 저장돼 어긋남이 없다','2.000|2.000|0', (select (select weight::text from public.inbound_scans where id='b9999999-0000-0000-0000-000000000007') || '|' || (select qty_delta::text from public.stock_ledger where inbound_scan_id='b9999999-0000-0000-0000-000000000007') || '|' || (select violations::text from public.stock_integrity_violations('a9999999-0000-0000-0000-000000000001') where check_key='box_remaining_vs_ledger')));
+
 -- ========== 권한: 서버(크론)·운영자 전용 ==========
 create function pg_temp.try(p_sql text) returns text language plpgsql as $$
 begin execute p_sql; return 'ALLOWED'; exception when others then return 'DENIED'; end $$;
