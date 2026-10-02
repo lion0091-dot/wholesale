@@ -168,3 +168,7 @@ Claude Max 요금제는 잔량 조회 API가 없어 실시간 동적 라우팅�
 ## 주문 알림 지킴이 + Realtime 인증 버그 수정 (2026-10-02, 별도 기능)
 
 - [docs/order-alert-guard.md](docs/order-alert-guard.md) — 카카오 채널 승인 전이라 웹푸시가 유일한 주문 알림 채널 → 꺼져 있으면 빨간 줄(A), 첫 방문 안내 창(B), 화면 열린 동안 새 주문 소리·알림 창(F). 같이 발견: 브라우저 Realtime이 토큰 없이 붙어 변화를 못 받던 버그를 `authorizeRealtime()`으로 수정. 운영 화면 확인 전.
+
+## 공급사 가입→승인→첫 고객 초대 "지금 할 일" 카드 (2026-10-02, 별도 기능)
+
+- [docs/onboarding-next-step-card.md](docs/onboarding-next-step-card.md) — 대시보드 맨 위 카드 하나가 사업자 정보 제출·국세청 불일치 수정·심사 중·승인 대기 손님·첫 고객 초대까지 안내. 알림톡 없이 화면이 직접 알려 주는 것이 목적. 로컬 브라우저 확인, 운영 화면 확인 전.

@@ -4,6 +4,8 @@ import { getOrgStaffContext } from "@/lib/auth/rbac";
 import { CopyInviteButton } from "@/components/copy-invite-button";
 import { PendingApprovalBanner } from "@/components/pending-approval-banner";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
+import { OnboardingNextStepCard } from "@/components/onboarding-next-step-card";
+import { pickOnboardingNextStep } from "@/lib/supplier/onboarding-next-step";
 import {
   describeInviteRestriction,
   getSupplierAccount,
@@ -100,6 +102,7 @@ export default async function DashboardPage() {
   let shopToken: string | null = null;
   let activeCustomerCount = 0;
   let activeProductCount = 0;
+  let pendingReviewCount = 0;
   let orders: DashboardOrder[] = [];
   let hasWholesaler = false;
 
@@ -148,7 +151,7 @@ export default async function DashboardPage() {
       businessName = (wholesaler.business_name as string) ?? businessName;
       shopToken = (wholesaler.shop_token as string) ?? shopToken;
 
-      const [{ data: monthOrders }, { count: customerCount }, { count: productCount }] =
+      const [{ data: monthOrders }, { count: customerCount }, { count: productCount }, { count: waitingCount }] =
         await Promise.all([
           supabase
             .from("orders")
@@ -166,10 +169,16 @@ export default async function DashboardPage() {
             .select("id", { count: "exact", head: true })
             .eq("wholesaler_id", wholesalerId)
             .eq("is_active", true),
+          supabase
+            .from("wholesaler_retailers")
+            .select("id", { count: "exact", head: true })
+            .eq("wholesaler_id", wholesalerId)
+            .eq("status", "pending_review"),
         ]);
 
       activeCustomerCount = customerCount ?? 0;
       activeProductCount = productCount ?? 0;
+      pendingReviewCount = waitingCount ?? 0;
       orders = (monthOrders ?? []) as DashboardOrder[];
     }
   }
@@ -188,6 +197,24 @@ export default async function DashboardPage() {
   const pendingCount = orders.filter((order) => order.status === "pending").length;
   const recentOrders = orders.slice(0, 5);
 
+  // 가입 → 승인 → 첫 고객 초대까지 이끄는 "지금 할 일" 카드(대표·매니저에게만). 카드가 있으면 아래 승인 배너는 겹치므로 숨긴다.
+  const canManageSupplier =
+    Boolean(account?.isWholesalerOwner) || context?.orgRole === "owner" || context?.orgRole === "manager";
+  const onboardingStep =
+    account && hasWholesaler && !context?.isSuperAdmin
+      ? pickOnboardingNextStep({
+          supplierStatus: account.supplierStatus,
+          isVerified: account.isVerified,
+          businessNumber: account.businessNumber,
+          businessStartDate: account.businessStartDate,
+          ntsStatus: account.ntsVerificationStatus,
+          hasLicense: Boolean(account.businessLicensePath),
+          activeCustomerCount,
+          pendingReviewCount,
+          canManage: canManageSupplier,
+        })
+      : null;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <DashboardTabs />
@@ -200,6 +227,8 @@ export default async function DashboardPage() {
           전달하세요.
         </p>
       </header>
+
+      <OnboardingNextStepCard step={onboardingStep} />
 
       <section className="dash-cards">
         <SummaryCard
@@ -222,11 +251,11 @@ export default async function DashboardPage() {
         />
       </section>
 
-      {account && !canIssueInvite && inviteRestriction && (
+      {!onboardingStep && account && !canIssueInvite && inviteRestriction && (
         <PendingApprovalBanner message={inviteRestriction} showInviteLink />
       )}
 
-      <section style={cardStyle}>
+      <section id="invite-link" style={{ ...cardStyle, scrollMarginTop: "12px" }}>
         <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "6px" }}>
           미니샵 초대 링크
         </div>

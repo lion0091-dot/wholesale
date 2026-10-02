@@ -119,7 +119,16 @@ function countByRetailer(rows: Array<{ retailer_id: string }>): Map<string, numb
   return counts;
 }
 
-export default async function DashboardCustomersPage() {
+export default async function DashboardCustomersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
+  const { status: statusParam } = await searchParams;
+  // 대시보드 "지금 할 일" 카드가 승인 대기 손님 목록으로 바로 보낼 때 쓴다(?status=pending_review).
+  const initialStatusFilter =
+    statusParam === "active" || statusParam === "pending_review" || statusParam === "blocked" ? statusParam : "all";
+
   // scope와 초대장 발부 자격(is_verified)은 서로 무관한 별도 조회 — 병렬로 묶는다.
   const [scope, account] = await Promise.all([getSupplierScope(), getSupplierAccount()]);
 
@@ -308,6 +317,7 @@ export default async function DashboardCustomersPage() {
       {canIssueInvite && <InviteSmsQueuePanel initialQueue={inviteSmsQueue} />}
 
       <CustomerTable
+        initialStatusFilter={initialStatusFilter}
         customers={customers}
         shopToken={canIssueInvite ? shopToken : null}
         canIssueInvite={canIssueInvite}

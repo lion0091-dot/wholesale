@@ -250,7 +250,7 @@ export default async function DashboardInvitesPage() {
       </section>
 
       {!account.isVerified && account.wholesalerId && (
-        <section style={cardStyle}>
+        <section id="business-info" style={{ ...cardStyle, scrollMarginTop: "12px" }}>
           <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>
             사업자 정보 제출
           </div>
@@ -263,7 +263,9 @@ export default async function DashboardInvitesPage() {
             currentBusinessNumber={account.businessNumber}
             currentBusinessStartDate={account.businessStartDate}
           />
-          <BusinessLicenseForm currentUploadedAt={account.businessLicenseUploadedAt} />
+          <div id="business-license" style={{ scrollMarginTop: "12px" }}>
+            <BusinessLicenseForm currentUploadedAt={account.businessLicenseUploadedAt} />
+          </div>
         </section>
       )}
 

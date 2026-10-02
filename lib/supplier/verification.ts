@@ -57,6 +57,8 @@ export interface SupplierAccount {
   /** 사업자등록증 사본 Storage 경로. null이면 미제출 — 실제 파일은 서명된 URL로만 조회 */
   businessLicensePath: string | null;
   businessLicenseUploadedAt: string | null;
+  /** 국세청 진위확인 결과(운영팀이 실행): match/mismatch/not_found/error. 아직 안 했으면 null */
+  ntsVerificationStatus: string | null;
   /** 미니샵 썸네일(업체 사진/로고) 공개 URL. null이면 미등록 */
   shopThumbnailUrl: string | null;
   shopToken: string | null;
@@ -78,7 +80,7 @@ export const BUSINESS_NUMBER_REQUIRED_NOTICE =
   "사업자등록번호가 아직 제출되지 않았습니다. 번호를 등록하면 승인 심사가 시작됩니다.";
 
 const WHOLESALER_COLUMNS =
-  "id, profile_id, business_name, business_number, representative_name, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_thumbnail_url, shop_token, status";
+  "id, profile_id, business_name, business_number, representative_name, business_address, business_start_date, business_license_path, business_license_uploaded_at, shop_thumbnail_url, shop_token, status, nts_verification_status";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 타입 없는 클라이언트의 행(기존 코드와 동일하게 필드마다 캐스팅)
@@ -272,6 +274,7 @@ function buildSupplierAccount({
     businessLicensePath: (wholesaler?.business_license_path as string | null | undefined) ?? null,
     businessLicenseUploadedAt:
       (wholesaler?.business_license_uploaded_at as string | null | undefined) ?? null,
+    ntsVerificationStatus: (wholesaler?.nts_verification_status as string | null | undefined) ?? null,
     shopThumbnailUrl: (wholesaler?.shop_thumbnail_url as string | null | undefined) ?? null,
     shopToken,
     supplierStatus,

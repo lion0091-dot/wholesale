@@ -16,6 +16,8 @@ export type { CustomerRow } from "./customer-types";
 type ViewMode = "card" | "table";
 
 interface CustomerTableProps {
+  /** 처음 걸어 둘 거래 상태 필터(대시보드 카드의 ?status= 링크용). 기본은 전체. */
+  initialStatusFilter?: RelationshipStatus | "all";
   customers: CustomerRow[];
   /**
    * 미니샵 미리보기 링크용 shop_token.
@@ -64,6 +66,7 @@ async function copyText(text: string) {
 }
 
 export function CustomerTable({
+  initialStatusFilter = "all",
   customers,
   shopToken,
   canIssueInvite,
@@ -71,7 +74,7 @@ export function CustomerTable({
   pgConfigured = false,
 }: CustomerTableProps) {
   const [keyword, setKeyword] = useState("");
-  const [statusFilter, setStatusFilter] = useState<RelationshipStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<RelationshipStatus | "all">(initialStatusFilter);
   const [viewMode, setViewMode] = useState<ViewMode>("card");
 
   // 목록 뷰 전환 버튼은 좁은 화면(카톡 인앱 브라우저 등)에서 CSS로 숨겨지므로,
