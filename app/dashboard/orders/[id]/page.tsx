@@ -10,6 +10,8 @@ import {
 } from "@/lib/orders/status";
 import { isAlimtalkConfiguredForWholesaler } from "@/lib/notifications/alimtalk";
 import { OrderStatusPanel } from "./order-status-panel";
+import { OrderMarginPanel } from "./order-margin-panel";
+import { fetchOrderMargin } from "@/lib/supplier/order-margin";
 import { OrderItemPriceEditor } from "./order-item-price-editor";
 import { TrackingPanel } from "./tracking-panel";
 import { StatementPreviewButton } from "@/components/statement-preview-button";
@@ -177,6 +179,11 @@ export default async function OrderDetailPage({ params }: PageProps) {
   const timeline = buildAlimtalkTimeline(order.status);
   const isLiveChannel = await isAlimtalkConfiguredForWholesaler(wholesalerId);
 
+  // 원가·마진은 대표만 본다. 매니저·직원·슈퍼관리자는 호출조차 하지 않고, 데이터도 DB 함수(get_order_margin)가 대표에게만 준다.
+  const scope = await getSupplierScope();
+  const mayViewMargin = !!scope && !scope.isSuperAdmin && scope.orgRole !== "manager" && scope.orgRole !== "staff";
+  const margin = mayViewMargin ? await fetchOrderMargin(await createClient(), order.id) : null;
+
   // 카카오 인앱 브라우저 "외부에서 열기" 전용 — 세션 쿠키 없이도 인가되는 단발성 토큰.
   const statementExternalOpenHref = (() => {
     const token = signExternalOpenToken({
@@ -267,6 +274,8 @@ export default async function OrderDetailPage({ params }: PageProps) {
         orderId={order.id}
         currentStatus={order.status}
       />
+
+      {margin && <OrderMarginPanel summary={margin} status={order.status} />}
 
       {/* 주문 상품 목록 */}
       <section style={cardStyle}>

@@ -234,6 +234,37 @@ insert into results (who,what,expected,result) values
  ('B사장','A사 주문 출고 스캔·확정 → 거부','DENIED: ORDER_NOT_FOUND|DENIED: ORDER_NOT_FOUND', pg_temp.try($q$select public.record_outbound_scan('e5999999-0000-0000-0000-000000000009', '009500000001')$q$)||'|'||pg_temp.try($q$select public.finalize_order_shipment('e5999999-0000-0000-0000-000000000009')$q$)),
  ('B사장','A사 주문 피킹·미리보기 → 0건, 상태 변경 → 0행','0|0|0', pg_temp.val($q$select (select count(*) from public.get_picking_list('e5999999-0000-0000-0000-000000000009'))||'|'||(select count(*) from public.preview_order_shipment('e5999999-0000-0000-0000-000000000009'))$q$)||'|'||pg_temp.rows($q$update public.orders set status='cancelled' where id='e5999999-0000-0000-0000-000000000009'$q$));
 
+-- ========== 4-H. 주문별 원가·마진(208) — 대표 전용 ==========
+-- O7(배송중, 4kg: b2 2kg + b4 2kg). b2만 매입단가 40,000 → 원가 80,000, 단가 없는 b4 2kg는 unpriced로 따로 나와야 한다.
+reset role;
+insert into auth.users (id,email) values ('95999999-0000-0000-0000-000000000006','manager-a@ord.test');
+alter table public.profiles disable trigger user;
+insert into public.profiles (id,role,name,phone,is_supplier,is_verified) values ('95999999-0000-0000-0000-000000000006','wholesaler','A매니저','010',true,true)
+ on conflict (id) do update set role=excluded.role, is_supplier=excluded.is_supplier, is_verified=excluded.is_verified;
+alter table public.profiles enable trigger user;
+insert into public.organization_staff (organization_id,user_id,role) values ('05999999-0000-0000-0000-000000000001','95999999-0000-0000-0000-000000000006','manager');
+update public.inbound_scans set purchase_unit_price = 40000 where trace_no = '009500000002';
+set role authenticated; set request.jwt.claim.role = 'authenticated'; set request.jwt.claim.sub = '95999999-0000-0000-0000-000000000001';
+insert into results (who,what,expected,result) values
+ ('A사장','O7 마진 → 판매 272,000·원가 80,000(b2 2kg×40,000)·단가 없는 b4 2kg는 미입력으로 분리','4.000|272000|4.000|80000|2.000', pg_temp.val($q$select round(sold_qty,3)::text||'|'||sales_amount::int||'|'||round(shipped_qty,3)::text||'|'||cost_amount::int||'|'||round(unpriced_qty,3)::text from public.get_order_margin('e5999999-0000-0000-0000-000000000007')$q$)),
+ ('A사장','취소 원복된 O5 → 나간 양 0, 원가 0','8.000|544000|0.000|0|0.000', pg_temp.val($q$select round(sold_qty,3)::text||'|'||sales_amount::int||'|'||round(shipped_qty,3)::text||'|'||cost_amount::int||'|'||round(unpriced_qty,3)::text from public.get_order_margin('e5999999-0000-0000-0000-000000000005')$q$)),
+ ('A사장','없는 주문 → 거부','DENIED: ORDER_NOT_FOUND', pg_temp.try($q$select * from public.get_order_margin('e5999999-0000-0000-0000-0000000000ff')$q$));
+set request.jwt.claim.sub = '95999999-0000-0000-0000-000000000006';
+insert into results (who,what,expected,result) values
+ ('A매니저','매니저가 원가·마진 조회 → 거부(대표 전용)','DENIED: NOT_OWNER', pg_temp.try($q$select * from public.get_order_margin('e5999999-0000-0000-0000-000000000007')$q$));
+set request.jwt.claim.sub = '95999999-0000-0000-0000-000000000002';
+insert into results (who,what,expected,result) values
+ ('A직원','직원이 원가·마진 조회 → 거부','DENIED: NOT_OWNER', pg_temp.try($q$select * from public.get_order_margin('e5999999-0000-0000-0000-000000000007')$q$));
+set request.jwt.claim.sub = '95999999-0000-0000-0000-000000000003';
+insert into results (who,what,expected,result) values
+ ('식당R','고객이 자기 주문의 원가·마진 조회 → 거부','DENIED: NOT_OWNER', pg_temp.try($q$select * from public.get_order_margin('e5999999-0000-0000-0000-000000000007')$q$));
+set request.jwt.claim.sub = '95999999-0000-0000-0000-000000000004';
+insert into results (who,what,expected,result) values
+ ('B사장','타사 대표가 A사 주문의 원가·마진 조회 → 거부','DENIED: NOT_OWNER', pg_temp.try($q$select * from public.get_order_margin('e5999999-0000-0000-0000-000000000007')$q$));
+set role anon; set request.jwt.claim.sub = ''; set request.jwt.claim.role = 'anon';
+insert into results (who,what,expected,result) values
+ ('비로그인','원가·마진 조회 → 거부','DENIED', pg_temp.try($q$select * from public.get_order_margin('e5999999-0000-0000-0000-000000000007')$q$));
+
 reset role;
 select '--- 결과 ---' as t;
 select no, who, what, expected, result,
