@@ -179,7 +179,7 @@ Claude Max 요금제는 잔량 조회 API가 없어 실시간 동적 라우팅�
 
 ## 업체별 기능 켜기/끄기 + 원가 관리(마진 패널·재고 평가) (2026-10-02, 별도 기능)
 
-- [docs/wholesaler-features.md](docs/wholesaler-features.md) — 기능 메뉴판(`platform_features`)·업체별 켜짐(`wholesaler_features`)·업체 안 허용 명단(`wholesaler_feature_viewers`), 운영자가 `/admin/features`에서 켜고 끄고 대표가 팀원 관리에서 누가 볼지 정함. 기능별 월 이용료 칸은 뒀다가 뺐다(구독료 연결은 정책 확정 후). 첫 기능 `cost_management`(주문 마진 + 재고 평가 탭, 지금은 모든 업체 켜짐). **새 선택 기능은 메뉴판에 한 줄 등록 + 기능 DB 함수 맨 앞에서 `can_use_feature` 검사 + 켠/끈 경우 둘 다 테스트.** 켜진 기간 이력(`wholesaler_feature_periods`, 고칠 수 없음, 어드민 이력 화면), 알림벨 소비기한 임박 박스(211), 전표 조회 정책 속도(212). 마이그 210·211·212 운영 미적용. **2026-10-02 추가**: "회계 관리" 메뉴(미수금 정산·매입 정산·원가 관리·장부 불일치 탭)와 부모·자식 토글(마이그 217, `parent_key`·`feature_effective`) — 메뉴를 끄면 탭도 함께 꺼짐, 기본 켜짐. 재고 손실·손익 관리 탭은 이 구조에 붙일 예정(미착수). 217 운영 미적용·실화면 검증 전.
+- [docs/wholesaler-features.md](docs/wholesaler-features.md) — 기능 메뉴판(`platform_features`)·업체별 켜짐(`wholesaler_features`)·업체 안 허용 명단(`wholesaler_feature_viewers`), 운영자가 `/admin/features`에서 켜고 끄고 대표가 팀원 관리에서 누가 볼지 정함. 기능별 월 이용료 칸은 뒀다가 뺐다(구독료 연결은 정책 확정 후). 첫 기능 `cost_management`(주문 마진 + 재고 평가 탭, 지금은 모든 업체 켜짐). **새 선택 기능은 메뉴판에 한 줄 등록 + 기능 DB 함수 맨 앞에서 `can_use_feature` 검사 + 켠/끈 경우 둘 다 테스트.** 켜진 기간 이력(`wholesaler_feature_periods`, 고칠 수 없음, 어드민 이력 화면), 알림벨 소비기한 임박 박스(211), 전표 조회 정책 속도(212). 마이그 210·211·212 운영 미적용. **2026-10-02 추가**: "회계 관리" 메뉴(미수금 정산·매입 정산·원가 관리·장부 불일치 탭)와 부모·자식 토글(마이그 217, `parent_key`·`feature_effective`) — 메뉴를 끄면 탭도 함께 꺼짐, 기본 켜짐. 217 운영 적용·배포됨. **재고 조정·손실 탭**(마이그 218, `accounting_stock_adjust`, 대표 전용 조회 — 재고 조정·박스 폐기·장부 보정 기록 + 손실 금액, 상품 단위 조정은 "금액 미상")은 로컬 완료·운영 미적용. 손익 관리 탭은 미착수.
 
 ## 재고·박스·원장 일치 점검 (2026-10-02, 별도 기능)
 

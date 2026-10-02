@@ -90,5 +90,14 @@
 - **화면**: 사이드바 메뉴는 그 사람에게 보이는 첫 탭으로 연결되고(`buildAccountingTabs`), 켜진 탭이 하나도 없으면 메뉴가 사라진다. 레이아웃은 켜진 기능만 보고(`getMyEnabledFeatures`) 허용 여부는 보지 않는다. 어드민 `/admin/features`는 자식 줄을 들여쓰고 부모가 꺼져 있으면 "함께 꺼진 상태"로 표시한다.
 - **기본값은 모두 켜짐** — 지금 쓰는 업체의 동작은 안 바뀐다. 원가 관리 탭·주문별 마진 패널은 회계 관리 메뉴를 끄면 같이 사라진다(`cost_management`가 자식이므로).
 - **옮긴 탭 위치**: 재고 · 매입 내역 메뉴에는 재고 보기·입출고 내역·소비기한·발주 추천만 남았고, 고객 관리 메뉴에는 고객 관리·맞춤 단가만 남았다.
-- **새 회계 탭 붙이는 법**: 마이그레이션에서 `platform_features`에 `parent_key='accounting'`으로 한 줄 등록(+`open_default_feature_periods`) → DB 함수 맨 앞(또는 불가피하면 화면)에서 `feature_effective` 검사 → `buildAccountingTabs`·`FEATURE_KEYS`에 추가 → 켠/끈 경우 둘 다 테스트. 재고 손실·손익 관리 탭이 이 순서로 붙을 예정(아직 없음).
+- **새 회계 탭 붙이는 법**: 마이그레이션에서 `platform_features`에 `parent_key='accounting'`으로 한 줄 등록(+`open_default_feature_periods`) → DB 함수 맨 앞(또는 불가피하면 화면)에서 `feature_effective` 검사 → `buildAccountingTabs`·`FEATURE_KEYS`에 추가 → 켠/끈 경우 둘 다 테스트. 손익 관리 탭이 이 순서로 붙을 예정(아직 없음). 재고 조정·손실 탭은 218에서 붙였다(아래).
 - **검증**: `scripts/db-test-features.sql` 7-G(회계 관리 23건 포함 총 76건), `lib/features/accounting-tabs.test.ts`. 실화면 클릭 검증 전, 운영 DB 미적용.
+
+### 재고 조정·손실 탭 (마이그레이션 218, 2026-10-02)
+
+회계 관리의 5번째 탭 `/dashboard/stock-adjustments`, 키 `accounting_stock_adjust`(부모 `accounting`, 기본 켜짐). **조회 전용**이고 입력 입구는 그대로다(재고 조정=상품 관리 목록, 박스 폐기=소비기한 탭).
+
+- **"재고 손실"과 "재고 조정"을 탭 둘로 나누지 않았다**(대표 판단): 둘 다 "주문·입고가 아닌 이유로 장부가 바뀐 기록"이라 한 표로 본다. 새 표 없이 `stock_ledger`의 `LOSS`(폐기·파손)·`ADJUSTMENT`(실사·반품·장부 불일치 보정) 행을 읽는다.
+- **손실 금액은 박스 폐기만 안다**(중량×매입단가, `box_disposals`를 장부 `source_id`로 연결). 상품 단위 조정 손실과 단가 없는 박스는 **0원이 아니라 "금액 미상"**으로 따로 센다. 합계는 단위별(kg·개 …)로 따로 낸다.
+- **대표 전용**(금액에 매입 원가가 들어 있음, 박스 폐기 이력·장부 불일치와 같은 기준). 함수 `list_stock_adjustments`·`summarize_stock_adjustments`는 `assert_stock_adjust_access()`로 대표 + `feature_effective` 검사. 날짜는 한국 시간 기준·끝 날짜 포함, 기본 최근 30일, 목록은 최근 200건 상한.
+- **검증**: `scripts/db-test-stock-adjustments.sql`(19건), `lib/supplier/stock-adjustments.test.ts`, `lib/features/accounting-tabs.test.ts`. 실화면 클릭 검증 전, 운영 DB 미적용.

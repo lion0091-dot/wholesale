@@ -27,6 +27,7 @@ const ACCOUNTING_NAV_ITEM: DashboardNavItem = {
     "/dashboard/receivables",
     "/dashboard/purchases",
     "/dashboard/stock-valuation",
+    "/dashboard/stock-adjustments",
     "/dashboard/stock-integrity",
   ],
 };
