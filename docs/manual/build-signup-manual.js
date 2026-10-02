@@ -15,7 +15,7 @@ const CASE_HEAD = ["화면에 이런 문구가 보이면", "이렇게 하세요"
 
 c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 80 }, children: [new TextRun({ text: "가입·로그인 따라가기 매뉴얼", font: FONT, size: 40, bold: true })] }));
 c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 60 }, children: [run("공급사(도매업체) · 고객(식당·소매)", { size: 26 })] }));
-c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 300 }, children: [run("초안 2 — 표를 위에서 아래로 따라 하면 끝납니다. 막히면 같은 장 아래 \"이런 문구가 보이면\" 표를 보세요.", { size: 20, color: "64748B" })] }));
+c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 300 }, children: [run("초안 5 — 표를 위에서 아래로 따라 하면 끝납니다. 막히면 같은 장 아래 \"이런 문구가 보이면\" 표를 보세요.", { size: 20, color: "64748B" })] }));
 
 c.push(box("먼저 이것만 알면 됩니다", [
   "가입도 로그인도 카카오 계정 하나로 합니다. 아이디·비밀번호는 없습니다.",
@@ -143,6 +143,7 @@ T(STEP, ["단계", "누가 · 할 일", "그다음 보이는 것"], [
   ["3", "(대표/관리자) [링크 복사]를 누르고 카톡으로 직원에게 보냅니다.", "\"복사됨 ✓\""],
   ["4", "(직원) 받은 링크를 엽니다.", "\"○○ 업체에 합류하기\" 화면"],
   ["5", "(직원) [카카오로 합류하기]를 누르고 카카오 로그인을 마칩니다.", "그 업체의 대시보드. 합류 끝."],
+  ["6", "(대표) 합류한 직원이 매입단가 같은 원가 정보를 봐야 하면 [설정] → [팀원]에서 그 직원 줄의 [전표 담당으로 지정] 또는 [원가 관리 보기 허용]을 누릅니다. 안 누르면 원가는 안 보입니다.", "직원 줄에 \"전표 담당\" 또는 \"원가 관리 보기 허용\" 표시. 자세한 내용은 사무실용 매뉴얼 7-9."],
 ]);
 T(CASE, CASE_HEAD, [
   ["유효하지 않거나 만료된 초대 링크입니다. 초대한 담당자에게 새 링크를 요청해주세요. (또는 \"유효하지 않은 초대 링크입니다.\")", "링크는 한 번만 쓸 수 있고 취소·만료되면 못 씁니다. 대표/관리자에게 새 링크를 받으세요. 대표/관리자는 [팀원]에서 \"사용 가능\" 링크인지 확인하고 새로 만드세요."],
@@ -151,6 +152,7 @@ T(CASE, CASE_HEAD, [
   ["본인 명의로 가입된 업체가 있어 다른 업체의 직원으로 등록할 수 없습니다.", "본인 업체를 만든 계정은 직원이 될 수 없습니다. 다른 카카오 계정을 쓰세요."],
   ["초대 수락에 실패했습니다. 잠시 후 다시 시도해주세요.", "잠시 뒤 링크를 다시 열어 [카카오로 합류하기]를 누르세요."],
   ["초대 링크 생성에 실패했습니다. / 해당 역할의 초대 링크를 만들 권한이 없습니다.", "관리자는 직원 링크만 만들 수 있습니다. 관리자 초대는 대표가 하세요."],
+  ["직원 화면에 [전표관리]나 매입 금액이 안 보인다", "정상입니다. 원가 정보는 대표·전표 담당 직원(업체 설정에 따라 관리자)만 봅니다. 대표가 위 6단계로 지정하면 보입니다."],
   ["(대표/관리자) 직원을 내보내고 싶다", "[팀원] 목록에서 그 직원 옆 [삭제]를 누릅니다. 다시 합류하려면 새 초대 링크가 필요합니다."],
 ]);
 
@@ -243,7 +245,7 @@ const doc = new Document({
   sections: [
     {
       properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } },
-      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "가입·로그인 따라가기 매뉴얼 (초안 2)  ·  ", font: FONT, size: 18, color: "64748B" }), new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 18, color: "64748B" })] })] }) },
+      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "가입·로그인 따라가기 매뉴얼 (초안 5)  ·  ", font: FONT, size: 18, color: "64748B" }), new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 18, color: "64748B" })] })] }) },
       children: c,
     },
   ],
