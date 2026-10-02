@@ -6,6 +6,7 @@ const ALL = new Set([
   "accounting_receivables",
   "accounting_purchases",
   "accounting_stock_adjust",
+  "accounting_pnl",
   "accounting_integrity",
   "cost_management",
 ]);
@@ -14,14 +15,25 @@ const hrefs = (enabled: Set<string>, usable: Set<string>, isOwner: boolean) =>
   buildAccountingTabs(enabled, usable, isOwner).map((tab) => tab.href);
 
 describe("buildAccountingTabs", () => {
-  it("대표에게는 다섯 탭이 정해진 순서로 전부 보인다", () => {
+  it("대표에게는 여섯 탭이 정해진 순서로 전부 보인다", () => {
     expect(hrefs(ALL, ALL, true)).toEqual([
       "/dashboard/receivables",
       "/dashboard/purchases",
       "/dashboard/stock-valuation",
       "/dashboard/stock-adjustments",
+      "/dashboard/stock-pnl",
       "/dashboard/stock-integrity",
     ]);
+  });
+
+  it("손익 관리는 대표가 아니면 안 보이고, 탭 키를 끄면 빠진다", () => {
+    expect(hrefs(ALL, ALL, false)).not.toContain("/dashboard/stock-pnl");
+
+    const enabled = new Set(ALL);
+
+    enabled.delete("accounting_pnl");
+
+    expect(hrefs(enabled, ALL, true)).not.toContain("/dashboard/stock-pnl");
   });
 
   it("재고 조정·손실은 대표가 아니면 안 보이고, 탭 키를 끄면 빠진다", () => {
@@ -51,6 +63,7 @@ describe("buildAccountingTabs", () => {
       "/dashboard/receivables",
       "/dashboard/stock-valuation",
       "/dashboard/stock-adjustments",
+      "/dashboard/stock-pnl",
       "/dashboard/stock-integrity",
     ]);
   });

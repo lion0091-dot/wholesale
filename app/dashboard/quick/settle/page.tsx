@@ -58,7 +58,7 @@ export default async function QuickSettlePage() {
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>수금 확인</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>
           현장에서 바로 받은 수금을 정산 처리합니다. 이력 조회·리마인드 발송은 PC의
-          미수금 정산 화면을 이용하세요.
+          [회계 관리] 메뉴 → 미수금 정산 화면을 이용하세요.
         </p>
       </header>
 

@@ -69,9 +69,12 @@ export default async function StockAdjustmentsPage({
 
   if (scope?.wholesalerId && !(await getMyEnabledFeatures()).has(FEATURE_KEYS.accountingStockAdjust)) {
     return (
-      <FeatureNotice screenName="재고 조정·손실">
-        이 업체에서는 쓰지 않도록 설정된 기능이에요. 필요하면 운영팀에 문의해 주세요.
-      </FeatureNotice>
+      <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        <AccountingTabs />
+        <FeatureNotice screenName="재고 조정·손실">
+          이 업체에서는 쓰지 않도록 설정된 기능이에요. 필요하면 운영팀에 문의해 주세요.
+        </FeatureNotice>
+      </div>
     );
   }
 

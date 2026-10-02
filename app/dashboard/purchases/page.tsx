@@ -44,7 +44,12 @@ export default async function PurchasesPage({
 
   // 회계 관리 > 매입 정산 탭이 꺼진 업체(또는 회계 관리 메뉴가 꺼진 업체)는 화면을 열지 않는다(마이그레이션 217). DB 함수도 같은 기준으로 막는다.
   if (scope?.wholesalerId && !(await getMyEnabledFeatures()).has(FEATURE_KEYS.accountingPurchases)) {
-    return <FeatureNotice screenName="매입 정산">이 업체에서는 쓰지 않도록 설정된 기능이에요. 필요하면 운영팀에 문의해 주세요.</FeatureNotice>;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        <AccountingTabs />
+        <FeatureNotice screenName="매입 정산">이 업체에서는 쓰지 않도록 설정된 기능이에요. 필요하면 운영팀에 문의해 주세요.</FeatureNotice>
+      </div>
+    );
   }
 
   // 매입금액은 원가라 대표 + 전표 담당 직원만 연다(209). DB 함수도 같은 기준으로 막는다.

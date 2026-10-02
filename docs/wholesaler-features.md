@@ -90,7 +90,7 @@
 - **화면**: 사이드바 메뉴는 그 사람에게 보이는 첫 탭으로 연결되고(`buildAccountingTabs`), 켜진 탭이 하나도 없으면 메뉴가 사라진다. 레이아웃은 켜진 기능만 보고(`getMyEnabledFeatures`) 허용 여부는 보지 않는다. 어드민 `/admin/features`는 자식 줄을 들여쓰고 부모가 꺼져 있으면 "함께 꺼진 상태"로 표시한다.
 - **기본값은 모두 켜짐** — 지금 쓰는 업체의 동작은 안 바뀐다. 원가 관리 탭·주문별 마진 패널은 회계 관리 메뉴를 끄면 같이 사라진다(`cost_management`가 자식이므로).
 - **옮긴 탭 위치**: 재고 · 매입 내역 메뉴에는 재고 보기·입출고 내역·소비기한·발주 추천만 남았고, 고객 관리 메뉴에는 고객 관리·맞춤 단가만 남았다.
-- **새 회계 탭 붙이는 법**: 마이그레이션에서 `platform_features`에 `parent_key='accounting'`으로 한 줄 등록(+`open_default_feature_periods`) → DB 함수 맨 앞(또는 불가피하면 화면)에서 `feature_effective` 검사 → `buildAccountingTabs`·`FEATURE_KEYS`에 추가 → 켠/끈 경우 둘 다 테스트. 손익 관리 탭이 이 순서로 붙을 예정(아직 없음). 재고 조정·손실 탭은 218에서 붙였다(아래).
+- **새 회계 탭 붙이는 법**: 마이그레이션에서 `platform_features`에 `parent_key='accounting'`으로 한 줄 등록(+`open_default_feature_periods`) → DB 함수 맨 앞(또는 불가피하면 화면)에서 `feature_effective` 검사 → `buildAccountingTabs`·`FEATURE_KEYS`에 추가 → 켠/끈 경우 둘 다 테스트. 재고 조정·손실 탭(218)과 손익 관리 탭(219)을 이 순서로 붙였다(아래).
 - **검증**: `scripts/db-test-features.sql` 7-G(회계 관리 23건 포함 총 76건), `lib/features/accounting-tabs.test.ts`. 실화면 클릭 검증 전, 운영 DB 미적용.
 
 ### 재고 조정·손실 탭 (마이그레이션 218, 2026-10-02)
@@ -101,3 +101,15 @@
 - **손실 금액은 박스 폐기만 안다**(중량×매입단가, `box_disposals`를 장부 `source_id`로 연결). 상품 단위 조정 손실과 단가 없는 박스는 **0원이 아니라 "금액 미상"**으로 따로 센다. 합계는 단위별(kg·개 …)로 따로 낸다.
 - **대표 전용**(금액에 매입 원가가 들어 있음, 박스 폐기 이력·장부 불일치와 같은 기준). 함수 `list_stock_adjustments`·`summarize_stock_adjustments`는 `assert_stock_adjust_access()`로 대표 + `feature_effective` 검사. 날짜는 한국 시간 기준·끝 날짜 포함, 기본 최근 30일, 목록은 최근 200건 상한.
 - **검증**: `scripts/db-test-stock-adjustments.sql`(19건), `lib/supplier/stock-adjustments.test.ts`, `lib/features/accounting-tabs.test.ts`. 실화면 클릭 검증 전, 운영 DB 미적용.
+
+### 손익 관리 탭 (마이그레이션 219, 2026-10-02)
+
+회계 관리의 6번째 탭 `/dashboard/stock-pnl`, 키 `accounting_pnl`(부모 `accounting`, 기본 켜짐). **조회 전용, 대표 전용.** 새 표 없이 이미 있는 숫자를 기간으로 모은다.
+
+- **영업이익이 아니라 매출총이익(마진)이다.** 인건비·임대료 같은 비용은 시스템에 데이터가 없어 넣지 않았다. 외상 회수·현금흐름(미수금 정산 탭 영역)과 반품·환불도 뺐다(반품 주문 개념이 없고, 취소 주문은 매출에서 제외).
+- **계산식**: 매출 = 기간 안에 **출고 확정된**(`shipment_finalized_at`, 한국 시간) 주문 줄의 확정 금액(`order_items.subtotal_amount`), 취소 주문 제외. 매출원가 = 그 주문들에서 실제로 나간 박스의 매입단가 × 나간 양(`get_order_margin`과 같은 장부 이벤트 4종·같은 계산, 박스별 순수 출고량). 손실 금액 = 기간 안 장부 `LOSS` 중 금액을 아는 것(박스 폐기, 218과 같은 기준). 이익 = 매출 − 원가, 손실 반영 후 이익 = 거기서 손실 금액.
+- **매출 기준을 출고 확정으로 한 이유(대표 승인 "추천대로")**: 원가가 실제 출고 박스로 정해지는 시점이라 매출과 원가가 같은 기준이 된다. 출고 확정 전 주문은 그 기간 손익에 안 잡힌다.
+- **0원으로 치지 않는 것**: 원가를 모르는 출고(단가 없는 박스·박스 없는 재고)는 "원가 미입력"(월별=상품 수, 상품별=수량)으로, 금액을 모르는 손실은 "금액 미상"으로 따로 센다. 이 값이 있으면 화면 위에 "숫자가 완전하지 않다" 안내가 뜨고 매출총이익이 실제보다 커 보일 수 있다.
+- **함수**: `get_pnl_by_month`(월별, 손실은 폐기한 달 기준이라 매출 없는 달도 줄이 생김)·`get_pnl_by_product`(상품별, 수량은 단위가 달라 상품 줄 안에서만 의미)·`resolve_pnl_scope`(대표 + `feature_effective` 검사 + 기간 해석). 기본 기간은 이번 달 1일~오늘, **최대 366일**(`INVALID_RANGE`·`RANGE_TOO_LONG`, 화면이 먼저 안내).
+- **성능**: 주문 5,000건·장부 1만 건에서 월별(300일) 87ms, 상품별 9ms(로컬).
+- **검증**: `scripts/db-test-pnl.sql`(20건), `lib/supplier/pnl.test.ts`, `lib/features/accounting-tabs.test.ts`. 실화면 클릭 검증 전, 운영 DB 미적용.

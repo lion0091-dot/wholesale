@@ -99,7 +99,7 @@ export function OrderMarginPanel({ summary, status }: { summary: OrderMarginSumm
           }}
         >
           매입단가를 모르는 물량이 {formatQty(summary.unpricedQty)}kg 있어요. 그만큼은 원가에 빠져 있어서 마진이 실제보다 높게 보입니다.
-          입고 때 단가를 넣지 않은 박스이거나 박스 없이 수동으로 넣은 재고예요. 단가는 [재고·매입 내역]의 매입 정산에서 채울 수 있습니다.
+          입고 때 단가를 넣지 않은 박스이거나 박스 없이 수동으로 넣은 재고예요. 단가는 [회계 관리]의 매입 정산에서 채울 수 있습니다.
         </p>
       )}
 

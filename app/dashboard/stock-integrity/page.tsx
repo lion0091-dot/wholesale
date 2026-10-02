@@ -25,7 +25,12 @@ export default async function StockIntegrityPage() {
 
   // 회계 관리 > 장부 불일치 탭이 꺼진 업체(또는 회계 관리 메뉴가 꺼진 업체)는 화면을 열지 않는다(마이그레이션 217).
   if (scope?.wholesalerId && !(await getMyEnabledFeatures()).has(FEATURE_KEYS.accountingIntegrity)) {
-    return <FeatureNotice screenName="장부 불일치">이 업체에서는 쓰지 않도록 설정된 기능이에요. 필요하면 운영팀에 문의해 주세요.</FeatureNotice>;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        <AccountingTabs />
+        <FeatureNotice screenName="장부 불일치">이 업체에서는 쓰지 않도록 설정된 기능이에요. 필요하면 운영팀에 문의해 주세요.</FeatureNotice>
+      </div>
+    );
   }
 
   const supabase = await createClient();
