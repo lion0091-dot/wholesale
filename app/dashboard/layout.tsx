@@ -39,6 +39,7 @@ const NAV_GROUPS: DashboardNavItem[][] = [
         "/dashboard/stock-boxes",
         "/dashboard/stock-expiring",
         "/dashboard/stock-valuation",
+        "/dashboard/stock-integrity",
         "/dashboard/purchases",
         "/dashboard/reorder-suggestions",
       ],

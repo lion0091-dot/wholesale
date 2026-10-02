@@ -1,5 +1,6 @@
 import { PillTabs } from "./pill-tabs";
 import { FEATURE_KEYS, getMyUsableFeatures } from "@/lib/features/my-features";
+import { getOrgStaffContext } from "@/lib/auth/rbac";
 
 /**
  * 사이드바 메뉴 하나로 묶인 화면들의 공통 탭(2026-09-25 메뉴 통합).
@@ -52,11 +53,14 @@ export function ProductTabs() {
 }
 
 // "원가 관리" 탭은 이 업체에서 기능이 켜져 있고, 대표이거나 대표가 허용한 사람에게만 보인다(마이그레이션 210).
+// "장부 불일치"(전산 숫자가 입출고 기록과 다른 항목 보정, 마이그레이션 215)는 대표에게만 보인다. 창고 실물과 비교하는 화면이 아니다.
 export async function StockTabs() {
-  const features = await getMyUsableFeatures();
-  const tabs = features.has(FEATURE_KEYS.costManagement)
-    ? [...STOCK_TABS, { label: "원가 관리", href: "/dashboard/stock-valuation" }]
-    : STOCK_TABS;
+  const [features, context] = await Promise.all([getMyUsableFeatures(), getOrgStaffContext()]);
+  const tabs = [
+    ...STOCK_TABS,
+    ...(features.has(FEATURE_KEYS.costManagement) ? [{ label: "원가 관리", href: "/dashboard/stock-valuation" }] : []),
+    ...(context?.orgRole === "owner" ? [{ label: "장부 불일치", href: "/dashboard/stock-integrity" }] : []),
+  ];
 
   return <PillTabs tabs={tabs} ariaLabel="재고·매입 화면" />;
 }
