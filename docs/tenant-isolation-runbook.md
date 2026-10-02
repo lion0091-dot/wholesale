@@ -47,4 +47,4 @@ npx vitest run --config vitest.integration.config.mts tests/integration/tenant-i
 
 - 모든 표의 쓰기 교차 시도를 자동 생성하지는 못한다 — 새 표의 쓰기 방어는 위 "새 규칙"대로 사람이 가드를 걸어야 하고, 안 걸면 구조 검사가 실패해 알려 준다.
 - `product_has_stock_history`, `organization_has_no_staff`는 UUID를 알면 존재 여부(boolean)만 알려 준다. 섞임은 아니나 정보 노출은 있다. 낮은 우선순위.
-- 서비스키를 쓰는 서버 코드(13개 파일)는 RLS를 우회한다 — 이 경로의 소속 검사는 코드 리뷰에 의존한다.
+- 서비스키를 쓰는 서버 코드는 RLS를 우회한다. 2026-10-02에 21개 경로(크론 8 + 사용자 요청이 닿는 13)를 전부 읽고 소속이 세션·서명 토큰·검증된 행에서만 오는 것을 확인했다(결함 없음). 새 사용처는 `lib/security/service-role-usage.test.ts`가 실패로 알려 주며, 읽고 확인한 뒤 `REVIEWED`에 추가해야 한다. 낮은 위험으로 남은 것: 웹푸시 구독은 endpoint 충돌 시 덮어쓴다(endpoint는 브라우저별 비공개 주소라 추측 불가라고 판단, 미재현).
