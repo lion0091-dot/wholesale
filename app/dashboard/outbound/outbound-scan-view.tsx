@@ -39,6 +39,8 @@ export function OutboundScanView({ orders }: Props) {
   const router = useRouter();
 
   // 아직 마감 안 된 주문서부터 — 마감된 주문서가 기본 선택이면 첫 스캔이 "이미 마감됨"으로 거부된다.
+  // 기본은 오래된 순(먼저 들어온 주문부터 처리). 토글은 목록 표시만 뒤집고, "다음 주문" 판단은 그대로 오래된 순을 쓴다.
+  const [newestFirst, setNewestFirst] = useState(false);
   const [orderId, setOrderId] = useState((orders.find((order) => !order.finalized) ?? orders[0])?.id ?? "");
   const [traceNo, setTraceNo] = useState("");
   const [progress, setProgress] = useState<OutboundProgressRow[]>([]);
@@ -277,9 +279,19 @@ export function OutboundScanView({ orders }: Props) {
       </section>
 
       <section style={panelStyle}>
-        <label htmlFor="order" style={labelStyle}>
-          주문서
-        </label>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+          <label htmlFor="order" style={labelStyle}>
+            주문서
+          </label>
+          <button
+            type="button"
+            onClick={() => setNewestFirst((value) => !value)}
+            aria-label="주문서 정렬 순서 바꾸기"
+            style={{ padding: "4px 10px", border: "1px solid #cbd5e1", borderRadius: "999px", background: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "#334155" }}
+          >
+            {newestFirst ? "최신순 ↓ (눌러서 오래된 순)" : "오래된 순 ↑ (눌러서 최신순)"}
+          </button>
+        </div>
         <select
           id="order"
           value={orderId}
@@ -291,7 +303,7 @@ export function OutboundScanView({ orders }: Props) {
           style={inputStyle}
         >
           <option value="">선택하세요</option>
-          {orders.map((order) => (
+          {(newestFirst ? [...orders].sort((a, b) => Number(a.finalized) - Number(b.finalized) || b.orderedAt.localeCompare(a.orderedAt)) : orders).map((order) => (
             <option key={order.id} value={order.id}>
               {order.orderNumber} · {order.retailerName} · {formatDate(order.orderedAt)}
               {order.finalized ? " (마감됨)" : order.status === "awaiting_stock" ? " (재고 확보 대기)" : ""}

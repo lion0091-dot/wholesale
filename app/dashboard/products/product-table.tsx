@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ProductFacetMenu } from "@/components/product-facet-menu";
+import { EMPTY_FACETS, matchesFacets, type FacetSelection } from "@/lib/products/facet-filter";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Product } from "@/types/database";
@@ -195,7 +197,7 @@ export function ProductTable({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [keyword, setKeyword] = useState("");
-  const [category, setCategory] = useState("all");
+  const [facets, setFacets] = useState<FacetSelection>(EMPTY_FACETS);
   /**
    * 상태 필터. 자동 생성된 상품은 판매가 0원·판매중지로 들어오므로, 그대로 두면
    * 진짜 파는 상품이 그 사이에 묻힌다. 기본은 보관을 제외한 전체를 보여준다.
@@ -230,9 +232,10 @@ export function ProductTable({
     [stockSummaries, sampleStockSummaries]
   );
 
-  const categories = useMemo(
-    () => Array.from(new Set(allProducts.map((product) => product.category))),
-    [allProducts]
+  // 필터 메뉴의 선택지·개수는 지금 보는 목록(보관함인지 아닌지)을 기준으로 센다.
+  const facetBase = useMemo(
+    () => allProducts.filter((product) => (status === "archived" ? Boolean(product.archived_at) : !product.archived_at)),
+    [allProducts, status]
   );
 
   const visibleProducts = allProducts.filter((product) => {
@@ -240,7 +243,7 @@ export function ProductTable({
     const matchesKeyword = needle
       ? product.name.toLowerCase().includes(needle) || (product.display_alias ?? "").toLowerCase().includes(needle)
       : true;
-    const matchesCategory = category === "all" ? true : product.category === category;
+    const matchesCategory = matchesFacets(product, facets);
 
     const isArchived = Boolean(product.archived_at);
     const isUnpriced = Number(product.base_price) <= 0;
@@ -480,25 +483,7 @@ export function ProductTable({
             </button>
           )}
         </div>
-        <select
-          value={category}
-          onChange={(event) => setCategory(event.target.value)}
-          style={{
-            flex: "0 1 110px",
-            minWidth: "84px",
-            padding: "8px 6px",
-            fontSize: "13px",
-            border: "1px solid #cbd5e1",
-            borderRadius: "6px",
-          }}
-        >
-          <option value="all">전체 카테고리</option>
-          {categories.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
+        <ProductFacetMenu products={facetBase} selection={facets} onChange={setFacets} />
 
         {/* 자동 생성 상품은 판매가 0원·판매중지로 들어온다 — 그대로 두면 진짜 파는
             상품이 묻히므로 상태로 걸러 볼 수 있게 한다. */}

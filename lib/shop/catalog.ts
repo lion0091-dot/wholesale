@@ -211,7 +211,9 @@ export async function loadShopCatalog(
     // 같은 조건이 있지만(20260930000058), 공급사 본인이 자기 미니샵을 열어보는
     // 경우엔 RLS의 "소유자" 분기를 타서 통과하므로 여기서도 한 번 더 거른다.
     .gt("base_price", 0)
-    .order("name", { ascending: true });
+    // 미니샵 첫 화면은 최신 등록순. created_at이 같은 행(일괄 등록)은 id로 고정해 새로고침마다 순서가 바뀌지 않게 한다.
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: true });
 
   const products = (productsData ?? []) as Product[];
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { ProductFacetMenu } from "@/components/product-facet-menu";
+import { EMPTY_FACETS, facetCount, matchesFacets, type FacetSelection } from "@/lib/products/facet-filter";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -15,8 +17,6 @@ interface ShopViewProps {
   authMessage?: string | null;
 }
 
-const CATEGORIES = ["전체", "소", "돼지", "닭", "오리", "계란", "가공육/기타"] as const;
-const MAIN_CATEGORIES = ["소", "돼지", "닭", "오리", "계란"];
 const PREVIEW_STATUS_LABELS: Record<string, string> = {
   pending: "승인 대기 중",
   suspended: "정지",
@@ -27,7 +27,7 @@ const PREVIEW_STATUS_LABELS: Record<string, string> = {
 export function ShopView({ catalog, authMessage }: ShopViewProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"normal" | "hotdeal">("normal");
-  const [selectedCategory, setSelectedCategory] = useState<string>("전체");
+  const [facets, setFacets] = useState<FacetSelection>(EMPTY_FACETS);
   const [isPending, startTransition] = useTransition();
   const [sessionError, setSessionError] = useState<string | null>(authMessage ?? null);
 
@@ -65,39 +65,16 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
 
   const tabItems = activeTab === "normal" ? normalItems : hotDealItems;
 
-  const displayedItems = tabItems.filter((item) => {
-    if (selectedCategory === "전체") {
-      return true;
-    }
+  const displayedItems = tabItems.filter((item) => matchesFacets(item.product, facets));
 
-    if (selectedCategory === "가공육/기타") {
-      return !MAIN_CATEGORIES.includes(item.product.category);
-    }
-
-    return item.product.category === selectedCategory;
-  });
-
-  const availableCategories = useMemo(
-    () =>
-      CATEGORIES.filter((category) => {
-        if (category === "전체") {
-          return true;
-        }
-
-        if (category === "가공육/기타") {
-          return tabItems.some((item) => !MAIN_CATEGORIES.includes(item.product.category));
-        }
-
-        return tabItems.some((item) => item.product.category === category);
-      }),
-    [tabItems]
-  );
+  // 필터 메뉴의 선택지·개수는 지금 보는 탭의 품목 기준이다.
+  const facetProducts = useMemo(() => tabItems.map((item) => item.product), [tabItems]);
 
   // 탭 전환 시 카테고리 필터를 초기화한다.
   // (이전 탭에만 있던 카테고리가 남아 목록이 비어 보이는 문제 방지)
   const handleTabChange = (tab: "normal" | "hotdeal") => {
     setActiveTab(tab);
-    setSelectedCategory("전체");
+    setFacets(EMPTY_FACETS);
   };
 
   /**
@@ -300,29 +277,12 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
         )}
 
         <>
-            {/* 카테고리 필터 — 현재 탭에 품목이 있는 카테고리만 노출한다. */}
-            <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "12px", marginBottom: "12px" }}>
-              {availableCategories.map((category) => (
-                <button
-                  key={category}
-                  type="button"
-                  onClick={() => setSelectedCategory(category)}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: "20px",
-                    border: "1px solid",
-                    borderColor: selectedCategory === category ? "#0f172a" : "#e2e8f0",
-                    backgroundColor: selectedCategory === category ? "#0f172a" : "#ffffff",
-                    color: selectedCategory === category ? "#ffffff" : "#475569",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    whiteSpace: "nowrap",
-                    cursor: "pointer",
-                  }}
-                >
-                  {category}
-                </button>
-              ))}
+            {/* 필터 — 누르면 축종·부위·원산지·등급 체크박스 메뉴가 열린다. 현재 탭의 품목 기준. */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", paddingBottom: "12px", marginBottom: "12px" }}>
+              <ProductFacetMenu products={facetProducts} selection={facets} onChange={setFacets} />
+              <span style={{ fontSize: "12px", color: "#64748b" }}>
+                {facetCount(facets) > 0 ? `${displayedItems.length} / ${tabItems.length}개 품목` : `${tabItems.length}개 품목`}
+              </span>
             </div>
 
             {displayedItems.length === 0 ? (
@@ -340,13 +300,13 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
                     ? activeTab === "normal"
                       ? "공급사가 아직 기본 납품 품목을 등록하지 않았습니다."
                       : "현재 지정된 핫딜 상품이 없습니다."
-                    : `'${selectedCategory}' 카테고리에 해당하는 품목이 없습니다.`}
+                    : "고른 조건에 해당하는 품목이 없습니다."}
                 </p>
 
-                {tabItems.length > 0 && selectedCategory !== "전체" && (
+                {tabItems.length > 0 && facetCount(facets) > 0 && (
                   <button
                     type="button"
-                    onClick={() => setSelectedCategory("전체")}
+                    onClick={() => setFacets(EMPTY_FACETS)}
                     style={{
                       marginTop: "12px",
                       backgroundColor: "#0f172a",
@@ -359,7 +319,7 @@ export function ShopView({ catalog, authMessage }: ShopViewProps) {
                       cursor: "pointer",
                     }}
                   >
-                    전체 품목 보기
+                    필터 초기화
                   </button>
                 )}
               </div>
