@@ -62,6 +62,7 @@ npx vitest run --config vitest.integration.config.mts tests/integration/tenant-i
 ```
 - 쓰기 방어 15건(`scripts/db-test-tenant-guards.sql`), 읽기 격리 전수(`db-test-read-isolation.sql`), 주문·고객 시나리오 21건(`db-test-order-customer-isolation.sql`).
 - **Storage 파일 격리**(`tests/integration/storage-isolation.itest.ts`, 22건): 실제 Storage API로 다른 공급사·고객·비로그인의 읽기·목록·업로드·덮어쓰기·삭제와 경로 꼼수(`..`, 비uuid, 대문자·중괄호·하이픈 없는 id)를 시도한다. 자기 폴더 업로드 대조군 4건 포함, 정책을 느슨하게 하면 실패함을 확인. 운영 DB의 Storage 정책 18개·버킷 5개가 로컬과 해시까지 같음(2026-10-02). 공개 버킷(product-images·shop-thumbnails)은 읽기 공개가 의도다.
+- **전 테이블 자동 시드 전수**(`scripts/db-test-all-tables-isolation.sql`, 2026-10-02): 카탈로그에서 컬럼·FK·CHECK를 읽어 `wholesaler_id` 표 28개를 자동 시드하고(공급사 A·B), A 계정으로 B 행의 조회·수정·삭제·삽입을 시도한다. `retailer_id` 표 6개는 무관한 고객 R2가 R1 행을 못 보고 못 바꾸는지. 누출 0건. 변이 검사로 읽기·수정·삭제·삽입·고객 읽기 구멍을 일부러 만들면 전부 잡힘을 확인(수정·삭제는 읽기 정책이 열려야 도달 가능 — PostgreSQL이 UPDATE/DELETE의 WHERE에 읽기 권한을 요구). 새 표가 자동 시드되지 않으면 실패하므로 `_overrides`에 값을 적는다. A 자신의 행도 안 보이는 5개 표(alimtalk_send_log·organizations·platform_event_suppliers·platform_subscription_invoices·retailer_bell_reads)는 정책이 운영자·고객 본인·조직 구성원 전용인 설계로 확인했다.
 - 읽기 격리 전수는 로컬에 남은 데이터로 돌려서 **남의 행이 실제 존재해 의미 있던 표는 일부(2026-10-02 기준 11개)**다. 나머지는 "보이지 않음"이 데이터 부재 때문일 수 있어, 주문·품목·맞춤단가·거래처는 시나리오 스크립트가 따로 시드해서 검증한다.
 
 ## 6. 알려진 한계 (정직하게)
