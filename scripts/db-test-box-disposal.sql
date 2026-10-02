@@ -114,6 +114,13 @@ reset role;
 insert into results (who,what,expected,result) values
  ('시스템','서버 권한으로도 이력은 고칠 수 없다(트리거)','DENIED: HISTORY_IMMUTABLE', pg_temp.try($q$update public.box_disposals set note='위조'$q$));
 
+-- 220: 다른 업체의 박스를 가리키는 이력은 서버 권한으로도 쓸 수 없다(공급사 섞임 방어)
+insert into public.inbound_scans (id,wholesaler_id,trace_no,weight,unit,scan_type,status,remaining_weight)
+values ('b8888888-0000-0000-0000-0000000000b2','a8888888-0000-0000-0000-000000000002','088800000099',5,'kg','MANUAL','NORMAL',5);
+insert into results (who,what,expected,result) values
+ ('시스템','우리 업체 이력이 타사 박스를 가리키면 → 거부(섞임 방어)','DENIED', pg_temp.try($q$insert into public.box_disposals (wholesaler_id,inbound_scan_id,trace_no,reason_code,weight,before_remaining,after_remaining) values ('a8888888-0000-0000-0000-000000000001','b8888888-0000-0000-0000-0000000000b2','088800000099','DAMAGE',1,5,4)$q$)),
+ ('시스템','같은 업체 박스를 가리키는 이력은 정상 대조군으로 쓸 수 있다','ALLOWED', pg_temp.try($q$insert into public.box_disposals (wholesaler_id,inbound_scan_id,trace_no,reason_code,weight,before_remaining,after_remaining) values ('a8888888-0000-0000-0000-000000000001','b8888888-0000-0000-0000-000000000001','088800000001','DAMAGE',1,5,4)$q$));
+
 select '--- 결과 ---' as t;
 select no, who, what, expected, result,
        case when result = expected or (expected like 'DENIED|%' and result like 'DENIED%') or (expected = 'DENIED' and result like 'DENIED%') then 'PASS' else 'FAIL' end as verdict

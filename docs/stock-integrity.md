@@ -84,3 +84,9 @@
 - 이력 `box_disposals`(고칠 수 없음, 보정 이력 215와 같은 방식): 폐기량·사유·**손실 금액 = 폐기 중량 × 박스 매입단가(원 단위 반올림)**. 매입단가를 모르는 박스는 금액이 NULL(수량만 기록). 기간별 손익/손실 화면이 생기면 `box_disposals.loss_amount`와 `stock_repairs.valuation_change`를 함께 손실로 합산한다.
 - 화면: `/dashboard/stock-expiring`(소비기한 임박·오래된 박스) 각 줄에 대표에게만 "폐기" 버튼, 아래 "최근 폐기" 표. 재고 보기 트리는 박스 묶음 집계라 폐기 진입점이 없다.
 - 테스트: `scripts/db-test-box-disposal.sql`(27건), `lib/supplier/box-disposal.test.ts`. **미적용: 운영 DB(216), 실화면 클릭 검증 전.**
+
+### 코드 리뷰·통단테 보완 (마이그레이션 220, 2026-10-02)
+
+- **공급사 섞임 방어 트리거 누락 수정**: `box_disposals.inbound_scan_id`(→inbound_scans)에 `enforce_tenant_refs`를 걸었다. 216이 "공급사 소유 표가 다른 공급사 소유 표를 FK로 가리키면 같은 마이그레이션에서 가드를 건다"는 규칙(`tenant-isolation.itest.ts`가 잡음)을 놓쳤었다. 실제 경로(`dispose_box`)는 자기 업체 박스만 만들어 영향은 없었다.
+- **처리자 이름이 빈 문자열인 계정**은 폐기·조정 이력의 처리자 칸이 비어 보이던 것을 "알 수 없음"으로 표시(`list_box_disposals`·`list_stock_adjustments`).
+- **폐기 버튼**: 기본 입력값이 남은 양 전체이고 기록이 고칠 수 없어, "폐기하기"를 누르면 확인 창을 한 번 더 띄운다.

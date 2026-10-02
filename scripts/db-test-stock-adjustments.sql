@@ -115,6 +115,13 @@ set role authenticated; set request.jwt.claim.role = 'authenticated';
 set request.jwt.claim.sub = '89999999-8999-0000-0000-000000000001';
 insert into results (who,what,expected,result) values
  ('대표(복구)','다시 켜면 기록이 돌아온다(위에서 한 조정·폐기까지 8건)','8', pg_temp.val($q$select count(*)::text from public.list_stock_adjustments()$q$));
+-- 220: 처리자 이름이 빈 문자열인 계정은 이름 칸이 비지 않고 "알 수 없음"으로 보인다
+reset role;
+update public.profiles set name = '' where id = '89999999-8999-0000-0000-000000000001';
+set role authenticated; set request.jwt.claim.role = 'authenticated';
+set request.jwt.claim.sub = '89999999-8999-0000-0000-000000000001';
+insert into results (who,what,expected,result) values
+ ('대표(이름 없음)','처리자 이름이 비어 있으면 "알 수 없음"으로 보인다(조정 이력·박스 폐기 이력)','알 수 없음|알 수 없음', pg_temp.val($q$select distinct by_name from public.list_stock_adjustments()$q$)||'|'||pg_temp.val($q$select distinct disposed_by_name from public.list_box_disposals()$q$));
 reset role;
 insert into results (who,what,expected,result) values
  ('시스템','탭 키가 회계 관리 아래에 등록돼 있다','accounting', (select parent_key from public.platform_features where key='accounting_stock_adjust'));

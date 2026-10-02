@@ -25,6 +25,11 @@ export function DisposeBoxButton({ boxId, remaining, unit, label }: { boxId: str
       return;
     }
 
+    // 폐기 기록은 고칠 수 없고 기본 입력값이 남은 양 전체라, 실수로 눌러도 한 번 더 확인한다.
+    if (!window.confirm(`${label} ${weight}${unit}을(를) 폐기합니다. 폐기 기록은 고칠 수 없습니다. 계속할까요?`)) {
+      return;
+    }
+
     setError(null);
 
     startTransition(async () => {
