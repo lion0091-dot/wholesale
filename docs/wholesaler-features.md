@@ -113,3 +113,16 @@
 - **함수**: `get_pnl_by_month`(월별, 손실은 폐기한 달 기준이라 매출 없는 달도 줄이 생김)·`get_pnl_by_product`(상품별, 수량은 단위가 달라 상품 줄 안에서만 의미)·`resolve_pnl_scope`(대표 + `feature_effective` 검사 + 기간 해석). 기본 기간은 이번 달 1일~오늘, **최대 366일**(`INVALID_RANGE`·`RANGE_TOO_LONG`, 화면이 먼저 안내).
 - **성능**: 주문 5,000건·장부 1만 건에서 월별(300일) 87ms, 상품별 9ms(로컬).
 - **검증**: `scripts/db-test-pnl.sql`(20건), `lib/supplier/pnl.test.ts`, `lib/features/accounting-tabs.test.ts`. 실화면 클릭 검증 전, 운영 DB 미적용.
+
+### 계산서 집계 탭 (마이그레이션 222, 2026-10-03)
+
+회계 관리의 7번째 탭 `/dashboard/tax-invoices`, 키 `accounting_tax_invoices`(부모 `accounting`, 기본 켜짐). **조회 전용.** 새 표 없이 `tax_invoice_issuances`(발행이력, 033)를 기간으로 모은다. 사장님이 "회계 관리에 계산서 집계가 빠졌다"고 지적해 추가.
+
+- **보는 사람은 대표·매니저**(`can_manage_wholesaler`) — 계산서 발행·조회 권한(109)과 같다. 직원은 제외. 금액에 원가가 들어 있지 않아 대표 전용으로 좁히지 않았다. 탭 목록은 `buildAccountingTabs`의 4번째 인자 `canManage`.
+- **금액 = 발행 완료한 최초 발행의 주문 총액(`orders.total_amount`)** — 팝빌에 넘기는 공급가액 합계와 같다. **정정 발행은 금액에 합치지 않고 건수만 센다**(같은 주문을 다시 신고하는 것이라 합치면 두 번 세어진다). 진행 중(pending, 국세청 접수 여부를 모름)·실패는 금액 없이 건수만 따로 보여주고, 취소(cancelled)는 아예 안 센다.
+- **기준일**: 발행 성공은 `issued_at`, 나머지 상태는 `created_at`(한국 시간, 끝 날짜 포함). 기본 이번 달 1일~오늘, 최대 366일.
+- **함수**: `get_tax_invoice_by_month`·`get_tax_invoice_by_retailer`(발행 금액 큰 순)·`resolve_tax_invoice_scope`(권한+`feature_effective`+기간 검사). 거래처 이름은 `retailers.restaurant_name`.
+- **챙겨야 할 주문**(마이그 223 `get_tax_invoice_todo`, 화면 맨 위): ① 진행 중(결과 모름, 정정 포함) ② 실패 — 그 뒤에 같은 주문의 진행 중·완료 발행이 없는 것만(다시 발행하면 사라진다) ③ 계산서 없음 — 기간 안 출고 확정(취소 제외)인데 발행이력이 하나도 없는 주문(취소된 이력뿐인 주문 포함). 주문번호를 누르면 `/dashboard/orders/{id}`로 가서 발행·확인한다. 최근 300건 상한, 전체 건수는 `total_count`.
+- **엑셀(CSV) 내려받기**: `/dashboard/tax-invoices/export?kind=months|retailers|todo&from&to`(BOM 포함 UTF-8, 엑셀에서 바로 열림). 권한·기능 켜짐·기간 검사는 DB 함수가 하고 거부되면 403. 엑셀 수식 주입을 막으려고 `= + - @`로 시작하는 칸은 앞에 `'`를 붙인다(`csvCell`). 새 라이브러리는 쓰지 않았다(xlsx 의존성 없음).
+- **성능 교훈(224 + 223)**: 대량 입력 직후(통계 없음)나 통계가 낡았을 때 계획기가 "발행이력마다 그 업체의 주문 전체를 훑는" 중첩 루프를 골라 발행이력 5,500건·주문 6,000건에서 1.3~2.6초가 났다. 해결 = 이력마다 주문을 기본키로 한 건씩 찾기(`JOIN LATERAL (SELECT ... FROM orders WHERE id = t.order_id OFFSET 0)`), **업체 조건은 찾은 뒤에** 걸기, 이력 존재 확인(`NOT EXISTS`)은 업체 조건 없이 `order_id`로만. 고친 뒤 통계 없이도 13~18ms. **업체 조건(`wholesaler_id = v_wid`)을 두 표 양쪽에 같이 걸면 같은 문제가 재발한다.**
+- **검증**: `scripts/db-test-tax-invoice-summary.sql`(23건 통과), `tests/integration/tax-invoice-summary.itest.ts`(주문 3,000건 규모 가드 150ms — 옛 쿼리로 되돌리면 242ms로 실패하는 것 확인), `lib/supplier/tax-invoice-summary.test.ts`, `lib/features/accounting-tabs.test.ts`. 기능 목록 테스트(`db-test-features.sql`)의 개수 기대값 7→8 갱신(32·34번은 날짜 하루 어긋남으로 이 변경 전부터 실패 중). 실화면 클릭 검증 전, 운영 DB: 222 적용 완료, 223·224는 배포 때 적용. 운영 발행이력은 현재 0건(팝빌 계약 전).

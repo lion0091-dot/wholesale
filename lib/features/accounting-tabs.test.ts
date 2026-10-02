@@ -7,6 +7,7 @@ const ALL = new Set([
   "accounting_purchases",
   "accounting_stock_adjust",
   "accounting_pnl",
+  "accounting_tax_invoices",
   "accounting_integrity",
   "cost_management",
 ]);
@@ -22,8 +23,20 @@ describe("buildAccountingTabs", () => {
       "/dashboard/stock-valuation",
       "/dashboard/stock-adjustments",
       "/dashboard/stock-pnl",
+      "/dashboard/tax-invoices",
       "/dashboard/stock-integrity",
     ]);
+  });
+
+  it("계산서 집계는 대표·매니저에게만 보이고, 탭 키를 끄면 빠진다", () => {
+    expect(hrefs(ALL, ALL, false)).not.toContain("/dashboard/tax-invoices");
+    expect(buildAccountingTabs(ALL, ALL, false, true).map((tab) => tab.href)).toContain("/dashboard/tax-invoices");
+
+    const enabled = new Set(ALL);
+
+    enabled.delete("accounting_tax_invoices");
+
+    expect(buildAccountingTabs(enabled, ALL, true, true).map((tab) => tab.href)).not.toContain("/dashboard/tax-invoices");
   });
 
   it("손익 관리는 대표가 아니면 안 보이고, 탭 키를 끄면 빠진다", () => {
@@ -64,6 +77,7 @@ describe("buildAccountingTabs", () => {
       "/dashboard/stock-valuation",
       "/dashboard/stock-adjustments",
       "/dashboard/stock-pnl",
+      "/dashboard/tax-invoices",
       "/dashboard/stock-integrity",
     ]);
   });

@@ -29,6 +29,7 @@ const ACCOUNTING_NAV_ITEM: DashboardNavItem = {
     "/dashboard/stock-valuation",
     "/dashboard/stock-adjustments",
     "/dashboard/stock-pnl",
+    "/dashboard/tax-invoices",
     "/dashboard/stock-integrity",
   ],
 };
@@ -209,7 +210,8 @@ export default async function DashboardLayout({
     if (todoWholesalerId) {
       // 켜진 기능만 본다(보는 사람 허용 여부까지는 보지 않는다) — 메뉴에서 값비싼 조회를 하나 더 늘리지 않으려는 것이다.
       const enabled = await getMyEnabledFeatures();
-      const tabs = buildAccountingTabs(enabled, enabled, context.orgRole === "owner");
+      const isOwner = context.orgRole === "owner";
+      const tabs = buildAccountingTabs(enabled, enabled, isOwner, isOwner || context.orgRole === "manager");
 
       accountingHref = tabs[0]?.href ?? null;
     }

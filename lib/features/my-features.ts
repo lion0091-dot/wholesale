@@ -52,6 +52,7 @@ export const FEATURE_KEYS = {
   accountingIntegrity: "accounting_integrity",
   accountingStockAdjust: "accounting_stock_adjust",
   accountingPnl: "accounting_pnl",
+  accountingTaxInvoices: "accounting_tax_invoices",
 } as const;
 
 export interface AccountingTab {
@@ -65,13 +66,15 @@ export interface AccountingTab {
  * - 원가 관리: 켜져 있고 대표가 허용한 사람만(`usable`).
  * - 재고 조정·손실: 켜져 있고 대표만(`isOwner`) — 손실 금액에 매입 원가가 들어 있다(218).
  * - 손익 관리: 켜져 있고 대표만(`isOwner`) — 매출·매입 원가·마진이 들어 있다(219).
+ * - 계산서 집계: 켜져 있고 대표·매니저만(`canManage`) — 계산서 발행·조회 권한과 같다(222).
  * - 장부 불일치: 켜져 있고 대표만(`isOwner`).
  * 메뉴 자체(accounting)가 꺼져 있으면 enabled에 자식이 들어 있지 않으므로 빈 목록이다.
  */
 export function buildAccountingTabs(
   enabled: { has(key: string): boolean },
   usable: { has(key: string): boolean },
-  isOwner: boolean
+  isOwner: boolean,
+  canManage: boolean = isOwner
 ): AccountingTab[] {
   return [
     ...(enabled.has(FEATURE_KEYS.accountingReceivables) ? [{ label: "미수금 정산", href: "/dashboard/receivables" }] : []),
@@ -79,6 +82,7 @@ export function buildAccountingTabs(
     ...(usable.has(FEATURE_KEYS.costManagement) ? [{ label: "원가 관리", href: "/dashboard/stock-valuation" }] : []),
     ...(isOwner && enabled.has(FEATURE_KEYS.accountingStockAdjust) ? [{ label: "재고 조정·손실", href: "/dashboard/stock-adjustments" }] : []),
     ...(isOwner && enabled.has(FEATURE_KEYS.accountingPnl) ? [{ label: "손익 관리", href: "/dashboard/stock-pnl" }] : []),
+    ...(canManage && enabled.has(FEATURE_KEYS.accountingTaxInvoices) ? [{ label: "계산서 집계", href: "/dashboard/tax-invoices" }] : []),
     ...(isOwner && enabled.has(FEATURE_KEYS.accountingIntegrity) ? [{ label: "장부 불일치", href: "/dashboard/stock-integrity" }] : []),
   ];
 }

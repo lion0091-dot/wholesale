@@ -59,7 +59,8 @@ export function StockTabs() {
 // - "장부 불일치"(전산 숫자가 입출고 기록과 다른 항목 보정, 215)는 대표에게만 보인다. 창고 실물과 비교하는 화면이 아니다.
 export async function AccountingTabs() {
   const [enabled, usable, context] = await Promise.all([getMyEnabledFeatures(), getMyUsableFeatures(), getOrgStaffContext()]);
-  const tabs = buildAccountingTabs(enabled, usable, context?.orgRole === "owner");
+  const isOwner = context?.orgRole === "owner";
+  const tabs = buildAccountingTabs(enabled, usable, isOwner, isOwner || context?.orgRole === "manager");
 
   return <PillTabs tabs={tabs} ariaLabel="회계 관리 화면" />;
 }
