@@ -38,6 +38,8 @@ export default async function AdminSuppliersPage() {
   }
 
   let suppliers: AdminSupplierItem[] = [];
+  // 본인 명의로 신청한 업체는 본인이 승인할 수 없다 — "지금 할 일" 카드가 그 건을 승인 대상에서 빼는 데 쓴다.
+  let currentUserId: string | null = null;
   // 구독료(구간별 누진 단가) 계산용 — wholesaler_id → 이번 달 실주문(취소 제외) 거래처 수.
   let billedRetailerCounts: Record<string, number> = {};
   let eventDiscounts: Record<string, ActiveEventDiscount> = {};
@@ -46,6 +48,11 @@ export default async function AdminSuppliersPage() {
 
   if (isConfigured) {
     const supabase = await createClient();
+    const {
+      data: { user: adminUser },
+    } = await supabase.auth.getUser();
+
+    currentUserId = adminUser?.id ?? null;
 
     const [{ data }, billedCounts, eventsSnapshot, { data: unpaidInvoiceRows }] = await Promise.all([
       supabase
@@ -163,6 +170,7 @@ export default async function AdminSuppliersPage() {
 
       {/* 공급사 승인/거절 및 구독 권한 관리 목록 */}
       <SupplierApprovalList
+        currentUserId={currentUserId}
         initialSuppliers={suppliers}
         billedRetailerCounts={billedRetailerCounts}
         eventDiscounts={eventDiscounts}

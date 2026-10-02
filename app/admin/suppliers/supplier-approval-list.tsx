@@ -25,8 +25,12 @@ import { currentBillingMonthRangeUtc } from "@/lib/supplier/billed-retailers";
 import type { ActiveEventDiscount } from "@/lib/supplier/platform-events";
 import type { Wholesaler, WholesalerStatus, SubscriptionStatus } from "@/types/database";
 import type { AdminSupplierItem } from "./page";
+import { AdminSupplierNextStepCard } from "@/components/admin-supplier-next-step-card";
+import { pickAdminSupplierNextStep } from "@/lib/admin/supplier-next-step";
 
 interface SupplierApprovalListProps {
+  /** 지금 로그인한 관리자(본인 명의 업체는 승인 대상에서 뺀다) */
+  currentUserId: string | null;
   initialSuppliers: AdminSupplierItem[];
   /** wholesaler_id → 이번 달 실주문(취소 제외) 거래처 수 (구독료는 구간별 누진 단가로 computeMonthlyFee가 계산) */
   billedRetailerCounts: Record<string, number>;
@@ -93,6 +97,7 @@ function formatDate(value: string): string {
 }
 
 export function SupplierApprovalList({
+  currentUserId,
   initialSuppliers,
   billedRetailerCounts,
   eventDiscounts,
@@ -103,6 +108,29 @@ export function SupplierApprovalList({
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [ntsMessage, setNtsMessage] = useState<Record<string, string>>({});
   const [copiedInvoiceId, setCopiedInvoiceId] = useState<string | null>(null);
+
+  const nextStep = pickAdminSupplierNextStep(
+    suppliers.map((s) => ({
+      id: s.id,
+      businessName: s.business_name,
+      status: s.status,
+      profileId: s.profile_id,
+      businessNumber: s.business_number,
+      businessStartDate: s.business_start_date,
+      ntsStatus: s.nts_verification_status,
+      subscriptionStatus: s.subscription_status,
+      createdAt: s.created_at,
+    })),
+    currentUserId
+  );
+
+  // 탭이 그 공급사를 가리고 있어도 "전체"로 돌려놓고 그 카드로 이동한다.
+  const goToSupplier = (supplierId: string) => {
+    setActiveFilter("all");
+    window.setTimeout(() => {
+      document.getElementById(`supplier-${supplierId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  };
 
   const filtered = suppliers.filter((s) => activeFilter === "all" || s.status === activeFilter);
 
@@ -295,6 +323,8 @@ export function SupplierApprovalList({
 
   return (
     <div>
+      <AdminSupplierNextStepCard step={nextStep} onGo={goToSupplier} />
+
       {/* 상태 필터 탭 */}
       <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "8px", marginBottom: "20px" }}>
         {(["all", "pending", "active", "suspended", "rejected"] as const).map((filter) => {
@@ -386,7 +416,9 @@ export function SupplierApprovalList({
             return (
               <div
                 key={supplier.id}
+                id={`supplier-${supplier.id}`}
                 style={{
+                  scrollMarginTop: "12px",
                   backgroundColor: "#ffffff",
                   borderRadius: "12px",
                   padding: "20px",
