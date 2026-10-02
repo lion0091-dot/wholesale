@@ -30,6 +30,10 @@
       "schedule": "30 5 * * *"
     },
     {
+      "path": "/api/cron/check-stock-integrity",
+      "schedule": "45 5 * * *"
+    },
+    {
       "path": "/api/cron/purge-expired-personal-data",
       "schedule": "0 7 * * 0"
     }

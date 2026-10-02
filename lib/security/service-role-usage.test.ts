@@ -28,6 +28,7 @@ const REVIEWED: Record<string, string> = {
   "lib/cron/heartbeat.ts": "크론 실행 기록 — 작업 이름·상태 코드만 쓴다(인증 통과한 크론 핸들러 래퍼, 401은 기록 안 함)",
   "lib/security/wholesaler-credentials.ts": "자격정보 — 호출부가 세션 scope 또는 본인 행 확인 후 id를 넘김",
   "app/api/cron/check-tenant-consistency/route.ts": "크론(CRON_SECRET)",
+  "app/api/cron/check-stock-integrity/route.ts": "크론(CRON_SECRET)",
   "app/api/cron/expire-retailer-invites/route.ts": "크론(CRON_SECRET)",
   "app/api/cron/finalize-subscription-invoices/route.ts": "크론(CRON_SECRET)",
   "app/api/cron/market-price-sync/route.ts": "크론(CRON_SECRET)",

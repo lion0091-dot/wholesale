@@ -180,3 +180,7 @@ Claude Max 요금제는 잔량 조회 API가 없어 실시간 동적 라우팅�
 ## 업체별 기능 켜기/끄기 + 원가 관리(마진 패널·재고 평가) (2026-10-02, 별도 기능)
 
 - [docs/wholesaler-features.md](docs/wholesaler-features.md) — 기능 메뉴판(`platform_features`)·업체별 켜짐(`wholesaler_features`)·업체 안 허용 명단(`wholesaler_feature_viewers`), 운영자가 `/admin/features`에서 켜고 끄고 대표가 팀원 관리에서 누가 볼지 정함. 기능별 월 이용료 칸은 뒀다가 뺐다(구독료 연결은 정책 확정 후). 첫 기능 `cost_management`(주문 마진 + 재고 평가 탭, 지금은 모든 업체 켜짐). **새 선택 기능은 메뉴판에 한 줄 등록 + 기능 DB 함수 맨 앞에서 `can_use_feature` 검사 + 켠/끈 경우 둘 다 테스트.** 켜진 기간 이력(`wholesaler_feature_periods`, 고칠 수 없음, 어드민 이력 화면), 알림벨 소비기한 임박 박스(211), 전표 조회 정책 속도(212). 마이그 210·211·212 운영 미적용.
+
+## 재고·박스·원장 일치 점검 (2026-10-02, 별도 기능)
+
+- [docs/stock-integrity.md](docs/stock-integrity.md) — 입출고를 막지 않고 틀어짐을 찾는 방식: 재고=원장 합계, 박스 잔량과 원장은 한 트랜잭션, 매일 크론 `check-stock-integrity`(마이그 213 `stock_integrity_violations`, 읽기 전용, 어긋나면 자동 작업 상태 화면에 빨강). "원장 도입 전 수동 재고"·확인 필요 박스는 정상으로 본다. 고칠 땐 과거 기록을 수정하지 않고 사유 붙은 보정 기록을 넣는다. 보정 도구(미리보기→승인)·벨 알림은 미착수. 마이그 213 운영 미적용.

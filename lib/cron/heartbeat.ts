@@ -117,6 +117,7 @@ export const CRON_JOBS: Array<{ job: string; path: string; label: string; maxAge
   { job: "expire-retailer-invites", path: "/api/cron/expire-retailer-invites", label: "고객 초대 만료(매일)", maxAgeHours: 36 },
   { job: "purge-unconsented-accounts", path: "/api/cron/purge-unconsented-accounts", label: "가입 미완료 계정 삭제(매일)", maxAgeHours: 36 },
   { job: "check-tenant-consistency", path: "/api/cron/check-tenant-consistency", label: "공급사 간 데이터 섞임 점검(매일)", maxAgeHours: 36 },
+  { job: "check-stock-integrity", path: "/api/cron/check-stock-integrity", label: "재고·박스·원장 일치 점검(매일)", maxAgeHours: 36 },
   { job: "purge-expired-personal-data", path: "/api/cron/purge-expired-personal-data", label: "탈퇴 5년 경과 개인정보 파기(매주)", maxAgeHours: 24 * 8 },
 ];
 
