@@ -164,3 +164,7 @@ Claude Max 요금제는 잔량 조회 API가 없어 실시간 동적 라우팅�
 ## 크론 실행 상태 확인 (2026-10-02, 별도 기능)
 
 - [docs/cron-health.md](docs/cron-health.md) — Vercel 크론은 실패해도 재시도·알림이 없고 누락 시 로그도 안 남아, 크론마다 `cron_runs`에 결과를 남기고 `/admin/cron-health`가 "오래 성공 없음"을 빨간색으로 표시(마이그 204). 새 크론은 `withCronHeartbeat`로 감싸고 `CRON_JOBS`에 추가(테스트가 강제). 운영 DB 적용 전, 알림 푸시는 미결정.
+
+## 주문 알림 지킴이 + Realtime 인증 버그 수정 (2026-10-02, 별도 기능)
+
+- [docs/order-alert-guard.md](docs/order-alert-guard.md) — 카카오 채널 승인 전이라 웹푸시가 유일한 주문 알림 채널 → 꺼져 있으면 빨간 줄(A), 첫 방문 안내 창(B), 화면 열린 동안 새 주문 소리·알림 창(F). 같이 발견: 브라우저 Realtime이 토큰 없이 붙어 변화를 못 받던 버그를 `authorizeRealtime()`으로 수정. 운영 화면 확인 전.

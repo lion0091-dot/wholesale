@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import { authorizeRealtime } from "@/lib/supabase/realtime-auth";
 
 export interface RealtimeTableWatch {
   /** public 스키마의 표 이름 */
@@ -50,28 +51,39 @@ export function useRealtimeRefresh(
       }, debounceMs);
     };
 
-    let channel: RealtimeChannel = supabase.channel(`refresh:${watchKey}:${Math.random().toString(36).slice(2)}`);
+    let channel: RealtimeChannel | null = null;
 
-    for (const watch of watches) {
-      channel = channel.on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: watch.table, filter: watch.filter },
-        schedule
-      );
-    }
+    void (async () => {
+      // 토큰을 먼저 실어야 RLS가 내 행을 통과시킨다 — 안 그러면 구독은 성공해도 변화가 안 온다(realtime-auth.ts 설명 참고).
+      await authorizeRealtime(supabase);
 
-    channel.subscribe((status) => {
-      if (status !== "SUBSCRIBED") return;
+      if (cancelled) return;
 
-      // 첫 구독은 화면이 방금 서버에서 받은 값으로 시작하므로 건너뛰고, 재연결일 때만 따라잡는다.
-      if (subscribedOnce) schedule();
-      subscribedOnce = true;
-    });
+      let next: RealtimeChannel = supabase.channel(`refresh:${watchKey}:${Math.random().toString(36).slice(2)}`);
+
+      for (const watch of watches) {
+        next = next.on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: watch.table, filter: watch.filter },
+          schedule
+        );
+      }
+
+      next.subscribe((status) => {
+        if (status !== "SUBSCRIBED") return;
+
+        // 첫 구독은 화면이 방금 서버에서 받은 값으로 시작하므로 건너뛰고, 재연결일 때만 따라잡는다.
+        if (subscribedOnce) schedule();
+        subscribedOnce = true;
+      });
+
+      channel = next;
+    })();
 
     return () => {
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
-      void supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
     // watches 내용은 watchKey로 비교한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps

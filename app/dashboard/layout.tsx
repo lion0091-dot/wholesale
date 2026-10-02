@@ -5,6 +5,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { FALLBACK_DISPLAY_NAME, resolveDisplayName } from "@/lib/auth/display-name";
 import { DashboardShell, type DashboardNavItem } from "./dashboard-shell";
 import { TodoBell } from "@/components/todo-bell";
+import { OrderAlertGuard } from "@/components/order-alert-guard";
 import { fetchTodoCounts, type TodoCounts } from "@/lib/supplier/todo-counts";
 import { fetchInternalNotices, type InternalNotice } from "@/lib/supplier/internal-notices";
 import { isWebPushConfigured } from "@/lib/notifications/web-push";
@@ -211,6 +212,9 @@ export default async function DashboardLayout({
         ) : null
       }
     >
+      {isOwnerOrManager && todoWholesalerId ? (
+        <OrderAlertGuard wholesalerId={todoWholesalerId} pushConfigured={isWebPushConfigured()} />
+      ) : null}
       {children}
     </DashboardShell>
   );
