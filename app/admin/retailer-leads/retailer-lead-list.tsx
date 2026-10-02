@@ -97,7 +97,9 @@ export function RetailerLeadList({ initialLeads }: RetailerLeadListProps) {
         return (
           <div
             key={lead.id}
+            id={`lead-${lead.id}`}
             style={{
+              scrollMarginTop: "12px",
               backgroundColor: "#ffffff",
               border: "1px solid #e2e8f0",
               borderRadius: "12px",

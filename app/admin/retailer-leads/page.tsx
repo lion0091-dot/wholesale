@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/middleware";
 import { isSuperAdminSession } from "@/lib/auth/rbac";
 import { RetailerLeadList, type RetailerLeadRow } from "./retailer-lead-list";
+import { NEXT_STEP_BUTTON_STYLE, SimpleNextStepCard } from "@/components/simple-next-step-card";
+import { pickAdminLeadsNextStep } from "@/lib/admin/leads-next-step";
 
 export default async function AdminRetailerLeadsPage() {
   const isConfigured = isSupabaseConfigured();
@@ -26,7 +28,16 @@ export default async function AdminRetailerLeadsPage() {
     leads = (data as RetailerLeadRow[] | null) ?? [];
   }
 
-  const pendingCount = leads.filter((lead) => lead.status === "pending").length;
+  const step = pickAdminLeadsNextStep(
+    leads.map((lead) => ({
+      id: lead.id,
+      restaurantName: lead.restaurant_name,
+      region: lead.region,
+      desiredCategory: lead.desired_category,
+      status: lead.status,
+      createdAt: lead.created_at,
+    }))
+  );
 
   return (
     <div style={{ maxWidth: "768px", margin: "0 auto" }}>
@@ -40,21 +51,20 @@ export default async function AdminRetailerLeadsPage() {
         </p>
       </header>
 
-      {pendingCount > 0 && (
-        <div
-          style={{
-            backgroundColor: "#fef3c7",
-            border: "1px solid #fde68a",
-            borderRadius: "10px",
-            padding: "12px 16px",
-            marginBottom: "20px",
-            fontSize: "13px",
-            color: "#92400e",
-          }}
-        >
-          아직 연락하지 않은 신청이 <strong>{pendingCount}건</strong> 있습니다.
-        </div>
-      )}
+      <div style={{ marginBottom: "20px" }}>
+        <SimpleNextStepCard
+          tone={step.key === "nothing" ? "green" : "blue"}
+          title={step.title}
+          detail={step.detail}
+          action={
+            step.leadId && step.buttonLabel ? (
+              <a href={`#lead-${step.leadId}`} style={NEXT_STEP_BUTTON_STYLE}>
+                {step.buttonLabel}
+              </a>
+            ) : undefined
+          }
+        />
+      </div>
 
       <RetailerLeadList initialLeads={leads} />
     </div>

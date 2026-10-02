@@ -272,6 +272,14 @@ export default async function DashboardCustomersPage({
     shopToken = scope.shopToken ?? null;
   }
 
+  // 손님 승인·거래중지는 사장님·매니저만 한다(액션도 같은 규칙). "지금 할 일" 카드를 보일지 정한다.
+  const canManageCustomers = Boolean(
+    scope &&
+      (scope.isSuperAdmin ||
+        scope.orgRole === "owner" ||
+        scope.orgRole === "manager" ||
+        (!scope.organizationId && scope.wholesalerId))
+  );
   const activeCount = customers.filter((customer) => customer.relationStatus === "active").length;
   const customPricedCount = customers.filter((customer) => customer.customPriceCount > 0).length;
   const totalAmount = customers.reduce((sum, customer) => sum + customer.totalOrderAmount, 0);
@@ -317,6 +325,7 @@ export default async function DashboardCustomersPage({
       {canIssueInvite && <InviteSmsQueuePanel initialQueue={inviteSmsQueue} />}
 
       <CustomerTable
+        canManage={canManageCustomers}
         initialStatusFilter={initialStatusFilter}
         customers={customers}
         shopToken={canIssueInvite ? shopToken : null}

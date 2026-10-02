@@ -5,6 +5,8 @@ import Link from "next/link";
 import { issueInviteAction, type IssuedInvite } from "@/app/actions/invite";
 import { formatOrderedAt, formatWon } from "@/lib/orders/status";
 import { IncompleteProfileBadge } from "@/components/incomplete-profile-badge";
+import { NEXT_STEP_BUTTON_STYLE, SimpleNextStepCard } from "@/components/simple-next-step-card";
+import { pickCustomersNextStep } from "@/lib/customers/next-step";
 import type { RelationshipStatus } from "@/types/database";
 import { CustomerCardGrid } from "./customer-card-grid";
 import { updateCreditLimitAction, updateRetailerStatusAction } from "./actions";
@@ -16,6 +18,8 @@ export type { CustomerRow } from "./customer-types";
 type ViewMode = "card" | "table";
 
 interface CustomerTableProps {
+  /** 손님 승인·거래중지를 할 수 있는 사람(대표·매니저)인가 — "지금 할 일" 카드를 보일지 정한다 */
+  canManage?: boolean;
   /** 처음 걸어 둘 거래 상태 필터(대시보드 카드의 ?status= 링크용). 기본은 전체. */
   initialStatusFilter?: RelationshipStatus | "all";
   customers: CustomerRow[];
@@ -66,6 +70,7 @@ async function copyText(text: string) {
 }
 
 export function CustomerTable({
+  canManage = false,
   initialStatusFilter = "all",
   customers,
   shopToken,
@@ -75,6 +80,7 @@ export function CustomerTable({
 }: CustomerTableProps) {
   const [keyword, setKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<RelationshipStatus | "all">(initialStatusFilter);
+  const [filterSetByCard, setFilterSetByCard] = useState(initialStatusFilter === "pending_review");
   const [viewMode, setViewMode] = useState<ViewMode>("card");
 
   // 목록 뷰 전환 버튼은 좁은 화면(카톡 인앱 브라우저 등)에서 CSS로 숨겨지므로,
@@ -300,8 +306,63 @@ export function CustomerTable({
     });
   };
 
+  const pendingCustomers = customers
+    .filter((customer) => customer.relationStatus === "pending_review")
+    .sort((a, b) => a.joinedAt.localeCompare(b.joinedAt));
+  useEffect(() => {
+    if (filterSetByCard && statusFilter === "pending_review" && pendingCustomers.length === 0) {
+      setStatusFilter("all");
+      setFilterSetByCard(false);
+    }
+  }, [filterSetByCard, statusFilter, pendingCustomers.length]);
+
+  const nextStep = pickCustomersNextStep({
+    canManage,
+    canIssueInvite,
+    activeCount: customers.filter((customer) => customer.relationStatus === "active").length,
+    pendingReviewCount: pendingCustomers.length,
+    incompleteProfileCount: customers.filter((customer) => customer.hasIncompleteProfile).length,
+    firstPendingId: pendingCustomers[0]?.id ?? null,
+  });
+
   return (
     <>
+      {nextStep && (
+        <SimpleNextStepCard
+          tone="blue"
+          title={nextStep.title}
+          detail={nextStep.detail}
+          action={
+            nextStep.buttonLabel ? (
+              nextStep.action.kind === "link" ? (
+                <Link href={nextStep.action.href} style={NEXT_STEP_BUTTON_STYLE}>
+                  {nextStep.buttonLabel}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  style={NEXT_STEP_BUTTON_STYLE}
+                  onClick={() => {
+                    const action = nextStep.action;
+
+                    if (action.kind !== "review") return;
+
+                    const target = customers.find((customer) => customer.id === action.customerId);
+
+                    setStatusFilter("pending_review");
+                    setFilterSetByCard(true);
+
+                    if (target) handleOpenStatus(target);
+                  }}
+                >
+                  {nextStep.buttonLabel}
+                </button>
+              )
+            ) : undefined
+          }
+        />
+      )}
+
       <section
         style={{
           backgroundColor: "#ffffff",
@@ -361,9 +422,10 @@ export function CustomerTable({
           </div>
           <select
             value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(event.target.value as RelationshipStatus | "all")
-            }
+            onChange={(event) => {
+              setFilterSetByCard(false);
+              setStatusFilter(event.target.value as RelationshipStatus | "all");
+            }}
             style={{
               padding: "8px 10px",
               fontSize: "13px",
