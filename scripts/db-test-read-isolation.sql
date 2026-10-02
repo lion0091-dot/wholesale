@@ -16,7 +16,9 @@ begin
     -- ───── 1) 공급사 계정 ─────
     for w in
         select ws.id, ws.profile_id from public.wholesalers ws
+          join public.profiles pr on pr.id = ws.profile_id
          where ws.profile_id is not null
+           and pr.role <> 'super_admin'   -- 슈퍼관리자는 전체 조회가 설계상 허용이라 대상에서 뺀다
          order by (select count(*) from public.inbound_scans s where s.wholesaler_id = ws.id) desc, ws.created_at
          limit 5
     loop
@@ -49,7 +51,9 @@ begin
     -- ───── 2) 고객 계정 ─────
     for r in
         select rt.id, rt.profile_id from public.retailers rt
+          join public.profiles pr on pr.id = rt.profile_id
          where rt.profile_id is not null
+           and pr.role <> 'super_admin'
          order by (select count(*) from public.orders o where o.retailer_id = rt.id) desc
          limit 5
     loop
