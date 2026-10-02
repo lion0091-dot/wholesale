@@ -26,11 +26,11 @@ afterAll(async () => {
  * SUBSCRIBED 상태만으로는 부족하다 — Realtime이 DB 쪽 구독을 실제로 거는 건 그 뒤 "Subscribed to PostgreSQL"
  * 시스템 메시지 시점이라, 그 사이에 넣은 행은 못 받는다(처음에 이걸로 테스트가 들쭉날쭉했다). 그 메시지까지 기다린다.
  */
-async function watch(client: SupabaseClient, table: string, filter: string): Promise<Array<Record<string, unknown>>> {
+async function watch(client: SupabaseClient, table: string, filter?: string): Promise<Array<Record<string, unknown>>> {
   const received: Array<Record<string, unknown>> = [];
   const channel = client.channel(`itest:${table}:${randomUUID()}`);
 
-  channel.on("postgres_changes", { event: "*", schema: "public", table, filter }, (payload) => {
+  channel.on("postgres_changes", { event: "*", schema: "public", table, ...(filter ? { filter } : {}) }, (payload) => {
     received.push(payload.new as Record<string, unknown>);
   });
 
@@ -123,5 +123,81 @@ describe("Realtime 신호 — 종 배지·고객 벨", () => {
     expect(
       await waitFor(() => mine.some((row) => row.id === orderId && row.status === "shipping" && row.shipped_at), 5_000)
     ).toBe(true);
+  });
+});
+
+describe("Realtime 구독 격리 — 남의 필터·필터 없는 구독으로 엿보기", () => {
+  it("업체 B 사장은 A의 입고 박스·거래처 변화를 필터로도, 필터 없이도 못 받는다(A 본인은 받는다)", async () => {
+    const ownerA = await sessionOf(world.users.ownerA);
+    const ownerB = await sessionOf(world.users.ownerB);
+
+    const mineLinks = await watch(ownerA, "wholesaler_retailers", `wholesaler_id=eq.${world.wholesalerA}`);
+    const spyScansFiltered = await watch(ownerB, "inbound_scans", `wholesaler_id=eq.${world.wholesalerA}`);
+    const spyScansOpen = await watch(ownerB, "inbound_scans");
+    const spyLinksFiltered = await watch(ownerB, "wholesaler_retailers", `wholesaler_id=eq.${world.wholesalerA}`);
+    const spyLinksOpen = await watch(ownerB, "wholesaler_retailers");
+    const spyOrdersOpen = await watch(ownerB, "orders");
+
+    const scanId = randomUUID();
+    const { error: scanError } = await adminClient().from("inbound_scans").insert({
+      id: scanId,
+      wholesaler_id: world.wholesalerA,
+      trace_no: world.newTraceNo(),
+      weight: 5,
+      unit: "kg",
+      scan_type: "MANUAL",
+      status: "EXCEPTION",
+    });
+
+    expect(scanError).toBeNull();
+
+    const { error: linkError } = await adminClient()
+      .from("wholesaler_retailers")
+      .update({ credit_limit: 777_000 })
+      .eq("wholesaler_id", world.wholesalerA)
+      .eq("retailer_id", world.retailerR);
+
+    expect(linkError).toBeNull();
+
+    const product = await world.createProduct();
+    await world.createOrder({ product, status: "pending" });
+
+    expect(await waitFor(() => mineLinks.some((row) => row.credit_limit === 777_000), 5_000)).toBe(true);
+
+    // 본인 쪽 신호가 도착한 뒤에도 B 쪽에는 A의 행이 하나도 없어야 한다.
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+
+    for (const spied of [spyScansFiltered, spyScansOpen, spyLinksFiltered, spyLinksOpen, spyOrdersOpen]) {
+      expect(spied).toEqual([]);
+    }
+  });
+
+  it("다른 고객은 이 고객의 주문·거래관계 변화를 못 받는다(고객 본인은 받는다)", async () => {
+    const other = await world.createRetailer();
+    const retailer = await sessionOf(world.users.retailerR);
+    const otherSession = await sessionOf(other.user);
+
+    const mineOrders = await watch(retailer, "orders", `retailer_id=eq.${world.retailerR}`);
+    const spyOrdersFiltered = await watch(otherSession, "orders", `retailer_id=eq.${world.retailerR}`);
+    const spyOrdersOpen = await watch(otherSession, "orders");
+    const spyLinksFiltered = await watch(otherSession, "wholesaler_retailers", `retailer_id=eq.${world.retailerR}`);
+    const spyLinksOpen = await watch(otherSession, "wholesaler_retailers");
+
+    const product = await world.createProduct();
+    const orderId = await world.createOrder({ product, status: "pending" });
+
+    await adminClient()
+      .from("wholesaler_retailers")
+      .update({ credit_limit: 888_000 })
+      .eq("wholesaler_id", world.wholesalerA)
+      .eq("retailer_id", world.retailerR);
+
+    expect(await waitFor(() => mineOrders.some((row) => row.id === orderId), 5_000)).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+
+    for (const spied of [spyOrdersFiltered, spyOrdersOpen, spyLinksFiltered, spyLinksOpen]) {
+      expect(spied.filter((row) => row.retailer_id === world.retailerR)).toEqual([]);
+    }
   });
 });

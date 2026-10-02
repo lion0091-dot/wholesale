@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
+import { withCronHeartbeat } from "@/lib/cron/heartbeat";
 
 /**
  * 하루 1회(vercel.json의 crons) 유효기간(30일)이 지났는데 아직 소진되지 않은
@@ -11,7 +12,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
  */
 export const runtime = "nodejs";
 
-export async function GET(request: NextRequest) {
+async function handler(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
 
   if (!cronSecret) {
@@ -44,3 +45,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ deleted: data?.length ?? 0 });
 }
+
+export const GET = withCronHeartbeat("expire-retailer-invites", handler);

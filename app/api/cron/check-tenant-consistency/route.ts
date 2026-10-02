@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
+import { withCronHeartbeat } from "@/lib/cron/heartbeat";
 
 /**
  * 매일(vercel.json의 crons) 공급사 간 데이터 섞임을 점검한다 — 마이그레이션 200의 tenant_consistency_violations().
@@ -9,7 +10,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
  */
 export const runtime = "nodejs";
 
-export async function GET(request: NextRequest) {
+async function handler(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
 
   if (!cronSecret) {
@@ -47,3 +48,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ ok: true, checked: rows.length });
 }
+
+export const GET = withCronHeartbeat("check-tenant-consistency", handler);

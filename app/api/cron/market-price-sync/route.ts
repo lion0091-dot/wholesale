@@ -6,6 +6,7 @@ import {
   isKapeMarketPriceConfigured,
   type MarketPriceRow,
 } from "@/lib/market-price/kape-client";
+import { withCronHeartbeat } from "@/lib/cron/heartbeat";
 
 /**
  * 하루 1회(vercel.json의 crons) KAPE 축산물 경락가격 API를 호출해
@@ -106,7 +107,7 @@ async function syncSpecies(
   return { species: label, status: "ok", rowCount: 0, message: `최근 ${MAX_LOOKBACK_DAYS}일간 경매 데이터 없음` };
 }
 
-export async function GET(request: NextRequest) {
+async function handler(request: NextRequest) {
   // CRON_SECRET이 없으면 누구나 호출할 수 있는 상태라 실행 자체를 거부한다(2026-09-24 점검 3).
   const cronSecret = process.env.CRON_SECRET;
 
@@ -140,3 +141,5 @@ export async function GET(request: NextRequest) {
   // 실패 내역은 body의 results로만 남긴다(크론 모니터링에서 오탐 알림 방지).
   return NextResponse.json({ results });
 }
+
+export const GET = withCronHeartbeat("market-price-sync", handler);

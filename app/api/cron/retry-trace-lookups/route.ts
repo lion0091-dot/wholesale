@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import { cacheTraceRecord } from "@/lib/livestock/master-cache";
 import { fetchTraceRecord, isMtraceConfigured } from "@/lib/livestock/mtrace-client";
+import { withCronHeartbeat } from "@/lib/cron/heartbeat";
 
 /**
  * 하루 1회(vercel.json의 crons) 이력조회에 실패한 채 남은 박스의 번호를 정부 이력조회로 다시 물어 공용 이력 캐시(master_livestock)에 채워 둔다.
@@ -16,7 +17,7 @@ export const runtime = "nodejs";
 const BATCH = 30;
 const RETRY_INTERVAL_HOURS = 20;
 
-export async function GET(request: NextRequest) {
+async function handler(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
 
   if (!cronSecret) {
@@ -85,3 +86,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ ok: true, checked: traceNos.length, cached, failed });
 }
+
+export const GET = withCronHeartbeat("retry-trace-lookups", handler);

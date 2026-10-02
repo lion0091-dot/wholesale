@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
+import { withCronHeartbeat } from "@/lib/cron/heartbeat";
 
 /**
  * 주 1회(vercel.json의 crons) 탈퇴 후 보관기간(5년, DB의 withdrawn_data_retention())이 지난
@@ -9,7 +10,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
  */
 export const runtime = "nodejs";
 
-export async function GET(request: NextRequest) {
+async function handler(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
 
   if (!cronSecret) {
@@ -58,3 +59,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ licenseFiles: paths.length, storageFailed, accessLogsPurged: purgedLogs ?? 0 });
 }
+
+export const GET = withCronHeartbeat("purge-expired-personal-data", handler);

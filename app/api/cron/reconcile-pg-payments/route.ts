@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import { reconcilePendingPgPayment, type PendingPgPaymentRow } from "@/lib/payments/pg-reconcile";
+import { withCronHeartbeat } from "@/lib/cron/heartbeat";
 
 /**
  * 하루 1회(vercel.json의 crons) 대기 중인 PG 결제를 전부 훑어 토스 실제 상태와
@@ -17,7 +18,7 @@ export const runtime = "nodejs";
 const PENDING_ROW_SELECT =
   "id, pg_order_id, wholesaler_id, retailer_id, total_amount, cart_snapshot, restaurant_name, contact_phone, delivery_address, delivery_notes, negotiation_note, expires_at";
 
-export async function GET(request: NextRequest) {
+async function handler(request: NextRequest) {
   // CRON_SECRET이 없으면 누구나 호출할 수 있는 상태라 실행 자체를 거부한다(2026-09-24 점검 3).
   // Vercel은 이 환경변수가 있으면 크론 호출에 Authorization: Bearer <CRON_SECRET>을 자동으로 붙인다.
   const cronSecret = process.env.CRON_SECRET;
@@ -60,3 +61,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ total: rows.length, ...counts });
 }
+
+export const GET = withCronHeartbeat("reconcile-pg-payments", handler);

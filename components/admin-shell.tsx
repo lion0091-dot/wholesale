@@ -17,7 +17,10 @@ const ADMIN_NAV_GROUPS: SidebarNavItem[][] = [
     { href: "/admin/stats", label: "구독 추이", icon: "📈" },
     { href: "/admin/events", label: "할인 이벤트", icon: "🎉" },
   ],
-  [{ href: "/admin/admins", label: "관리자 관리", icon: "🛡️" }],
+  [
+    { href: "/admin/admins", label: "관리자 관리", icon: "🛡️" },
+    { href: "/admin/cron-health", label: "자동 작업 상태", icon: "⏱️" },
+  ],
 ];
 
 /**

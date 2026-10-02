@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
+import { withCronHeartbeat } from "@/lib/cron/heartbeat";
 
 /**
  * 하루 1회(vercel.json의 crons) 가입을 마치지 않고(약관·개인정보 동의 없이) 30일 넘게 이탈한
@@ -16,7 +17,7 @@ export const runtime = "nodejs";
 
 const MAX_DELETES_PER_RUN = 50;
 
-export async function GET(request: NextRequest) {
+async function handler(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
 
   if (!cronSecret) {
@@ -93,3 +94,5 @@ export async function GET(request: NextRequest) {
     deferred: candidates.length - targets.length,
   });
 }
+
+export const GET = withCronHeartbeat("purge-unconsented-accounts", handler);

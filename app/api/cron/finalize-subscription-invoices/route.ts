@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import { computeInvoicesForMonth } from "@/lib/supplier/subscription-invoices";
+import { withCronHeartbeat } from "@/lib/cron/heartbeat";
 
 /**
  * 매달 1일 새벽(vercel.json의 crons) "방금 끝난 달"의 구독료 청구서를 확정(스냅샷)해서
@@ -20,7 +21,7 @@ function previousMonthKeyKst(): string {
   return `${prevMonth.getUTCFullYear()}-${String(prevMonth.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-export async function GET(request: NextRequest) {
+async function handler(request: NextRequest) {
   // CRON_SECRET이 없으면 누구나 호출할 수 있는 상태라 실행 자체를 거부한다(2026-09-24 점검 3).
   const cronSecret = process.env.CRON_SECRET;
 
@@ -88,3 +89,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ billingMonth, finalized: computed.length, skippedAlreadyFinalized: alreadyFinalized.size });
 }
+
+export const GET = withCronHeartbeat("finalize-subscription-invoices", handler);
