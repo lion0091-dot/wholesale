@@ -204,6 +204,19 @@ insert into results (who,what,expected,result) values
  ('A사장','외상 O11(정산 완료) 취소 → 미수금 그대로 20,000','1|20000', pg_temp.rows($q$update public.orders set status='cancelled' where id='e5999999-0000-0000-0000-000000000011'$q$)||'|'||pg_temp.val($q$select outstanding_balance::int::text from public.wholesaler_retailers where id='b5999999-0000-0000-0000-000000000001'$q$)),
  ('A사장','핫딜 O12 취소 → 판매량 4→0 반환','1|0', pg_temp.rows($q$update public.orders set status='cancelled' where id='e5999999-0000-0000-0000-000000000012'$q$)||'|'||pg_temp.val($q$select hot_deal_quantity_sold::int::text from public.products where id='c5999999-0000-0000-0000-000000000005'$q$));
 
+-- ========== 4-E2. 박스 없는 재고 상품 2개를 한 주문에서 확정·취소 (207 회귀) ==========
+-- 원장 멱등 키가 상품을 안 가려서, 박스 없는(inbound_scan_id NULL) 출고 행이 한 주문에 둘 이상이면 확정·취소가 중복 오류로 막혔다.
+reset role;
+insert into public.orders (id,wholesaler_id,retailer_id,order_number,total_amount,status,delivery_address,payment_method) values
+ ('e5999999-0000-0000-0000-000000000018','a5999999-0000-0000-0000-000000000001','d5999999-0000-0000-0000-000000000001','ORD-18',51000,'pending','서울','prepaid');
+insert into public.order_items (order_id,product_id,product_name,unit_price,quantity,subtotal_amount) values
+ ('e5999999-0000-0000-0000-000000000018','c5999999-0000-0000-0000-000000000003','돼지 목살',15000,1,15000),
+ ('e5999999-0000-0000-0000-000000000018','c5999999-0000-0000-0000-000000000005','핫딜 앞다리',12000,3,36000);
+set role authenticated; set request.jwt.claim.role = 'authenticated'; set request.jwt.claim.sub = '95999999-0000-0000-0000-000000000001';
+insert into results (who,what,expected,result) values
+ ('A사장','박스 없는 재고 상품 2개(목살 1·앞다리 3) 주문 O18 확정 → 허용, 상품별 ORDER_OUT 2건, 목살 3→2·앞다리 20→17','1|2|2.000|17.000', pg_temp.rows($q$update public.orders set status='confirmed' where id='e5999999-0000-0000-0000-000000000018'$q$)||'|'||pg_temp.val($q$select (select count(*) from public.stock_ledger where source_id='e5999999-0000-0000-0000-000000000018' and event_type='ORDER_OUT')||'|'||(select stock_quantity::text from public.products where id='c5999999-0000-0000-0000-000000000003')||'|'||(select stock_quantity::text from public.products where id='c5999999-0000-0000-0000-000000000005')$q$)),
+ ('A사장','O18 취소 → 허용, 상품별 ORDER_RESTORE 2건, 목살 3·앞다리 20 복구','1|2|3.000|20.000', pg_temp.rows($q$update public.orders set status='cancelled' where id='e5999999-0000-0000-0000-000000000018'$q$)||'|'||pg_temp.val($q$select (select count(*) from public.stock_ledger where source_id='e5999999-0000-0000-0000-000000000018' and event_type='ORDER_RESTORE')||'|'||(select stock_quantity::text from public.products where id='c5999999-0000-0000-0000-000000000003')||'|'||(select stock_quantity::text from public.products where id='c5999999-0000-0000-0000-000000000005')$q$));
+
 -- ========== 4-F. 바이어 취소 요청 ==========
 set request.jwt.claim.sub = '95999999-0000-0000-0000-000000000003';
 insert into results (who,what,expected,result) values

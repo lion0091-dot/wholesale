@@ -890,6 +890,10 @@ export function InboundScanView({
 
   useEffect(() => stopCamera, [stopCamera]);
 
+  // 같은 박스를 처리(상품 지정·냉장/냉동·주문 배정)하면 위쪽 "처리 필요" 결과 카드는 낡은 안내가 되므로 걷어낸다.
+  // 안 걷으면 이미 거절·입고된 박스에 "이 박스로 이동 / 방금 찍은 박스 취소"가 계속 떠서 헷갈린다.
+  const clearResultCardFor = (scanId: string) => setResultCard((prev) => (prev?.scanId === scanId ? null : prev));
+
   // 냉장/냉동을 사람이 골라 주는 박스(마이그레이션 178) — 고른 값으로 상품을 다시 정한다. 부위를 골라 둔 상태면 함께 쓴다.
   const handleResolveStorage = async (scanId: string, storage: "냉장" | "냉동") => {
     const result = await resolveScanStorageAction(scanId, storage, partHint || null);
@@ -898,6 +902,8 @@ export function InboundScanView({
       setError(result.error ?? "냉장/냉동 지정에 실패했습니다.");
       return;
     }
+
+    clearResultCardFor(scanId);
 
     if (result.data?.status === "REJECTED") {
       setError(`냉장/냉동은 정했지만 이 박스는 받지 않았습니다 — ${result.data.po ? rejectionSummary(result.data.po) : ""} 재고에는 넣지 않았습니다.`);
@@ -917,6 +923,8 @@ export function InboundScanView({
       setError(result.error ?? "상품 지정에 실패했습니다.");
       return;
     }
+
+    clearResultCardFor(scanId);
 
     if (result.data?.po?.result === "REJECTED") {
       setError(`상품은 지정했지만 이 박스는 받지 않았습니다 — ${rejectionSummary(result.data.po)} 재고에는 넣지 않았습니다.`);
@@ -964,6 +972,8 @@ export function InboundScanView({
       setError(result.error ?? "주문 배정에 실패했습니다.");
       return;
     }
+
+    clearResultCardFor(scanId);
 
     if (result.data?.po?.result === "REJECTED") {
       setError(`이 박스는 받지 않아 주문에 배정하지 않았습니다 — ${rejectionSummary(result.data.po)}`);
