@@ -19,9 +19,11 @@
 |---|---|---|
 | **A. 공급사 소유**(`wholesaler_id`) 28개 | products, orders, inbound_scans, stock_ledger, custom_prices, purchase_* 등 | RLS + 마이그 200 소속 가드(22쌍) |
 | **C. 조직 소유** 2개 | organization_staff, organization_staff_invites | 조직 RLS |
-| **D1. 부모를 통해서만 소속이 정해지는 자식 표** | order_items(주문·상품), inbound_import_rows(작업·박스), hot_deal_quota_reservations(서버 전용) | order_items는 `trg_order_items_integrity`, inbound_import_rows는 마이그 201 가드 + 구조 검사 |
+| **D1. 부모를 통해서만 소속이 정해지는 자식 표** | order_items(주문·상품), inbound_import_rows(작업·박스), hot_deal_quota_reservations(서버 전용) | order_items는 `trg_order_items_integrity`, inbound_import_rows는 마이그 201 가드 + 구조 검사(201 운영 적용 2026-10-02) |
 | **D2. 여러 공급사가 같이 쓰는 표(의도)** | retailers(고객 신원만; 공급사별 값은 wholesaler_retailers에 분리), wholesalers, profiles(본인·슈퍼관리자만), master_livestock(공공 이력 캐시, 읽기 공개), market_price_snapshots, product_categories | 읽기 정책이 연결된 거래처로만 제한(retailers), 쓰기는 서버 전용 |
 | **D3. 슈퍼관리자 전용** | audit_log, access_log, retailer_match_requests, platform_admin_allowlist, platform_events | `get_current_role()='super_admin'` |
+
+**학습되는 데이터:** GTIN→상품(`gtin_product_map`)·부위/등급→상품(`trace_product_map`)은 공급사별 표라 타사와 공유되지 않는다. 공유되는 것은 공공 이력 캐시(`master_livestock`) 하나뿐이며 공급사 정보가 없고(공공 API 응답만), 일반 사용자는 읽기만 되고 변조·삽입·삭제·쓰기 함수 호출이 막힌다(2026-10-02 직접 시도, 운영 정책 해시 로컬과 동일).
 
 **공유 구조의 핵심:** 고객(`retailers`) 한 행을 여러 공급사가 같이 보지만, 신원(상호·사업자번호·주소)만 들어 있고 여신한도·미수금·메모·정지사유 같은 공급사별 값은 전부 연결 표(`wholesaler_retailers`)에 있다. 그래서 공급사끼리 서로의 고객 거래 조건을 볼 수 없다. 새 표를 만들 때 "한 행을 여러 공급사가 공유하는가"를 먼저 정하고, 공유한다면 공급사별 값은 연결 표에 둔다.
 
