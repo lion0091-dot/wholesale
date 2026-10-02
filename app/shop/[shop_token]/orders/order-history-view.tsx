@@ -646,7 +646,7 @@ export function OrderHistoryView({
                     borderRadius: "8px",
                   }}
                 >
-                  ✓ 취소 요청이 접수되었습니다. {wholesaler.business_name} 대표님께 알림톡이 발송되었습니다.
+                  ✓ 취소 요청이 {wholesaler.business_name}에 전달되었습니다.
                 </div>
               )}
 

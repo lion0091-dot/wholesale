@@ -7,7 +7,6 @@ import {
   ORDER_STATUS_BADGES,
   ORDER_STATUS_TRANSITIONS,
   isSupplierAssignableStatus,
-  resolveAlimtalkStatus,
 } from "@/lib/orders/status";
 import { updateOrderStatusAction } from "../actions";
 import type { OrderStatus } from "@/types/database";
@@ -59,9 +58,7 @@ export function OrderStatusPanel({
     setStatus(nextStatus);
     setMessage({
       type: "success",
-      text: `'${ORDER_STATUS_BADGES[nextStatus].label}'(으)로 변경되었습니다. ${
-        resolveAlimtalkStatus(nextStatus).label
-      } 알림톡이 발송됩니다.`,
+      text: `'${ORDER_STATUS_BADGES[nextStatus].label}'(으)로 변경되었습니다.`,
     });
     router.refresh();
   };
