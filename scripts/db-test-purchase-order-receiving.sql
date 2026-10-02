@@ -101,12 +101,19 @@ select pg_temp.expect('30kg → ASSIGNED, 남은 0, 발주서는 아직 열려 �
     (:'r'::jsonb) #>> '{po,result}' = 'ASSIGNED' and ((:'r'::jsonb) #>> '{po,remaining}')::numeric = 0
     and (select status = 'OPEN' from public.purchase_orders where id = 'd2d2d2d2-0000-0000-0000-000000000b01'));
 
--- 4) 초과 → 거절, 재고 무변화, 거절 기록
+-- 4) 초과 → '받을까요?' 대기(OVER_PENDING, 마이그레이션 221). 답 전까지는 스캔 즉시 재고에 들어가 있다
+--    (잠긴 원칙: 받은 박스는 발주서 판정과 무관하게 즉시 재고가 된다). 거절로 답하면 재고 되돌림·거절 기록.
 select pg_temp.scan('009800000003', 0.5, 'd2d2d2d2-0000-0000-0000-0000000000c1', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
-select pg_temp.expect('0.5kg 초과 → REJECTED(OVER), 응답 status도 REJECTED',
-    (:'r'::jsonb) #>> '{po,result}' = 'REJECTED' and (:'r'::jsonb) #>> '{po,reason}' = 'OVER' and (:'r'::jsonb) ->> 'status' = 'REJECTED');
-select pg_temp.expect('거절된 박스는 재고에 안 잡히고(50 유지) 스캔은 VOIDED, 거절 기록이 한 줄 남음',
-    (select stock_quantity = 50 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000c1')
+select pg_temp.expect('0.5kg 초과 → OVER_PENDING(더 이상 자동 거절하지 않음), 응답 status는 NORMAL',
+    (:'r'::jsonb) #>> '{po,result}' = 'OVER_PENDING' and (:'r'::jsonb) #>> '{po,reason}' = 'OVER' and (:'r'::jsonb) ->> 'status' = 'NORMAL');
+select pg_temp.expect('대기 중엔 재고가 이미 50.5(스캔 즉시 반영)',
+    (select stock_quantity = 50.5 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000c1')
+    and (select status = 'NORMAL' and po_state = 'OVER_PENDING' from public.inbound_scans where trace_no = '009800000003'));
+
+select public.resolve_scan_over_quantity((select id from public.inbound_scans where trace_no = '009800000003'), false) as r \gset
+select pg_temp.expect('거절로 답하면 REJECTED, 재고 되돌림(50), 스캔 VOIDED, 거절 기록이 한 줄 남음',
+    (:'r'::jsonb) ->> 'result' = 'REJECTED'
+    and (select stock_quantity = 50 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000c1')
     and (select status = 'VOIDED' from public.inbound_scans where trace_no = '009800000003')
     and (select count(*) = 1 and min(reason) = 'OVER' and min(weight) = 0.5 from public.inbound_rejections where trace_no = '009800000003'));
 
@@ -159,8 +166,10 @@ update public.receiving_policies set over_tolerance_mode = 'PERCENT', over_toler
 select pg_temp.scan('009800000008', 105, 'd2d2d2d2-0000-0000-0000-0000000000c5', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
 select pg_temp.expect('105kg(≤110) → ASSIGNED', (:'r'::jsonb) #>> '{po,result}' = 'ASSIGNED');
 select pg_temp.scan('009800000009', 6, 'd2d2d2d2-0000-0000-0000-0000000000c5', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
-select pg_temp.expect('+6kg → 111 > 110 → REJECTED(OVER), 허용 오차 10 기록',
-    (:'r'::jsonb) #>> '{po,reason}' = 'OVER' and ((:'r'::jsonb) #>> '{po,tolerance}')::numeric = 10);
+select pg_temp.expect('+6kg → 111 > 110 → OVER_PENDING, 허용 오차 10 기록',
+    (:'r'::jsonb) #>> '{po,reason}' = 'OVER' and ((:'r'::jsonb) #>> '{po,tolerance}')::numeric = 10 and (:'r'::jsonb) #>> '{po,result}' = 'OVER_PENDING');
+select public.resolve_scan_over_quantity((select id from public.inbound_scans where trace_no = '009800000009'), false) as r \gset
+select pg_temp.expect('거절로 마무리', (:'r'::jsonb) ->> 'result' = 'REJECTED');
 
 -- 12) 허용 오차 kg(KG 2): 이미 찬 등심 줄이 아니라 갈비(P6)용 새 발주서로
 insert into public.purchase_orders (id, wholesaler_id, supplier_id, supplier_name, ordered_on, status) values
@@ -171,7 +180,9 @@ update public.receiving_policies set over_tolerance_mode = 'KG', over_tolerance_
 select pg_temp.scan('009800000010', 11.5, 'd2d2d2d2-0000-0000-0000-0000000000c6', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
 select pg_temp.expect('KG 2 → 11.5kg(≤12) → ASSIGNED', (:'r'::jsonb) #>> '{po,result}' = 'ASSIGNED');
 select pg_temp.scan('009800000011', 1, 'd2d2d2d2-0000-0000-0000-0000000000c6', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
-select pg_temp.expect('+1kg → 12.5 > 12 → REJECTED', (:'r'::jsonb) #>> '{po,reason}' = 'OVER');
+select pg_temp.expect('+1kg → 12.5 > 12 → OVER_PENDING', (:'r'::jsonb) #>> '{po,reason}' = 'OVER' and (:'r'::jsonb) #>> '{po,result}' = 'OVER_PENDING');
+select public.resolve_scan_over_quantity((select id from public.inbound_scans where trace_no = '009800000011'), false) as r \gset
+select pg_temp.expect('거절로 마무리', (:'r'::jsonb) ->> 'result' = 'REJECTED');
 
 -- 13) 같은 물건이 열린 발주서 두 곳에 있으면(목심: 발주서 b02 10kg + b03 10kg) 하나의 묶음으로 본다 — 오래된 발주서부터 채운다
 update public.receiving_policies set over_tolerance_mode = 'PERCENT', over_tolerance_value = 0 where wholesaler_id = 'd2d2d2d2-0000-0000-0000-0000000000a1';
@@ -182,7 +193,9 @@ select pg_temp.expect('3kg → 오래된 발주서(b02)의 줄 f201에 채워짐
          from public.purchase_order_line_scans x join public.inbound_scans s on s.id = x.scan_id where s.trace_no = '009800000012'));
 
 select pg_temp.scan('009800000013', 18, 'd2d2d2d2-0000-0000-0000-0000000000c4', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
-select pg_temp.expect('두 발주서 합계(20kg)를 넘는 박스(3+18) → REJECTED(OVER)', (:'r'::jsonb) #>> '{po,reason}' = 'OVER');
+select pg_temp.expect('두 발주서 합계(20kg)를 넘는 박스(3+18) → OVER_PENDING', (:'r'::jsonb) #>> '{po,reason}' = 'OVER' and (:'r'::jsonb) #>> '{po,result}' = 'OVER_PENDING');
+select public.resolve_scan_over_quantity((select id from public.inbound_scans where trace_no = '009800000013'), false) as r \gset
+select pg_temp.expect('거절로 마무리 — 발주서 줄에 안 붙었다', (:'r'::jsonb) ->> 'result' = 'REJECTED');
 
 -- 박스 하나가 앞 발주서의 남은 자리(7kg)를 채우고 나머지(10kg)는 다음 발주서로 나뉜다
 select pg_temp.scan('009800000014', 17, 'd2d2d2d2-0000-0000-0000-0000000000c4', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
@@ -221,9 +234,11 @@ select pg_temp.expect('70kg+80kg → 오래된 200kg 발주서에 150 채워짐,
     and (select stock_quantity = 150 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000c9')
     and (:'r'::jsonb) #>> '{po,result}' = 'ASSIGNED');
 
--- 허용 오차 0: 77kg → 150+77=227 > 225 → 거절
+-- 허용 오차 0: 77kg → 150+77=227 > 225 → OVER_PENDING, 거절로 마무리(재고·발주서 영향 없이 되돌림)
 select pg_temp.scan('009800000023', 77, 'd2d2d2d2-0000-0000-0000-0000000000c9', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
-select pg_temp.expect('오차 0에서 77kg 박스(합계 227 > 225) → REJECTED(OVER)', (:'r'::jsonb) #>> '{po,reason}' = 'OVER');
+select pg_temp.expect('오차 0에서 77kg 박스(합계 227 > 225) → OVER_PENDING', (:'r'::jsonb) #>> '{po,reason}' = 'OVER' and (:'r'::jsonb) #>> '{po,result}' = 'OVER_PENDING');
+select public.resolve_scan_over_quantity((select id from public.inbound_scans where trace_no = '009800000023'), false) as r \gset
+select pg_temp.expect('거절로 마무리', (:'r'::jsonb) ->> 'result' = 'REJECTED');
 
 -- 허용 오차 kg 3: 77kg 박스가 앞 발주서 남은 50을 채우고 나머지 27은 25kg 발주서(25)+초과 2로 — 두 발주서가 함께 닫힌다
 update public.receiving_policies set over_tolerance_mode = 'KG', over_tolerance_value = 3 where wholesaler_id = 'd2d2d2d2-0000-0000-0000-0000000000a1';
@@ -274,16 +289,20 @@ select pg_temp.expect('상품 지정 → 그 순간 판정(ASSIGNED, 남은 2), 
 select public.upsert_master_livestock('009800000016', 'individual', 'mtrace_livestock', '{}'::jsonb, '한우', '소', '우둔', '1++', current_date - 3, '○○도축장');
 select public.record_inbound_scan(p_trace_no => '009800000016', p_weight => 5, p_scan_type => 'BARCODE_SCAN', p_supplier_id => 'd2d2d2d2-0000-0000-0000-0000000005a1');
 select public.resolve_inbound_mapping((select id from public.inbound_scans where trace_no = '009800000016'), 'd2d2d2d2-0000-0000-0000-0000000000c8', false) as r \gset
-select pg_temp.expect('지정 시점에 초과면 status REJECTED, 스캔 VOIDED, 거절 기록',
-    (:'r'::jsonb) ->> 'status' = 'REJECTED'
+select pg_temp.expect('지정 시점에 초과면 status NORMAL이지만 po가 OVER_PENDING(마이그레이션 221, 더 이상 자동 거절 안 함)',
+    (:'r'::jsonb) ->> 'status' = 'NORMAL' and (:'r'::jsonb) #>> '{po,result}' = 'OVER_PENDING'
+    and (select status = 'NORMAL' and po_state = 'OVER_PENDING' from public.inbound_scans where trace_no = '009800000016'));
+select public.resolve_scan_over_quantity((select id from public.inbound_scans where trace_no = '009800000016'), false) as r \gset
+select pg_temp.expect('거절로 답하면 그제서야 REJECTED, 스캔 VOIDED, 거절 기록',
+    (:'r'::jsonb) ->> 'result' = 'REJECTED'
     and (select status = 'VOIDED' from public.inbound_scans where trace_no = '009800000016')
     and (select count(*) = 1 from public.inbound_rejections where trace_no = '009800000016'));
 
 select public.upsert_master_livestock('009800000017', 'individual', 'mtrace_livestock', '{}'::jsonb, '한우', '소', '우둔', '1++', current_date - 3, '○○도축장');
 select public.record_inbound_scan(p_trace_no => '009800000017', p_weight => 5, p_scan_type => 'BARCODE_SCAN', p_supplier_id => 'd2d2d2d2-0000-0000-0000-0000000005a1');
 select public.resolve_inbound_mapping_to_order((select id from public.inbound_scans where trace_no = '009800000017'), 'd2d2d2d2-0000-0000-0000-0000000000c8', 'd2d2d2d2-0000-0000-0000-000000000d99', false) as r \gset
-select pg_temp.expect('주문 바로 출고 경로: 거절이면 출고를 건너뛰고(outbound null) 예외 없이 돌려줌',
-    (:'r'::jsonb) #>> '{resolve,status}' = 'REJECTED' and (:'r'::jsonb) -> 'outbound' = 'null'::jsonb);
+select pg_temp.expect('주문 바로 출고 경로: 초과라 OVER_PENDING이면 출고를 건너뛰고(outbound null) 예외 없이 돌려줌(221 — 결정 전에 먼저 출고해 버리면 나중에 거절할 수 없는 상태가 된다)',
+    (:'r'::jsonb) #>> '{resolve,po,result}' = 'OVER_PENDING' and (:'r'::jsonb) -> 'outbound' = 'null'::jsonb);
 
 -- 17) 거래처를 안 실은 스캔은 옛 동작 그대로(판정 없음)
 select public.upsert_master_livestock('009800000018', 'individual', 'mtrace_livestock', '{}'::jsonb, '한우', '소', '등심', '1++', current_date - 3, '○○도축장');
@@ -303,7 +322,7 @@ begin
     perform pg_temp.expect('다른 업체의 거래처 ID → SUPPLIER_NOT_FOUND', v_ok);
 end $$;
 
--- 18-2) 초과도 일단 받기(over_item_policy = HOLD): 재고에 들어가 팔 수 있고, 발주서엔 남은 자리만 채우며, 거절 기록은 안 남는다
+-- 18-2) 초과 박스는 더 이상 정책으로 미리 정하지 않고, 그 자리의 '받을까요?' 답으로 정한다(마이그레이션 221).
 reset role;
 insert into public.products (id, wholesaler_id, name, category, subcategory, grade, origin, breed, base_price, unit) values
     ('d2d2d2d2-0000-0000-0000-0000000000d1', 'd2d2d2d2-0000-0000-0000-0000000000a1', '한우 설도 1++', '소', '설도', '1++', '국내산', '한우', 0, 'kg');
@@ -311,26 +330,30 @@ insert into public.purchase_orders (id, wholesaler_id, supplier_id, supplier_nam
     ('d2d2d2d2-0000-0000-0000-000000000b06', 'd2d2d2d2-0000-0000-0000-0000000000a1', 'd2d2d2d2-0000-0000-0000-0000000005a1', '공급처가', current_date, 'OPEN');
 insert into public.purchase_order_lines (id, purchase_order_id, wholesaler_id, line_no, category, subcategory, grade, origin, breed, quantity, product_id) values
     ('d2d2d2d2-0000-0000-0000-00000000f601', 'd2d2d2d2-0000-0000-0000-000000000b06', 'd2d2d2d2-0000-0000-0000-0000000000a1', 1, '소', '설도', '1++', '국내산', '한우', 10, 'd2d2d2d2-0000-0000-0000-0000000000d1');
-update public.receiving_policies set over_tolerance_mode = 'PERCENT', over_tolerance_value = 0, over_item_policy = 'REJECT' where wholesaler_id = 'd2d2d2d2-0000-0000-0000-0000000000a1';
+update public.receiving_policies set over_tolerance_mode = 'PERCENT', over_tolerance_value = 0 where wholesaler_id = 'd2d2d2d2-0000-0000-0000-0000000000a1';
 set role authenticated;
 set request.jwt.claim.sub = 'd2d2d2d2-0000-0000-0000-000000000001';
 
 select pg_temp.scan('009800000031', 6, 'd2d2d2d2-0000-0000-0000-0000000000d1', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
-select pg_temp.expect('기준 REJECT(기본): 6kg는 받고 발주 10kg 중 남음 4', (:'r'::jsonb) #>> '{po,result}' = 'ASSIGNED');
+select pg_temp.expect('6kg는 그냥 받고 발주 10kg 중 남음 4', (:'r'::jsonb) #>> '{po,result}' = 'ASSIGNED');
 select pg_temp.scan('009800000032', 7, 'd2d2d2d2-0000-0000-0000-0000000000d1', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
-select pg_temp.expect('기준 REJECT: 초과 7kg은 그대로 거절',
-    (:'r'::jsonb) #>> '{po,result}' = 'REJECTED' and (:'r'::jsonb) ->> 'status' = 'REJECTED'
+select pg_temp.expect('초과 7kg → OVER_PENDING, 답 전까지 재고엔 이미 들어가 있다(6+7=13)',
+    (:'r'::jsonb) #>> '{po,result}' = 'OVER_PENDING'
+    and (select stock_quantity = 13 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000d1'));
+select public.resolve_scan_over_quantity((select id from public.inbound_scans where trace_no = '009800000032'), false) as r \gset
+select pg_temp.expect('거절로 답 → REJECTED, 재고 되돌림(6)',
+    (:'r'::jsonb) ->> 'result' = 'REJECTED'
     and (select stock_quantity = 6 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000d1'));
 
-reset role;
-update public.receiving_policies set over_item_policy = 'HOLD' where wholesaler_id = 'd2d2d2d2-0000-0000-0000-0000000000a1';
-set role authenticated;
-set request.jwt.claim.sub = 'd2d2d2d2-0000-0000-0000-000000000001';
-
 select pg_temp.scan('009800000033', 7, 'd2d2d2d2-0000-0000-0000-0000000000d1', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
-select pg_temp.expect('기준 HOLD: 7kg → OVER_HELD, 박스는 NORMAL로 받아 재고 13, 응답 status는 REJECTED가 아님, 넘친 무게 3kg',
-    (:'r'::jsonb) #>> '{po,result}' = 'OVER_HELD' and (:'r'::jsonb) ->> 'status' is distinct from 'REJECTED'
-    and ((:'r'::jsonb) #>> '{po,excess}')::numeric = 3
+select pg_temp.expect('다시 7kg 초과 → OVER_PENDING, 재고는 이미 13(6+7), 거절 기록 아직 없음',
+    (:'r'::jsonb) #>> '{po,result}' = 'OVER_PENDING'
+    and (select status = 'NORMAL' and po_state = 'OVER_PENDING' from public.inbound_scans where trace_no = '009800000033')
+    and (select stock_quantity = 13 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000d1'));
+select public.resolve_scan_over_quantity((select id from public.inbound_scans where trace_no = '009800000033'), true) as r \gset
+select pg_temp.expect('받기로 답 → OVER_HELD, 재고 그대로 13, 넘친 무게 3kg, 거절 기록 없음',
+    (:'r'::jsonb) ->> 'result' = 'OVER_HELD'
+    and ((:'r'::jsonb) ->> 'excess')::numeric = 3
     and (select status = 'NORMAL' and po_state = 'OVER_HELD' from public.inbound_scans where trace_no = '009800000033')
     and (select stock_quantity = 13 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000d1')
     and not exists (select 1 from public.inbound_rejections where trace_no = '009800000033'));
@@ -339,14 +362,18 @@ select pg_temp.expect('발주서 줄엔 남은 자리 4kg만 채워지고(넘친
     and (select status = 'CLOSED' and auto_closed_at is not null from public.purchase_orders where id = 'd2d2d2d2-0000-0000-0000-000000000b06'));
 
 select pg_temp.scan('009800000034', 5, 'd2d2d2d2-0000-0000-0000-0000000000d1', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
-select pg_temp.expect('이미 다 받아 자동 마감된 발주서의 품목이 또 와도 HOLD면 받아 둠(열린 줄이 없어도 오류 없이 채움 0)',
-    (:'r'::jsonb) #>> '{po,result}' = 'OVER_HELD'
+select pg_temp.expect('이미 다 받아 자동 마감된 발주서의 품목이 또 와도 OVER_PENDING으로 대기한다(열린 줄이 없어도 오류 없음)',
+    (:'r'::jsonb) #>> '{po,result}' = 'OVER_PENDING'
+    and (select status = 'NORMAL' and po_state = 'OVER_PENDING' from public.inbound_scans where trace_no = '009800000034'));
+select public.resolve_scan_over_quantity((select id from public.inbound_scans where trace_no = '009800000034'), true) as r \gset
+select pg_temp.expect('받기로 답 → OVER_HELD(열린 줄이 없어 채움 0건)',
+    (:'r'::jsonb) ->> 'result' = 'OVER_HELD'
     and (select status = 'NORMAL' and po_state = 'OVER_HELD' from public.inbound_scans where trace_no = '009800000034')
     and not exists (select 1 from public.purchase_order_line_scans x join public.inbound_scans s on s.id = x.scan_id where s.trace_no = '009800000034')
     and (select stock_quantity = 18 from public.products where id = 'd2d2d2d2-0000-0000-0000-0000000000d1'));
 select pg_temp.expect('이미 마감된 발주서 초과분도 ordered/received가 0/0이 아니라 실제 수량(발주 10 중 10 이미 받음)으로 표시',
-    ((:'r'::jsonb) #>> '{po,ordered}')::numeric = 10 and ((:'r'::jsonb) #>> '{po,received}')::numeric = 10
-    and ((:'r'::jsonb) #>> '{po,excess}')::numeric = 5);
+    ((:'r'::jsonb) ->> 'ordered')::numeric = 10 and ((:'r'::jsonb) ->> 'received')::numeric = 10
+    and ((:'r'::jsonb) ->> 'excess')::numeric = 5);
 select pg_temp.expect('OVER_HELD 판정 수치는 po_detail에 저장돼 나중에 다시 읽을 수 있다',
     (select po_detail = jsonb_build_object('ordered', 10, 'received', 10, 'remaining', 0, 'tolerance', 0, 'excess', 5)
      from public.inbound_scans where trace_no = '009800000034'));
@@ -369,13 +396,32 @@ set role authenticated;
 set request.jwt.claim.sub = 'd2d2d2d2-0000-0000-0000-000000000001';
 
 select pg_temp.scan('009800000035', 5, 'd2d2d2d2-0000-0000-0000-0000000000d1', 'd2d2d2d2-0000-0000-0000-0000000005a1') as r \gset
+select pg_temp.expect('148 사전: 또 와도 OVER_PENDING', (:'r'::jsonb) #>> '{po,result}' = 'OVER_PENDING');
+select public.resolve_scan_over_quantity((select id from public.inbound_scans where trace_no = '009800000035'), true) as r \gset
 select pg_temp.expect('148: 예전에 마감된 발주서(20kg, 못 받은 채)와 최근 마감(10kg 다 받음)이 둘 다 있어도 합쳐서 30이 아니라 최근 것(10) 기준',
-    ((:'r'::jsonb) #>> '{po,result}') = 'OVER_HELD'
-    and ((:'r'::jsonb) #>> '{po,ordered}')::numeric = 10 and ((:'r'::jsonb) #>> '{po,received}')::numeric = 10);
+    ((:'r'::jsonb) ->> 'result') = 'OVER_HELD'
+    and ((:'r'::jsonb) ->> 'ordered')::numeric = 10 and ((:'r'::jsonb) ->> 'received')::numeric = 10);
 
 select public.void_inbound_scan((select id from public.inbound_scans where trace_no = '009800000033' and status = 'NORMAL' limit 1), '테스트 취소3');
 select pg_temp.expect('OVER_HELD 박스 취소 → 채움이 사라지고 자동 마감됐던 발주서 다시 OPEN',
     (select status = 'OPEN' and auto_closed_at is null from public.purchase_orders where id = 'd2d2d2d2-0000-0000-0000-000000000b06'));
+
+-- 221: OVER_PENDING이 아닌 박스(이미 ASSIGNED/OVER_HELD거나 전혀 판정 대상이 아닌 박스)에 또 답하면 거부한다(멱등 보호)
+do $$
+declare v_ok boolean;
+begin
+    v_ok := false;
+    begin
+        perform public.resolve_scan_over_quantity((select id from public.inbound_scans where trace_no = '009800000034'), false);
+    exception when others then v_ok := sqlerrm like '%NOT_PENDING%'; end;
+    perform pg_temp.expect('221: 이미 OVER_HELD로 답한 박스를 또 답하면 NOT_PENDING', v_ok);
+
+    v_ok := false;
+    begin
+        perform public.resolve_scan_over_quantity((select id from public.inbound_scans where trace_no = '009800000001'), true);
+    exception when others then v_ok := sqlerrm like '%NOT_PENDING%'; end;
+    perform pg_temp.expect('221: 처음부터 OVER_PENDING이 아니었던(ASSIGNED) 박스에 답하면 NOT_PENDING', v_ok);
+end $$;
 
 -- 147: 상품 삭제는 열린(OPEN) 발주서 줄이 있으면 트리거가 막는다(앱 쪽 확인과 삭제 사이의 틈을 노려도 DB가 막음)
 reset role;

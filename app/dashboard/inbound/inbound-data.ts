@@ -50,20 +50,21 @@ export async function loadInboundData(scope: SupplierScope): Promise<InboundData
         supabase
           .from("inbound_scans")
           .select(
-            "id, trace_no, product_id, supplier_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_supplier, scanned_by, storage_location, storage_location_photo_path"
+            "id, trace_no, product_id, supplier_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_supplier, scanned_by, storage_location, storage_location_photo_path, po_state, po_detail"
           )
           .eq("wholesaler_id", scope.wholesalerId)
           .order("created_at", { ascending: false })
           .limit(100),
-        // 확인이 필요한 박스(이력 못 찾음·상품 미확정)는 최근 100건 밖으로 밀려나도 화면에 남겨야 한다 —
-        // 종 배지는 전부 세는데 여기서만 빠지면 "확인 필요 1"인데 찾을 수 없는 박스가 된다.
+        // 확인이 필요한 박스(이력 못 찾음·상품 미확정·발주 초과 "받을까요?" 대기)는 최근 100건 밖으로
+        // 밀려나도 화면에 남겨야 한다 — 종 배지는 전부 세는데 여기서만 빠지면 "확인 필요 1"인데
+        // 찾을 수 없는 박스가 된다.
         supabase
           .from("inbound_scans")
           .select(
-            "id, trace_no, product_id, supplier_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_supplier, scanned_by, storage_location, storage_location_photo_path"
+            "id, trace_no, product_id, supplier_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_supplier, scanned_by, storage_location, storage_location_photo_path, po_state, po_detail"
           )
           .eq("wholesaler_id", scope.wholesalerId)
-          .in("status", ["EXCEPTION", "PENDING_MAPPING"])
+          .or("status.in.(EXCEPTION,PENDING_MAPPING),po_state.eq.OVER_PENDING")
           .order("created_at", { ascending: false })
           .limit(200),
         supabase
@@ -239,6 +240,8 @@ export async function loadInboundData(scope: SupplierScope): Promise<InboundData
       scannedByName: row.scanned_by ? (scannerNameById.get(String(row.scanned_by)) ?? "직원") : null,
       storageLocation: (row.storage_location as string | null) ?? null,
       storageLocationPhotoPath: (row.storage_location_photo_path as string | null) ?? null,
+      poState: (row.po_state as string | null) ?? null,
+      poDetail: (row.po_detail as Record<string, unknown> | null) ?? null,
     }));
 
     // 상품 확인이 필요한 박스: 지금 거래처의 열린 발주서 중 맞는 상품 후보(마이그레이션 175)를 붙인다.
@@ -292,12 +295,12 @@ export async function loadInboundData(scope: SupplierScope): Promise<InboundData
     ].sort((a, b) => a.localeCompare(b, "ko"));
   }
 
+  const needsCheck = (scan: InboundScanRow) =>
+    scan.status === "EXCEPTION" || scan.status === "PENDING_MAPPING" || scan.poState === "OVER_PENDING";
+
   const nextStepInput: InboundNextStepInput = {
-    needsCheckScanCount: scans.filter(
-      (scan) => scan.status === "EXCEPTION" || scan.status === "PENDING_MAPPING"
-    ).length,
-    firstNeedsCheckScanId:
-      scans.find((scan) => scan.status === "EXCEPTION" || scan.status === "PENDING_MAPPING")?.id ?? null,
+    needsCheckScanCount: scans.filter(needsCheck).length,
+    firstNeedsCheckScanId: scans.find(needsCheck)?.id ?? null,
   };
 
   return {

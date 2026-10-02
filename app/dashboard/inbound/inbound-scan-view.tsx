@@ -20,6 +20,7 @@ import {
   resolveMappingAction,
   resolveScanStorageAction,
   resolveMappingToOrderAction,
+  resolveScanOverQuantityAction,
   recordSplitScansAction,
   voidScanAction,
   setScanStorageLocationAction,
@@ -80,6 +81,10 @@ export interface InboundScanRow {
   storageLocation: string | null;
   /** 위치 참고 사진 경로(선택). private 버킷이라 볼 때마다 서명 링크를 새로 받는다. */
   storageLocationPhotoPath: string | null;
+  /** 발주서 판정 상태(마이그레이션 142·221) — "OVER_PENDING"이면 "발주 수량 초과, 받을까요?" 답을 기다리는 중. */
+  poState?: string | null;
+  /** OVER_PENDING일 때 ordered/received/tolerance를 담은 판정 상세. */
+  poDetail?: Record<string, unknown> | null;
   /**
    * 상품 확인이 필요한 박스에 대해, 지금 거래처의 열린 발주서 중 이 박스와 맞는 상품 후보(마이그레이션 175).
    * 스캔이 모르는 부위·냉장/냉동을 박스 라벨을 보고 후보 중에서 고르게 한다. 없거나 비어 있으면 전체 상품 목록으로 고른다.
@@ -914,6 +919,27 @@ export function InboundScanView({
     refreshAfterOwnChange();
   };
 
+  // 발주 수량 초과 박스를 "받을까요/거절할까요?" 질문에 답한다(마이그레이션 221) — 현장 직원도 그 자리에서 바로 답할 수 있다.
+  const handleResolveOverQuantity = async (scanId: string, accept: boolean) => {
+    const result = await resolveScanOverQuantityAction(scanId, accept);
+
+    if (!result.success) {
+      setError(result.error ?? "처리하지 못했습니다.");
+      return;
+    }
+
+    clearResultCardFor(scanId);
+
+    if (accept) {
+      const po = result.data?.po;
+      setNotice(po ? holdSummary(po) : "받았습니다. 재고에 들어가 바로 팔 수 있습니다.");
+    } else {
+      setNotice("거절했습니다. 재고에는 넣지 않았습니다.");
+    }
+
+    refreshAfterOwnChange();
+  };
+
   const handleResolve = async (scanId: string, productId: string, remember = true) => {
     if (!productId) return;
 
@@ -928,6 +954,12 @@ export function InboundScanView({
 
     if (result.data?.po?.result === "REJECTED") {
       setError(`상품은 지정했지만 이 박스는 받지 않았습니다 — ${rejectionSummary(result.data.po)} 재고에는 넣지 않았습니다.`);
+      refreshAfterOwnChange();
+      return;
+    }
+
+    if (result.data?.po?.result === "OVER_PENDING") {
+      setNotice("상품을 지정했습니다. 다만 발주 수량을 넘었습니다 — 바로 아래에서 받을지 거절할지 정하세요.");
       refreshAfterOwnChange();
       return;
     }
@@ -1169,10 +1201,12 @@ export function InboundScanView({
             action: { label: "전체 입고", onClick: () => void handleSplitSubmit() },
           };
 
-  // 상품이 안 정해져 재고에 못 들어간 박스들 — 상품 지정 안내 카드와 선택칸 강조의 근거.
-  const unresolvedRows = rows.filter(
-    (row) => !row.isSample && (row.status === "PENDING_MAPPING" || row.status === "EXCEPTION")
-  );
+  // 상품이 안 정해졌거나(상품 확인 필요·이력 확인 필요), 상품은 정해졌지만 발주 수량을 넘어
+  // "받을까요?" 답을 기다리는 박스(마이그레이션 221) — 전부 사람이 뭔가 눌러야 다음으로 넘어간다.
+  const needsAttention = (row: InboundScanRow) =>
+    !row.isSample && (row.status === "PENDING_MAPPING" || row.status === "EXCEPTION" || row.poState === "OVER_PENDING");
+
+  const unresolvedRows = rows.filter(needsAttention);
 
   // 카드가 안내하는 단계의 칸·버튼을 같은 색으로 강조한다.
   const activeScanField: "trace" | "weight" | "submit" | null =
@@ -1187,7 +1221,7 @@ export function InboundScanView({
           : "submit";
 
   // 종 배지의 "확인 필요 박스"가 이 카드로 온다 — 그 박스가 어디 있고 무엇을 하면 되는지 카드가 말해 줘야 끊기지 않는다.
-  const needsCheckRows = rows.filter((row) => !row.isSample && (row.status === "PENDING_MAPPING" || row.status === "EXCEPTION"));
+  const needsCheckRows = rows.filter(needsAttention);
 
   // 지금 할 단계 안내 — 바코드 → 실중량 → 등록 순서를 카드가 말해 준다.
   const baseScanStep: StepCardStep =
@@ -1232,7 +1266,10 @@ export function InboundScanView({
 
   // 박스 한 줄 — '확인이 필요한 박스'와 '입고 내역' 두 자리에서 같은 모양으로 쓴다.
   const renderScanRow = (scan: InboundScanRow) => {
-    const badge = STATUS_BADGE[scan.status];
+    const overPending = !scan.isSample && scan.poState === "OVER_PENDING";
+    const badge = overPending
+      ? { label: "발주 초과 — 확인 필요", bg: "#fee2e2", color: "#991b1b" }
+      : STATUS_BADGE[scan.status];
     const needsProduct =
       !scan.isSample && (scan.status === "PENDING_MAPPING" || scan.status === "EXCEPTION");
 
@@ -1400,6 +1437,20 @@ export function InboundScanView({
             );
           }
 
+          if (overPending) {
+            const detail = (scan.poDetail ?? {}) as { ordered?: number; received?: number };
+            const numbers =
+              detail.ordered !== undefined && detail.received !== undefined
+                ? ` (발주 ${detail.ordered}${scan.unit} 중 이미 ${detail.received}${scan.unit} 받았습니다)`
+                : "";
+
+            return (
+              <p style={{ margin: "4px 0 0", width: "100%", fontSize: "12px", color: "#7f1d1d", lineHeight: 1.5 }}>
+                발주 수량을 넘었습니다{numbers}. 받으면 재고에 들어가 바로 팔 수 있고, 거절하면 재고에 안 들어갑니다 — 지금 바로 정하세요.
+              </p>
+            );
+          }
+
           // 취소된 박스에는 대조표가 의미 없다.
           if (scan.status === "VOIDED") return null;
 
@@ -1548,6 +1599,25 @@ export function InboundScanView({
                 </option>
               ))}
             </select>
+          )}
+
+          {overPending && (
+            <div style={{ display: "flex", gap: "6px" }}>
+              <button
+                type="button"
+                onClick={() => void handleResolveOverQuantity(scan.id, true)}
+                style={{ ...buttonStyle, ...HIGHLIGHT_FIELD, padding: "8px 16px", fontSize: "13px", fontWeight: 700 }}
+              >
+                받기
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleResolveOverQuantity(scan.id, false)}
+                style={{ ...buttonStyle, padding: "8px 16px", fontSize: "13px", fontWeight: 700 }}
+              >
+                거절
+              </button>
+            </div>
           )}
 
           {needsProduct && shippableOrders.length > 0 && (

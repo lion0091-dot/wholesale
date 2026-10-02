@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { OverItemPolicy, ReceivingPolicy, ToleranceMode, UnlistedItemPolicy } from "@/lib/receiving-policy/policy";
+import type { ReceivingPolicy, ToleranceMode, UnlistedItemPolicy } from "@/lib/receiving-policy/policy";
 import { saveReceivingPolicyAction } from "./actions";
 
 const cardStyle: React.CSSProperties = { border: "1px solid #e2e8f0", borderRadius: "12px", padding: "14px", backgroundColor: "#fff", display: "grid", gap: "8px" };
@@ -19,7 +19,6 @@ interface Props {
 export function ReceivingPolicyForm({ initial, canManage }: Props) {
   const [mode, setMode] = useState<ToleranceMode>(initial.overToleranceMode);
   const [value, setValue] = useState(String(initial.overToleranceValue));
-  const [over, setOver] = useState<OverItemPolicy>(initial.overItemPolicy);
   const [unlisted, setUnlisted] = useState<UnlistedItemPolicy>(initial.unlistedItemPolicy);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -36,7 +35,7 @@ export function ReceivingPolicyForm({ initial, canManage }: Props) {
     setBusy(true);
     setMessage(null);
 
-    const result = await saveReceivingPolicyAction({ overToleranceMode: mode, overToleranceValue: value, overItemPolicy: over, unlistedItemPolicy: unlisted });
+    const result = await saveReceivingPolicyAction({ overToleranceMode: mode, overToleranceValue: value, overItemPolicy: "REJECT", unlistedItemPolicy: unlisted });
 
     setBusy(false);
     setMessage(result.success ? { ok: true, text: "저장했습니다." } : { ok: false, text: result.error ?? "저장하지 못했습니다." });
@@ -60,15 +59,10 @@ export function ReceivingPolicyForm({ initial, canManage }: Props) {
           <span style={{ fontSize: "13px", color: "#334155" }}>{mode === "PERCENT" ? "%" : "kg"}</span>
         </div>
         <p style={hintStyle}>{example}</p>
-        <p style={{ ...hintStyle, marginTop: "4px" }}>이 기준을 넘는 박스가 왔을 때:</p>
-        <label style={optionStyle}>
-          <input type="radio" name="over" checked={over === "REJECT"} disabled={!canManage} onChange={() => setOver("REJECT")} />
-          받지 않습니다. (재고에 넣지 않고 거절 기록만 남깁니다.)
-        </label>
-        <label style={optionStyle}>
-          <input type="radio" name="over" checked={over === "HOLD"} disabled={!canManage} onChange={() => setOver("HOLD")} />
-          일단 받고, 사무실이 확인할 수 있게 따로 표시해 둡니다. (재고에 들어가 바로 팔 수 있습니다.)
-        </label>
+        <p style={{ ...hintStyle, marginTop: "4px" }}>
+          이 기준을 넘는 박스가 오면 미리 정해 두지 않습니다 — 입고 스캔 화면에서 그 자리에서 "받을까요?"를 물어보고,
+          현장 직원도 바로 받기/거절을 답할 수 있습니다.
+        </p>
       </section>
 
       <section style={cardStyle}>

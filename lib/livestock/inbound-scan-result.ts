@@ -6,7 +6,7 @@
  * 화면(inbound-scan-view.tsx)은 이 결과를 그리기만 한다.
  */
 
-import { rejectionSummary, type ScanPurchaseOrder } from "./scan-purchase-order";
+import { overPendingSummary, rejectionSummary, type ScanPurchaseOrder } from "./scan-purchase-order";
 
 export type ResultTone = "green" | "yellow" | "red";
 
@@ -118,6 +118,14 @@ function addPurchaseOrderNotice(card: ResultCard, data: ScanResultInput): void {
   const po = data.po;
 
   if (!po) return;
+
+  if (po.result === "OVER_PENDING") {
+    card.tone = "red";
+    card.title = "발주 수량을 넘었습니다 — 받을까요?";
+    card.detail = overPendingSummary(po);
+    card.action = { label: "이 박스로 이동", href: `#scan-${data.scanId}` };
+    return;
+  }
 
   if (po.result === "ASSIGNED") {
     const progress =

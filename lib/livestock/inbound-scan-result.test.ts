@@ -215,6 +215,18 @@ describe("발주서 판정(마이그레이션 142)이 결과 카드에 미치는
     expect(extra?.detail).toContain("12.5kg는 전표에 붙지 않았습니다");
   });
 
+  it("발주 수량 초과로 '받을까요?' 대기 중(OVER_PENDING, 마이그레이션 221) — 빨강, 받을지 물어보고 그 박스로 이동시킨다", () => {
+    const card = buildScanResultCard(
+      { ...ok, scanId: "scan-99", po: po({ result: "OVER_PENDING", reason: "OVER", ordered: 50, received: 48, remaining: null }) },
+      options
+    );
+
+    expect(card.tone).toBe("red");
+    expect(card.title).toContain("받을까요?");
+    expect(card.detail).toContain("발주 50kg 중 이미 48kg 받았습니다");
+    expect(card.action?.href).toBe("#scan-scan-99");
+  });
+
   it("거래처를 안 고르고 찍으면 거래처부터 고르라고 한다", () => {
     const card = buildMissingInputCard("supplier");
 

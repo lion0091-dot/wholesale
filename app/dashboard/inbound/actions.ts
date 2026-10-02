@@ -1026,6 +1026,41 @@ export async function voidScanAction(scanId: string, reason?: string): Promise<A
 }
 
 /**
+ * 발주 수량을 넘은 박스를 "받을까요/거절할까요?" 질문에 대한 답으로 마저 처리한다(마이그레이션 221).
+ * owner/manager 승인 없이 현장 직원도 그 자리에서 바로 답할 수 있다(대표 결정, INBOUND_ROLES와 동일).
+ */
+export async function resolveScanOverQuantityAction(
+  scanId: string,
+  accept: boolean
+): Promise<ActionResult<{ po: ScanPurchaseOrder | null }>> {
+  try {
+    const { supabase } = await resolveInboundScope();
+
+    const { data, error } = await supabase.rpc("resolve_scan_over_quantity", {
+      p_scan_id: scanId,
+      p_accept: accept,
+    });
+
+    if (error) {
+      if (error.message.includes("NOT_PENDING")) {
+        throw new RbacError("이미 처리된 입고입니다. 새로고침 후 확인해주세요.");
+      }
+
+      throw new Error(error.message);
+    }
+
+    revalidatePath(REVALIDATE_PATH, "layout");
+    revalidatePath("/dashboard/products");
+    revalidatePath("/dashboard/inbound/holds");
+    revalidatePath("/dashboard/purchase-orders");
+
+    return { success: true, data: { po: scanPurchaseOrderFromDb(data) } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
  * 쪼개기(가공) — 지육·대분할육 박스 하나를 부위 박스 여러 개로 나눈다. 줄마다 부위와 실중량만 받는다 —
  * 상품은 부모 박스의 조회 정보(품종·등급·성별·원산지·냉장/냉동)로 찾거나 새로 만든다(마이그레이션 194).
  * 부모 잔량 − 자식 합 = 손실(수율)로 기록된다. 한 트랜잭션(split_inbound_scan, 마이그레이션 193).

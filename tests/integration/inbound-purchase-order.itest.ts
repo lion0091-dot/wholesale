@@ -9,6 +9,8 @@ import {
   recordSplitScansAction,
   replaceScanTraceNoAction,
   resolveMappingAction,
+  resolveMappingToOrderAction,
+  resolveScanOverQuantityAction,
   type ReplaceTraceResult,
   type ScanResult,
 } from "@/app/dashboard/inbound/actions";
@@ -96,7 +98,7 @@ async function scan(traceNo: string, weight: number, extra: Partial<Parameters<t
 }
 
 describe("입고 스캔 액션 — 거래처를 싣고 찍기", () => {
-  it("발주서 줄에 붙으면 받은 양·남은 양이 응답에 실리고, 다 채우면 발주서가 자동 마감된다. 넘치는 박스는 재고에 안 남고 거절 기록만 남는다", async () => {
+  it("발주서 줄에 붙으면 받은 양·남은 양이 응답에 실리고, 다 채우면 발주서가 자동 마감된다. 초과는 '받을까요?' 대기하고(마이그레이션 221) 거절하면 재고에 안 남고 거절 기록만 남는다", async () => {
     const supplierId = await newSupplier("가");
     const product = await world.createProduct({ stock_quantity: 0 });
     const orderId = await newPurchaseOrder(supplierId, [{ product, quantity: 30 }]);
@@ -110,8 +112,16 @@ describe("입고 스캔 액션 — 거래처를 싣고 찍기", () => {
     const overTrace = world.newTraceNo();
     const over = await scan(overTrace, 15, { productId: product.id, supplierId });
 
-    expect(over.status).toBe("REJECTED");
-    expect(over.po).toMatchObject({ result: "REJECTED", reason: "OVER", ordered: 30, received: 20 });
+    // 더 이상 자동으로 거절/보류하지 않는다 — 사람의 답을 기다린다. 스캔 즉시 재고는 들어가 있고
+    // (잠긴 원칙: 받은 박스는 발주서 판정과 무관하게 즉시 재고가 된다), 거절하면 그제서야 되돌린다.
+    expect(over.status).toBe("NORMAL");
+    expect(over.po).toMatchObject({ result: "OVER_PENDING", reason: "OVER", ordered: 30, received: 20 });
+    expect(await stockOf(product.id)).toBe(35);
+
+    const declined = await resolveScanOverQuantityAction(over.scanId, false);
+
+    expect(declined.success, declined.error).toBe(true);
+    expect(declined.data?.po).toMatchObject({ result: "REJECTED", reason: "OVER", ordered: 30, received: 20 });
     expect(await stockOf(product.id)).toBe(20);
     expect((await scanRow(overTrace)).status).toBe("VOIDED");
 
@@ -129,43 +139,64 @@ describe("입고 스캔 액션 — 거래처를 싣고 찍기", () => {
     expect(order?.auto_closed_at).not.toBeNull();
   });
 
-  it("입고 기준이 '초과도 일단 받기'면 넘치는 박스가 재고에 들어가 팔 수 있고, 발주서엔 남은 자리만 채워지며 거절 기록은 안 남는다", async () => {
-    const supplierId = await newSupplier("초과보류");
+  it("'받을까요?' 질문에 '받기'로 답하면 재고에 들어가 팔 수 있고, 발주서엔 남은 자리만 채워지며 거절 기록은 안 남는다(마이그레이션 221)", async () => {
+    const supplierId = await newSupplier("초과받기");
     const product = await world.createProduct({ stock_quantity: 0 });
     const orderId = await newPurchaseOrder(supplierId, [{ product, quantity: 30 }]);
 
-    await adminClient().from("receiving_policies").upsert({ wholesaler_id: world.wholesalerA, over_item_policy: "HOLD" }, { onConflict: "wholesaler_id" });
+    const first = await scan(world.newTraceNo(), 20, { productId: product.id, supplierId });
 
-    try {
-      const first = await scan(world.newTraceNo(), 20, { productId: product.id, supplierId });
+    expect(first.po).toMatchObject({ result: "ASSIGNED", remaining: 10 });
 
-      expect(first.po).toMatchObject({ result: "ASSIGNED", remaining: 10 });
+    const overTrace = world.newTraceNo();
+    const over = await scan(overTrace, 15, { productId: product.id, supplierId });
 
-      const overTrace = world.newTraceNo();
-      const over = await scan(overTrace, 15, { productId: product.id, supplierId });
+    expect(over.status).toBe("NORMAL");
+    expect(over.po).toMatchObject({ result: "OVER_PENDING" });
+    expect(await stockOf(product.id)).toBe(35);
 
-      expect(over.status).toBe("NORMAL");
-      expect(over.po).toMatchObject({ result: "OVER_HELD" });
-      expect(await stockOf(product.id)).toBe(35);
+    const accepted = await resolveScanOverQuantityAction(over.scanId, true);
 
-      const row = await scanRow(overTrace);
+    expect(accepted.success, accepted.error).toBe(true);
+    expect(accepted.data?.po).toMatchObject({ result: "OVER_HELD" });
+    expect(await stockOf(product.id)).toBe(35);
 
-      expect(row).toMatchObject({ status: "NORMAL", po_state: "OVER_HELD" });
+    const row = await scanRow(overTrace);
 
-      const { data: fills } = await adminClient().from("purchase_order_line_scans").select("weight").eq("scan_id", row.id);
+    expect(row).toMatchObject({ status: "NORMAL", po_state: "OVER_HELD" });
 
-      expect(fills!.map((fill) => Number(fill.weight))).toEqual([10]);
+    const { data: fills } = await adminClient().from("purchase_order_line_scans").select("weight").eq("scan_id", row.id);
 
-      const { data: rejections } = await adminClient().from("inbound_rejections").select("id").eq("trace_no", overTrace);
+    expect(fills!.map((fill) => Number(fill.weight))).toEqual([10]);
 
-      expect(rejections).toEqual([]);
+    const { data: rejections } = await adminClient().from("inbound_rejections").select("id").eq("trace_no", overTrace);
 
-      const { data: order } = await adminClient().from("purchase_orders").select("status").eq("id", orderId).single();
+    expect(rejections).toEqual([]);
 
-      expect(order?.status).toBe("CLOSED");
-    } finally {
-      await adminClient().from("receiving_policies").delete().eq("wholesaler_id", world.wholesalerA);
-    }
+    const { data: order } = await adminClient().from("purchase_orders").select("status").eq("id", orderId).single();
+
+    expect(order?.status).toBe("CLOSED");
+  });
+
+  it("'받을까요?' 대기 중인 박스를 다시 대답하거나 이미 처리된 박스를 또 답하면 거부한다(멱등 보호)", async () => {
+    const supplierId = await newSupplier("초과중복");
+    const product = await world.createProduct({ stock_quantity: 0 });
+
+    await newPurchaseOrder(supplierId, [{ product, quantity: 5 }]);
+
+    const overTrace = world.newTraceNo();
+    const over = await scan(overTrace, 15, { productId: product.id, supplierId });
+
+    expect(over.po).toMatchObject({ result: "OVER_PENDING" });
+
+    const first = await resolveScanOverQuantityAction(over.scanId, true);
+
+    expect(first.success).toBe(true);
+
+    const second = await resolveScanOverQuantityAction(over.scanId, true);
+
+    expect(second.success).toBe(false);
+    expect(second.error).toContain("이미 처리된 입고");
   });
 
   it("거래처를 안 실으면 판정 없이 예전처럼 받는다", async () => {
@@ -235,12 +266,52 @@ describe("입고 스캔 액션 — 거래처를 싣고 찍기", () => {
     await world.seedTrace(secondTrace, { speciesGroup: null, part: null, grade: null });
 
     const pendingOver = await recordScanAction({ traceNo: secondTrace, weight: 5, scanType: "MANUAL", supplierId });
-    const rejected = await resolveMappingAction((pendingOver.data as ScanResult).scanId, product.id, false);
+    const overResolved = await resolveMappingAction((pendingOver.data as ScanResult).scanId, product.id, false);
+
+    expect(overResolved.success).toBe(true);
+    expect(overResolved.data?.po).toMatchObject({ result: "OVER_PENDING", reason: "OVER" });
+    expect(await stockOf(product.id)).toBe(13);
+
+    const rejected = await resolveScanOverQuantityAction((pendingOver.data as ScanResult).scanId, false);
 
     expect(rejected.success).toBe(true);
     expect(rejected.data?.po).toMatchObject({ result: "REJECTED", reason: "OVER" });
     expect(await stockOf(product.id)).toBe(8);
     expect((await scanRow(secondTrace)).status).toBe("VOIDED");
+  });
+
+  it("'받을까요?' 대기 중인 박스는 '주문에 바로 배정'으로 먼저 출고해 버리지 않는다(마이그레이션 221) — 받기/거절을 정하기 전엔 출고를 건너뛴다", async () => {
+    const supplierId = await newSupplier("바로배정초과");
+    const product = await world.createProduct({ stock_quantity: 0 });
+
+    await newPurchaseOrder(supplierId, [{ product, quantity: 5 }]);
+
+    const retailerOrderId = await world.createOrder({ product, quantity: 1, status: "confirmed" });
+
+    const overTrace = world.newTraceNo();
+
+    await world.seedTrace(overTrace, { part: "등심" });
+
+    const pending = await recordScanAction({ traceNo: overTrace, weight: 15, scanType: "MANUAL", supplierId });
+
+    expect((pending.data as ScanResult).status).toBe("PENDING_MAPPING");
+
+    const resolved = await resolveMappingToOrderAction((pending.data as ScanResult).scanId, product.id, retailerOrderId, false);
+
+    expect(resolved.success, resolved.error).toBe(true);
+    expect(resolved.data?.po).toMatchObject({ result: "OVER_PENDING" });
+    expect(resolved.data?.taken).toBe(0);
+
+    // 박스는 재고에 들어가 있지만(스캔 즉시 재고) 발주서 판정 전이라 출고는 안 됐다.
+    expect(await stockOf(product.id)).toBe(15);
+
+    const { data: outboundScan } = await adminClient()
+      .from("inbound_scans")
+      .select("remaining_weight")
+      .eq("trace_no", overTrace)
+      .single();
+
+    expect(Number(outboundScan?.remaining_weight)).toBe(15);
   });
 
   it("이력번호를 바로잡아 새 박스가 만들어져도 거래처가 따라간다(발주서에 맞는 상품이 없으면 그 자리에서 보관)", async () => {
@@ -268,8 +339,35 @@ describe("입고 스캔 액션 — 거래처를 싣고 찍기", () => {
     expect((await scanRow(rightTrace)).supplier_id).toBe(supplierId);
   });
 
-  it("박스 분류입고 — 한 줄이라도 거절되면 앞서 넣은 줄까지 전부 취소한다", async () => {
+  it("박스 분류입고 — 전표에 없는 물건으로 한 줄이라도 거절되면 앞서 넣은 줄까지 전부 취소한다", async () => {
     const supplierId = await newSupplier("마");
+    const p1 = await world.createProduct({ stock_quantity: 0 });
+    const p2 = await world.createProduct({ stock_quantity: 0 }); // 이 거래처 열린 전표에는 없는 상품
+
+    await newPurchaseOrder(supplierId, [{ product: p1, quantity: 10 }]);
+
+    const box = world.newTraceNo();
+
+    await world.seedTrace(box, { part: "등심" });
+
+    const result = await recordSplitScansAction({
+      boxCode: box,
+      supplierId,
+      rows: [
+        { productId: p1.id, weight: 8 },
+        { productId: p2.id, weight: 3 },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("2번째 줄");
+    expect(result.error).toContain("전표에 없는 물건");
+    expect(await stockOf(p1.id)).toBe(0);
+    expect(await stockOf(p2.id)).toBe(0);
+  });
+
+  it("박스 분류입고 — 발주 수량 초과인 줄은 더 이상 자동으로 전부 취소하지 않고, 그 줄만 '받을까요?' 대기로 남는다(마이그레이션 221)", async () => {
+    const supplierId = await newSupplier("마초과");
     const p1 = await world.createProduct({ stock_quantity: 0 });
     const p2 = await world.createProduct({ stock_quantity: 0 });
 
@@ -291,10 +389,13 @@ describe("입고 스캔 액션 — 거래처를 싣고 찍기", () => {
       ],
     });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("2번째 줄");
-    expect(result.error).toContain("발주 수량을 넘어");
-    expect(await stockOf(p1.id)).toBe(0);
-    expect(await stockOf(p2.id)).toBe(0);
+    expect(result.success, result.error).toBe(true);
+    expect(await stockOf(p1.id)).toBe(8);
+    expect(await stockOf(p2.id)).toBe(12);
+
+    const p2ScanId = result.data!.scanIds[1];
+    const { data: p2Scan } = await adminClient().from("inbound_scans").select("po_state").eq("id", p2ScanId).single();
+
+    expect(p2Scan?.po_state).toBe("OVER_PENDING");
   });
 });

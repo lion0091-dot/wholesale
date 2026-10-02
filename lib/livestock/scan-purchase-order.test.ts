@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { holdSummary, rejectionBatchSummary, rejectionSummary, scanPurchaseOrderFromDb } from "./scan-purchase-order";
+import { holdSummary, overPendingSummary, rejectionBatchSummary, rejectionSummary, scanPurchaseOrderFromDb } from "./scan-purchase-order";
 
 describe("scanPurchaseOrderFromDb", () => {
   it("DB가 돌려준 판정 JSON을 화면용 모양으로 바꾼다", () => {
@@ -23,6 +23,15 @@ describe("scanPurchaseOrderFromDb", () => {
     });
   });
 
+  it("발주 초과로 '받을까요?' 대기 중(OVER_PENDING)이면 발주량·받은 양을 싣는다(마이그레이션 221)", () => {
+    expect(scanPurchaseOrderFromDb({ result: "OVER_PENDING", ordered: 50, received: 48, tolerance: 0 })).toMatchObject({
+      result: "OVER_PENDING",
+      reason: "OVER",
+      ordered: 50,
+      received: 48,
+    });
+  });
+
   it("판정 대상이 아니면(SKIPPED·없음·이상한 값) null", () => {
     expect(scanPurchaseOrderFromDb({ result: "SKIPPED" })).toBeNull();
     expect(scanPurchaseOrderFromDb(null)).toBeNull();
@@ -41,6 +50,16 @@ describe("rejectionSummary", () => {
     const text = rejectionSummary({ result: "REJECTED", reason: "UNLISTED", ordered: null, received: null, remaining: null, tolerance: null, excess: null, orderClosed: false });
 
     expect(text).toContain("전표에 없는 물건");
+  });
+});
+
+describe("overPendingSummary", () => {
+  it("발주량과 이미 받은 양을 말하고 받을지 묻는다", () => {
+    const text = overPendingSummary({ result: "OVER_PENDING", reason: "OVER", ordered: 50, received: 48, remaining: null, tolerance: 0, excess: null, orderClosed: false });
+
+    expect(text).toContain("발주 수량을 넘었습니다");
+    expect(text).toContain("발주 50kg 중 이미 48kg 받았습니다");
+    expect(text).toContain("받을까요?");
   });
 });
 
