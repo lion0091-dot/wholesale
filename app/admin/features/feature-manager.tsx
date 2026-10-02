@@ -12,6 +12,10 @@ export interface FeatureRow {
   enabled: boolean;
   /** true면 운영자가 이 업체에 직접 정한 값, false면 기능 메뉴판의 기본값을 따르는 중 */
   isOverride: boolean;
+  /** 상위 기능(메뉴)이 있으면 그 키 — 예: 회계 관리 탭들의 상위는 "accounting". 없으면 null */
+  parentKey: string | null;
+  /** 상위 기능이 이 업체에서 켜져 있나(상위가 없으면 null). 꺼져 있으면 이 기능도 함께 꺼진 것으로 동작한다. */
+  parentEnabled: boolean | null;
 }
 
 const cardStyle = {
@@ -33,6 +37,9 @@ export function FeatureManager({ rows }: { rows: FeatureRow[] }) {
     [state, query]
   );
 
+  const labelOf = (wholesalerId: string, key: string | null) =>
+    state.find((item) => item.wholesalerId === wholesalerId && item.featureKey === key)?.featureLabel ?? key;
+
   const change = (row: FeatureRow, enabled: boolean) => {
     const key = `${row.wholesalerId}:${row.featureKey}`;
 
@@ -52,7 +59,10 @@ export function FeatureManager({ rows }: { rows: FeatureRow[] }) {
         prev.map((item) =>
           item.wholesalerId === row.wholesalerId && item.featureKey === row.featureKey
             ? { ...item, enabled, isOverride: true }
-            : item
+            : // 상위 기능을 바꾸면 같은 업체의 하위 기능 줄도 "함께 꺼짐" 표시가 바뀐다.
+              item.wholesalerId === row.wholesalerId && item.parentKey === row.featureKey
+              ? { ...item, parentEnabled: enabled }
+              : item
         )
       );
       setBusyKey(null);
@@ -86,13 +96,27 @@ export function FeatureManager({ rows }: { rows: FeatureRow[] }) {
           return (
             <div
               key={key}
-              style={{ ...cardStyle, display: "flex", gap: "12px", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", opacity: busy ? 0.6 : 1 }}
+              style={{
+                ...cardStyle,
+                display: "flex",
+                gap: "12px",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                opacity: busy ? 0.6 : 1,
+                marginLeft: row.parentKey ? "20px" : 0,
+              }}
             >
               <div>
                 <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a" }}>{row.businessName}</div>
                 <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
                   {row.featureLabel}
                 </div>
+                {row.parentKey && row.parentEnabled === false && (
+                  <div style={{ fontSize: "12px", color: "#b45309", marginTop: "2px" }}>
+                    상위 기능 &quot;{labelOf(row.wholesalerId, row.parentKey)}&quot;이(가) 꺼져 있어 이 기능도 함께 꺼진 상태입니다.
+                  </div>
+                )}
               </div>
 
               <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>

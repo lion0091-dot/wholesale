@@ -80,7 +80,7 @@ insert into results (who,what,expected,result) values
  ('A대표','업체 대표가 스스로 기능을 끄기 → 거부(운영자 전용)','DENIED: FORBIDDEN', pg_temp.try($q$select public.set_wholesaler_feature('a7999999-0000-0000-0000-000000000001','cost_management',false)$q$)),
  ('A대표','기능 표에 직접 쓰기(켜짐 표·메뉴판) → 거부','DENIED|DENIED', pg_temp.try($q$insert into public.wholesaler_features (wholesaler_id,feature_key,enabled) values ('a7999999-0000-0000-0000-000000000001','cost_management',false)$q$)||'|'||pg_temp.try($q$update public.platform_features set default_enabled=false$q$)),
  ('A대표','운영자 전용 전체 목록 조회 → 거부','DENIED: FORBIDDEN', pg_temp.try($q$select * from public.admin_list_wholesaler_features()$q$)),
- ('A대표','자기 업체의 켜진 기능 목록에 원가 관리가 있다','cost_management', pg_temp.val($q$select string_agg(feature_key, ',') from public.current_wholesaler_features()$q$)),
+ ('A대표','자기 업체의 켜진 기능 목록에 원가 관리가 있다','cost_management', pg_temp.val($q$select string_agg(feature_key, ',') from public.current_wholesaler_features() where feature_key = 'cost_management'$q$)),
  ('A대표','자기 업체 켜짐 표를 읽을 수는 있다(쓰기만 막힘)','ALLOWED', pg_temp.try($q$select * from public.wholesaler_features$q$));
 set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000002';
 insert into results (who,what,expected,result) values
@@ -98,7 +98,7 @@ insert into results (who,what,expected,result) values
    pg_temp.try($q$select public.set_wholesaler_feature('a7999999-0000-0000-0000-000000000001','cost_management',true,'[1]'::jsonb)$q$)),
  ('운영자','A업체 세부 설정(오래된 재고 45일)과 함께 켜기 → 허용','ALLOWED', pg_temp.try($q$select public.set_wholesaler_feature('a7999999-0000-0000-0000-000000000001','cost_management',true,'{"aging_days":45}'::jsonb)$q$)),
  ('운영자','설정을 비워 두고(null) 다시 켜기 → 기존 세부 설정이 유지된다','45', pg_temp.val($q$select (select public.set_wholesaler_feature('a7999999-0000-0000-0000-000000000001','cost_management',true)) is null as x$q$)||'' ),
- ('운영자','전체 목록: 모든 업체 × 기능 1개(업체 수만큼), A만 직접 정한 값','true|1', pg_temp.val($q$select (count(*) = (select count(*) from public.wholesalers))::text||'|'||count(*) filter (where is_override and wholesaler_id in ('a7999999-0000-0000-0000-000000000001','a7999999-0000-0000-0000-000000000002')) from public.admin_list_wholesaler_features()$q$)),
+ ('운영자','전체 목록: 모든 업체 × 원가 관리 1줄(업체 수만큼), A만 직접 정한 값','true|1', pg_temp.val($q$select (count(*) filter (where feature_key = 'cost_management') = (select count(*) from public.wholesalers))::text||'|'||count(*) filter (where feature_key = 'cost_management' and is_override and wholesaler_id in ('a7999999-0000-0000-0000-000000000001','a7999999-0000-0000-0000-000000000002')) from public.admin_list_wholesaler_features()$q$)),
  ('운영자','운영자는 업체 안의 원가 관리 기능을 쓰지 못한다(마진 → 거부)','DENIED: NOT_OWNER', pg_temp.try($q$select * from public.get_order_margin('e7999999-0000-0000-0000-000000000001')$q$));
 
 -- 위 3번째 행의 expected는 "45"인데 val이 null 비교 결과를 돌려주므로, 세부 설정 유지 여부는 아래에서 직접 확인한다.
@@ -151,7 +151,7 @@ insert into results (who,what,expected,result) values
 set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000001';
 insert into results (who,what,expected,result) values
  ('A대표(꺼짐)','꺼지면 대표도 재고 평가·마진 → 거부','DENIED: FEATURE_DISABLED|DENIED: FEATURE_DISABLED', pg_temp.try($q$select * from public.get_inventory_valuation()$q$)||'|'||pg_temp.try($q$select * from public.get_order_margin('e7999999-0000-0000-0000-000000000001')$q$)),
- ('A대표(꺼짐)','꺼진 기능은 내 기능 목록에서 빠진다','<null>', pg_temp.val($q$select string_agg(feature_key, ',') from public.my_usable_features()$q$)),
+ ('A대표(꺼짐)','꺼진 기능은 내 기능 목록에서 빠진다','<null>', pg_temp.val($q$select string_agg(feature_key, ',') from public.my_usable_features() where feature_key = 'cost_management'$q$)),
  ('A대표(꺼짐)','꺼진 기능은 허용 목록을 바꿀 수 없다','DENIED: FEATURE_DISABLED', pg_temp.try($q$select public.set_feature_viewer('cost_management','97999999-0000-0000-0000-000000000003',true)$q$));
 set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000002';
 insert into results (who,what,expected,result) values
@@ -170,11 +170,11 @@ reset role;
 set role authenticated; set request.jwt.claim.role = 'authenticated';
 set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000005';
 insert into results (who,what,expected,result) values
- ('운영자','A업체 이력: 2건(기본 켜짐 기간이 닫히고, 다시 켠 기간이 열림)','2|1', pg_temp.val($q$select count(*)||'|'||count(*) filter (where ended_at is null) from public.admin_list_feature_periods('a7999999-0000-0000-0000-000000000001')$q$)),
- ('운영자','처음 기간은 시스템(기본값)이 켰고 운영자가 껐다','시스템(기본값)|운영자', pg_temp.val($q$select started_by_name||'|'||ended_by_name from public.admin_list_feature_periods('a7999999-0000-0000-0000-000000000001') where ended_at is not null$q$)),
- ('운영자','다시 켠 기간은 운영자가 켰고 아직 끝나지 않았다','운영자|<null>', pg_temp.val($q$select started_by_name||'|'||coalesce(ended_by_name,'<null>') from public.admin_list_feature_periods('a7999999-0000-0000-0000-000000000001') where ended_at is null$q$)),
- ('운영자','B업체는 한 번도 안 바꿨으니 기본 켜짐 기간 1건이 진행 중','1|1', pg_temp.val($q$select count(*)||'|'||count(*) filter (where ended_at is null) from public.admin_list_feature_periods('a7999999-0000-0000-0000-000000000002')$q$)),
- ('운영자','이미 켜진 기능을 또 켜도 새 기간이 생기지 않는다','ALLOWED|2', pg_temp.try($q$select public.set_wholesaler_feature('a7999999-0000-0000-0000-000000000001','cost_management',true)$q$)||'|'||pg_temp.val($q$select count(*)::text from public.admin_list_feature_periods('a7999999-0000-0000-0000-000000000001')$q$)),
+ ('운영자','A업체 이력: 2건(기본 켜짐 기간이 닫히고, 다시 켠 기간이 열림)','2|1', pg_temp.val($q$select count(*)||'|'||count(*) filter (where ended_at is null) from public.admin_list_feature_periods('a7999999-0000-0000-0000-000000000001', 'cost_management')$q$)),
+ ('운영자','처음 기간은 시스템(기본값)이 켰고 운영자가 껐다','시스템(기본값)|운영자', pg_temp.val($q$select started_by_name||'|'||ended_by_name from public.admin_list_feature_periods('a7999999-0000-0000-0000-000000000001', 'cost_management') where ended_at is not null$q$)),
+ ('운영자','다시 켠 기간은 운영자가 켰고 아직 끝나지 않았다','운영자|<null>', pg_temp.val($q$select started_by_name||'|'||coalesce(ended_by_name,'<null>') from public.admin_list_feature_periods('a7999999-0000-0000-0000-000000000001', 'cost_management') where ended_at is null$q$)),
+ ('운영자','B업체는 한 번도 안 바꿨으니 기본 켜짐 기간 1건이 진행 중','1|1', pg_temp.val($q$select count(*)||'|'||count(*) filter (where ended_at is null) from public.admin_list_feature_periods('a7999999-0000-0000-0000-000000000002', 'cost_management')$q$)),
+ ('운영자','이미 켜진 기능을 또 켜도 새 기간이 생기지 않는다','ALLOWED|2', pg_temp.try($q$select public.set_wholesaler_feature('a7999999-0000-0000-0000-000000000001','cost_management',true)$q$)||'|'||pg_temp.val($q$select count(*)::text from public.admin_list_feature_periods('a7999999-0000-0000-0000-000000000001', 'cost_management')$q$)),
  ('운영자','불변식 점검: 켜져 있는데 기간이 없거나 꺼져 있는데 기간이 열린 곳 → 0건','0', pg_temp.val($q$select count(*)::text from public.feature_period_violations() where wholesaler_id in ('a7999999-0000-0000-0000-000000000001','a7999999-0000-0000-0000-000000000002')$q$));
 set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000001';
 insert into results (who,what,expected,result) values
@@ -191,6 +191,70 @@ insert into results (who,what,expected,result) values
 reset role;
 insert into results (who,what,expected,result) values
  ('시스템','A업체만 껐다 켰어도 B업체 상태는 그대로(행 없음 = 기본값)','0', (select count(*)::text from public.wholesaler_features where wholesaler_id='a7999999-0000-0000-0000-000000000002'));
+
+-- ========== 7-G. 회계 관리 메뉴(217) — 부모(accounting)·자식(탭) 토글 ==========
+set role authenticated; set request.jwt.claim.role = 'authenticated';
+set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000001';
+insert into results (who,what,expected,result) values
+ ('A대표','기본: 회계 관리 메뉴 + 탭 3개 + 원가 관리가 전부 켜져 있다','5', pg_temp.val($q$select count(*)::text from public.current_wholesaler_features()$q$)),
+ ('A대표','기본: 매입 정산·장부 불일치·원가 관리가 모두 열린다','ALLOWED|ALLOWED|ALLOWED|ALLOWED', pg_temp.try($q$select * from public.list_inbound_purchases()$q$)||'|'||pg_temp.try($q$select * from public.summarize_inbound_purchases()$q$)||'|'||pg_temp.try($q$select * from public.list_stock_mismatches()$q$)||'|'||pg_temp.try($q$select * from public.get_inventory_valuation()$q$)),
+ ('A대표','기본: 매입 목록에 박스가 보인다(취소 제외 4건)','4', pg_temp.val($q$select count(*)::text from public.list_inbound_purchases()$q$));
+
+-- 탭 하나만 끄기 (accounting_purchases)
+set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000005';
+insert into results (who,what,expected,result) values
+ ('운영자','A업체의 매입 정산 탭만 끄기 → 허용','ALLOWED', pg_temp.try($q$select public.set_wholesaler_feature('a7999999-0000-0000-0000-000000000001','accounting_purchases',false)$q$)),
+ ('운영자','전체 목록: 매입 정산 줄은 상위 회계 관리가 켜져 있다고 표시된다','accounting|true|false', pg_temp.val($q$select parent_key||'|'||parent_enabled::text||'|'||enabled::text from public.admin_list_wholesaler_features() where wholesaler_id='a7999999-0000-0000-0000-000000000001' and feature_key='accounting_purchases'$q$));
+set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000001';
+insert into results (who,what,expected,result) values
+ ('A대표(매입 탭 꺼짐)','매입 목록은 0건, 요약은 0박스, 단가 수정은 거부','0|0|DENIED: FEATURE_DISABLED', pg_temp.val($q$select count(*)::text from public.list_inbound_purchases()$q$)||'|'||pg_temp.val($q$select box_count::text from public.summarize_inbound_purchases()$q$)||'|'||pg_temp.try($q$select public.update_inbound_purchase('b7999999-0000-0000-0000-000000000001', 41000)$q$)),
+ ('A대표(매입 탭 꺼짐)','다른 탭(장부 불일치·원가 관리)은 그대로 열린다','ALLOWED|ALLOWED', pg_temp.try($q$select * from public.list_stock_mismatches()$q$)||'|'||pg_temp.try($q$select * from public.get_inventory_valuation()$q$)),
+ ('A대표(매입 탭 꺼짐)','내 켜진 기능 목록에서 매입 정산만 빠진다','accounting,accounting_integrity,accounting_receivables,cost_management', pg_temp.val($q$select string_agg(feature_key, ',' order by feature_key) from public.current_wholesaler_features()$q$));
+
+-- 장부 불일치 탭 끄기 (대표여도 거부)
+set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000005';
+insert into results (who,what,expected,result) values
+ ('운영자','A업체의 장부 불일치 탭 끄기 → 허용','ALLOWED', pg_temp.try($q$select public.set_wholesaler_feature('a7999999-0000-0000-0000-000000000001','accounting_integrity',false)$q$));
+set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000001';
+insert into results (who,what,expected,result) values
+ ('A대표(장부 탭 꺼짐)','불일치 목록·보정 이력·보정 → 전부 거부','DENIED: FEATURE_DISABLED|DENIED: FEATURE_DISABLED|DENIED: FEATURE_DISABLED',
+   pg_temp.try($q$select * from public.list_stock_mismatches()$q$)||'|'||
+   pg_temp.try($q$select * from public.list_stock_repairs()$q$)||'|'||
+   pg_temp.try($q$select public.repair_stock_mismatch('product','c7999999-0000-0000-0000-000000000001','LEDGER',null,'테스트',20,20)$q$));
+
+-- 메뉴(부모) 끄기 → 켜져 있는 탭도 함께 꺼진다
+set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000005';
+insert into results (who,what,expected,result) values
+ ('운영자','A업체의 장부·매입 탭을 다시 켜기 → 허용','ALLOWED|ALLOWED', pg_temp.try($q$select public.set_wholesaler_feature('a7999999-0000-0000-0000-000000000001','accounting_integrity',true)$q$)||'|'||pg_temp.try($q$select public.set_wholesaler_feature('a7999999-0000-0000-0000-000000000001','accounting_purchases',true)$q$)),
+ ('운영자','A업체의 회계 관리 메뉴 끄기 → 허용','ALLOWED', pg_temp.try($q$select public.set_wholesaler_feature('a7999999-0000-0000-0000-000000000001','accounting',false)$q$)),
+ ('운영자','전체 목록: 자식 줄은 자기 값(켜짐)은 그대로이고 상위가 꺼졌다고 표시','true|false', pg_temp.val($q$select enabled::text||'|'||parent_enabled::text from public.admin_list_wholesaler_features() where wholesaler_id='a7999999-0000-0000-0000-000000000001' and feature_key='accounting_receivables'$q$));
+set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000001';
+insert into results (who,what,expected,result) values
+ ('A대표(메뉴 꺼짐)','켜진 기능 목록이 비어 있다(탭도 원가 관리도 함께 빠짐)','0', pg_temp.val($q$select count(*)::text from public.current_wholesaler_features()$q$)),
+ ('A대표(메뉴 꺼짐)','매입 정산·장부 불일치 함수 → 0건/거부','0|DENIED: FEATURE_DISABLED', pg_temp.val($q$select count(*)::text from public.list_inbound_purchases()$q$)||'|'||pg_temp.try($q$select * from public.list_stock_mismatches()$q$)),
+ ('A대표(메뉴 꺼짐)','원가 관리(자식)도 대표여도 거부 / 마진 거부 / 허용 목록 바꾸기 거부','DENIED: NOT_ALLOWED|DENIED: NOT_OWNER|DENIED: FEATURE_DISABLED',
+   pg_temp.try($q$select * from public.get_inventory_valuation()$q$)||'|'||
+   pg_temp.try($q$select * from public.get_order_margin('e7999999-0000-0000-0000-000000000001')$q$)||'|'||
+   pg_temp.try($q$select public.set_feature_viewer('cost_management','97999999-0000-0000-0000-000000000002',true)$q$)),
+ ('A대표(메뉴 꺼짐)','메뉴가 꺼져도 핵심 업무(상품 조회 등)는 영향 없다','ALLOWED', pg_temp.try($q$select count(*) from public.products$q$));
+set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000004';
+insert into results (who,what,expected,result) values
+ ('B대표','다른 업체(B)는 A의 토글과 무관하게 전부 켜져 있다','5|ALLOWED', pg_temp.val($q$select count(*)::text from public.current_wholesaler_features()$q$)||'|'||pg_temp.try($q$select * from public.list_stock_mismatches()$q$));
+
+-- 다시 켜기 → 원상복구, 그리고 이력 불변식
+set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000005';
+insert into results (who,what,expected,result) values
+ ('운영자','A업체의 회계 관리 메뉴 다시 켜기 → 허용','ALLOWED', pg_temp.try($q$select public.set_wholesaler_feature('a7999999-0000-0000-0000-000000000001','accounting',true)$q$));
+set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000001';
+insert into results (who,what,expected,result) values
+ ('A대표(복구)','메뉴를 다시 켜면 5개 기능이 전부 돌아오고 매입 목록도 4건','5|4', pg_temp.val($q$select count(*)::text from public.current_wholesaler_features()$q$)||'|'||pg_temp.val($q$select count(*)::text from public.list_inbound_purchases()$q$));
+set request.jwt.claim.sub = '97999999-0000-0000-0000-000000000005';
+insert into results (who,what,expected,result) values
+ ('운영자','켜짐/기간 이력 불변식 점검 → 0건','0', pg_temp.val($q$select count(*)::text from public.feature_period_violations() where wholesaler_id in ('a7999999-0000-0000-0000-000000000001','a7999999-0000-0000-0000-000000000002')$q$));
+reset role;
+insert into results (who,what,expected,result) values
+ ('시스템','기능이 자기 자신을 부모로 가질 수 없다','DENIED', pg_temp.try($q$update public.platform_features set parent_key = 'accounting' where key = 'accounting'$q$)),
+ ('시스템','부모 기능이 있는 키는 회계 3탭 + 원가 관리','accounting_integrity,accounting_purchases,accounting_receivables,cost_management', (select string_agg(key, ',' order by key) from public.platform_features where parent_key = 'accounting'));
 
 select '--- 결과 ---' as t;
 select no, who, what, expected, result,

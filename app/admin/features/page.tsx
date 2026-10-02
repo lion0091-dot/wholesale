@@ -34,6 +34,8 @@ export default async function AdminFeaturesPage() {
       featureLabel: String(row.feature_label ?? row.feature_key),
       enabled: row.enabled === true,
       isOverride: row.is_override === true,
+      parentKey: (row.parent_key as string | null) ?? null,
+      parentEnabled: row.parent_enabled === null || row.parent_enabled === undefined ? null : row.parent_enabled === true,
     }));
   }
 

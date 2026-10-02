@@ -3,7 +3,8 @@ import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { FeatureNotice } from "@/components/feature-notice";
 import { fetchStockMismatches, fetchStockRepairs } from "@/lib/supplier/stock-repair";
-import { StockTabs } from "../section-tabs";
+import { FEATURE_KEYS, getMyEnabledFeatures } from "@/lib/features/my-features";
+import { AccountingTabs } from "../section-tabs";
 import { RepairView } from "./repair-view";
 
 export const metadata = {
@@ -22,13 +23,18 @@ export default async function StockIntegrityPage() {
     return <AdminScopeNotice />;
   }
 
+  // 회계 관리 > 장부 불일치 탭이 꺼진 업체(또는 회계 관리 메뉴가 꺼진 업체)는 화면을 열지 않는다(마이그레이션 217).
+  if (scope?.wholesalerId && !(await getMyEnabledFeatures()).has(FEATURE_KEYS.accountingIntegrity)) {
+    return <FeatureNotice screenName="장부 불일치">이 업체에서는 쓰지 않도록 설정된 기능이에요. 필요하면 운영팀에 문의해 주세요.</FeatureNotice>;
+  }
+
   const supabase = await createClient();
   const mismatches = scope?.wholesalerId ? await fetchStockMismatches(supabase) : null;
 
   if (!mismatches) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-        <StockTabs />
+        <AccountingTabs />
         <FeatureNotice screenName="장부 불일치">
           장부 불일치 보정은 대표님만 할 수 있어요. 재고 숫자가 입출고 기록과 다르다고 느껴지면 대표님께 알려 주세요.
         </FeatureNotice>
@@ -40,7 +46,7 @@ export default async function StockIntegrityPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <StockTabs />
+      <AccountingTabs />
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>장부 불일치</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0", lineHeight: 1.6 }}>

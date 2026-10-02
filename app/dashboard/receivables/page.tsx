@@ -10,7 +10,9 @@ import {
 import { formatWon } from "@/lib/orders/status";
 import { getAlimtalkSettingsAction } from "@/app/actions/alimtalk-settings";
 import { ReceivablesView } from "./receivables-view";
-import { CustomerTabs } from "../section-tabs";
+import { FeatureNotice } from "@/components/feature-notice";
+import { FEATURE_KEYS, getMyEnabledFeatures } from "@/lib/features/my-features";
+import { AccountingTabs } from "../section-tabs";
 
 export const metadata = {
   title: "미수금 정산 | 도매업체 통합관리시스템",
@@ -21,6 +23,11 @@ export default async function DashboardReceivablesPage() {
 
   if (isSuperAdminWithoutScope(scope)) {
     return <AdminScopeNotice />;
+  }
+
+  // 회계 관리 > 미수금 정산 탭이 꺼진 업체(또는 회계 관리 메뉴가 꺼진 업체)는 화면을 열지 않는다(마이그레이션 217).
+  if (scope?.wholesalerId && !(await getMyEnabledFeatures()).has(FEATURE_KEYS.accountingReceivables)) {
+    return <FeatureNotice screenName="미수금 정산">이 업체에서는 쓰지 않도록 설정된 기능이에요. 필요하면 운영팀에 문의해 주세요.</FeatureNotice>;
   }
 
   let groups: ReceivableCustomerGroup[] = [];
@@ -73,7 +80,7 @@ export default async function DashboardReceivablesPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <CustomerTabs />
+      <AccountingTabs />
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>미수금 정산</h1>
         <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>

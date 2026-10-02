@@ -10,11 +10,25 @@ import { fetchTodoCounts, type TodoCounts } from "@/lib/supplier/todo-counts";
 import { fetchInternalNotices, type InternalNotice } from "@/lib/supplier/internal-notices";
 import { isWebPushConfigured } from "@/lib/notifications/web-push";
 import { resolveCostAccess } from "@/lib/supplier/cost-access";
+import { buildAccountingTabs, getMyEnabledFeatures } from "@/lib/features/my-features";
 import type { SubscriptionStatus } from "@/types/database";
 
 export const metadata: Metadata = {
   title: "도매업체 통합관리시스템 | 미트 파트너스",
   description: "상품·맞춤 단가·주문·발주·고객 관리를 위한 도매(공급사) 관리자 화면",
+};
+
+const ACCOUNTING_NAV_ITEM: DashboardNavItem = {
+  label: "회계 관리",
+  href: "/dashboard/receivables",
+  icon: "💰",
+  ready: true,
+  alsoActiveFor: [
+    "/dashboard/receivables",
+    "/dashboard/purchases",
+    "/dashboard/stock-valuation",
+    "/dashboard/stock-integrity",
+  ],
 };
 
 /**
@@ -38,9 +52,6 @@ const NAV_GROUPS: DashboardNavItem[][] = [
       alsoActiveFor: [
         "/dashboard/stock-boxes",
         "/dashboard/stock-expiring",
-        "/dashboard/stock-valuation",
-        "/dashboard/stock-integrity",
-        "/dashboard/purchases",
         "/dashboard/reorder-suggestions",
       ],
     },
@@ -62,9 +73,12 @@ const NAV_GROUPS: DashboardNavItem[][] = [
       href: "/dashboard/customers",
       icon: "👥",
       ready: true,
-      alsoActiveFor: ["/dashboard/custom-prices", "/dashboard/receivables"],
+      alsoActiveFor: ["/dashboard/custom-prices"],
     },
   ],
+  // 회계 관리 — 미수금 정산·매입 정산·원가 관리·장부 불일치 탭(app/dashboard/section-tabs.tsx의 AccountingTabs, 마이그레이션 217).
+  // 메뉴 주소는 그 업체·그 사람에게 보이는 첫 탭으로 바뀌고(accountingHref), 메뉴 자체가 꺼진 업체는 아래에서 걸러진다.
+  [ACCOUNTING_NAV_ITEM],
   // 설정 — 초대장·업체 설정 / 팀원 / 구독료는 한 메뉴의 탭이다(app/dashboard/settings-tabs.tsx, 2026-09-25).
   [
     {
@@ -128,6 +142,8 @@ export default async function DashboardLayout({
   let notices: InternalNotice[] = [];
   // 전표관리 메뉴는 원가(단가)가 있어 대표 + 전표 담당 직원만 보인다(209). 로그인 안 한 데모 화면은 전부 보여준다.
   let showCostMenus = true;
+  // 회계 관리 메뉴: 로그인 안 한 데모·업체 범위가 없는 슈퍼관리자는 그대로 보여주고(화면이 안내를 띄움), 업체가 있으면 켜진 탭이 하나라도 있을 때만 보인다.
+  let accountingHref: string | null = ACCOUNTING_NAV_ITEM.href;
 
   if (context) {
     roleLabel = context.isSuperAdmin
@@ -189,6 +205,14 @@ export default async function DashboardLayout({
     showCostMenus = await resolveCostAccess(supabase, { orgRole: context.orgRole, wholesalerId: todoWholesalerId });
 
     if (todoWholesalerId) {
+      // 켜진 기능만 본다(보는 사람 허용 여부까지는 보지 않는다) — 메뉴에서 값비싼 조회를 하나 더 늘리지 않으려는 것이다.
+      const enabled = await getMyEnabledFeatures();
+      const tabs = buildAccountingTabs(enabled, enabled, context.orgRole === "owner");
+
+      accountingHref = tabs[0]?.href ?? null;
+    }
+
+    if (todoWholesalerId) {
       [todoCounts, notices] = await Promise.all([
         fetchTodoCounts(supabase, todoWholesalerId),
         fetchInternalNotices(supabase, todoWholesalerId),
@@ -206,13 +230,13 @@ export default async function DashboardLayout({
 
   return (
     <DashboardShell
-      navGroups={
-        showCostMenus
-          ? NAV_GROUPS
-          : NAV_GROUPS.map((group) => group.filter((item) => item.href !== "/dashboard/purchase-orders")).filter(
-              (group) => group.length > 0
-            )
-      }
+      navGroups={NAV_GROUPS.map((group) =>
+        group
+          .filter((item) => showCostMenus || item.href !== "/dashboard/purchase-orders")
+          .flatMap((item) =>
+            item === ACCOUNTING_NAV_ITEM ? (accountingHref ? [{ ...item, href: accountingHref }] : []) : [item]
+          )
+      ).filter((group) => group.length > 0)}
       mobileNavGroups={mobileNavGroups}
       organizationName={organizationName}
       displayName={displayName}

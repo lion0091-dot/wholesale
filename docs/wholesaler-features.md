@@ -78,3 +78,17 @@
 ## 전표 조회 정책 속도 (마이그레이션 212)
 
 전표(`purchase_orders`)·전표 줄의 조회 정책이 줄마다 `can_access_wholesaler`를 불러 18,000줄에 대표 0.8초·직원 3.9초가 걸렸다. "내가 접근할 수 있는 업체 목록"을 쿼리당 한 번만 계산하는 앞 조건(`my_accessible_wholesaler_ids`)을 붙여 둘 다 6ms로 줄였다. 기존 검사는 `OR`로 그대로 남겨서 접근 범위는 같다 — `scripts/db-test-po-view-policy.sql`(9건)이 예전 정책과 새 정책이 똑같이 판정함을 증명한다. 다른 표(상품·입고 박스 등)에도 같은 방식을 넓힐 수 있으나 보안 정책 전반을 건드리는 일이라 보안 검토 후에 한다.
+
+## 회계 관리 메뉴 + 탭별 켜기/끄기 (마이그레이션 217, 2026-10-02)
+
+사이드바에 **"회계 관리"** 메뉴를 새로 만들고 미수금 정산·매입 정산·원가 관리·장부 불일치를 그 안의 탭으로 옮겼다(화면 주소는 그대로). 메뉴도 탭도 업체별로 켜고 끈다.
+
+- **부모·자식**: `platform_features.parent_key`. `accounting`(메뉴)이 부모, `accounting_receivables`·`accounting_purchases`·`accounting_integrity`·`cost_management`가 자식. 부모는 한 단계까지만.
+- **두 가지 판정**: `feature_enabled()`는 기능 자체의 켜짐 값(켜진 기간 이력 불변식이 이 값 기준이라 그대로 둠). `feature_effective()`는 부모까지 반영한 "실제로 쓸 수 있나" — 접근 검사·`can_use_feature`·`current_wholesaler_features`가 이것을 쓴다. **메뉴를 끄면 탭은 자기 값이 켜져 있어도 함께 꺼진다.**
+- **탭 키는 켜짐/꺼짐만 가른다.** 누가 보나는 기존 규칙이 그대로 정한다(매입 정산=원가 열람 범위, 장부 불일치=대표 전용). 허용 명단(viewers)은 `cost_management`만 쓴다.
+- **막는 위치**: 매입 정산(`list_inbound_purchases`·`summarize_inbound_purchases`·`update_inbound_purchase`)과 장부 불일치(`list_stock_mismatches`·`list_stock_repairs`·`repair_stock_mismatch`)는 DB 함수 맨 앞. **미수금 정산은 DB 함수가 아니라 화면(`receivables/page.tsx`)과 서버 액션(리마인드 발송·변경 이력)에서 막는다** — orders를 표로 직접 읽고, `settle_credit_orders`가 모바일 "수금 확인"(`quick/settle`)과 같은 함수·액션이라 DB에서 막으면 모바일이 같이 죽기 때문. **한계: 미수금 탭을 꺼도 정산 처리 액션(`settleCreditOrdersAction`)과 모바일 수금 확인은 계속 동작한다.**
+- **화면**: 사이드바 메뉴는 그 사람에게 보이는 첫 탭으로 연결되고(`buildAccountingTabs`), 켜진 탭이 하나도 없으면 메뉴가 사라진다. 레이아웃은 켜진 기능만 보고(`getMyEnabledFeatures`) 허용 여부는 보지 않는다. 어드민 `/admin/features`는 자식 줄을 들여쓰고 부모가 꺼져 있으면 "함께 꺼진 상태"로 표시한다.
+- **기본값은 모두 켜짐** — 지금 쓰는 업체의 동작은 안 바뀐다. 원가 관리 탭·주문별 마진 패널은 회계 관리 메뉴를 끄면 같이 사라진다(`cost_management`가 자식이므로).
+- **옮긴 탭 위치**: 재고 · 매입 내역 메뉴에는 재고 보기·입출고 내역·소비기한·발주 추천만 남았고, 고객 관리 메뉴에는 고객 관리·맞춤 단가만 남았다.
+- **새 회계 탭 붙이는 법**: 마이그레이션에서 `platform_features`에 `parent_key='accounting'`으로 한 줄 등록(+`open_default_feature_periods`) → DB 함수 맨 앞(또는 불가피하면 화면)에서 `feature_effective` 검사 → `buildAccountingTabs`·`FEATURE_KEYS`에 추가 → 켠/끈 경우 둘 다 테스트. 재고 손실·손익 관리 탭이 이 순서로 붙을 예정(아직 없음).
+- **검증**: `scripts/db-test-features.sql` 7-G(회계 관리 23건 포함 총 76건), `lib/features/accounting-tabs.test.ts`. 실화면 클릭 검증 전, 운영 DB 미적용.

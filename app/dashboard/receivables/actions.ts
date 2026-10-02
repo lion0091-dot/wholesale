@@ -9,6 +9,9 @@ import { sendReceivablesReminderToRetailer } from "@/lib/notifications/alimtalk"
 import type { ActionResult } from "@/app/actions/invite";
 import type { AuditLogPage } from "@/app/actions/audit-log";
 import { AUDIT_LOG_PAGE_SIZE } from "@/lib/audit-log/pagination";
+import { FEATURE_KEYS, getMyEnabledFeatures } from "@/lib/features/my-features";
+
+const RECEIVABLES_DISABLED_MESSAGE = "이 업체에서는 쓰지 않도록 설정된 기능입니다.";
 
 /**
  * 선택한 외상 주문들을 정산완료 처리한다.
@@ -99,6 +102,10 @@ export async function getReceivableAuditLogAction(
       return { success: false, error: "로그인이 필요합니다. 다시 로그인 후 시도해주세요." };
     }
 
+    if (!(await getMyEnabledFeatures()).has(FEATURE_KEYS.accountingReceivables)) {
+      return { success: false, error: RECEIVABLES_DISABLED_MESSAGE };
+    }
+
     const supabase = await createClient();
 
     const [{ data, error }, { data: members }] = await Promise.all([
@@ -165,6 +172,10 @@ export async function sendReceivablesReminderAction(retailerId: string): Promise
 
     if (!scope?.wholesalerId) {
       return { success: false, error: "로그인이 필요합니다. 다시 로그인 후 시도해주세요." };
+    }
+
+    if (!(await getMyEnabledFeatures()).has(FEATURE_KEYS.accountingReceivables)) {
+      return { success: false, error: RECEIVABLES_DISABLED_MESSAGE };
     }
 
     const supabase = await createClient();

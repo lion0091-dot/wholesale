@@ -1,5 +1,5 @@
 import { PillTabs } from "./pill-tabs";
-import { FEATURE_KEYS, getMyUsableFeatures } from "@/lib/features/my-features";
+import { buildAccountingTabs, getMyEnabledFeatures, getMyUsableFeatures } from "@/lib/features/my-features";
 import { getOrgStaffContext } from "@/lib/auth/rbac";
 
 /**
@@ -16,7 +16,6 @@ const DASHBOARD_TABS = [
 const CUSTOMER_TABS = [
   { label: "고객 관리", href: "/dashboard/customers" },
   { label: "맞춤 단가", href: "/dashboard/custom-prices" },
-  { label: "미수금 정산", href: "/dashboard/receivables" },
 ] as const;
 
 const PRODUCT_TABS = [
@@ -28,7 +27,6 @@ const STOCK_TABS = [
   { label: "재고 보기", href: "/dashboard/stock-boxes" },
   { label: "입출고 내역", href: "/dashboard/stock-ledger" },
   { label: "소비기한", href: "/dashboard/stock-expiring" },
-  { label: "매입 정산", href: "/dashboard/purchases" },
   { label: "발주 추천", href: "/dashboard/reorder-suggestions" },
 ] as const;
 
@@ -52,17 +50,18 @@ export function ProductTabs() {
   return <PillTabs tabs={PRODUCT_TABS} ariaLabel="상품 관련 화면" />;
 }
 
-// "원가 관리" 탭은 이 업체에서 기능이 켜져 있고, 대표이거나 대표가 허용한 사람에게만 보인다(마이그레이션 210).
-// "장부 불일치"(전산 숫자가 입출고 기록과 다른 항목 보정, 마이그레이션 215)는 대표에게만 보인다. 창고 실물과 비교하는 화면이 아니다.
-export async function StockTabs() {
-  const [features, context] = await Promise.all([getMyUsableFeatures(), getOrgStaffContext()]);
-  const tabs = [
-    ...STOCK_TABS,
-    ...(features.has(FEATURE_KEYS.costManagement) ? [{ label: "원가 관리", href: "/dashboard/stock-valuation" }] : []),
-    ...(context?.orgRole === "owner" ? [{ label: "장부 불일치", href: "/dashboard/stock-integrity" }] : []),
-  ];
+export function StockTabs() {
+  return <PillTabs tabs={STOCK_TABS} ariaLabel="재고 화면" />;
+}
 
-  return <PillTabs tabs={tabs} ariaLabel="재고·매입 화면" />;
+// 회계 관리 메뉴(마이그레이션 217): 미수금 정산·매입 정산·원가 관리·장부 불일치. 메뉴와 탭 모두 업체별로 켜고 끈다.
+// - "원가 관리"는 기능이 켜져 있고 대표이거나 대표가 허용한 사람에게만 보인다(210).
+// - "장부 불일치"(전산 숫자가 입출고 기록과 다른 항목 보정, 215)는 대표에게만 보인다. 창고 실물과 비교하는 화면이 아니다.
+export async function AccountingTabs() {
+  const [enabled, usable, context] = await Promise.all([getMyEnabledFeatures(), getMyUsableFeatures(), getOrgStaffContext()]);
+  const tabs = buildAccountingTabs(enabled, usable, context?.orgRole === "owner");
+
+  return <PillTabs tabs={tabs} ariaLabel="회계 관리 화면" />;
 }
 
 export function InboundTabs() {

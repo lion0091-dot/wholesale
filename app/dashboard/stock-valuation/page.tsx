@@ -4,7 +4,7 @@ import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { FeatureNotice } from "@/components/feature-notice";
 import { FEATURE_KEYS, getMyUsableFeatures } from "@/lib/features/my-features";
 import { fetchInventoryValuation, summarizeValuation } from "@/lib/supplier/inventory-valuation";
-import { StockTabs } from "../section-tabs";
+import { AccountingTabs } from "../section-tabs";
 import { ValuationView } from "./valuation-view";
 
 export const metadata = {
@@ -28,7 +28,7 @@ export default async function StockValuationPage() {
   if (!rows) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-        <StockTabs />
+        <AccountingTabs />
         <FeatureNotice screenName="원가 관리" />
       </div>
     );
@@ -38,7 +38,7 @@ export default async function StockValuationPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <StockTabs />
+      <AccountingTabs />
       <header>
         <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: 0 }}>원가 관리</h1>
         <p style={{ fontSize: "13px", color: "#64748b", margin: "6px 0 0" }}>
