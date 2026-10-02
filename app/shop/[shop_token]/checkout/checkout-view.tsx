@@ -273,7 +273,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
                 "수정된 내용으로 주문서가 갱신되었습니다."
               ) : (
                 <>
-                  {wholesaler.business_name} 대표님께 카카오 알림톡이 발송되었습니다.
+                  주문서가 {wholesaler.business_name}에 전달되었습니다.
                   <br />
                   출고 확정 시 다시 안내드립니다.
                   {paymentMethod !== "pg" && (
@@ -676,7 +676,7 @@ export function CheckoutView({ catalog }: CheckoutViewProps) {
               <>ℹ️ 저장하면 새 주문이 아니라 기존 주문서({editOrderNumber ?? "..."})의 품목이 바뀝니다. 최종 단가는 저장 시점의 계약 단가로 다시 계산됩니다.</>
             ) : (
               <>
-                ℹ️ 주문서 전송 즉시 <strong>{wholesaler.business_name}</strong> 대표님께 카카오 알림톡이 발송됩니다.
+                ℹ️ 주문서를 전송하면 <strong>{wholesaler.business_name}</strong>에 바로 전달됩니다.
                 최종 단가는 공급사 확인 시점의 계약 단가로 확정됩니다.
               </>
             )}
