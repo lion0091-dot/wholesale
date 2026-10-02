@@ -62,6 +62,31 @@ begin
     perform pg_temp.expect('모든 공급사 간 참조 컬럼에 소속 일치 가드가 있다 (누락: ' || coalesce(nullif(v_missing, ''), '없음') || ')', v_missing = '');
 end $$;
 
+-- 1-2b) 소유 컬럼(wholesaler_id)이 없는 표가 공급사 소유 표 2곳 이상을 가리키면(부모를 통해서만 소속이 정해지는 자식 표) 가드가 있어야 한다(마이그 201).
+do $$
+declare r record; v_missing text := '';
+begin
+    for r in
+        with tenant as (
+            select c.oid from pg_class c join pg_namespace n on n.oid = c.relnamespace
+              join pg_attribute a on a.attrelid = c.oid and a.attname = 'wholesaler_id' and not a.attisdropped
+             where n.nspname = 'public' and c.relkind = 'r')
+        select c.oid as toid, c.relname
+          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+         where n.nspname = 'public' and c.relkind = 'r'
+           and not exists (select 1 from pg_attribute a where a.attrelid = c.oid and a.attname = 'wholesaler_id' and not a.attisdropped)
+           and (select count(distinct k.confrelid) from pg_constraint k where k.conrelid = c.oid and k.contype = 'f' and k.confrelid in (select oid from tenant)) >= 2
+    loop
+        if not exists (
+            select 1 from pg_trigger g
+             where g.tgrelid = r.toid and not g.tgisinternal and (g.tgname ilike '%tenant%' or g.tgname ilike '%integrity%')
+        ) then
+            v_missing := v_missing || r.relname || ' ';
+        end if;
+    end loop;
+    perform pg_temp.expect('소유 컬럼 없는 자식 표(부모 2곳 이상 참조)에도 소속 가드가 있다 (누락: ' || coalesce(nullif(v_missing, ''), '없음') || ')', v_missing = '');
+end $$;
+
 -- 1-3) SECURITY DEFINER 트리거 함수·점검 함수는 일반 사용자가 직접 못 부른다.
 select pg_temp.expect('enforce_tenant_refs·tenant_consistency_violations는 anon·authenticated 호출 불가',
     not has_function_privilege('anon', 'public.tenant_consistency_violations()', 'execute')
@@ -101,6 +126,8 @@ insert into public.inbound_scans (wholesaler_id, trace_no, product_id, supplier_
     values ('d1000000-0000-0000-0000-0000000000a1', 'GA0000000002', 'd2000000-0000-0000-0000-00000000000a', 'd4000000-0000-0000-0000-00000000000a', 'd5000000-0000-0000-0000-00000000000a', 5, 'kg', 'MANUAL', 'NORMAL', 5);
 insert into public.stock_ledger (wholesaler_id, product_id, inbound_scan_id, qty_delta, event_type, source_type, reason)
     values ('d1000000-0000-0000-0000-0000000000a1', 'd2000000-0000-0000-0000-00000000000a', 'd5000000-0000-0000-0000-00000000000a', 1, 'ADJUSTMENT', 'manual', '대조군');
+insert into public.inbound_import_jobs (id, wholesaler_id, file_name) values ('d6000000-0000-0000-0000-00000000000a', 'd1000000-0000-0000-0000-0000000000a1', 'a.xlsx');
+insert into public.inbound_import_rows (job_id, row_no, trace_no, scan_id) values ('d6000000-0000-0000-0000-00000000000a', 1, 'GA0000000001', 'd5000000-0000-0000-0000-00000000000a');
 select pg_temp.expect('대조군: 같은 공급사 참조는 전부 통과한다', true);
 
 -- 공격: A 소유 행이 B의 상품·박스·거래처를 가리키게 한다.
@@ -122,6 +149,11 @@ select pg_temp.blocked('재고 원장: A 원장이 B 상품을 가리킴',
     $q$insert into public.stock_ledger (wholesaler_id, product_id, qty_delta, event_type, source_type, reason) values ('d1000000-0000-0000-0000-0000000000a1', 'd2000000-0000-0000-0000-00000000000b', 5, 'ADJUSTMENT', 'manual', 'x')$q$);
 select pg_temp.blocked('재고 원장: A 원장이 B 박스를 가리킴',
     $q$insert into public.stock_ledger (wholesaler_id, product_id, inbound_scan_id, qty_delta, event_type, source_type, reason) values ('d1000000-0000-0000-0000-0000000000a1', 'd2000000-0000-0000-0000-00000000000a', 'd5000000-0000-0000-0000-00000000000b', 5, 'ADJUSTMENT', 'manual', 'x')$q$);
+
+select pg_temp.blocked('업로드 행: A 작업의 행이 B 박스를 가리킴',
+    $q$insert into public.inbound_import_rows (job_id, row_no, trace_no, scan_id) values ('d6000000-0000-0000-0000-00000000000a', 2, 'GX', 'd5000000-0000-0000-0000-00000000000b')$q$);
+select pg_temp.blocked('업로드 행: A 행의 박스를 B 박스로 바꿔치기(UPDATE)',
+    $q$update public.inbound_import_rows set scan_id = 'd5000000-0000-0000-0000-00000000000b' where job_id = 'd6000000-0000-0000-0000-00000000000a'$q$);
 
 -- ───────────── 3부: 점검 함수가 실제로 섞임을 잡는지 ─────────────
 

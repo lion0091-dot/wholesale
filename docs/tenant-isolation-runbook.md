@@ -13,6 +13,18 @@
 200을 만든 이유: 공급사 A가 B의 상품 ID로 맞춤단가를 만들 수 있었고, B 미니샵 가격 조회와 주문 검증 트리거가 그 값을 썼다(운영 DB 섞인 행 0건 확인 후 수정).
 **새 규칙:** 공급사 소유 표에 다른 공급사 소유 표를 가리키는 FK 컬럼을 추가하면, 같은 마이그레이션에서 `enforce_tenant_refs('컬럼:부모표')` 트리거를 건다. 안 걸면 `tests/integration/tenant-isolation.itest.ts`가 실패한다(카탈로그 기반 검사).
 
+### ERD 분류 (2026-10-02, 카탈로그 기준 45개 표)
+
+| 분류 | 표 | 방어 |
+|---|---|---|
+| **A. 공급사 소유**(`wholesaler_id`) 28개 | products, orders, inbound_scans, stock_ledger, custom_prices, purchase_* 등 | RLS + 마이그 200 소속 가드(22쌍) |
+| **C. 조직 소유** 2개 | organization_staff, organization_staff_invites | 조직 RLS |
+| **D1. 부모를 통해서만 소속이 정해지는 자식 표** | order_items(주문·상품), inbound_import_rows(작업·박스), hot_deal_quota_reservations(서버 전용) | order_items는 `trg_order_items_integrity`, inbound_import_rows는 마이그 201 가드 + 구조 검사 |
+| **D2. 여러 공급사가 같이 쓰는 표(의도)** | retailers(고객 신원만; 공급사별 값은 wholesaler_retailers에 분리), wholesalers, profiles(본인·슈퍼관리자만), master_livestock(공공 이력 캐시, 읽기 공개), market_price_snapshots, product_categories | 읽기 정책이 연결된 거래처로만 제한(retailers), 쓰기는 서버 전용 |
+| **D3. 슈퍼관리자 전용** | audit_log, access_log, retailer_match_requests, platform_admin_allowlist, platform_events | `get_current_role()='super_admin'` |
+
+**공유 구조의 핵심:** 고객(`retailers`) 한 행을 여러 공급사가 같이 보지만, 신원(상호·사업자번호·주소)만 들어 있고 여신한도·미수금·메모·정지사유 같은 공급사별 값은 전부 연결 표(`wholesaler_retailers`)에 있다. 그래서 공급사끼리 서로의 고객 거래 조건을 볼 수 없다. 새 표를 만들 때 "한 행을 여러 공급사가 공유하는가"를 먼저 정하고, 공유한다면 공급사별 값은 연결 표에 둔다.
+
 ## 2. 감지
 
 - **매일 05:30(KST 아님, UTC)** `/api/cron/check-tenant-consistency`가 `tenant_consistency_violations()`(23항목)를 부른다. 섞임이 한 건이라도 있으면 HTTP 500 → Vercel 크론 실행이 실패로 표시되고 로그에 `[cron check-tenant-consistency] 공급사 간 데이터 섞임 감지: [...]`가 남는다.

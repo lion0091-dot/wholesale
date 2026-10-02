@@ -30,7 +30,7 @@ describe("공급사·고객 간 섞임 방어(DB)", () => {
 
     expect(status, `섞임 방어 검사 실패: ${combined}`).toBe(0);
     expect(combined).not.toMatch(/FAIL/);
-    expect((combined.match(/PASS:/g) ?? []).length).toBeGreaterThanOrEqual(15);
+    expect((combined.match(/PASS:/g) ?? []).length).toBeGreaterThanOrEqual(18);
   }, 120_000);
 
   it("읽기 격리: 공급사·고객 계정으로 전 테이블을 훑어도 남의 행이 안 보인다", () => {
@@ -45,6 +45,6 @@ describe("공급사·고객 간 섞임 방어(DB)", () => {
 
     expect(status, `주문·고객 격리 검사 실패: ${combined}`).toBe(0);
     expect(combined).not.toMatch(/FAIL/);
-    expect((combined.match(/PASS:/g) ?? []).length).toBeGreaterThanOrEqual(21);
+    expect((combined.match(/PASS:/g) ?? []).length).toBeGreaterThanOrEqual(25);
   }, 120_000);
 });

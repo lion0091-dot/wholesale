@@ -63,6 +63,13 @@ insert into public.custom_prices (wholesaler_id, retailer_id, product_id, custom
     ('e2000000-0000-0000-0000-0000000000a1', 'e3000000-0000-0000-0000-0000000000f1', 'e4000000-0000-0000-0000-00000000000a', 90),
     ('e2000000-0000-0000-0000-0000000000b1', 'e3000000-0000-0000-0000-0000000000f1', 'e4000000-0000-0000-0000-00000000000b', 80);
 
+insert into public.inbound_import_jobs (id, wholesaler_id, file_name) values
+    ('e6000000-0000-0000-0000-0000000000a1', 'e2000000-0000-0000-0000-0000000000a1', 'a.xlsx'),
+    ('e6000000-0000-0000-0000-0000000000b1', 'e2000000-0000-0000-0000-0000000000b1', 'b.xlsx');
+insert into public.inbound_import_rows (job_id, row_no, trace_no) values
+    ('e6000000-0000-0000-0000-0000000000a1', 1, 'IMPA0000001'), ('e6000000-0000-0000-0000-0000000000a1', 2, 'IMPA0000002'),
+    ('e6000000-0000-0000-0000-0000000000b1', 1, 'IMPB0000001');
+
 -- ───────────── 공급사 A: 자기 주문 2건(R1·R2)만 ─────────────
 select pg_temp.expect('A 사장: 주문은 자기 것 2건만 (B의 R1 주문이 안 보임)',
     pg_temp.count_as('e1000000-0000-0000-0000-00000000000a', 'select count(*) from public.orders') = 2);
@@ -114,3 +121,14 @@ select pg_temp.expect('고객 R1이 R2 몫의 맞춤단가를 만들 수 없다(
     pg_temp.count_as('e1000000-0000-0000-0000-0000000000f1', $q$update public.custom_prices set custom_price = 1$q$) = 0);
 select pg_temp.expect('고객 R2가 남의 맞춤단가를 UPDATE 하면 0행',
     pg_temp.count_as('e1000000-0000-0000-0000-0000000000f2', $q$update public.custom_prices set custom_price = 1$q$) = 0);
+
+-- ───────────── 소유 컬럼 없는 자식 표(업로드 행)도 부모 작업을 통해 격리된다 ─────────────
+select pg_temp.expect('A 사장: 업로드 행은 자기 작업의 2건만(소유 컬럼 없는 표)',
+    pg_temp.count_as('e1000000-0000-0000-0000-00000000000a', 'select count(*) from public.inbound_import_rows') = 2);
+select pg_temp.expect('B 사장: 업로드 행은 자기 작업의 1건만',
+    pg_temp.count_as('e1000000-0000-0000-0000-00000000000b', 'select count(*) from public.inbound_import_rows') = 1);
+select pg_temp.expect('고객 R1은 공급사 업로드 작업·행을 못 본다',
+    pg_temp.count_as('e1000000-0000-0000-0000-0000000000f1', 'select count(*) from public.inbound_import_rows') = 0
+    and pg_temp.count_as('e1000000-0000-0000-0000-0000000000f1', 'select count(*) from public.inbound_import_jobs') = 0);
+select pg_temp.expect('A 사장이 B 작업의 행을 UPDATE 하면 0행',
+    pg_temp.count_as('e1000000-0000-0000-0000-00000000000a', $q$update public.inbound_import_rows set trace_no = '변조' where job_id = 'e6000000-0000-0000-0000-0000000000b1'$q$) = 0);
