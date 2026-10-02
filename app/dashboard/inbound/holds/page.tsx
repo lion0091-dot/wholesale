@@ -10,6 +10,9 @@ export const metadata = {
   title: "보류함 | 도매업체 통합관리시스템",
 };
 
+/** 보류함 목록 조회 상한 — 이 수에 닿으면 카드가 "N건 이상"이라고 말한다. */
+const HOLDS_LIMIT = 100;
+
 interface ScanRow {
   id: string;
   trace_no: string;
@@ -70,7 +73,7 @@ export default async function InboundHoldsPage() {
         .eq("status", "NORMAL")
         .in("po_state", ["UNLISTED_HELD", "OVER_HELD"])
         .order("created_at", { ascending: false })
-        .limit(100),
+        .limit(HOLDS_LIMIT),
       supabase
         .from("inbound_rejections")
         .select("id, trace_no, weight, reason, created_at, supplier_id, product_id, products(name), suppliers(name)")
@@ -124,6 +127,7 @@ export default async function InboundHoldsPage() {
     holdCount: holds.length,
     rejectionCount: rejections.length,
     firstScanId: holds[0]?.scanId ?? null,
+    capped: holds.length >= HOLDS_LIMIT,
   });
 
   return (

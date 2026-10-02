@@ -1,7 +1,10 @@
 /**
  * 크론 실행 기록 — 마이그레이션 204의 cron_runs.
  * 각 크론 라우트의 핸들러를 감싸, 인증을 통과해 실제로 돈 실행의 결과(HTTP 상태)를 한 줄로 남긴다.
- * 401(인증 실패)은 기록하지 않는다 — 외부 호출이 "성공 시각"을 흉내 내거나 실패로 덮어쓰지 못하게.
+ * **올바른 CRON_SECRET을 실은 요청만 기록한다** — 401(틀린 비밀)과 "CRON_SECRET 미설정" 500(인증 검사보다 먼저 나가는 응답)을
+ * 익명 호출이 만들어 낼 수 있으므로, 외부 호출이 "성공 시각"을 흉내 내거나 실패로 덮어쓰지 못하게 한다.
+ * HTTP 200이어도 일을 안 했거나(키 미설정 등 "건너뜀") 전부 실패했으면 핸들러가 응답 헤더 x-cron-outcome으로 알린다:
+ *   skipped → 마지막 성공 시각을 갱신하지 않는다(화면이 "오래 안 돎"으로 드러낸다), failed → 실패로 기록한다.
  * 기록 실패가 크론 본 작업의 결과를 바꾸면 안 되므로 오류는 삼키고 서버 로그에만 남긴다.
  *
  * 서버 전용 모듈(SUPABASE_SERVICE_ROLE_KEY 참조).
@@ -12,7 +15,19 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 
 type CronHandler = (request: NextRequest) => Promise<Response>;
 
-async function recordCronRun(job: string, status: number, detail: string | null): Promise<void> {
+/** 핸들러가 "200이지만 사실은 건너뜀/전부 실패"를 알리는 응답 헤더 이름과 값. */
+export const CRON_OUTCOME_HEADER = "x-cron-outcome";
+export type CronOutcome = "skipped" | "failed";
+
+/** 크론 응답에 outcome 헤더를 붙여 돌려주는 JSON 응답 도우미. */
+export function cronJson(body: unknown, outcome?: CronOutcome, init?: { status?: number }): Response {
+  return new Response(JSON.stringify(body), {
+    status: init?.status ?? 200,
+    headers: { "content-type": "application/json", ...(outcome ? { [CRON_OUTCOME_HEADER]: outcome } : {}) },
+  });
+}
+
+async function recordCronRun(job: string, status: number, detail: string | null, advanceOk?: boolean): Promise<void> {
   try {
     const supabase = createServiceRoleClient();
 
@@ -21,7 +36,7 @@ async function recordCronRun(job: string, status: number, detail: string | null)
     }
 
     const now = new Date().toISOString();
-    const ok = status >= 200 && status < 300;
+    const ok = advanceOk ?? (status >= 200 && status < 300);
 
     // last_ok_at은 성공일 때만 갱신한다 — 실패 때는 건드리지 않아 "마지막 성공"이 보존된다.
     const { error } = await supabase.from("cron_runs").upsert(
@@ -43,30 +58,45 @@ async function recordCronRun(job: string, status: number, detail: string | null)
   }
 }
 
+/** 올바른 CRON_SECRET을 실은 요청인가 — 이 요청만 "실제 크론 실행"으로 기록한다. */
+export function isAuthorizedCronRequest(request: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET;
+
+  return Boolean(secret) && request.headers.get("authorization") === `Bearer ${secret}`;
+}
+
 export function withCronHeartbeat(job: string, handler: CronHandler): CronHandler {
   return async (request) => {
+    const authorized = isAuthorizedCronRequest(request);
     let response: Response;
 
     try {
       response = await handler(request);
     } catch (error) {
-      await recordCronRun(job, 500, error instanceof Error ? error.message : String(error));
+      if (authorized) await recordCronRun(job, 500, error instanceof Error ? error.message : String(error));
 
       throw error;
     }
 
-    // 401 = 인증 실패(크론이 아닌 외부 호출). 기록하지 않는다.
-    if (response.status !== 401) {
-      let detail: string | null = null;
+    if (!authorized) return response;
 
-      if (response.status >= 400) {
-        try {
-          detail = (await response.clone().text()).slice(0, 500);
-        } catch {
-          detail = null;
-        }
+    const outcome = response.headers.get(CRON_OUTCOME_HEADER);
+    let detail: string | null = null;
+
+    if (response.status >= 400 || outcome) {
+      try {
+        detail = (await response.clone().text()).slice(0, 500);
+      } catch {
+        detail = null;
       }
+    }
 
+    if (outcome === "failed") {
+      await recordCronRun(job, 500, detail);
+    } else if (outcome === "skipped") {
+      // 200이지만 일을 안 했다 — 마지막 성공 시각은 그대로 둔다.
+      await recordCronRun(job, response.status, detail, false);
+    } else {
       await recordCronRun(job, response.status, detail);
     }
 

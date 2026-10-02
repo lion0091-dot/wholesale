@@ -10,6 +10,8 @@ import { playOrderChime, unlockAudioOnFirstGesture } from "@/lib/notifications/o
 
 const PROMPT_SEEN_PREFIX = "order-alert-prompt-seen:";
 const TOAST_MS = 10_000;
+/** 주문 머리글이 들어간 뒤 품목이 들어가고 실패하면 머리글이 지워진다 — 그 사이를 넘겨 확인한 뒤에만 알린다. */
+const ORDER_SETTLE_MS = 2_500;
 
 /**
  * 공급사 대시보드의 "주문 알림 지킴이" (대표·매니저).
@@ -20,7 +22,7 @@ const TOAST_MS = 10_000;
  * 웹푸시를 못 쓰는 환경(서버 키 없음·카톡 안 브라우저 등)에서도 F는 동작한다.
  */
 export function OrderAlertGuard({ wholesalerId, pushConfigured }: { wholesalerId: string; pushConfigured: boolean }) {
-  const { enabled, state, error, enable } = useWebPush(pushConfigured);
+  const { enabled, state, error, enable } = useWebPush(pushConfigured, { syncOncePerSessionKey: wholesalerId });
   const [promptSeen, setPromptSeen] = useState(true); // 서버 렌더·확인 전에는 안 띄운다
   const [toast, setToast] = useState<{ id: number; sounded: boolean } | null>(null);
 
@@ -47,6 +49,7 @@ export function OrderAlertGuard({ wholesalerId, pushConfigured }: { wholesalerId
     const stopUnlock = unlockAudioOnFirstGesture();
     const supabase = createClient();
     let hideTimer: number | null = null;
+    const settleTimers = new Set<number>();
     let channel: RealtimeChannel | null = null;
     let cancelled = false;
 
@@ -61,14 +64,35 @@ export function OrderAlertGuard({ wholesalerId, pushConfigured }: { wholesalerId
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "orders", filter: `wholesaler_id=eq.${wholesalerId}` },
-          () => {
-            const sounded = playOrderChime();
+          (payload) => {
+            const orderId = (payload.new as { id?: string } | null)?.id;
 
-            setToast({ id: Date.now(), sounded });
+            if (!orderId) return;
 
-            if (hideTimer !== null) window.clearTimeout(hideTimer);
+            // 주문 저장은 머리글(orders) → 품목(order_items) 순이고, 품목이 실패하면(핫딜 한도 초과 등) 머리글을 지운다.
+            // INSERT 신호만 믿으면 사라질 주문에 소리가 울린다(유령 알림) — 잠시 뒤 주문과 품목이 남아 있는지 확인한다.
+            const timer = window.setTimeout(async () => {
+              settleTimers.delete(timer);
 
-            hideTimer = window.setTimeout(() => setToast(null), TOAST_MS);
+              if (cancelled) return;
+
+              const [{ data: order }, { count: itemCount }] = await Promise.all([
+                supabase.from("orders").select("id").eq("id", orderId).maybeSingle(),
+                supabase.from("order_items").select("id", { count: "exact", head: true }).eq("order_id", orderId),
+              ]);
+
+              if (cancelled || !order || !itemCount) return;
+
+              const sounded = playOrderChime();
+
+              setToast({ id: Date.now(), sounded });
+
+              if (hideTimer !== null) window.clearTimeout(hideTimer);
+
+              hideTimer = window.setTimeout(() => setToast(null), TOAST_MS);
+            }, ORDER_SETTLE_MS);
+
+            settleTimers.add(timer);
           }
         )
         .subscribe();
@@ -77,6 +101,7 @@ export function OrderAlertGuard({ wholesalerId, pushConfigured }: { wholesalerId
     return () => {
       cancelled = true;
       stopUnlock();
+      settleTimers.forEach((timer) => window.clearTimeout(timer));
 
       if (hideTimer !== null) window.clearTimeout(hideTimer);
 

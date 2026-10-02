@@ -82,3 +82,18 @@ describe("보류함 지금 할 일 카드", () => {
     expect(step.button).toBeNull();
   });
 });
+
+describe("보류함 카드 — 목록이 상한에서 잘린 경우", () => {
+  it("상한에 닿으면 \"N건 이상\"이라고 말한다", () => {
+    const step = pickHoldsNextStep({ canManage: true, holdCount: 100, rejectionCount: 0, firstScanId: "s1", capped: true });
+
+    expect(step.title).toContain("100건 이상");
+  });
+
+  it("상한 전이면 정확한 개수만 말한다", () => {
+    const step = pickHoldsNextStep({ canManage: true, holdCount: 7, rejectionCount: 0, firstScanId: "s1", capped: false });
+
+    expect(step.title).toContain("7건 있습니다");
+    expect(step.title).not.toContain("이상");
+  });
+});

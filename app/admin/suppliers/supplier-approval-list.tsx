@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   updateSupplierStatusAction,
   updateSupplierSubscriptionAction,
@@ -124,13 +124,23 @@ export function SupplierApprovalList({
     currentUserId
   );
 
-  // 탭이 그 공급사를 가리고 있어도 "전체"로 돌려놓고 그 카드로 이동한다.
+  // 탭이 그 공급사를 가리고 있어도 "전체"로 돌려놓고 그 카드로 이동한다. 이동은 "전체"로 다시 그려진 뒤에 한다(고정 시간 대기 X).
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
   const goToSupplier = (supplierId: string) => {
     setActiveFilter("all");
-    window.setTimeout(() => {
-      document.getElementById(`supplier-${supplierId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 50);
+    setPendingScrollId(supplierId);
   };
+
+  useEffect(() => {
+    if (!pendingScrollId || activeFilter !== "all") return;
+
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`supplier-${pendingScrollId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setPendingScrollId(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingScrollId, activeFilter]);
 
   const filtered = suppliers.filter((s) => activeFilter === "all" || s.status === activeFilter);
 

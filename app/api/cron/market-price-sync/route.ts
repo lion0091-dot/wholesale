@@ -6,7 +6,7 @@ import {
   isKapeMarketPriceConfigured,
   type MarketPriceRow,
 } from "@/lib/market-price/kape-client";
-import { withCronHeartbeat } from "@/lib/cron/heartbeat";
+import { cronJson, withCronHeartbeat } from "@/lib/cron/heartbeat";
 
 /**
  * 하루 1회(vercel.json의 crons) KAPE 축산물 경락가격 API를 호출해
@@ -123,7 +123,7 @@ async function handler(request: NextRequest) {
   }
 
   if (!isKapeMarketPriceConfigured()) {
-    return NextResponse.json({ skipped: true, reason: "KAPE_MARKET_PRICE_API_KEY 미설정" });
+    return cronJson({ skipped: true, reason: "KAPE_MARKET_PRICE_API_KEY 미설정" }, "skipped");
   }
 
   const supabase = createServiceRoleClient();
@@ -139,7 +139,8 @@ async function handler(request: NextRequest) {
 
   // 축종 하나가 실패해도 다른 쪽 캐싱은 이미 반영됐으니 200으로 응답하고
   // 실패 내역은 body의 results로만 남긴다(크론 모니터링에서 오탐 알림 방지).
-  return NextResponse.json({ results });
+  // 두 축종이 전부 실패했으면 아무것도 갱신되지 않은 것이다 — 200이어도 실패로 알려 화면이 드러내게 한다.
+  return cronJson({ results }, results.every((result) => result.status === "error") ? "failed" : undefined);
 }
 
 export const GET = withCronHeartbeat("market-price-sync", handler);

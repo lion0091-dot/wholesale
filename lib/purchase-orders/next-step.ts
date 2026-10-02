@@ -95,6 +95,8 @@ export interface HoldsNextStepInput {
   rejectionCount: number;
   /** 맨 위로 보낼 첫 건의 scanId (없으면 null) */
   firstScanId: string | null;
+  /** 화면 목록이 조회 상한에서 잘렸는가 — 그러면 개수를 "N건 이상"으로 말한다 */
+  capped?: boolean;
 }
 
 export interface HoldsNextStep {
@@ -106,6 +108,8 @@ export interface HoldsNextStep {
 }
 
 export function pickHoldsNextStep(input: HoldsNextStepInput): HoldsNextStep {
+  const countText = `${input.holdCount}건${input.capped ? " 이상" : ""}`;
+
   if (input.holdCount === 0) {
     return {
       key: "clear",
@@ -120,7 +124,7 @@ export function pickHoldsNextStep(input: HoldsNextStepInput): HoldsNextStep {
   if (!input.canManage) {
     return {
       key: "wait-manager",
-      title: `정리할 물건이 ${input.holdCount}건 있습니다`,
+      title: `정리할 물건이 ${countText} 있습니다`,
       detail: "사장님·매니저가 정리합니다. 직원은 볼 수만 있습니다. 재고에는 이미 들어가 팔 수 있습니다.",
       button: null,
     };
@@ -128,7 +132,7 @@ export function pickHoldsNextStep(input: HoldsNextStepInput): HoldsNextStep {
 
   return {
     key: "manage",
-    title: `정리할 물건이 ${input.holdCount}건 있습니다`,
+    title: `정리할 물건이 ${countText} 있습니다`,
     detail: "공급처·품목·무게를 확인하고 [전표 추가 생성]을 누르면 전표가 만들어지고 정리됩니다. 이미 재고에는 들어가 팔 수 있습니다.",
     button: input.firstScanId ? { label: "첫 건으로 가기", href: `#hold-${input.firstScanId}` } : null,
   };

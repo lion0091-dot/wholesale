@@ -42,7 +42,8 @@ function isStandalone(): boolean {
  * 대시보드 상단의 주문 알림 안내(OrderAlertGuard)가 같이 쓴다.
  * configured=false(서버에 키가 없음)면 아무것도 하지 않고 enabled=false를 돌려준다.
  */
-export function useWebPush(configured: boolean) {
+export function useWebPush(configured: boolean, options: { syncOncePerSessionKey?: string } = {}) {
+  const { syncOncePerSessionKey } = options;
   const enabled = configured && Boolean(VAPID_PUBLIC_KEY);
   const [state, setState] = useState<PushState>("checking");
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +90,22 @@ export function useWebPush(configured: boolean) {
           return;
         }
 
+        // 대시보드 레이아웃에 상시 붙는 호출부(주문 알림 지킴이)는 화면을 열 때마다 서버 쓰기를 하지 않도록,
+        // 같은 탭 세션에서 이미 맞춘 구독은 다시 서버에 묻지 않는다(종 패널의 토글은 열 때마다 맞춘다).
+        const syncKey = syncOncePerSessionKey ? `push-synced:${syncOncePerSessionKey}:${subscription.endpoint}` : null;
+
+        if (syncKey) {
+          try {
+            if (window.sessionStorage.getItem(syncKey) === "1") {
+              setState("on");
+
+              return;
+            }
+          } catch {
+            // 세션 저장소가 막혀도 그냥 서버와 맞춘다.
+          }
+        }
+
         // 브라우저엔 구독이 남아 있는데 서버 행이 없거나 다른 계정 것일 수 있다(계정 바뀜·DB 정리). 다시 맞춰 두되,
         // 서버가 거절하면 "켜진 척"하지 않는다 — 구독을 풀고 꺼짐으로 보여 사용자가 다시 켤 수 있게 한다.
         const json = subscription.toJSON();
@@ -100,6 +117,14 @@ export function useWebPush(configured: boolean) {
         if (cancelled) return;
 
         if (result.success) {
+          if (syncKey) {
+            try {
+              window.sessionStorage.setItem(syncKey, "1");
+            } catch {
+              // 무시
+            }
+          }
+
           setState("on");
         } else {
           await subscription.unsubscribe().catch(() => undefined);
@@ -116,7 +141,7 @@ export function useWebPush(configured: boolean) {
     return () => {
       cancelled = true;
     };
-  }, [enabled, registration]);
+  }, [enabled, registration, syncOncePerSessionKey]);
 
   const enable = async () => {
     setError(null);

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import { cacheTraceRecord } from "@/lib/livestock/master-cache";
 import { fetchTraceRecord, isMtraceConfigured } from "@/lib/livestock/mtrace-client";
-import { withCronHeartbeat } from "@/lib/cron/heartbeat";
+import { cronJson, withCronHeartbeat } from "@/lib/cron/heartbeat";
 
 /**
  * 하루 1회(vercel.json의 crons) 이력조회에 실패한 채 남은 박스의 번호를 정부 이력조회로 다시 물어 공용 이력 캐시(master_livestock)에 채워 둔다.
@@ -32,7 +32,7 @@ async function handler(request: NextRequest) {
   }
 
   if (!isMtraceConfigured()) {
-    return NextResponse.json({ ok: true, skipped: "이력 조회 인증키가 없어 조회하지 않았습니다.", checked: 0, cached: 0 });
+    return cronJson({ ok: true, skipped: "이력 조회 인증키가 없어 조회하지 않았습니다.", checked: 0, cached: 0 }, "skipped");
   }
 
   const supabase = createServiceRoleClient();
@@ -84,7 +84,8 @@ async function handler(request: NextRequest) {
     await supabase.from("inbound_scans").update({ lookup_retried_at: new Date().toISOString() }).in("id", targetScanIds);
   }
 
-  return NextResponse.json({ ok: true, checked: traceNos.length, cached, failed });
+  // 조회를 시도한 번호가 전부 오류로 끝났으면 API 쪽 장애다 — 200이어도 실패로 알려 화면이 드러내게 한다.
+  return cronJson({ ok: true, checked: traceNos.length, cached, failed }, traceNos.length > 0 && failed === traceNos.length ? "failed" : undefined);
 }
 
 export const GET = withCronHeartbeat("retry-trace-lookups", handler);

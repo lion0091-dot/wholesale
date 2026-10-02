@@ -31,10 +31,15 @@ export default async function AdminCronHealthPage() {
   const rows = new Map((data ?? []).map((row) => [row.job as string, row as CronRunRow & { last_detail: string | null }]));
   const now = new Date();
 
+  // 다른 작업은 기록이 있는데 이 작업만 한 번도 없다 = 호출이 아예 안 오는 것(경로 오타·vercel.json 누락·배포 누락).
+  // 표가 통째로 비어 있으면(마이그 직후·새 배포 직후) 아직 판단할 수 없으니 "기록 없음"(회색)으로 둔다.
+  const anyRecorded = rows.size > 0;
+
   const items = CRON_JOBS.map((job) => {
     const row = rows.get(job.job);
+    const health = !row && anyRecorded ? ("stale" as const) : evaluateCronHealth(row, job.maxAgeHours, now);
 
-    return { ...job, row, health: evaluateCronHealth(row, job.maxAgeHours, now) };
+    return { ...job, row, health };
   });
   const problemCount = items.filter((item) => item.health === "failing" || item.health === "stale").length;
 
@@ -81,7 +86,10 @@ export default async function AdminCronHealthPage() {
                 마지막 성공 {formatKst(item.row?.last_ok_at)} · 마지막 실행 {formatKst(item.row?.last_run_at)} (한국시간)
                 {item.row && item.health === "failing" ? ` · 응답 ${item.row.last_status}` : ""}
               </p>
-              {item.health === "failing" && item.row?.last_detail ? (
+              {!item.row && item.health === "stale" ? (
+                <p style={{ fontSize: "12px", color: "#991b1b", marginTop: "4px" }}>한 번도 실행 기록이 없습니다(다른 작업은 돌고 있습니다). 크론 등록·경로를 확인하세요.</p>
+              ) : null}
+              {(item.health === "failing" || item.health === "stale") && item.row?.last_detail ? (
                 <p style={{ fontSize: "12px", color: "#991b1b", marginTop: "4px", wordBreak: "break-all" }}>{item.row.last_detail}</p>
               ) : null}
             </div>

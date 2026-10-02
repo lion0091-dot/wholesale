@@ -53,3 +53,10 @@
 - 운영 DB에 마이그 204를 적용해야 동작한다. 적용 전에는 `cron_runs` 표가 없어 기록이 조용히 건너뛰어지고, 크론 본 작업은 영향이 없다.
 - 로컬에서 표 RLS(비관리자 0행, anon 거부)만 확인했다. 크론이 실제로 `cron_runs`에 쓰는 것, 화면 렌더링은 실행 검증 전.
 - `maxAgeHours`는 주기보다 여유를 둔 값이다(하루 1회 지연은 허용, 이틀째 빠지면 이상).
+
+## 코드리뷰 반영 (2026-10-02)
+
+- 기록은 **올바른 CRON_SECRET을 실은 요청만** 남긴다(`isAuthorizedCronRequest`). 이전에는 401만 걸렀고 "CRON_SECRET 미설정 500"이 인증 검사보다 먼저 나가서 익명 호출이 상태를 덮어쓸 수 있었다.
+- HTTP 200이어도 일을 안 했거나 전부 실패한 경우를 응답 헤더 `x-cron-outcome`(`cronJson(body, "skipped"|"failed")`)으로 알린다. skipped는 마지막 성공 시각을 갱신하지 않고(화면이 "오래 안 돎"+사유로 드러냄), failed는 실패로 기록. 적용: market-price-sync(키 없음=skipped, 두 축종 전부 오류=failed), retry-trace-lookups(키 없음=skipped, 시도 전부 오류=failed), reconcile-pg-payments(대조 예외 전부=failed, 새 `errors` 카운터).
+- 다른 작업은 기록이 있는데 한 작업만 한 번도 없으면(경로 오타·vercel.json 누락·배포 누락) 빨간색 "오래 안 돎 + 한 번도 실행 기록이 없습니다"로 센다. 표가 통째로 비어 있으면(마이그·배포 직후) 회색 "기록 없음" 그대로.
+- `lib/cron/heartbeat.wrapper.test.ts`: 기록 대상·비대상 8건.

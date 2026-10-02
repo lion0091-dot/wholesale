@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role-client";
 import { reconcilePendingPgPayment, type PendingPgPaymentRow } from "@/lib/payments/pg-reconcile";
-import { withCronHeartbeat } from "@/lib/cron/heartbeat";
+import { cronJson, withCronHeartbeat } from "@/lib/cron/heartbeat";
 
 /**
  * 하루 1회(vercel.json의 crons) 대기 중인 PG 결제를 전부 훑어 토스 실제 상태와
@@ -47,7 +47,7 @@ async function handler(request: NextRequest) {
   }
 
   const rows = (data ?? []) as unknown as PendingPgPaymentRow[];
-  const counts = { recovered: 0, abandoned: 0, still_processing: 0, skipped: 0, refunded: 0 };
+  const counts = { recovered: 0, abandoned: 0, still_processing: 0, skipped: 0, refunded: 0, errors: 0 };
 
   for (const row of rows) {
     try {
@@ -55,11 +55,12 @@ async function handler(request: NextRequest) {
       counts[result.outcome] += 1;
     } catch (unexpected) {
       console.error("[cron reconcile-pg-payments]", row.pg_order_id, unexpected);
-      counts.skipped += 1;
+      counts.errors += 1;
     }
   }
 
-  return NextResponse.json({ total: rows.length, ...counts });
+  // 대조하려던 건이 전부 예외로 끝났으면 토스 쪽 장애다 — 200이어도 실패로 알려 화면이 드러내게 한다.
+  return cronJson({ total: rows.length, ...counts }, rows.length > 0 && counts.errors === rows.length ? "failed" : undefined);
 }
 
 export const GET = withCronHeartbeat("reconcile-pg-payments", handler);

@@ -68,6 +68,8 @@ interface Props {
   products: ProductOption[];
   /** 보류함에 정리할 물건 수("지금 할 일" 카드용) */
   heldCount?: number;
+  /** 도착 예정일이 지났는데 아직 진행 중인 전표(최근 전표 창 밖의 것 포함, 오래된 예정일부터) */
+  overdueRows?: Array<{ id: string; supplier_id: string; supplier_name: string; expected_on: string }>;
 }
 
 const STATUS_LABEL: Record<PurchaseOrderRow["status"], { text: string; bg: string; color: string }> = {
@@ -284,7 +286,7 @@ const PurchaseOrderLineRow = memo(function PurchaseOrderLineRow({
   );
 });
 
-export function PurchaseOrderView({ canManage, categories, subcategoriesByCategory, suppliers, orders, products, heldCount = 0 }: Props) {
+export function PurchaseOrderView({ canManage, categories, subcategoriesByCategory, suppliers, orders, products, heldCount = 0, overdueRows = [] }: Props) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -292,16 +294,12 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
   const [newSupplierSignal, setNewSupplierSignal] = useState(0);
   const activeSuppliers = suppliers.filter((supplier) => supplier.is_active);
   const supplierNameById = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
-  // "지금 할 일" 카드 — 도착 예정일(한국 날짜)이 지났는데 아직 진행 중인 전표.
-  const kstToday = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const overdueOrders = orders
-    .filter((order) => order.status === "OPEN" && order.expected_on && order.expected_on < kstToday)
-    .sort((a, b) => String(a.expected_on).localeCompare(String(b.expected_on)))
-    .map((order) => ({
-      id: order.id,
-      supplierName: supplierNameById.get(order.supplier_id) ?? order.supplier_name,
-      expectedOn: String(order.expected_on),
-    }));
+  // "지금 할 일" 카드 — 도착 예정일(한국 날짜)이 지났는데 아직 진행 중인 전표(서버가 최근 전표 창과 따로 조회).
+  const overdueOrders = overdueRows.map((row) => ({
+    id: row.id,
+    supplierName: supplierNameById.get(row.supplier_id) ?? row.supplier_name,
+    expectedOn: row.expected_on,
+  }));
   const nextStep = pickPurchaseOrdersNextStep({
     canManage,
     activeSupplierCount: activeSuppliers.length,
@@ -570,7 +568,8 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
                   if (action.kind === "open-suppliers") setNewSupplierSignal((count) => count + 1);
                   else if (action.kind === "open-form") setOpen(true);
                   else if (action.kind === "scroll") {
-                    document.getElementById(action.targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    // 최근 전표 목록 밖의 오래된 전표면 목록 맨 위로 보낸다(전표 줄 자체는 최근 60건만 보인다).
+                    (document.getElementById(action.targetId) ?? document.getElementById("po-list"))?.scrollIntoView({ behavior: "smooth", block: "start" });
                   }
                 }}
               >
@@ -686,6 +685,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
             카톡 문구에 단가도 넣기
           </label>
         )}
+        <span id="po-list" style={{ scrollMarginTop: "12px" }} />
         {orders.length === 0 ? (
           <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>아직 작성한 전표가 없습니다.</p>
         ) : (

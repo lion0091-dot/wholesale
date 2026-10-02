@@ -34,10 +34,12 @@ export default async function PurchaseOrdersPage() {
   let subcategoriesByCategory: Record<string, string[]> = {};
   let products: ProductOption[] = [];
   let heldCount = 0;
+  let overdueRows: Array<{ id: string; supplier_id: string; supplier_name: string; expected_on: string }> = [];
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
-    const [{ data: orderRows }, { data: categoryRows }, subcategories, { data: supplierRows }, productOptions, { count: heldRows }] = await Promise.all([
+    const kstToday = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const [{ data: orderRows }, { data: categoryRows }, subcategories, { data: supplierRows }, productOptions, { count: heldRows }, { data: overdueData }] = await Promise.all([
       supabase
         .from("purchase_orders")
         .select(
@@ -62,8 +64,18 @@ export default async function PurchaseOrdersPage() {
         .eq("wholesaler_id", scope.wholesalerId)
         .eq("status", "NORMAL")
         .in("po_state", ["UNLISTED_HELD", "OVER_HELD"]),
+      // 도착 예정일이 지났는데 아직 진행 중인 전표 — 최근 전표 창(RECENT_LIMIT) 밖의 오래된 전표도 놓치지 않게 따로 조회한다.
+      supabase
+        .from("purchase_orders")
+        .select("id, supplier_id, supplier_name, expected_on")
+        .eq("wholesaler_id", scope.wholesalerId)
+        .eq("status", "OPEN")
+        .lt("expected_on", kstToday)
+        .order("expected_on", { ascending: true })
+        .limit(50),
     ]);
     heldCount = heldRows ?? 0;
+    overdueRows = (overdueData ?? []) as typeof overdueRows;
 
     type RawLine = Omit<PurchaseOrderRow["purchase_order_lines"][number], "received"> & {
       purchase_order_line_scans?: Array<{ weight: number | string; inbound_scans: { status: string } | null }>;
@@ -106,6 +118,7 @@ export default async function PurchaseOrdersPage() {
         orders={orders}
         products={products}
         heldCount={heldCount}
+        overdueRows={overdueRows}
       />
     </div>
   );
