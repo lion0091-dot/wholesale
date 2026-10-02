@@ -15,7 +15,7 @@ const CASE_HEAD = ["화면에 이런 문구가 보이면", "이렇게 하세요"
 
 c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 80 }, children: [new TextRun({ text: "입고 스캔 따라가기 매뉴얼", font: FONT, size: 44, bold: true })] }));
 c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 60 }, children: [run("현장 직원용", { size: 26 })] }));
-c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 300 }, children: [run("초안 3 — 박스가 오면 표를 위에서 아래로 따라 하세요. 색 카드가 뜨면 4장, 막히면 5장.", { size: 20, color: "64748B" })] }));
+c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 300 }, children: [run("초안 4 — 박스가 오면 표를 위에서 아래로 따라 하세요. 색 카드가 뜨면 4장, 막히면 5장.", { size: 20, color: "64748B" })] }));
 
 c.push(box("먼저 이것만 알면 됩니다", [
   "박스 바코드를 찍고 저울에 잰 무게(실중량)를 넣으면 재고가 늘어납니다. 전표(공급처 주문 문서)가 안 써져 있어도 찍으면 됩니다.",
@@ -173,11 +173,11 @@ c.push(B("이전 초안(현장용 초안1)에 있던 \"전표가 올라와 있�
 c.push(B("카드·오류 문구는 코드와 사무실용 매뉴얼(실화면 검증)에서 가져왔고, 이번에 폰·스캐너로 직접 눌러 본 것은 아닙니다. 기기별 카메라·스캐너 동작은 실기기 확인이 필요합니다."));
 c.push(B("직원 계정에는 매입단가·매입처 칸과 매입금액이 보이지 않는 것으로 적었습니다(코드로 확인, 실제 직원 계정 확인은 아직)."));
 c.push(B("전표 작성·거래처 등록·보류함 정리는 사무실용 매뉴얼에 있습니다. 출고 스캔은 이 문서의 범위가 아닙니다."));
-c.push(B("이번 초안에서 새로 넣은 \"발주 수량 초과 — 받을까요?\"(3장 끝)는 2026-10-03에 로컬 테스트 계정으로 PC 화면에서 열어 캡처하고 문구를 그대로 옮겼습니다(폰은 아님). 화면 문구는 \"받으면 재고에 들어간다\"로 읽히지만 실제로는 답하기 전에 이미 재고 숫자에 잡혀 있고 거절하면 빠집니다."));
+c.push(B("이번 초안에서 새로 넣은 \"발주 수량 초과 — 받을까요?\"(3장 끝)는 2026-10-03에 로컬 테스트 계정으로 PC 화면에서 열어 캡처하고 문구를 그대로 옮겼습니다(폰은 아님). 이 화면 문구는 2026-10-03에 실제 동작(답하기 전에도 재고에 이미 잡혀 있고 거절하면 빠짐)에 맞게 고쳤습니다."));
 
 const doc = new Document({
   creator: "Claude",
-  title: "입고 스캔 따라가기 매뉴얼 (현장용, 초안 3)",
+  title: "입고 스캔 따라가기 매뉴얼 (현장용, 초안 4)",
   styles: { default: { document: { run: { font: FONT, size: 22 } } } },
   numbering: {
     config: [
@@ -187,7 +187,7 @@ const doc = new Document({
   sections: [
     {
       properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } },
-      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "입고 스캔 따라가기 매뉴얼 (현장용, 초안 3)  ·  ", font: FONT, size: 18, color: "64748B" }), new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 18, color: "64748B" })] })] }) },
+      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "입고 스캔 따라가기 매뉴얼 (현장용, 초안 4)  ·  ", font: FONT, size: 18, color: "64748B" }), new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 18, color: "64748B" })] })] }) },
       children: c,
     },
   ],

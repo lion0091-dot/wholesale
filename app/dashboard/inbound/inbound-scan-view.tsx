@@ -1446,7 +1446,7 @@ export function InboundScanView({
 
             return (
               <p style={{ margin: "4px 0 0", width: "100%", fontSize: "12px", color: "#7f1d1d", lineHeight: 1.5 }}>
-                발주 수량을 넘었습니다{numbers}. 받으면 재고에 들어가 바로 팔 수 있고, 거절하면 재고에 안 들어갑니다 — 지금 바로 정하세요.
+                발주 수량을 넘었습니다{numbers}. 받으면 재고에 그대로 남아 바로 팔 수 있고, 거절하면 재고에서 빠집니다(정하기 전에도 재고에는 이미 잡혀 있어요) — 지금 바로 정하세요.
               </p>
             );
           }
