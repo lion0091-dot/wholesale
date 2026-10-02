@@ -122,7 +122,7 @@ export function HoldsView({ holds, rejections, canManage }: Props) {
               const badge = HOLD_BADGE[item.poState];
 
               return (
-                <div key={item.scanId} style={rowStyle}>
+                <div key={item.scanId} id={`hold-${item.scanId}`} style={{ ...rowStyle, scrollMarginTop: "12px" }}>
                   <span style={{ fontFamily: "monospace" }}>{item.traceNo}</span>
                   <span style={{ fontWeight: 700 }}>{item.productName ?? "상품 미지정"}</span>
                   <span style={{ color: "#64748b" }}>{item.supplierName ?? "거래처 미상"}</span>

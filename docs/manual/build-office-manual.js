@@ -15,7 +15,7 @@ const CASE_HEAD = ["화면에 이런 문구가 보이면", "이렇게 하세요"
 
 c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 80 }, children: [new TextRun({ text: "전표·입고·상품 관리 따라가기 매뉴얼", font: FONT, size: 40, bold: true })] }));
 c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 60 }, children: [run("사무실 직원용", { size: 26 })] }));
-c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 300 }, children: [run("초안 19 — 표를 위에서 아래로 따라 하면 끝납니다. 막히면 같은 장 아래 \"이런 문구가 보이면\" 표를 보세요.", { size: 20, color: "64748B" })] }));
+c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 300 }, children: [run("초안 20 — 표를 위에서 아래로 따라 하면 끝납니다. 막히면 같은 장 아래 \"이런 문구가 보이면\" 표를 보세요.", { size: 20, color: "64748B" })] }));
 
 c.push(box("먼저 이것만 알면 됩니다", [
   "재고는 현장이 박스를 찍을 때만 늘어납니다. 전표(우리가 공급처에 내는 주문 문서)를 쓰거나 고쳐도 재고는 바뀌지 않습니다.",
@@ -59,6 +59,14 @@ T(CASE, CASE_HEAD, [
 
 // ============ 2 ============
 c.push(H1("2. 전표 쓰기"));
+c.push(P("[전표관리] 화면 맨 위의 파란 \"지금 할 일\" 카드가 다음에 할 일 하나를 알려 줍니다. 카드의 큰 버튼만 눌러도 됩니다. 사장님·매니저에게만 보입니다."));
+T([4300, 5338], ["카드에 보이는 말", "뜻과 할 일"], [
+  ["먼저 거래처(공급처)를 등록하세요", "거래처가 하나도 없습니다. [거래처 등록하기]를 누르면 아래 거래처 입력 칸이 열립니다. 이 전에는 입고 스캔도 시작할 수 없습니다."],
+  ["첫 전표를 작성하세요", "거래처는 있는데 전표가 없습니다. [+ 새 전표 작성]을 누르세요. 안 써도 입고 스캔은 됩니다."],
+  ["도착 예정일이 지난 전표가 N건 있습니다 (빨간 카드)", "[해당 전표 보기]로 가장 오래된 건으로 이동합니다. 공급처에 확인하고, 더 안 오기로 했으면 그 전표의 [발주강제종결]을 누르세요."],
+  ["보류함에 정리할 물건이 N건 있습니다", "전표에 없거나 수량보다 많이 온 물건입니다. [보류함으로 가기]를 눌러 4-3으로 가세요."],
+  ["(카드가 없음)", "할 일이 없는 상태입니다."],
+]);
 T(STEP, STEP_HEAD, [
   ["1", "왼쪽 [전표관리]에서 [+ 새 전표 작성]을 누릅니다.", "입력 칸이 펼쳐집니다."],
   ["2", "공급처를 고릅니다(필수). 목록에 없으면 [+ 목록에 없는 거래처 추가]로 1장의 거래처 관리를 엽니다.", "공급처가 채워집니다."],
@@ -152,6 +160,7 @@ c.push(gap());
 
 c.push(H2("4-3. 보류함 — 전표에 없거나 초과로 온 물건 (PC 전용)"));
 c.push(P("이 물건들은 이미 재고에 들어가 있어 팔 수 있습니다. 서류를 정리하려면 사장님·매니저가 전표를 사후에 만들어야 합니다."));
+c.push(P("[보류함] 맨 위 카드가 \"정리할 물건이 N건 있습니다\"(파랑) 또는 \"정리할 물건이 없습니다\"(초록, 할 일 없음)로 알려 줍니다. 파란 카드의 [첫 건으로 가기]는 목록의 첫 물건으로 이동합니다. 직원 계정에는 \"사장님·매니저가 정리합니다\"만 나오고 버튼이 없습니다."));
 T(STEP, STEP_HEAD, [
   ["1", "왼쪽 [입고] → [보류함] 탭을 엽니다.", "대기 중인 물건 목록. 배지: \"전표에 없음\" 또는 \"발주 수량 초과\""],
   ["2", "물건이 맞는지 확인합니다(공급처·품목·무게).", "—"],
@@ -375,7 +384,7 @@ const doc = new Document({
   sections: [
     {
       properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } },
-      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "전표·입고·상품 관리 따라가기 매뉴얼 (사무실용, 초안 19)  ·  ", font: FONT, size: 18, color: "64748B" }), new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 18, color: "64748B" })] })] }) },
+      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "전표·입고·상품 관리 따라가기 매뉴얼 (사무실용, 초안 20)  ·  ", font: FONT, size: 18, color: "64748B" }), new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 18, color: "64748B" })] })] }) },
       children: c,
     },
   ],

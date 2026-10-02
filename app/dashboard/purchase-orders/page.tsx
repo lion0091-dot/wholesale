@@ -33,10 +33,11 @@ export default async function PurchaseOrdersPage() {
   let categories: string[] = [];
   let subcategoriesByCategory: Record<string, string[]> = {};
   let products: ProductOption[] = [];
+  let heldCount = 0;
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
-    const [{ data: orderRows }, { data: categoryRows }, subcategories, { data: supplierRows }, productOptions] = await Promise.all([
+    const [{ data: orderRows }, { data: categoryRows }, subcategories, { data: supplierRows }, productOptions, { count: heldRows }] = await Promise.all([
       supabase
         .from("purchase_orders")
         .select(
@@ -54,7 +55,15 @@ export default async function PurchaseOrdersPage() {
         .eq("wholesaler_id", scope.wholesalerId)
         .order("name", { ascending: true }),
       loadProductOptions(supabase, scope.wholesalerId),
+      // 보류함에 정리할 물건(전표에 없음·초과로 받아 둔 박스) 수 — 카드가 보류함으로 안내하는 데 쓴다.
+      supabase
+        .from("inbound_scans")
+        .select("id", { count: "exact", head: true })
+        .eq("wholesaler_id", scope.wholesalerId)
+        .eq("status", "NORMAL")
+        .in("po_state", ["UNLISTED_HELD", "OVER_HELD"]),
     ]);
+    heldCount = heldRows ?? 0;
 
     type RawLine = Omit<PurchaseOrderRow["purchase_order_lines"][number], "received"> & {
       purchase_order_line_scans?: Array<{ weight: number | string; inbound_scans: { status: string } | null }>;
@@ -96,6 +105,7 @@ export default async function PurchaseOrdersPage() {
         suppliers={suppliers}
         orders={orders}
         products={products}
+        heldCount={heldCount}
       />
     </div>
   );

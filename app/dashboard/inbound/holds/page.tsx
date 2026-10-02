@@ -3,6 +3,8 @@ import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
 import { InboundTabs } from "../../section-tabs";
 import { HoldsView, type HoldItem, type RejectionItem } from "./holds-view";
+import { NEXT_STEP_BUTTON_STYLE, SimpleNextStepCard } from "@/components/simple-next-step-card";
+import { pickHoldsNextStep } from "@/lib/purchase-orders/next-step";
 
 export const metadata = {
   title: "보류함 | 도매업체 통합관리시스템",
@@ -117,6 +119,13 @@ export default async function InboundHoldsPage() {
     }));
   }
 
+  const step = pickHoldsNextStep({
+    canManage,
+    holdCount: holds.length,
+    rejectionCount: rejections.length,
+    firstScanId: holds[0]?.scanId ?? null,
+  });
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <InboundTabs />
@@ -128,6 +137,19 @@ export default async function InboundHoldsPage() {
           만들어 정리하려면 아래에서 &quot;전표 추가 생성&quot;을 누르세요.
         </p>
       </header>
+
+      <SimpleNextStepCard
+        tone={step.key === "clear" ? "green" : "blue"}
+        title={step.title}
+        detail={step.detail}
+        action={
+          step.button ? (
+            <a href={step.button.href} style={NEXT_STEP_BUTTON_STYLE}>
+              {step.button.label}
+            </a>
+          ) : undefined
+        }
+      />
 
       <HoldsView holds={holds} rejections={rejections} canManage={canManage} />
     </div>

@@ -9,6 +9,9 @@ import { formatGradeWithBms } from "@/lib/products/identity-key";
 import { buildPurchaseOrderMessage } from "@/lib/purchase-orders/message";
 import { specFromProduct, productSpecLabel, type ProductOption } from "@/lib/purchase-orders/product-match";
 import { NewProductPanel } from "./new-product-panel";
+import Link from "next/link";
+import { NEXT_STEP_BUTTON_STYLE, SimpleNextStepCard } from "@/components/simple-next-step-card";
+import { pickPurchaseOrdersNextStep } from "@/lib/purchase-orders/next-step";
 import {
   createPurchaseOrderAction,
   createSupplierAction,
@@ -63,6 +66,8 @@ interface Props {
   suppliers: SupplierRow[];
   orders: PurchaseOrderRow[];
   products: ProductOption[];
+  /** 보류함에 정리할 물건 수("지금 할 일" 카드용) */
+  heldCount?: number;
 }
 
 const STATUS_LABEL: Record<PurchaseOrderRow["status"], { text: string; bg: string; color: string }> = {
@@ -279,7 +284,7 @@ const PurchaseOrderLineRow = memo(function PurchaseOrderLineRow({
   );
 });
 
-export function PurchaseOrderView({ canManage, categories, subcategoriesByCategory, suppliers, orders, products }: Props) {
+export function PurchaseOrderView({ canManage, categories, subcategoriesByCategory, suppliers, orders, products, heldCount = 0 }: Props) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -287,6 +292,23 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
   const [newSupplierSignal, setNewSupplierSignal] = useState(0);
   const activeSuppliers = suppliers.filter((supplier) => supplier.is_active);
   const supplierNameById = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
+  // "지금 할 일" 카드 — 도착 예정일(한국 날짜)이 지났는데 아직 진행 중인 전표.
+  const kstToday = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const overdueOrders = orders
+    .filter((order) => order.status === "OPEN" && order.expected_on && order.expected_on < kstToday)
+    .sort((a, b) => String(a.expected_on).localeCompare(String(b.expected_on)))
+    .map((order) => ({
+      id: order.id,
+      supplierName: supplierNameById.get(order.supplier_id) ?? order.supplier_name,
+      expectedOn: String(order.expected_on),
+    }));
+  const nextStep = pickPurchaseOrdersNextStep({
+    canManage,
+    activeSupplierCount: activeSuppliers.length,
+    orderCount: orders.length,
+    overdueOrders,
+    heldCount,
+  });
   const [orderedOn, setOrderedOn] = useState(today);
   const [expectedOn, setExpectedOn] = useState("");
   const [note, setNote] = useState("");
@@ -528,6 +550,37 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
         </div>
       )}
 
+      {nextStep && (
+        <SimpleNextStepCard
+          tone={nextStep.key === "overdue" ? "red" : "blue"}
+          title={nextStep.title}
+          detail={nextStep.detail}
+          action={
+            nextStep.action.kind === "link" ? (
+              <Link href={nextStep.action.href} style={NEXT_STEP_BUTTON_STYLE}>
+                {nextStep.buttonLabel}
+              </Link>
+            ) : (
+              <button
+                type="button"
+                style={NEXT_STEP_BUTTON_STYLE}
+                onClick={() => {
+                  const action = nextStep.action;
+
+                  if (action.kind === "open-suppliers") setNewSupplierSignal((count) => count + 1);
+                  else if (action.kind === "open-form") setOpen(true);
+                  else if (action.kind === "scroll") {
+                    document.getElementById(action.targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }
+                }}
+              >
+                {nextStep.buttonLabel}
+              </button>
+            )
+          }
+        />
+      )}
+
       {canManage ? (
         <section style={{ border: "1px solid #e2e8f0", borderRadius: "12px", padding: "14px", backgroundColor: "#fff" }}>
           {!open ? (
@@ -642,7 +695,7 @@ export function PurchaseOrderView({ canManage, categories, subcategoriesByCatego
             const badge = orderStatusBadge(order, receivedTotal);
 
             return (
-              <article key={order.id} style={{ border: "1px solid #e2e8f0", borderRadius: "12px", padding: "12px 14px", backgroundColor: "#fff" }}>
+              <article key={order.id} id={`po-${order.id}`} style={{ scrollMarginTop: "12px", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "12px 14px", backgroundColor: "#fff" }}>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
                   <strong style={{ fontSize: "15px", color: "#0f172a" }}>{supplierNameById.get(order.supplier_id) ?? order.supplier_name}</strong>
                   <span style={{ fontSize: "11px", fontWeight: 700, backgroundColor: badge.bg, color: badge.color, borderRadius: "4px", padding: "2px 6px" }}>{badge.text}</span>
