@@ -159,4 +159,4 @@ Claude Max 요금제는 잔량 조회 API가 없어 실시간 동적 라우팅�
 
 ## 공급사·고객 간 데이터 섞임 방어 (2026-10-02, 별도 기능)
 
-- [docs/tenant-isolation-runbook.md](docs/tenant-isolation-runbook.md) — 맞춤단가 교차 소유 구멍 발견·수정(마이그 200: 22쌍 참조 컬럼에 `enforce_tenant_refs` 트리거, `tenant_consistency_violations()` 일일 크론). 새 규칙: **공급사 소유 표가 다른 공급사 소유 표를 FK로 가리키면 같은 마이그레이션에서 가드 트리거를 건다**(안 걸면 `tenant-isolation.itest.ts` 실패). 터졌을 때 복구 순서. **운영 프로젝트 백업 0건·PITR 꺼짐(대표 결정 대기).**
+- [docs/tenant-isolation-runbook.md](docs/tenant-isolation-runbook.md) — 맞춤단가 교차 소유 구멍 발견·수정(마이그 200: 22쌍 참조 컬럼에 `enforce_tenant_refs` 트리거, `tenant_consistency_violations()` 일일 크론). 새 규칙: **공급사 소유 표가 다른 공급사 소유 표를 FK로 가리키면 같은 마이그레이션에서 가드 트리거를 건다**(안 걸면 `tenant-isolation.itest.ts` 실패). 터졌을 때 복구 순서. **운영 프로젝트 백업 0건·PITR 꺼짐 — 영업 시작 전이라 보류, 첫 실데이터 입력 전에 Pro($25) 전환 필수(런북 4절).**
