@@ -131,8 +131,8 @@ export function BusinessNumberForm({
 
       {saved && !error && (
         <p style={{ fontSize: "12px", color: "#166534", marginTop: "8px", lineHeight: 1.6 }}>
-          ✓ 제출되었습니다. 플랫폼 운영팀이 사업자등록증을 대조한 뒤 승인 결과를 알림톡으로
-          안내합니다.
+          ✓ 제출되었습니다. 플랫폼 운영팀이 사업자등록증을 대조한 뒤 승인되면 이 화면의
+          &quot;행정 승인&quot; 상태가 바뀝니다.
         </p>
       )}
     </form>
