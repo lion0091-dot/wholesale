@@ -365,6 +365,8 @@ export interface OrganizationStaffMember {
   name: string | null;
   phone: string | null;
   createdAt: string;
+  /** 전표 담당 — 원가(단가)를 보고 입력할 수 있는 직원(회사당 최대 2명, 마이그레이션 209). */
+  isDocumentClerk: boolean;
 }
 
 interface OrganizationStaffMemberRow {
@@ -374,6 +376,7 @@ interface OrganizationStaffMemberRow {
   name: string | null;
   phone: string | null;
   created_at: string;
+  is_document_clerk: boolean | null;
 }
 
 export async function listOrganizationStaff(): Promise<ActionResult<OrganizationStaffMember[]>> {
@@ -402,8 +405,39 @@ export async function listOrganizationStaff(): Promise<ActionResult<Organization
         name: row.name,
         phone: row.phone,
         createdAt: row.created_at,
+        isDocumentClerk: row.is_document_clerk === true,
       })),
     };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+// ====================================================================
+// 6. 전표 담당 지정·해제 (대표 전용, 회사당 최대 2명, 일반 직원만 — DB 함수 set_document_clerk가 강제)
+// ====================================================================
+const DOCUMENT_CLERK_ERRORS: Record<string, string> = {
+  FORBIDDEN: "전표 담당은 대표님만 지정할 수 있습니다.",
+  DOCUMENT_CLERK_LIMIT: "전표 담당 최대 인원에 이르렀습니다. 한 명을 먼저 해제해 주세요.",
+  ONLY_STAFF_CAN_BE_CLERK: "일반 직원만 전표 담당이 될 수 있습니다.",
+  STAFF_NOT_FOUND: "대상 직원을 찾을 수 없습니다.",
+};
+
+export async function setDocumentClerkAction(staffId: string, value: boolean): Promise<ActionResult> {
+  try {
+    await requireSession();
+
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("set_document_clerk", { p_staff_id: staffId, p_value: value });
+
+    if (error) {
+      const code = Object.keys(DOCUMENT_CLERK_ERRORS).find((key) => error.message.includes(key));
+
+      throw new RbacError(code ? DOCUMENT_CLERK_ERRORS[code] : "전표 담당을 바꾸지 못했습니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    revalidatePath(REVALIDATE_PATH);
+    return { success: true };
   } catch (error) {
     return toResult(error);
   }

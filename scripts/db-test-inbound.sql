@@ -162,7 +162,7 @@ insert into results (who,what,expected,result) values
 set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000002';
 insert into results (who,what,expected,result) values
  ('A직원','직원이 단가 적어 입고 → 거부(원가는 관리자만, 098)','DENIED: FORBIDDEN_PURCHASE_PRICE', pg_temp.try($q$select public.record_inbound_scan('009400000011', 5.000, 'BARCODE_SCAN', 'c4999999-0000-0000-0000-000000000001', null, null, null, false, null, null, 40000)$q$)),
- ('A직원','직원이 단가 없이 입고 → 허용, 기본단가가 따라 붙음','NORMAL|50000.00|250000.00', pg_temp.val($q$select pg_temp.scan('W6', $$select public.record_inbound_scan('009400000011', 5.000, 'BARCODE_SCAN', 'c4999999-0000-0000-0000-000000000001')$$), null; select (payload->>'status')||'|'||(payload->>'purchase_unit_price')||'|'||(payload->>'purchase_amount') from ids where key='W6'$q$)),
+ ('A직원','직원이 단가 없이 입고 → 허용, 응답에는 원가가 안 실림(209: 대표·전표 담당만 봄)','NORMAL|숨김|숨김', pg_temp.val($q$select pg_temp.scan('W6', $$select public.record_inbound_scan('009400000011', 5.000, 'BARCODE_SCAN', 'c4999999-0000-0000-0000-000000000001')$$), null; select (payload->>'status')||'|'||coalesce(payload->>'purchase_unit_price','숨김')||'|'||coalesce(payload->>'purchase_amount','숨김') from ids where key='W6'$q$)),
  ('A직원','직원이 매입단가 수정 → 거부','DENIED', pg_temp.try($q$select public.update_inbound_purchase((select id from ids where key='W6'), 30000, null, false, null)$q$));
 set request.jwt.claim.sub = '94999999-0000-0000-0000-000000000001';
 

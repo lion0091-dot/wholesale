@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
+import { resolveCostAccess } from "@/lib/supplier/cost-access";
 import { InboundTabs } from "../../section-tabs";
 import { HoldsView, type HoldItem, type RejectionItem } from "./holds-view";
 import { NEXT_STEP_BUTTON_STYLE, SimpleNextStepCard } from "@/components/simple-next-step-card";
@@ -50,13 +51,8 @@ export default async function InboundHoldsPage() {
     return <AdminScopeNotice />;
   }
 
-  const canManage = Boolean(
-    scope &&
-      (scope.isSuperAdmin ||
-        scope.orgRole === "owner" ||
-        scope.orgRole === "manager" ||
-        (!scope.organizationId && scope.wholesalerId))
-  );
+  // "전표 추가 생성"은 전표를 만드는 일이라 전표와 같은 권한(대표 + 전표 담당 직원, 209)이다.
+  const canManage = scope?.wholesalerId ? await resolveCostAccess(await createClient(), scope) : false;
 
   let holds: HoldItem[] = [];
   let rejections: RejectionItem[] = [];

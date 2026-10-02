@@ -118,7 +118,7 @@ export default async function InboundPage() {
         scanRequirements={data.scanRequirements}
         storageLocationSuggestions={data.storageLocationSuggestions}
         archivedProductCount={data.archivedProductCount}
-        canEditPurchasePrice={data.canManage}
+        canEditPurchasePrice={data.canViewCost}
         suppliers={suppliers}
         partOptions={partOptions}
       />

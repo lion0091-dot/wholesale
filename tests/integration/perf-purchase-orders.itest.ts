@@ -228,7 +228,7 @@ describe("발주서 화면·저장 경로 — 상품 5,000개, 300줄", () => {
     const { value, ms } = await timed("발주서 화면 조회 60건×300줄", async () =>
       getActorClient()
         .from("purchase_orders")
-        .select("id, supplier_id, supplier_name, ordered_on, expected_on, note, status, purchase_order_lines ( line_no, product_id, category, subcategory, grade, origin, quantity, unit, unit_price )")
+        .select("id, supplier_id, supplier_name, ordered_on, expected_on, note, status, purchase_order_lines ( line_no, product_id, category, subcategory, grade, origin, quantity, unit )")
         .eq("wholesaler_id", world.wholesalerA)
         .order("ordered_on", { ascending: false })
         .order("created_at", { ascending: false })
@@ -238,6 +238,18 @@ describe("발주서 화면·저장 경로 — 상품 5,000개, 300줄", () => {
     expect(value.error).toBeNull();
     expect((value.data ?? []).length).toBeGreaterThan(0);
     expect(ms).toBeLessThan(LIMIT_MS * 2);
+
+    // 줄 단가는 컬럼 직접 조회가 막혀 있어(209) 함수로 따로 읽는다. 18,000줄이어도 API 응답 상한(1,000행)에 걸려 단가가 빠지면 안 된다 —
+    // 그래서 전표 한 건당 한 행으로 받는다. 모든 줄의 단가 자리가 다 와야 한다.
+    const prices = await timed("전표 줄 단가 60건×300줄", async () =>
+      getActorClient().rpc("get_po_line_prices", { p_order_ids: (value.data ?? []).map((row) => (row as { id: string }).id) })
+    );
+
+    expect(prices.value.error).toBeNull();
+    expect(
+      ((prices.value.data ?? []) as Array<{ prices: Record<string, unknown> }>).reduce((sum, row) => sum + Object.keys(row.prices).length, 0)
+    ).toBe((value.data ?? []).length * LINES);
+    expect(prices.ms).toBeLessThan(LIMIT_MS);
   }, 120_000);
 });
 
@@ -266,7 +278,7 @@ describe("일반적인 규모 — 최근 발주서 60건 × 20줄, 상품 300개
     const history = await timed("(일반 규모) 발주서 화면 조회 60건×20줄", async () =>
       getActorClient()
         .from("purchase_orders")
-        .select("id, supplier_id, supplier_name, ordered_on, expected_on, note, status, purchase_order_lines ( line_no, product_id, category, subcategory, grade, origin, quantity, unit, unit_price )")
+        .select("id, supplier_id, supplier_name, ordered_on, expected_on, note, status, purchase_order_lines ( line_no, product_id, category, subcategory, grade, origin, quantity, unit )")
         .eq("wholesaler_id", world.wholesalerB)
         .order("ordered_on", { ascending: false })
         .order("created_at", { ascending: false })

@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
+import { CostAccessNotice } from "@/components/cost-access-notice";
+import { resolveCostAccess } from "@/lib/supplier/cost-access";
 import {
   PurchaseSettlementView,
   type PurchaseRow,
@@ -36,6 +38,11 @@ export default async function PurchasesPage({
 
   if (isSuperAdminWithoutScope(scope)) {
     return <AdminScopeNotice />;
+  }
+
+  // 매입금액은 원가라 대표 + 전표 담당 직원만 연다(209). DB 함수도 같은 기준으로 막는다.
+  if (scope?.wholesalerId && !(await resolveCostAccess(await createClient(), scope))) {
+    return <CostAccessNotice screenName="매입 정산" />;
   }
 
   const params = await searchParams;

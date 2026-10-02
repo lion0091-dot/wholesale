@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
+import { RbacError } from "@/lib/auth/rbac";
+import { requireCostAccess } from "@/lib/supplier/cost-access";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -11,12 +12,6 @@ export interface ActionResult<T = undefined> {
   /** 낙관적 동시성 충돌(다른 사람이 먼저 저장함) — 화면에서 "다시 확인" 흐름을 타야 한다. */
   conflict?: boolean;
 }
-
-/**
- * 매입 금액은 원가라 현장 직원(staff)에게까지 열지 않는다. 입고 자체는 staff도
- * 하지만(현장 작업), 단가를 고치는 건 관리 행위다.
- */
-const PURCHASE_ROLES: OrgRole[] = ["owner", "manager"];
 
 function toResult(error: unknown): ActionResult<never> {
   if (error instanceof RbacError) {
@@ -43,7 +38,7 @@ export async function updateInboundPurchaseAction(input: {
   expectedUpdatedAt: string;
 }): Promise<ActionResult<{ purchaseAmount: number | null }>> {
   try {
-    await requireOrgRole(PURCHASE_ROLES);
+    await requireCostAccess(); // 대표 + 전표 담당 직원만(209). 매니저·일반 직원은 못 본다.
 
     if (!Number.isFinite(input.unitPrice) || input.unitPrice < 0) {
       throw new RbacError("매입단가를 올바르게 입력해주세요.");
@@ -104,7 +99,7 @@ export async function setProductPurchasePriceAction(input: {
   supplierName?: string | null;
 }): Promise<ActionResult> {
   try {
-    await requireOrgRole(PURCHASE_ROLES);
+    await requireCostAccess(); // 대표 + 전표 담당 직원만(209). 매니저·일반 직원은 못 본다.
 
     if (!Number.isFinite(input.unitPrice) || input.unitPrice < 0) {
       throw new RbacError("매입단가를 올바르게 입력해주세요.");

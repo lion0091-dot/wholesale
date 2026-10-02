@@ -72,12 +72,15 @@ select public.split_inbound_scan('e4e4e4e4-0000-0000-0000-0000000000c1',
 select pg_temp.expect('손실 30kg 반환', (select (r ->> 'loss')::numeric from res) = 30);
 select pg_temp.expect('부모 잔량 0·split_at·split_loss 30',
     (select remaining_weight = 0 and split_at is not null and split_loss = 30 from public.inbound_scans where id = 'e4e4e4e4-0000-0000-0000-0000000000c1'));
+-- 매입금액 컬럼은 직접 조회가 막혀 있다(209) — 이 두 검사만 잠깐 관리 권한으로 읽는다.
+reset role;
 select pg_temp.expect('부모 매입금액은 그대로(1,000,000)',
     (select purchase_amount = 1000000 from public.inbound_scans where id = 'e4e4e4e4-0000-0000-0000-0000000000c1'));
 select pg_temp.expect('자식 3개·같은 이력번호·부모 연결',
     (select count(*) from public.inbound_scans where parent_scan_id = 'e4e4e4e4-0000-0000-0000-0000000000c1' and trace_no = '002000000011' and status = 'NORMAL') = 3);
 select pg_temp.expect('자식 매입금액 없음(이중 집계 방지)',
     (select count(*) from public.inbound_scans where parent_scan_id = 'e4e4e4e4-0000-0000-0000-0000000000c1' and purchase_amount is not null) = 0);
+set local role authenticated;
 select pg_temp.expect('자식이 부모 소비기한 승계',
     (select count(*) from public.inbound_scans where parent_scan_id = 'e4e4e4e4-0000-0000-0000-0000000000c1' and best_before = current_date + 5) = 3);
 select pg_temp.expect('자식 꼬리표 부위는 각자 상품의 부위',

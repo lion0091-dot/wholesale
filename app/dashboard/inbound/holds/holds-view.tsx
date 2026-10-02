@@ -151,7 +151,7 @@ export function HoldsView({ holds, rejections, canManage }: Props) {
 
         {!canManage && holds.length > 0 && (
           <p style={{ margin: "10px 0 0", fontSize: "12px", color: "#64748b" }}>
-            전표 추가 생성은 사장님·매니저만 할 수 있습니다.
+            전표 추가 생성은 대표님과 전표 담당 직원만 할 수 있습니다.
           </p>
         )}
       </section>

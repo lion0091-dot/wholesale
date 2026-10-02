@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { resolveCostAccess } from "@/lib/supplier/cost-access";
 import type { getSupplierScope } from "@/lib/supplier/scope";
 import type { InboundScanRow, ScanProductOption, ShippableOrderOption } from "./inbound-scan-view";
 import {
@@ -20,7 +21,8 @@ export interface InboundData {
   archivedProductCount: number;
   /** 안내 카드가 받는 입력. */
   nextStepInput: InboundNextStepInput;
-  canManage: boolean;
+  /** 원가(매입단가·금액)를 보고 입력할 수 있는 사람 — 대표 + 전표 담당 직원(마이그레이션 209). */
+  canViewCost: boolean;
 }
 
 /** 입고 스캔(현장) 화면이 쓰는 조회. */
@@ -33,6 +35,7 @@ export async function loadInboundData(scope: SupplierScope): Promise<InboundData
   // 직접 입력한 위치 이름을 제안 목록으로 쓴다.
   let storageLocationSuggestions: string[] = [];
   let archivedProductCount = 0;
+  let canViewCost = false;
 
   if (scope?.wholesalerId) {
     const supabase = await createClient();
@@ -47,7 +50,7 @@ export async function loadInboundData(scope: SupplierScope): Promise<InboundData
         supabase
           .from("inbound_scans")
           .select(
-            "id, trace_no, product_id, supplier_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_unit_price, purchase_amount, purchase_supplier, scanned_by, storage_location, storage_location_photo_path"
+            "id, trace_no, product_id, supplier_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_supplier, scanned_by, storage_location, storage_location_photo_path"
           )
           .eq("wholesaler_id", scope.wholesalerId)
           .order("created_at", { ascending: false })
@@ -57,7 +60,7 @@ export async function loadInboundData(scope: SupplierScope): Promise<InboundData
         supabase
           .from("inbound_scans")
           .select(
-            "id, trace_no, product_id, supplier_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_unit_price, purchase_amount, purchase_supplier, scanned_by, storage_location, storage_location_photo_path"
+            "id, trace_no, product_id, supplier_id, weight, unit, scan_type, status, remaining_weight, created_at, labeled_weight, weight_variance, purchase_supplier, scanned_by, storage_location, storage_location_photo_path"
           )
           .eq("wholesaler_id", scope.wholesalerId)
           .in("status", ["EXCEPTION", "PENDING_MAPPING"])
@@ -86,6 +89,24 @@ export async function loadInboundData(scope: SupplierScope): Promise<InboundData
         [...((recentScanRows ?? []) as Array<Record<string, unknown>>), ...((openScanRows ?? []) as Array<Record<string, unknown>>)].map((row) => [String(row.id), row])
       ).values(),
     ].sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)));
+
+    // 원가 컬럼은 직접 조회가 막혀 있어(209) 대표·전표 담당만 get_scan_costs로 읽는다. 다른 사람에겐 금액을 아예 안 가져온다.
+    canViewCost = await resolveCostAccess(supabase, scope);
+
+    const costByScan = new Map<string, { unitPrice: number | null; amount: number | null }>();
+
+    if (canViewCost && scanRows.length > 0) {
+      const { data: costRows } = await supabase.rpc("get_scan_costs", {
+        p_scan_ids: scanRows.map((row) => String(row.id)),
+      });
+
+      ((costRows ?? []) as Array<{ scan_id: string; unit_price: number | string | null; amount: number | string | null }>).forEach((row) => {
+        costByScan.set(row.scan_id, {
+          unitPrice: row.unit_price === null ? null : Number(row.unit_price),
+          amount: row.amount === null ? null : Number(row.amount),
+        });
+      });
+    }
 
     products = (productRows ?? []) as ScanProductOption[];
 
@@ -159,8 +180,8 @@ export async function loadInboundData(scope: SupplierScope): Promise<InboundData
             productOrigin: productId ? productOrigins.get(productId) ?? null : null,
             weight: row.weight === null ? null : Number(row.weight),
             labeledWeight: row.labeled_weight === null ? null : Number(row.labeled_weight),
-            purchaseUnitPrice:
-              row.purchase_unit_price === null ? null : Number(row.purchase_unit_price),
+            purchaseUnitPrice: costByScan.get(String(row.id))?.unitPrice ?? null,
+            showUnitPrice: canViewCost,
             purchaseSupplier: (row.purchase_supplier as string | null) ?? null,
             traceFound: Boolean(master),
             apiSpecies: master?.species ?? null,
@@ -212,8 +233,8 @@ export async function loadInboundData(scope: SupplierScope): Promise<InboundData
       createdAt: String(row.created_at),
       labeledWeight: row.labeled_weight === null ? null : Number(row.labeled_weight),
       weightVariance: row.weight_variance === null ? null : Number(row.weight_variance),
-      purchaseUnitPrice: row.purchase_unit_price === null ? null : Number(row.purchase_unit_price),
-      purchaseAmount: row.purchase_amount === null ? null : Number(row.purchase_amount),
+      purchaseUnitPrice: costByScan.get(String(row.id))?.unitPrice ?? null,
+      purchaseAmount: costByScan.get(String(row.id))?.amount ?? null,
       purchaseSupplier: (row.purchase_supplier as string | null) ?? null,
       scannedByName: row.scanned_by ? (scannerNameById.get(String(row.scanned_by)) ?? "직원") : null,
       storageLocation: (row.storage_location as string | null) ?? null,
@@ -279,16 +300,6 @@ export async function loadInboundData(scope: SupplierScope): Promise<InboundData
       scans.find((scan) => scan.status === "EXCEPTION" || scan.status === "PENDING_MAPPING")?.id ?? null,
   };
 
-  // 원가(매입단가) 입력 같은 관리 행위 권한 — DB의 can_manage_wholesaler()와
-  // 같은 기준(owner 본인 / 조직 owner·manager / super_admin). 조직 없이 업체가 잡힌 건 owner다.
-  const canManage = Boolean(
-    scope &&
-      (scope.isSuperAdmin ||
-        scope.orgRole === "owner" ||
-        scope.orgRole === "manager" ||
-        (!scope.organizationId && scope.wholesalerId))
-  );
-
   return {
     scans,
     products,
@@ -297,6 +308,6 @@ export async function loadInboundData(scope: SupplierScope): Promise<InboundData
     storageLocationSuggestions,
     archivedProductCount,
     nextStepInput,
-    canManage,
+    canViewCost,
   };
 }

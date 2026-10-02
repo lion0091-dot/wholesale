@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
+import { RbacError, requireSession } from "@/lib/auth/rbac";
+import { requireCostAccess } from "@/lib/supplier/cost-access";
 import { extractExcelTable } from "@/lib/livestock/excel-table";
 import { fetchSubcategoriesByCategory } from "../products/get-subcategories";
 import { bmsAppliesTo, composeIdentityName, identityFieldsFor } from "@/lib/products/identity-key";
@@ -33,8 +34,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
-/** 발주서 작성·수정은 상품 관리와 같은 기준 — owner/manager (직원은 조회만, DB RLS도 같다). */
-const PURCHASE_ORDER_ROLES: OrgRole[] = ["owner", "manager"];
+/** 전표(발주서) 작성·수정은 대표 + 전표 담당 직원만(209) — 단가가 원가라서다. DB RLS도 같다(can_view_cost). */
 
 function toResult(error: unknown): ActionResult<never> {
   if (error instanceof RbacError) {
@@ -45,7 +45,8 @@ function toResult(error: unknown): ActionResult<never> {
 }
 
 async function resolveScope() {
-  const context = await requireOrgRole(PURCHASE_ORDER_ROLES);
+  await requireCostAccess();
+  const context = await requireSession();
   const supabase = await createClient();
 
   let wholesalerId: string | null = null;

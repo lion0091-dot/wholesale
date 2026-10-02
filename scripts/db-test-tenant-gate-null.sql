@@ -137,13 +137,13 @@ set request.jwt.claim.sub = '99999999-0000-0000-0000-000000000005';
 insert into results (who,what,expected,result) values
  ('A매니저','adjust_product_stock','ALLOWED',
    pg_temp.try($q$select public.adjust_product_stock('c9999999-0000-0000-0000-000000000001', 20, 'STOCKTAKE')$q$)),
- ('A매니저','update_inbound_purchase','ALLOWED',
+ ('A매니저','update_inbound_purchase (기본 정책: 대표+매니저+전표 담당 — 기존과 같음, 209)','ALLOWED',
    pg_temp.try($q$select public.update_inbound_purchase((select scan_id from seed), 50000)$q$)),
- ('A매니저','set_product_purchase_price','ALLOWED',
+ ('A매니저','set_product_purchase_price (기본 정책, 209)','ALLOWED',
    pg_temp.try($q$select public.set_product_purchase_price('c9999999-0000-0000-0000-000000000001', 50000)$q$)),
  ('A매니저','bulk_update_product_prices','ALLOWED',
    pg_temp.try($q$select public.bulk_update_product_prices('[]'::jsonb)$q$)),
- ('A매니저','record_inbound_scan(매입단가 넣기 허용, #6)','ALLOWED',
+ ('A매니저','record_inbound_scan(매입단가 넣기 허용, #6 — 기본 정책, 209)','ALLOWED',
    pg_temp.try($q$select public.record_inbound_scan('009999999901', 7.700, 'MANUAL', 'c9999999-0000-0000-0000-000000000001', p_confirm_duplicate => true, p_purchase_unit_price => 1000)$q$));
 
 -- ========== 5. A사장(owner) — 허용 + "주문에 바로 배정"은 지정한 박스를 보낸다(#11) ==========

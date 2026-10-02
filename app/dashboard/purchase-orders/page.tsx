@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSupplierScope, isSuperAdminWithoutScope } from "@/lib/supplier/scope";
 import { AdminScopeNotice } from "@/components/admin-scope-notice";
+import { CostAccessNotice } from "@/components/cost-access-notice";
+import { resolveCostAccess } from "@/lib/supplier/cost-access";
 import { fetchSubcategoriesByCategory } from "../products/get-subcategories";
 import { loadProductOptions } from "@/lib/purchase-orders/load-product-options";
 import type { ProductOption } from "@/lib/purchase-orders/product-match";
@@ -20,13 +22,12 @@ export default async function PurchaseOrdersPage() {
     return <AdminScopeNotice />;
   }
 
-  const canManage = Boolean(
-    scope &&
-      (scope.isSuperAdmin ||
-        scope.orgRole === "owner" ||
-        scope.orgRole === "manager" ||
-        (!scope.organizationId && scope.wholesalerId))
-  );
+  // 전표에는 단가(원가)가 있어 대표 + 전표 담당 직원만 연다(209). 아니면 이유만 안내한다.
+  const canViewCost = scope?.wholesalerId ? await resolveCostAccess(await createClient(), scope) : false;
+
+  if (scope?.wholesalerId && !canViewCost) {
+    return <CostAccessNotice screenName="전표관리" />;
+  }
 
   let orders: PurchaseOrderRow[] = [];
   let suppliers: SupplierRow[] = [];
@@ -43,7 +44,7 @@ export default async function PurchaseOrdersPage() {
       supabase
         .from("purchase_orders")
         .select(
-          "id, supplier_id, supplier_name, ordered_on, expected_on, note, status, auto_closed_at, purchase_order_lines ( line_no, product_id, category, breed, subcategory, grade, sex, bms, storage_state, origin, quantity, unit, unit_price, purchase_order_line_scans ( weight, inbound_scans ( status ) ) )"
+          "id, supplier_id, supplier_name, ordered_on, expected_on, note, status, auto_closed_at, purchase_order_lines ( line_no, product_id, category, breed, subcategory, grade, sex, bms, storage_state, origin, quantity, unit, purchase_order_line_scans ( weight, inbound_scans ( status ) ) )"
         )
         .eq("wholesaler_id", scope.wholesalerId)
         .order("ordered_on", { ascending: false })
@@ -77,6 +78,21 @@ export default async function PurchaseOrdersPage() {
     heldCount = heldRows ?? 0;
     overdueRows = (overdueData ?? []) as typeof overdueRows;
 
+    // 줄 단가는 컬럼 직접 조회가 막혀 있어(209) get_po_line_prices로 따로 읽는다 — 여기까지 왔으면 대표·전표 담당이다.
+    const priceByLine = new Map<string, number | null>();
+    const orderIds = ((orderRows ?? []) as Array<{ id: string }>).map((row) => row.id);
+
+    if (orderIds.length > 0) {
+      const { data: priceRows } = await supabase.rpc("get_po_line_prices", { p_order_ids: orderIds });
+
+      // 전표 한 건당 한 행(줄번호 → 단가) — 줄 단위로 받으면 API 응답 상한(1,000행)에 걸린다.
+      ((priceRows ?? []) as Array<{ order_id: string; prices: Record<string, number | string | null> }>).forEach((row) => {
+        Object.entries(row.prices ?? {}).forEach(([lineNo, price]) => {
+          priceByLine.set(`${row.order_id}:${lineNo}`, price === null ? null : Number(price));
+        });
+      });
+    }
+
     type RawLine = Omit<PurchaseOrderRow["purchase_order_lines"][number], "received"> & {
       purchase_order_line_scans?: Array<{ weight: number | string; inbound_scans: { status: string } | null }>;
     };
@@ -87,6 +103,7 @@ export default async function PurchaseOrdersPage() {
         .sort((a, b) => a.line_no - b.line_no)
         .map(({ purchase_order_line_scans, ...line }) => ({
           ...line,
+          unit_price: priceByLine.get(`${order.id}:${line.line_no}`) ?? null,
           // 받은 양 = 이 줄에 채워진 박스 무게(취소 제외)의 합 — DB 판정(judge_scan_purchase_order)과 같은 계산.
           received: (purchase_order_line_scans ?? []).reduce(
             (sum, link) => (link.inbound_scans && link.inbound_scans.status !== "VOIDED" ? sum + Number(link.weight) : sum),
@@ -111,7 +128,7 @@ export default async function PurchaseOrdersPage() {
       </header>
 
       <PurchaseOrderView
-        canManage={canManage}
+        canManage={canViewCost}
         categories={categories}
         subcategoriesByCategory={subcategoriesByCategory}
         suppliers={suppliers}

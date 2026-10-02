@@ -5,6 +5,7 @@ import {
   createStaffInviteAction,
   removeStaff,
   revokeStaffInviteAction,
+  setDocumentClerkAction,
   updateStaffRole,
   type OrganizationStaffMember,
   type StaffInvite,
@@ -127,8 +128,31 @@ export function TeamManagementPanel({
       }
 
       setStaff((prev) =>
-        prev.map((member) => (member.id === staffId ? { ...member, role: nextRole } : member))
+        // 직원이 아니게 되면 전표 담당 표시는 DB가 내리므로 화면도 같이 내린다.
+        prev.map((member) =>
+          member.id === staffId
+            ? { ...member, role: nextRole, isDocumentClerk: nextRole === "staff" ? member.isDocumentClerk : false }
+            : member
+        )
       );
+      setBusyId(null);
+    });
+  };
+
+  const handleDocumentClerk = (staffId: string, value: boolean) => {
+    setError(null);
+    setBusyId(staffId);
+
+    startTransition(async () => {
+      const result = await setDocumentClerkAction(staffId, value);
+
+      if (!result.success) {
+        setError(result.error ?? "전표 담당을 바꾸지 못했습니다.");
+        setBusyId(null);
+        return;
+      }
+
+      setStaff((prev) => prev.map((member) => (member.id === staffId ? { ...member, isDocumentClerk: value } : member)));
       setBusyId(null);
     });
   };
@@ -196,6 +220,9 @@ export function TeamManagementPanel({
         <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "12px" }}>
           현재 팀원 ({staff.length}명)
         </div>
+        <p style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.6, margin: "0 0 12px" }}>
+          전표 담당은 전표의 단가 같은 원가 정보를 보고 입력하는 직원입니다. 일반 직원 중에서 지정합니다(기본 최대 2명). 원가를 볼 수 있는 범위는 업체마다 다르게 정할 수 있어요 — 바꾸고 싶으면 운영팀에 요청해 주세요.
+        </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {staff.map((member) => {
@@ -226,7 +253,42 @@ export function TeamManagementPanel({
                   </div>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  {member.isDocumentClerk && (
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "#166534",
+                        backgroundColor: "#dcfce7",
+                        borderRadius: "999px",
+                        padding: "3px 10px",
+                      }}
+                    >
+                      전표 담당
+                    </span>
+                  )}
+
+                  {orgRole === "owner" && member.role === "staff" && (
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => handleDocumentClerk(member.id, !member.isDocumentClerk)}
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        color: "#166534",
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #86efac",
+                        borderRadius: "6px",
+                        padding: "5px 10px",
+                        cursor: isBusy ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {member.isDocumentClerk ? "전표 담당 해제" : "전표 담당으로 지정"}
+                    </button>
+                  )}
+
                   {orgRole === "owner" && !isSelf ? (
                     <select
                       value={member.role}

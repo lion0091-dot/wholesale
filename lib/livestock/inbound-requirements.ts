@@ -42,6 +42,8 @@ export interface ScanFacts {
   /** 바코드에 적힌 표기중량 */
   labeledWeight: number | null;
   purchaseUnitPrice: number | null;
+  /** false면 "매입단가" 줄을 뺀다 — 원가를 못 보는 사람에게 "입력해주세요"라고 하면 안 된다(209). 기본은 true. */
+  showUnitPrice?: boolean;
   purchaseSupplier: string | null;
 
   /** 공공 이력조회가 이 번호를 찾았는지 */
@@ -171,14 +173,17 @@ export function buildScanRequirementReport(facts: ScanFacts): ScanRequirementRep
     hint: facts.purchaseSupplier ? null : "지금 온 거래처를 골라주세요.",
   });
 
-  add({
-    key: "unitPrice",
-    label: "매입단가",
-    level: "REQUIRED",
-    value: formatMoney(facts.purchaseUnitPrice),
-    source: facts.purchaseUnitPrice === null ? null : "SCAN",
-    hint: facts.purchaseUnitPrice === null ? "매입단가를 입력해주세요." : null,
-  });
+  // 원가를 못 보는 사람(매니저·일반 직원)에게는 이 줄을 아예 뺀다 — 입력할 수 없는 걸 "입력해주세요"라고 할 수 없다.
+  if (facts.showUnitPrice !== false) {
+    add({
+      key: "unitPrice",
+      label: "매입단가",
+      level: "REQUIRED",
+      value: formatMoney(facts.purchaseUnitPrice),
+      source: facts.purchaseUnitPrice === null ? null : "SCAN",
+      hint: facts.purchaseUnitPrice === null ? "매입단가를 입력해주세요." : null,
+    });
+  }
 
   // 등급 — 공공조회로만 채워진다.
   add({

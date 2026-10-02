@@ -9,6 +9,7 @@ import { OrderAlertGuard } from "@/components/order-alert-guard";
 import { fetchTodoCounts, type TodoCounts } from "@/lib/supplier/todo-counts";
 import { fetchInternalNotices, type InternalNotice } from "@/lib/supplier/internal-notices";
 import { isWebPushConfigured } from "@/lib/notifications/web-push";
+import { resolveCostAccess } from "@/lib/supplier/cost-access";
 import type { SubscriptionStatus } from "@/types/database";
 
 export const metadata: Metadata = {
@@ -118,6 +119,8 @@ export default async function DashboardLayout({
   let todoCounts: TodoCounts | null = null;
   // 알림함(여신 한도·거래 정지/재개 기록) — 대표·매니저만. 직원이면 빈 배열이라 칸이 안 보인다.
   let notices: InternalNotice[] = [];
+  // 전표관리 메뉴는 원가(단가)가 있어 대표 + 전표 담당 직원만 보인다(209). 로그인 안 한 데모 화면은 전부 보여준다.
+  let showCostMenus = true;
 
   if (context) {
     roleLabel = context.isSuperAdmin
@@ -176,6 +179,8 @@ export default async function DashboardLayout({
       todoWholesalerId = context.isSuperAdmin ? null : ((wholesaler?.id as string | undefined) ?? null);
     }
 
+    showCostMenus = await resolveCostAccess(supabase, { orgRole: context.orgRole, wholesalerId: todoWholesalerId });
+
     if (todoWholesalerId) {
       [todoCounts, notices] = await Promise.all([
         fetchTodoCounts(supabase, todoWholesalerId),
@@ -194,7 +199,13 @@ export default async function DashboardLayout({
 
   return (
     <DashboardShell
-      navGroups={NAV_GROUPS}
+      navGroups={
+        showCostMenus
+          ? NAV_GROUPS
+          : NAV_GROUPS.map((group) => group.filter((item) => item.href !== "/dashboard/purchase-orders")).filter(
+              (group) => group.length > 0
+            )
+      }
       mobileNavGroups={mobileNavGroups}
       organizationName={organizationName}
       displayName={displayName}
