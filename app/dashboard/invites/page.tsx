@@ -15,6 +15,8 @@ import { ShopThumbnailForm } from "./shop-thumbnail-form";
 import { WithdrawWholesalerButton } from "./withdraw-wholesaler-button";
 import { AlimtalkSettingsForm } from "./alimtalk-settings-form";
 import { AlertFallbackToggle } from "./alert-fallback-toggle";
+import { fetchPushDevices } from "@/lib/notifications/push-devices";
+import { createClient } from "@/lib/supabase/server";
 import { getAlimtalkSettingsAction } from "@/app/actions/alimtalk-settings";
 import { PgSettingsForm } from "./pg-settings-form";
 import { getPgSettingsAction } from "@/app/actions/pg-settings";
@@ -131,6 +133,9 @@ export default async function DashboardInvitesPage() {
         getWeightToleranceSettingsAction(),
       ])
     : [null, null, null, null, null];
+
+  // 알림을 켠 기기 목록(대표·매니저만 읽힘 — 아니면 null이라 목록을 안 보여준다).
+  const pushDevices = account.wholesalerId ? await fetchPushDevices(await createClient()) : null;
 
   const alimtalkSettings =
     alimtalkSettingsResult?.success && alimtalkSettingsResult.data
@@ -300,7 +305,7 @@ export default async function DashboardInvitesPage() {
           <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginBottom: "8px" }}>
             공급사 주문 알림 방식
           </div>
-          <AlertFallbackToggle initialEnabled={alimtalkSettings.fallbackEnabled} />
+          <AlertFallbackToggle initialEnabled={alimtalkSettings.fallbackEnabled} devices={pushDevices} />
         </section>
       )}
 

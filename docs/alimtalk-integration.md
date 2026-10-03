@@ -6,7 +6,8 @@
 - 화면: 설정 > 초대장·업체 설정 > "공급사 주문 알림 방식"(앱 알림 + 알림톡 안전망 / 앱 알림만). 끄면 노란 경고가 뜬다 — 푸시를 켠 기기가 없으면 새 주문 알림이 안 온다(화면 맨 위 빨간 줄·종 배지로만 확인).
 - 끈 업체에서 푸시도 못 보낸 경우 호출부는 `status: "not_configured"`, `messageId: SKIP-…`를 받는다(발송 시도 없음).
 - **식당(고객)용 알림톡 4종·미수금 리마인드는 이 설정과 무관하다.** 그대로 알림톡.
-- 테스트: `lib/notifications/wholesaler-alerts.test.ts`(푸시 수신/폴백 켜짐/폴백 꺼짐/업체 id 없음 4건), `scripts/db-test-alimtalk-credentials.sql`(숨김 컬럼 8개). 운영 DB 적용 전.
+- **알림을 켠 기기 목록·상시 경고(마이그 226)**: `list_push_devices()`(대표·매니저만, 같은 업체 기기만, 푸시 주소·키는 안 내려줌)로 설정 카드에 "알림을 켠 기기 N대"(사람·기기·마지막 알림 날)를 보여준다. **폴백이 꺼져 있고 기기가 0대**이면 설정 카드에 빨간 경고, 대시보드 개요 맨 위에도 경고 링크(`isAlertGap`)가 뜬다. 기기가 1대라도 있으면 대시보드는 폴백 설정을 읽지 않는다(조회 1번 추가). 기기 이름은 user_agent에서 뽑는다(`describeDevice`).
+- 테스트: `lib/notifications/wholesaler-alerts.test.ts`(푸시 수신/폴백 켜짐/폴백 꺼짐/업체 id 없음 4건), `scripts/db-test-alimtalk-credentials.sql`(숨김 컬럼 8개). 운영 DB 적용 완료(225·226). 실화면 클릭 확인 전.
 
 # 카카오 알림톡(AlimTalk) 실제 발송 연동
 
