@@ -15,13 +15,13 @@ const CASE_HEAD = ["화면에 이런 문구가 보이면", "이렇게 하세요"
 
 c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 80 }, children: [new TextRun({ text: "가입·로그인 따라가기 매뉴얼", font: FONT, size: 40, bold: true })] }));
 c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 60 }, children: [run("공급사(도매업체) · 고객(식당·소매)", { size: 26 })] }));
-c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 300 }, children: [run("초안 7 — 표를 위에서 아래로 따라 하면 끝납니다. 막히면 같은 장 아래 \"이런 문구가 보이면\" 표를 보세요.", { size: 20, color: "64748B" })] }));
+c.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 300 }, children: [run("초안 6 — 표를 위에서 아래로 따라 하면 끝납니다. 막히면 같은 장 아래 \"이런 문구가 보이면\" 표를 보세요.", { size: 20, color: "64748B" })] }));
 
 c.push(box("먼저 이것만 알면 됩니다", [
   "가입도 로그인도 카카오 계정 하나로 합니다. 아이디·비밀번호는 없습니다.",
   "공급사(도매업체)는 직접 가입하고, 고객(식당)은 공급사가 보낸 링크로만 들어옵니다.",
   "어느 쪽이든 \"할 일\" 칸에 적힌 것만 누르면 됩니다. 시스템이 나머지는 알아서 처리합니다.",
-  "공급사의 새 주문 알림은 홈 화면에 추가한 앱(브라우저) 알림 하나로 옵니다: [홈 화면에 추가] + [알림 켜기]. 카카오톡 채널을 따로 만들거나 챙길 필요는 없습니다. 고객(식당)에게 가는 카카오 알림톡과는 별개입니다. 앱 알림을 아무도 못 받았을 때 알림톡으로 대신 보낼지는 [설정] → [초대장·업체 설정]의 \"공급사 주문 알림 방식\"에서 대표·관리자가 정합니다(처음은 알림톡도 안전망으로 사용).",
+  "공급사의 새 주문 알림은 홈 화면에 추가한 앱(브라우저) 알림 하나로 옵니다: [홈 화면에 추가] + [알림 켜기]. 카카오톡 채널을 따로 만들거나 챙길 필요는 없습니다. 고객(식당)에게 가는 카카오 알림톡과는 별개입니다.",
 ], "DBEAFE"));
 c.push(gap());
 T([2200, 3700, 3738], ["", "공급사(도매업체)", "고객(식당·소매)"], [
@@ -247,7 +247,7 @@ const doc = new Document({
   sections: [
     {
       properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } },
-      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "가입·로그인 따라가기 매뉴얼 (초안 7)  ·  ", font: FONT, size: 18, color: "64748B" }), new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 18, color: "64748B" })] })] }) },
+      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "가입·로그인 따라가기 매뉴얼 (초안 6)  ·  ", font: FONT, size: 18, color: "64748B" }), new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 18, color: "64748B" })] })] }) },
       children: c,
     },
   ],

@@ -6,13 +6,10 @@
  * 켜 둔 브라우저가 전부 죽어 있거나(폰 재설치 등 — 그 자리에서 지워진다) 전부 실패하면 알림톡으로 간다 —
  * 그 주문 1건을 아무도 못 받는 일은 없게(코드리뷰 2026-10-01). 키가 없거나 아무도 안 켰으면 지금까지처럼 알림톡.
  *
- * 업체가 설정에서 알림톡 폴백을 끄면(마이그 225) 푸시를 못 받은 알림은 알림톡 없이 지나간다(화면의 빨간 줄·종 배지로만 확인).
- *
  * 호출부는 전처럼 NotificationResult(messageId)를 받는다 — 푸시만 나간 경우 messageId는 PUSH-… 가짜 번호다.
  */
 
 import {
-  isAlimtalkFallbackEnabled,
   sendCancelRequestNotificationToWholesaler,
   sendCreditLimitExceededNotificationToWholesaler,
   sendOrderEditedNotificationToWholesaler,
@@ -37,19 +34,6 @@ function pushOnlyResult(message: PushMessage): NotificationResult {
   };
 }
 
-/** 알림톡 폴백이 꺼진 업체에서 푸시도 못 보낸 경우 — 발송 시도가 없었으므로 not_configured로 알린다. */
-function fallbackOffResult(message: PushMessage): NotificationResult {
-  return {
-    success: false,
-    status: "not_configured",
-    messageId: `SKIP-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
-    sentAt: new Date().toISOString(),
-    templateTitle: message.title,
-    formattedMessage: `${message.title}
-${message.body}`,
-  };
-}
-
 async function pushThenAlimtalk(
   wholesalerId: string | null,
   message: PushMessage,
@@ -59,9 +43,6 @@ async function pushThenAlimtalk(
     const pushed = await sendWholesalerPush(wholesalerId, message);
 
     if (pushed.accepted > 0) return pushOnlyResult(message);
-
-    // 업체가 알림톡 폴백을 끈 경우(마이그 225): 푸시를 못 받았어도 알림톡은 보내지 않는다.
-    if (!(await isAlimtalkFallbackEnabled(wholesalerId))) return fallbackOffResult(message);
   }
 
   return alimtalk();

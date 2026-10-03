@@ -12,8 +12,6 @@ import {
 } from "@/lib/supplier/verification";
 import type { OrderStatus } from "@/types/database";
 import { DashboardTabs } from "./section-tabs";
-import { fetchPushDevices, isAlertGap } from "@/lib/notifications/push-devices";
-import { readWholesalerCredentials } from "@/lib/security/wholesaler-credentials";
 
 interface DashboardOrder {
   id: string;
@@ -217,22 +215,6 @@ export default async function DashboardPage() {
         })
       : null;
 
-  // 알림톡 폴백을 끈 업체에서 알림을 켠 기기가 하나도 없으면 새 주문 알림이 어디로도 안 간다 — 대표·매니저에게 경고한다.
-  // 기기가 있으면 폴백 설정은 읽지 않는다(대부분의 방문은 DB 조회 1번만 더 든다).
-  let alertGap = false;
-
-  const alertWholesalerId = account?.wholesalerId ?? null;
-
-  if (hasWholesaler && alertWholesalerId && canManageSupplier && !context?.isSuperAdmin) {
-    const devices = await fetchPushDevices(await createClient());
-
-    if (devices !== null && devices.length === 0) {
-      const { data } = await readWholesalerCredentials(alertWholesalerId, "alimtalk_fallback_enabled");
-
-      alertGap = isAlertGap(data?.alimtalk_fallback_enabled !== false, devices);
-    }
-  }
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <DashboardTabs />
@@ -247,16 +229,6 @@ export default async function DashboardPage() {
       </header>
 
       <OnboardingNextStepCard step={onboardingStep} />
-
-      {alertGap && (
-        <Link
-          href="/dashboard/invites"
-          role="alert"
-          style={{ display: "block", textDecoration: "none", color: "#991b1b", backgroundColor: "#fef2f2", border: "1px solid #fecaca", borderRadius: "12px", padding: "12px 16px", fontSize: "13px", fontWeight: 700, lineHeight: 1.6 }}
-        >
-          새 주문 알림이 어디로도 가지 않습니다 — 알림을 켠 기기가 없고 알림톡도 꺼져 있어요. 눌러서 [설정]에서 알림을 켜거나 알림톡 안전망을 다시 켜세요 →
-        </Link>
-      )}
 
       <section className="dash-cards">
         <SummaryCard

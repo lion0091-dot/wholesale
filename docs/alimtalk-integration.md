@@ -1,14 +1,3 @@
-# 알림톡 폴백 업체별 끄기 (마이그 225, 2026-10-03)
-
-공급사용 알림 4종(신규 주문·주문 수정·취소 요청·여신 초과 거절)은 웹푸시가 먼저 가고 **켠 브라우저가 아무도 못 받았을 때만** 알림톡으로 간다(`lib/notifications/wholesaler-alerts.ts`). 대표 결정(앱·채널 정리)으로 이 폴백을 **업체가 설정에서 끌 수 있게** 했다.
-
-- 컬럼 `wholesalers.alimtalk_fallback_enabled boolean not null default true` — **기본 켜짐(기존 동작 그대로)**. `alimtalk_` 접두라 클라이언트 세션은 못 읽는다(마이그 110 규칙, GRANT 안 함). 읽기: `isAlimtalkFallbackEnabled`(service_role, 못 읽으면 켜짐으로 간주). 쓰기: `saveAlimtalkFallbackAction`(owner·manager만).
-- 화면: 설정 > 초대장·업체 설정 > "공급사 주문 알림 방식"(앱 알림 + 알림톡 안전망 / 앱 알림만). 끄면 노란 경고가 뜬다 — 푸시를 켠 기기가 없으면 새 주문 알림이 안 온다(화면 맨 위 빨간 줄·종 배지로만 확인).
-- 끈 업체에서 푸시도 못 보낸 경우 호출부는 `status: "not_configured"`, `messageId: SKIP-…`를 받는다(발송 시도 없음).
-- **식당(고객)용 알림톡 4종·미수금 리마인드는 이 설정과 무관하다.** 그대로 알림톡.
-- **알림을 켠 기기 목록·상시 경고(마이그 226)**: `list_push_devices()`(대표·매니저만, 같은 업체 기기만, 푸시 주소·키는 안 내려줌)로 설정 카드에 "알림을 켠 기기 N대"(사람·기기·마지막 알림 날)를 보여준다. **폴백이 꺼져 있고 기기가 0대**이면 설정 카드에 빨간 경고, 대시보드 개요 맨 위에도 경고 링크(`isAlertGap`)가 뜬다. 기기가 1대라도 있으면 대시보드는 폴백 설정을 읽지 않는다(조회 1번 추가). 기기 이름은 user_agent에서 뽑는다(`describeDevice`).
-- 테스트: `lib/notifications/wholesaler-alerts.test.ts`(푸시 수신/폴백 켜짐/폴백 꺼짐/업체 id 없음 4건), `scripts/db-test-alimtalk-credentials.sql`(숨김 컬럼 8개). 운영 DB 적용 완료(225·226·227). 227 = `remove_push_device`(대표·매니저, 같은 업체 기기 한 건 삭제, 목록의 [지우기]), 30일 넘게 알림 기록 없는 기기는 "꺼졌을 수 있어요" 표시. 실화면 클릭 확인 전.
-
 # 카카오 알림톡(AlimTalk) 실제 발송 연동
 
 ## 2026-10-01 추가 — 알림 채널 정리: 알림톡 12종 → 8종, 화면 알림은 Realtime (사장님 결정)
