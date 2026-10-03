@@ -62,9 +62,9 @@ export function shrinkagePush(input: {
   const weight = input.weightKg.toLocaleString("ko-KR", { maximumFractionDigits: 3 });
 
   return {
-    title: `박스 감량 처리 · ${input.productName} ${weight}kg`,
+    title: "감량처리 발생했습니다.",
     body:
-      `처리: ${input.actorName?.trim() || "알 수 없음"} · 이력번호 ${input.traceNo}${input.orderNumber ? ` · 주문 ${input.orderNumber}` : ""}` +
+      `${input.productName} ${weight}kg · 처리: ${input.actorName?.trim() || "알 수 없음"} · 이력번호 ${input.traceNo}${input.orderNumber ? ` · 주문 ${input.orderNumber}` : ""}` +
       " — 박스에 고기가 남아 있었다면 확인해 주세요",
     url: "/dashboard/stock-expiring",
     tag: `shrinkage:${input.traceNo}`,

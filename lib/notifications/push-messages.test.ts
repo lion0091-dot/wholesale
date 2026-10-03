@@ -24,7 +24,8 @@ describe("웹푸시 문구", () => {
   it("박스 감량 — 중량·이력번호만, 금액은 싣지 않는다", () => {
     const message = shrinkagePush({ productName: "한우 등심", weightKg: 0.5, traceNo: "088800000001", orderNumber: "ORD-9", actorName: "홍길동" });
 
-    expect(message.title).toBe("박스 감량 처리 · 한우 등심 0.5kg");
+    expect(message.title).toBe("감량처리 발생했습니다.");
+    expect(message.body).toContain("한우 등심 0.5kg");
     expect(message.body).toContain("처리: 홍길동");
     expect(message.body).toContain("088800000001");
     expect(message.body).toContain("ORD-9");
