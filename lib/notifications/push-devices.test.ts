@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeDevice, isAlertGap, type PushDevice } from "./push-devices";
+import { describeDevice, isAlertGap, isStaleDevice, STALE_DEVICE_DAYS, type PushDevice } from "./push-devices";
 
 const IPHONE_SAFARI = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
 const ANDROID_CHROME = "Mozilla/5.0 (Linux; Android 14; SM-S918N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36";
@@ -37,5 +37,24 @@ describe("isAlertGap", () => {
 
   it("기기 목록을 못 읽었으면(null) 모르는 것이라 경고하지 않는다", () => {
     expect(isAlertGap(false, null)).toBe(false);
+  });
+});
+
+describe("isStaleDevice", () => {
+  const now = new Date("2026-10-03T00:00:00Z");
+  const daysAgo = (days: number) => new Date(now.getTime() - days * 86_400_000).toISOString();
+
+  it("마지막 알림이 기준 기간 안이면 정상, 넘으면 꺼졌을 수 있는 기기", () => {
+    expect(isStaleDevice({ createdAt: daysAgo(90), lastUsedAt: daysAgo(STALE_DEVICE_DAYS - 1) }, now)).toBe(false);
+    expect(isStaleDevice({ createdAt: daysAgo(90), lastUsedAt: daysAgo(STALE_DEVICE_DAYS + 1) }, now)).toBe(true);
+  });
+
+  it("알림을 한 번도 못 받은 기기는 켠 날부터 센다", () => {
+    expect(isStaleDevice({ createdAt: daysAgo(3), lastUsedAt: null }, now)).toBe(false);
+    expect(isStaleDevice({ createdAt: daysAgo(STALE_DEVICE_DAYS + 5), lastUsedAt: null }, now)).toBe(true);
+  });
+
+  it("날짜를 못 읽으면 표시하지 않는다", () => {
+    expect(isStaleDevice({ createdAt: "이상한 값", lastUsedAt: null }, now)).toBe(false);
   });
 });

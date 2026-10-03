@@ -44,6 +44,9 @@ insert into public.push_subscriptions (user_id,wholesaler_id,endpoint,p256dh,aut
  ('9d999999-9d99-0000-0000-000000000003','a9d99999-0000-0000-0000-000000000001','https://push.example/a2','k2','a2','Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36', now() - interval '2 days', null),
  ('9d999999-9d99-0000-0000-000000000004','a9d99999-0000-0000-0000-000000000002','https://push.example/b1','k3','a3','Mozilla/5.0 (Linux; Android 14) Chrome/124.0 Mobile Safari/537.36', now(), now());
 
+create temp table dev_ids as select endpoint, id from public.push_subscriptions;
+grant select on dev_ids to authenticated, anon;
+
 set role authenticated; set request.jwt.claim.role = 'authenticated';
 set request.jwt.claim.sub = '9d999999-9d99-0000-0000-000000000001';
 
@@ -62,6 +65,17 @@ insert into results (who,what,expected,result) values
 set request.jwt.claim.sub = '9d999999-9d99-0000-0000-000000000004';
 insert into results (who,what,expected,result) values
  ('타사 대표','자기 업체 기기 1대만(기기축산 기기가 안 섞임)','1', pg_temp.val($q$select count(*)::text from public.list_push_devices()$q$));
+-- 기기 지우기(227): 직원은 못 지움, 타사 대표는 우리 업체 기기를 못 지움, 대표는 지움
+set request.jwt.claim.sub = '9d999999-9d99-0000-0000-000000000003';
+insert into results (who,what,expected,result) values
+ ('직원','기기 지우기 → 거부','DENIED: NOT_MANAGER', pg_temp.try($q$select public.remove_push_device((select id from dev_ids where endpoint='https://push.example/a2'))$q$));
+set request.jwt.claim.sub = '9d999999-9d99-0000-0000-000000000004';
+insert into results (who,what,expected,result) values
+ ('타사 대표','우리 업체 기기를 지우려 하면 false(아래 대표 줄에서 기기가 그대로 있었음이 확인됨)','false', pg_temp.val($q$select public.remove_push_device((select id from dev_ids where endpoint='https://push.example/a2'))::text$q$));
+set request.jwt.claim.sub = '9d999999-9d99-0000-0000-000000000001';
+insert into results (who,what,expected,result) values
+ ('대표','자기 업체 기기를 지우면 true이고 목록에서 빠진다(1대 남음)','true|1', pg_temp.val($q$select public.remove_push_device((select id from dev_ids where endpoint='https://push.example/a2'))::text$q$)||'|'||pg_temp.val($q$select count(*)::text from public.list_push_devices()$q$)),
+ ('대표','같은 기기를 다시 지우면 false','false', pg_temp.val($q$select public.remove_push_device((select id from dev_ids where endpoint='https://push.example/a2'))::text$q$));
 set role anon; set request.jwt.claim.sub = ''; set request.jwt.claim.role = 'anon';
 insert into results (who,what,expected,result) values
  ('비로그인','거부','DENIED', pg_temp.try($q$select * from public.list_push_devices()$q$));

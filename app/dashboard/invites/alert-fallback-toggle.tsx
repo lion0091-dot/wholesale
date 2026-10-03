@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { saveAlimtalkFallbackAction } from "@/app/actions/alimtalk-settings";
-import { isAlertGap, type PushDevice } from "@/lib/notifications/push-devices";
+import { removePushDeviceAction } from "@/app/actions/push-devices";
+import { isAlertGap, isStaleDevice, STALE_DEVICE_DAYS, type PushDevice } from "@/lib/notifications/push-devices";
 
 /**
  * 공급사용 주문 알림 4종(신규 주문·주문 수정·취소 요청·여신 초과 거절)의 알림톡 폴백 켜기/끄기(마이그레이션 225).
@@ -14,6 +15,23 @@ export function AlertFallbackToggle({ initialEnabled, devices }: { initialEnable
   const [enabled, setEnabled] = useState(initialEnabled);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const removeDevice = (device: PushDevice) => {
+    if (!window.confirm(`${device.userName}님의 ${device.label} 기기를 목록에서 지울까요? 그 기기에서 다시 [알림 켜기]를 누르면 돌아옵니다.`)) return;
+
+    setError(null);
+
+    startTransition(async () => {
+      const result = await removePushDeviceAction(device.id);
+
+      if (!result.success) {
+        setError(result.error ?? "기기를 지우지 못했습니다.");
+        return;
+      }
+
+      router.refresh();
+    });
+  };
 
   const change = (next: boolean) => {
     setError(null);
@@ -76,6 +94,17 @@ export function AlertFallbackToggle({ initialEnabled, devices }: { initialEnable
                   <span style={{ color: "#64748b" }}>
                     {device.lastUsedAt ? `마지막 알림 ${new Date(device.lastUsedAt).toLocaleDateString("ko-KR")}` : `켠 날 ${new Date(device.createdAt).toLocaleDateString("ko-KR")}`}
                   </span>
+                  {isStaleDevice(device) && (
+                    <span style={{ color: "#b45309", fontWeight: 700 }}>{STALE_DEVICE_DAYS}일 넘게 알림 기록 없음 — 꺼졌거나 안 쓰는 기기일 수 있어요</span>
+                  )}
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => removeDevice(device)}
+                    style={{ fontSize: "11px", fontWeight: 600, color: "#b91c1c", backgroundColor: "#ffffff", border: "1px solid #fca5a5", borderRadius: "6px", padding: "2px 8px", cursor: pending ? "not-allowed" : "pointer" }}
+                  >
+                    지우기
+                  </button>
                 </li>
               ))}
             </ul>

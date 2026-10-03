@@ -67,3 +67,14 @@ export async function fetchPushDevices(supabase: SupabaseClient): Promise<PushDe
 export function isAlertGap(fallbackEnabled: boolean, devices: PushDevice[] | null): boolean {
   return !fallbackEnabled && devices !== null && devices.length === 0;
 }
+
+/** 이 기간 넘게 알림을 받은 기록이 없으면(켠 뒤 한 번도 못 받은 것 포함) "꺼졌을 수 있는 기기"로 표시한다. */
+export const STALE_DEVICE_DAYS = 30;
+
+export function isStaleDevice(device: Pick<PushDevice, "createdAt" | "lastUsedAt">, now: Date = new Date()): boolean {
+  const last = Date.parse(device.lastUsedAt ?? device.createdAt);
+
+  if (Number.isNaN(last)) return false;
+
+  return now.getTime() - last > STALE_DEVICE_DAYS * 86_400_000;
+}
