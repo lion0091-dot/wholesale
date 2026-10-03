@@ -11,6 +11,9 @@ export const DISPOSAL_REASONS = [
 export type DisposalReasonCode = (typeof DISPOSAL_REASONS)[number]["code"];
 
 export function disposalReasonLabel(code: string): string {
+  // 출고 스캔의 "박스 다 썼음"(마이그레이션 229)이 남기는 사유. 직접 폐기 때 고르는 목록에는 없다.
+  if (code === "SHRINKAGE") return "출고 중 감량";
+
   return DISPOSAL_REASONS.find((reason) => reason.code === code)?.label.replace("(메모 필수)", "") ?? code;
 }
 

@@ -43,6 +43,10 @@ export function OutboundScanView({ orders }: Props) {
   const [newestFirst, setNewestFirst] = useState(false);
   const [orderId, setOrderId] = useState((orders.find((order) => !order.finalized) ?? orders[0])?.id ?? "");
   const [traceNo, setTraceNo] = useState("");
+  // 저울에 단 실제 중량(kg). 비어 있으면 예전처럼 바코드 중량 또는 박스 장부 잔량을 쓴다.
+  const [weight, setWeight] = useState("");
+  // 실중량을 달아 낸 박스가 이걸로 다 떨어졌다 — 박스에 장부로 남은 중량을 감량으로 기록하고 박스를 비운다. 매 스캔마다 풀린다.
+  const [boxExhausted, setBoxExhausted] = useState(false);
   const [progress, setProgress] = useState<OutboundProgressRow[]>([]);
   const [picking, setPicking] = useState<PickingRow[]>([]);
   // 마감 확인 대화상자. null 이면 닫힌 상태.
@@ -127,8 +131,17 @@ export function OutboundScanView({ orders }: Props) {
     setTraceNo("");
     traceInputRef.current?.focus();
 
-    // 바코드에 중량이 실려 있으면 그만큼만 가져간다(박스를 통째로 쓰지 않는 경우).
-    const result = await recordOutboundScanAction(orderId, value, parsed.weightKg);
+    // 직원이 단 실중량이 있으면 그것이 우선이다. 없으면 바코드에 실린 중량(있을 때)만큼만 가져간다.
+    const typedWeight = Number.parseFloat(weight);
+    const scanWeight = Number.isFinite(typedWeight) && typedWeight > 0 ? typedWeight : parsed.weightKg;
+
+    // 실중량 없이 "다 썼음"만 체크했으면 장부 잔량 기준이라 감량이 생길 수 없다 — 체크는 실중량이 있을 때만 보낸다.
+    const exhausted = boxExhausted && scanWeight !== null && typedWeight > 0;
+
+    setWeight("");
+    setBoxExhausted(false);
+
+    const result = await recordOutboundScanAction(orderId, value, scanWeight, exhausted);
 
     if (!result.success || !result.data) {
       setError(result.error ?? "출고 처리에 실패했습니다.");
@@ -152,10 +165,16 @@ export function OutboundScanView({ orders }: Props) {
       );
     }
 
+    const shrinkageText = data.shrinkage > 0 ? ` 박스 장부 잔량 ${data.shrinkage}kg은 감량으로 기록했습니다.` : "";
+
+    if (data.shrinkageError) {
+      setError(data.shrinkageError);
+    }
+
     setMessage(
-      data.remainingNeeded > 0
+      (data.remainingNeeded > 0
         ? `${data.productName} ${data.taken}kg 출고. ${data.remainingNeeded}kg 더 필요합니다.`
-        : `${data.productName} 출고 완료 (${data.assigned}/${data.ordered}kg).`
+        : `${data.productName} 출고 완료 (${data.assigned}/${data.ordered}kg).`) + shrinkageText
     );
 
     await loadProgress(orderId);
@@ -310,6 +329,35 @@ export function OutboundScanView({ orders }: Props) {
             </option>
           ))}
         </select>
+
+        <div style={{ marginTop: "12px" }}>
+          <label htmlFor="outbound-weight" style={labelStyle}>
+            실제 단 중량 (kg, 선택)
+          </label>
+          <input
+            id="outbound-weight"
+            type="text"
+            inputMode="decimal"
+            value={weight}
+            onChange={(event) => setWeight(event.target.value)}
+            disabled={!orderId || Boolean(selectedOrder?.finalized)}
+            autoComplete="off"
+            placeholder="잘라서 달았다면 먼저 적고, 바코드를 찍으세요"
+            style={inputStyle}
+          />
+          <label style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "8px", fontSize: "13px", color: "#334155" }}>
+            <input
+              type="checkbox"
+              checked={boxExhausted}
+              onChange={(event) => setBoxExhausted(event.target.checked)}
+              disabled={!orderId || Boolean(selectedOrder?.finalized) || !(Number.parseFloat(weight) > 0)}
+            />
+            이 박스는 이걸로 다 썼음 (장부에 남은 중량은 감량으로 기록)
+          </label>
+          <p style={{ fontSize: "11px", color: "#94a3b8", margin: "4px 0 0" }}>
+            실제 단 중량을 적었을 때만 고를 수 있습니다. 박스에 고기가 남아 있으면 체크하지 마세요 — 남은 장부 중량이 모두 감량으로 빠집니다.
+          </p>
+        </div>
 
         <div style={{ marginTop: "12px" }}>
           <label htmlFor="trace" style={labelStyle}>

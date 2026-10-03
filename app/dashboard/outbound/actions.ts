@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
+import { shrinkagePush } from "@/lib/notifications/push-messages";
+import { sendWholesalerPush } from "@/lib/notifications/web-push";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -41,6 +43,12 @@ export interface OutboundScanResult {
   /** 바코드에 유통기한이 실려 있던 박스만 값이 있다. */
   bestBefore: string | null;
   daysLeft: number | null;
+  /** "박스 다 썼음"으로 감량 처리된 중량(kg). 처리하지 않았으면 0. 마이그레이션 229. */
+  shrinkage: number;
+  /** 감량 금액(원). 박스 매입단가를 모르면 null. */
+  shrinkageAmount: number | null;
+  /** 감량 처리를 요청했는데 실패했을 때의 안내 문구. */
+  shrinkageError: string | null;
 }
 
 export interface PickingRow {
@@ -174,7 +182,9 @@ function toResult(error: unknown): ActionResult<never> {
 export async function recordOutboundScanAction(
   orderId: string,
   traceNo: string,
-  weight?: number | null
+  weight?: number | null,
+  /** 실중량을 달아 낸 박스가 이걸로 다 떨어졌을 때 — 박스에 장부로 남은 중량을 감량으로 기록하고 박스를 비운다. */
+  boxExhausted?: boolean
 ): Promise<ActionResult<OutboundScanResult>> {
   try {
     const { supabase, wholesalerId } = await resolveOutboundScope();
@@ -214,12 +224,52 @@ export async function recordOutboundScanAction(
 
     const row = (data ?? {}) as Record<string, unknown>;
 
+    // 출고 배정은 이미 끝났다. 감량 기록이 실패해도 출고를 되돌리지 않고, 실패했다고 알려서 사람이 박스 폐기로 정리하게 한다.
+    let shrinkage = 0;
+    let shrinkageAmount: number | null = null;
+    let shrinkageError: string | null = null;
+
+    if (boxExhausted) {
+      const { data: exhausted, error: exhaustError } = await supabase.rpc("exhaust_box_after_outbound", {
+        p_order_id: orderId,
+        p_trace_no: String(row.trace_no ?? traceNo),
+      });
+
+      if (exhaustError) {
+        shrinkageError = "출고는 기록했지만 박스 감량 처리에 실패했습니다. 대표에게 재고·매입 내역의 박스 폐기로 정리해 달라고 알려주세요.";
+      } else {
+        const exhaustRow = (exhausted ?? {}) as Record<string, unknown>;
+
+        shrinkage = Number(exhaustRow.weight ?? 0);
+        shrinkageAmount =
+          exhaustRow.loss_amount === null || exhaustRow.loss_amount === undefined ? null : Number(exhaustRow.loss_amount);
+
+        // 감량이 실제로 기록됐으면 켠 기기 전원에 웹푸시 — 박스에 고기가 남은 채 잘못 눌렀을 때 바로 알아채게 한다. 실패해도 던지지 않는다.
+        if (shrinkage > 0) {
+          const { data: orderRow } = await supabase.from("orders").select("order_number").eq("id", orderId).maybeSingle();
+
+          await sendWholesalerPush(
+            wholesalerId,
+            shrinkagePush({
+              productName: String(row.product_name ?? ""),
+              weightKg: shrinkage,
+              traceNo: String(row.trace_no ?? traceNo),
+              orderNumber: (orderRow?.order_number as string | null | undefined) ?? null,
+            })
+          );
+        }
+      }
+    }
+
     revalidatePath(REVALIDATE_PATH);
     revalidatePath("/dashboard/products");
 
     return {
       success: true,
       data: {
+        shrinkage,
+        shrinkageAmount,
+        shrinkageError,
         traceNo: String(row.trace_no ?? ""),
         productName: String(row.product_name ?? ""),
         taken: Number(row.taken ?? 0),
