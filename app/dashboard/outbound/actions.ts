@@ -187,7 +187,7 @@ export async function recordOutboundScanAction(
   boxExhausted?: boolean
 ): Promise<ActionResult<OutboundScanResult>> {
   try {
-    const { supabase, wholesalerId } = await resolveOutboundScope();
+    const { supabase, context, wholesalerId } = await resolveOutboundScope();
 
     const { data, error } = await supabase.rpc("record_outbound_scan", {
       p_order_id: orderId,
@@ -246,7 +246,10 @@ export async function recordOutboundScanAction(
 
         // 감량이 실제로 기록됐으면 켠 기기 전원에 웹푸시 — 박스에 고기가 남은 채 잘못 눌렀을 때 바로 알아채게 한다. 실패해도 던지지 않는다.
         if (shrinkage > 0) {
-          const { data: orderRow } = await supabase.from("orders").select("order_number").eq("id", orderId).maybeSingle();
+          const [{ data: orderRow }, { data: actorRow }] = await Promise.all([
+            supabase.from("orders").select("order_number").eq("id", orderId).maybeSingle(),
+            supabase.from("profiles").select("name").eq("id", context.userId).maybeSingle(),
+          ]);
 
           await sendWholesalerPush(
             wholesalerId,
@@ -255,6 +258,7 @@ export async function recordOutboundScanAction(
               weightKg: shrinkage,
               traceNo: String(row.trace_no ?? traceNo),
               orderNumber: (orderRow?.order_number as string | null | undefined) ?? null,
+              actorName: (actorRow?.name as string | null | undefined) ?? null,
             })
           );
         }

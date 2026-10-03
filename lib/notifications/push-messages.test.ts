@@ -22,14 +22,16 @@ describe("웹푸시 문구", () => {
   });
 
   it("박스 감량 — 중량·이력번호만, 금액은 싣지 않는다", () => {
-    const message = shrinkagePush({ productName: "한우 등심", weightKg: 0.5, traceNo: "088800000001", orderNumber: "ORD-9" });
+    const message = shrinkagePush({ productName: "한우 등심", weightKg: 0.5, traceNo: "088800000001", orderNumber: "ORD-9", actorName: "홍길동" });
 
     expect(message.title).toBe("박스 감량 처리 · 한우 등심 0.5kg");
+    expect(message.body).toContain("처리: 홍길동");
     expect(message.body).toContain("088800000001");
     expect(message.body).toContain("ORD-9");
     expect(message.body).not.toContain("원");
     expect(message.url).toBe("/dashboard/stock-expiring");
-    expect(shrinkagePush({ productName: "x", weightKg: 1, traceNo: "T", orderNumber: null }).body).not.toContain("주문");
+    expect(shrinkagePush({ productName: "x", weightKg: 1, traceNo: "T", orderNumber: null, actorName: null }).body).not.toContain("주문");
+    expect(shrinkagePush({ productName: "x", weightKg: 1, traceNo: "T", orderNumber: null, actorName: " " }).body).toContain("처리: 알 수 없음");
   });
 
   it("여신 초과 — 미수금 화면으로", () => {

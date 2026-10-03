@@ -51,12 +51,21 @@ export function cancelRequestPush(input: { restaurantName: string; orderNumber: 
  * 출고 스캔에서 "박스 다 썼음"으로 감량이 기록됐을 때(마이그레이션 229). 박스에 고기가 남은 채 잘못 눌렀다면 대표가 바로 알아채게 한다.
  * 감량 금액은 원가라 직원 폰에도 가는 알림에는 싣지 않는다.
  */
-export function shrinkagePush(input: { productName: string; weightKg: number; traceNo: string; orderNumber: string | null }): PushMessage {
+export function shrinkagePush(input: {
+  productName: string;
+  weightKg: number;
+  traceNo: string;
+  orderNumber: string | null;
+  /** 감량을 처리한 직원 이름. 모르면 null. */
+  actorName: string | null;
+}): PushMessage {
   const weight = input.weightKg.toLocaleString("ko-KR", { maximumFractionDigits: 3 });
 
   return {
     title: `박스 감량 처리 · ${input.productName} ${weight}kg`,
-    body: `이력번호 ${input.traceNo}${input.orderNumber ? ` · 주문 ${input.orderNumber}` : ""} — 박스에 고기가 남아 있었다면 확인해 주세요`,
+    body:
+      `처리: ${input.actorName?.trim() || "알 수 없음"} · 이력번호 ${input.traceNo}${input.orderNumber ? ` · 주문 ${input.orderNumber}` : ""}` +
+      " — 박스에 고기가 남아 있었다면 확인해 주세요",
     url: "/dashboard/stock-expiring",
     tag: `shrinkage:${input.traceNo}`,
   };
