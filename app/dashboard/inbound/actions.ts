@@ -1064,11 +1064,13 @@ export async function resolveScanOverQuantityAction(
  * 쪼개기(가공) — 지육·대분할육 박스 하나를 부위 박스 여러 개로 나눈다. 줄마다 부위와 실중량만 받는다 —
  * 상품은 부모 박스의 조회 정보(품종·등급·성별·원산지·냉장/냉동)로 찾거나 새로 만든다(마이그레이션 194).
  * 부모 잔량 − 자식 합 = 손실(수율)로 기록된다. 한 트랜잭션(split_inbound_scan, 마이그레이션 193).
+ * 지육 매입 원가는 부위 박스와 손실로 나뉜다(마이그레이션 231) — 부위 가격(줄에 적은 kg 단가, 없으면 상품 판매 기본가) 비율로 나눈다.
+ * 둘 다 없는 줄이 있어도 쪼개기는 막지 않는다 — 그 줄 번호를 priceFallback으로 돌려줘 화면이 사무실에 확인하라고 알린다.
  */
 export async function splitScanAction(
   scanId: string,
-  lines: Array<{ part: string; weight: number }>,
-): Promise<ActionResult<{ childIds: string[]; loss: number; createdProducts: string[] }>> {
+  lines: Array<{ part: string; weight: number; unitPrice?: number }>,
+): Promise<ActionResult<{ childIds: string[]; loss: number; createdProducts: string[]; priceFallback: number[] }>> {
   try {
     const { supabase } = await resolveInboundScope();
 
@@ -1080,11 +1082,19 @@ export async function splitScanAction(
       if (!line.part?.trim() || !Number.isFinite(line.weight) || line.weight <= 0 || line.weight > MAX_SCAN_WEIGHT) {
         throw new RbacError("부위와 중량(0보다 큰 값)을 모든 줄에 입력해 주세요.");
       }
+
+      if (line.unitPrice !== undefined && (!Number.isFinite(line.unitPrice) || line.unitPrice < 0 || line.unitPrice > 100_000_000)) {
+        throw new RbacError("부위 가격은 0 이상의 숫자로 입력해 주세요.");
+      }
     }
 
     const { data, error } = await supabase.rpc("split_inbound_scan", {
       p_scan_id: scanId,
-      p_lines: lines.map((line) => ({ part: line.part.trim(), weight: line.weight })),
+      p_lines: lines.map((line) => ({
+        part: line.part.trim(),
+        weight: line.weight,
+        ...(line.unitPrice && line.unitPrice > 0 ? { unit_price: line.unitPrice } : {}),
+      })),
     });
 
     if (error) {
@@ -1117,11 +1127,15 @@ export async function splitScanAction(
       if (message.includes("TOO_MANY_SPLIT_LINES")) {
         throw new RbacError("한 번에 30줄까지만 나눌 수 있습니다.");
       }
-
       throw new Error(error.message);
     }
 
-    const result = data as { children?: string[]; loss?: number | string; created_products?: string[] } | null;
+    const result = data as {
+      children?: string[];
+      loss?: number | string;
+      created_products?: string[];
+      price_fallback?: number[];
+    } | null;
 
     revalidatePath(REVALIDATE_PATH, "layout");
     revalidatePath("/dashboard/stock-boxes");
@@ -1133,6 +1147,7 @@ export async function splitScanAction(
         childIds: result?.children ?? [],
         loss: Number(result?.loss ?? 0),
         createdProducts: result?.created_products ?? [],
+        priceFallback: result?.price_fallback ?? [],
       },
     };
   } catch (error) {
