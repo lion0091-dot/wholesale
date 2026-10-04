@@ -71,6 +71,19 @@ export function shrinkagePush(input: {
   };
 }
 
+export function splitPriceRequestPush(input: { parts: string[]; traceNo: string; actorName: string | null }): PushMessage {
+  const parts = input.parts.join(", ");
+
+  return {
+    title: "쪼개기 부위 판매 기본가가 필요합니다",
+    body:
+      `${parts} · 요청: ${input.actorName?.trim() || "현장 직원"} · 이력번호 ${input.traceNo}` +
+      " — 상품 관리에 부위 상품과 판매 기본가를 넣어 주세요",
+    url: "/dashboard/products",
+    tag: `split-price:${input.traceNo}`,
+  };
+}
+
 export function creditExceededPush(input: { restaurantName: string; attemptedAmount: number; outstandingBalance: number }): PushMessage {
   return {
     title: `외상 주문 거절 · ${input.restaurantName}`,

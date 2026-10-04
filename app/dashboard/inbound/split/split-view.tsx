@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { splitScanAction } from "../actions";
+import { previewSplitPartsAction, requestSplitPartPricesAction, splitScanAction, type SplitPartPreview } from "../actions";
 
 export interface SplitBox {
   id: string;
@@ -36,6 +36,63 @@ export function SplitView({ boxes, parts, initialQuery }: { boxes: SplitBox[]; p
 
   const selected = boxes.find((box) => box.id === selectedId) ?? null;
 
+  // 부위별 판매 기본가 미리 보기(마이그레이션 232). 가격이 없는 부위가 있으면 사무실이 넣을 때까지 몇 초마다 다시 본다.
+  const [previews, setPreviews] = useState<Record<string, SplitPartPreview>>({});
+  const [requestNote, setRequestNote] = useState<string | null>(null);
+  const [requesting, setRequesting] = useState(false);
+  const partsKey = JSON.stringify(Array.from(new Set(lines.map((line) => line.part).filter(Boolean))).sort());
+
+  const loadPreviews = useCallback(async () => {
+    const parts = JSON.parse(partsKey) as string[];
+
+    if (!selectedId || parts.length === 0) {
+      setPreviews({});
+
+      return;
+    }
+
+    const result = await previewSplitPartsAction(selectedId, parts);
+
+    if (result.success) {
+      setPreviews(Object.fromEntries((result.data ?? []).map((preview) => [preview.part, preview])));
+    }
+  }, [selectedId, partsKey]);
+
+  const missingPrice = (preview: SplitPartPreview | undefined) =>
+    preview !== undefined && preview.status !== "UNSUPPORTED" && (preview.status === "NO_PRODUCT" || !(preview.basePrice && preview.basePrice > 0));
+  const missingParts = Object.values(previews).filter((preview) => missingPrice(preview)).map((preview) => preview.part);
+
+  useEffect(() => {
+    void loadPreviews();
+  }, [loadPreviews]);
+
+  useEffect(() => {
+    if (missingParts.length === 0) return;
+
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") void loadPreviews();
+    }, 4000);
+
+    return () => window.clearInterval(timer);
+  }, [missingParts.length, loadPreviews]);
+
+  async function requestPrices() {
+    if (!selected || missingParts.length === 0 || requesting) return;
+
+    setRequesting(true);
+
+    const result = await requestSplitPartPricesAction(selected.id, missingParts);
+
+    setRequesting(false);
+    setRequestNote(
+      !result.success
+        ? (result.error ?? "요청을 보내지 못했습니다.")
+        : (result.data?.sent ?? 0) > 0
+          ? "사무실에 요청을 보냈습니다. 사무실이 상품 관리에 가격을 넣으면 이 화면에 바로 나타납니다."
+          : "알림을 켠 기기가 없어 요청이 전달되지 않았습니다. 사무실에 직접 연락해 주세요.",
+    );
+  }
+
   const shownBoxes = useMemo(() => {
     const q = query.trim().toLowerCase();
 
@@ -54,6 +111,7 @@ export function SplitView({ boxes, parts, initialQuery }: { boxes: SplitBox[]; p
     setLines([{ key: 1, part: "", weight: "", price: "" }]);
     setNextKey(2);
     setMessage(null);
+    setRequestNote(null);
   }
 
   function updateLine(key: number, patch: Partial<Line>) {
@@ -187,7 +245,8 @@ export function SplitView({ boxes, parts, initialQuery }: { boxes: SplitBox[]; p
           </p>
 
           {lines.map((line, index) => (
-            <div key={line.key} style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <div key={line.key} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <select
                 value={line.part}
                 onChange={(event) => updateLine(line.key, { part: event.target.value })}
@@ -233,7 +292,34 @@ export function SplitView({ boxes, parts, initialQuery }: { boxes: SplitBox[]; p
                 ✕
               </button>
             </div>
+            {line.part && previews[line.part] && previews[line.part].status !== "UNSUPPORTED" ? (
+              <span style={{ fontSize: "12px", color: missingPrice(previews[line.part]) ? "#b45309" : "#64748b" }}>
+                {previews[line.part].status === "NO_PRODUCT"
+                  ? "이 부위 상품이 아직 없습니다 — 사무실이 상품 관리에서 만들어야 가격이 정해집니다."
+                  : missingPrice(previews[line.part])
+                    ? "이 부위 판매 기본가가 없습니다 — 아는 가격을 오른쪽 칸에 적거나 사무실에 요청하세요."
+                    : `판매 기본가 ${Number(previews[line.part].basePrice).toLocaleString("ko-KR")}원`}
+              </span>
+            ) : null}
+            </div>
           ))}
+
+          {missingParts.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "10px", borderRadius: "8px", background: "#fffbeb", border: "1px solid #fcd34d" }}>
+              <span style={{ fontSize: "13px", color: "#92400e" }}>
+                가격이 없는 부위: {missingParts.join(", ")}. 모르면 사무실에 요청하세요 — 사무실이 넣으면 여기에 바로 나타나고, 못 넣어도 쪼개기는 됩니다.
+              </span>
+              <button
+                type="button"
+                onClick={() => void requestPrices()}
+                disabled={requesting}
+                style={{ alignSelf: "flex-start", padding: "8px 12px", border: "1px solid #f59e0b", borderRadius: "8px", background: "#fff", cursor: requesting ? "default" : "pointer", fontSize: "14px", fontWeight: 700 }}
+              >
+                {requesting ? "보내는 중…" : "사무실에 가격 요청"}
+              </button>
+              {requestNote ? <span style={{ fontSize: "13px", color: "#334155" }}>{requestNote}</span> : null}
+            </div>
+          ) : null}
 
           <button
             type="button"

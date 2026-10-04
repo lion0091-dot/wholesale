@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { splitPriceRequestPush } from "@/lib/notifications/push-messages";
+import { sendWholesalerPush } from "@/lib/notifications/web-push";
 import { createClient } from "@/lib/supabase/server";
 import { RbacError, requireOrgRole, type OrgRole } from "@/lib/auth/rbac";
 import {
@@ -1055,6 +1057,91 @@ export async function resolveScanOverQuantityAction(
     revalidatePath("/dashboard/purchase-orders");
 
     return { success: true, data: { po: scanPurchaseOrderFromDb(data) } };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export interface SplitPartPreview {
+  part: string;
+  /** OK 상품 있음 / NO_PRODUCT 찾는 상품이 아직 없음 / UNSUPPORTED 소·돼지가 아니거나 냉장/냉동·품종을 몰라 자동 연결 불가 */
+  status: "OK" | "NO_PRODUCT" | "UNSUPPORTED";
+  productName: string | null;
+  basePrice: number | null;
+}
+
+/**
+ * 쪼개기 화면이 부위를 고르는 순간 보여 줄 "이 부위 판매 기본가" (마이그레이션 232). 읽기 전용 — 상품을 만들지 않는다.
+ * 사무실이 상품 관리에 가격을 넣으면 화면이 몇 초 간격으로 다시 불러 따라온다.
+ */
+export async function previewSplitPartsAction(scanId: string, parts: string[]): Promise<ActionResult<SplitPartPreview[]>> {
+  try {
+    const { supabase } = await resolveInboundScope();
+    const cleaned = Array.from(new Set(parts.map((part) => part.trim()).filter(Boolean))).slice(0, 30);
+
+    if (cleaned.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    const { data, error } = await supabase.rpc("split_preview_parts", { p_scan_id: scanId, p_parts: cleaned });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return {
+      success: true,
+      data: ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+        part: String(row.part ?? ""),
+        status: row.status === "OK" || row.status === "NO_PRODUCT" ? row.status : "UNSUPPORTED",
+        productName: (row.product_name as string | null) ?? null,
+        basePrice: row.base_price === null || row.base_price === undefined ? null : Number(row.base_price),
+      })),
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
+ * 현장 직원이 부위 판매 기본가를 모를 때 사무실에 요청한다 — 켜 둔 기기 전원에 웹푸시(마이그레이션 232와 같은 날 결정).
+ * 대시보드 알림함은 거래처 변경 기록 전용이라 쓰지 않는다. 푸시를 켠 기기가 없으면 sent 0을 돌려줘 화면이 전화하라고 안내한다.
+ */
+export async function requestSplitPartPricesAction(
+  scanId: string,
+  parts: string[],
+): Promise<ActionResult<{ sent: number }>> {
+  try {
+    const { supabase, context, wholesalerId } = await resolveInboundScope();
+    const cleaned = Array.from(new Set(parts.map((part) => part.trim()).filter(Boolean))).slice(0, 30);
+
+    if (cleaned.length === 0) {
+      throw new RbacError("가격을 확인할 부위가 없습니다.");
+    }
+
+    const { data: scan } = await supabase
+      .from("inbound_scans")
+      .select("trace_no")
+      .eq("id", scanId)
+      .eq("wholesaler_id", wholesalerId)
+      .maybeSingle();
+
+    if (!scan) {
+      throw new RbacError("박스를 찾을 수 없습니다.");
+    }
+
+    const { data: actor } = await supabase.from("profiles").select("name").eq("id", context.userId).maybeSingle();
+
+    const result = await sendWholesalerPush(
+      wholesalerId,
+      splitPriceRequestPush({
+        parts: cleaned,
+        traceNo: String(scan.trace_no),
+        actorName: (actor?.name as string | null | undefined) ?? null,
+      }),
+    );
+
+    return { success: true, data: { sent: result.accepted } };
   } catch (error) {
     return toResult(error);
   }
