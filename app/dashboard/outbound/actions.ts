@@ -486,12 +486,15 @@ export async function previewShipmentAction(
 /**
  * 출고 마감 — 실제 중량으로 금액을 확정하고 배송 상태로 넘긴다.
  *
+ * 금액은 청구 수량 기준이다(기본은 주문 수량, 마이그레이션 230). 실제 나간 양은 따로 남는다.
  * 주문보다 덜 나갔으면 confirmShort 없이는 DB가 SHIPMENT_SHORT 를 던진다.
  * 화면이 차이를 보여주고 사람이 누른 뒤에 다시 부른다.
  */
 export async function finalizeShipmentAction(
   orderId: string,
-  confirmShort = false
+  confirmShort = false,
+  /** 상품별 청구 수량(마이그레이션 230). 안 보내거나 빠진 상품은 주문 수량으로 청구한다. */
+  billed?: Array<{ productId: string; qty: number }>
 ): Promise<ActionResult<FinalizeResult>> {
   try {
     const { supabase } = await resolveOutboundScope();
@@ -499,11 +502,16 @@ export async function finalizeShipmentAction(
     const { data, error } = await supabase.rpc("finalize_order_shipment", {
       p_order_id: orderId,
       p_confirm_short: confirmShort,
+      p_billed: billed && billed.length > 0 ? billed.map((row) => ({ product_id: row.productId, qty: row.qty })) : null,
     });
 
     if (error) {
       if (error.message.includes("SHIPMENT_SHORT")) {
         throw new RbacError("SHIPMENT_SHORT");
+      }
+
+      if (error.message.includes("INVALID_BILLED_QTY")) {
+        throw new RbacError("청구 수량은 0 이상, 주문 수량 이하로 입력해주세요.");
       }
 
       if (error.message.includes("ALREADY_FINALIZED")) {

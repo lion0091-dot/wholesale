@@ -52,6 +52,8 @@ export function OutboundScanView({ orders }: Props) {
   const [picking, setPicking] = useState<PickingRow[]>([]);
   // 마감 확인 대화상자. null 이면 닫힌 상태.
   const [confirming, setConfirming] = useState<ShipmentPreviewRow[] | null>(null);
+  // 마감 확인 창에서 상품별로 고객에게 청구할 수량(마이그레이션 230). 기본은 주문 수량이다.
+  const [billedInputs, setBilledInputs] = useState<Record<string, string>>({});
   const [finalizing, setFinalizing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -217,7 +219,26 @@ export function OutboundScanView({ orders }: Props) {
     setFinalizing(true);
     setError(null);
 
-    const result = await finalizeShipmentAction(orderId, confirmShort);
+    // 확인 창이 떠 있으면 거기서 적은 청구 수량을 보낸다. 범위를 벗어난 값은 DB가 거부하기 전에 먼저 알려준다.
+    let billed: Array<{ productId: string; qty: number }> | undefined;
+
+    if (confirmShort && confirming) {
+      billed = [];
+
+      for (const row of confirming) {
+        const qty = Number.parseFloat(billedInputs[row.productId] ?? String(row.shippedQty > 0 ? row.orderedQty : 0));
+
+        if (!Number.isFinite(qty) || qty < 0 || qty > row.orderedQty) {
+          setFinalizing(false);
+          setError(`${row.productName} 청구 수량은 0 이상, 주문 수량(${row.orderedQty}${row.unit}) 이하로 입력해주세요.`);
+          return;
+        }
+
+        billed.push({ productId: row.productId, qty });
+      }
+    }
+
+    const result = await finalizeShipmentAction(orderId, confirmShort, billed);
 
     if (!result.success) {
       if (result.error === "SHIPMENT_SHORT") {
@@ -225,7 +246,10 @@ export function OutboundScanView({ orders }: Props) {
         setFinalizing(false);
 
         if (preview.success) {
-          setConfirming(preview.data ?? []);
+          const rows = preview.data ?? [];
+
+          setBilledInputs(Object.fromEntries(rows.map((row) => [row.productId, String(row.shippedQty > 0 ? row.orderedQty : 0)])));
+          setConfirming(rows);
         } else {
           setError(preview.error ?? "출고 내역을 불러오지 못했습니다.");
         }
@@ -445,8 +469,8 @@ export function OutboundScanView({ orders }: Props) {
             ⚠️ 주문보다 적게 나갔습니다
           </div>
           <div style={{ fontSize: "12px", color: "#92400e", marginBottom: "10px" }}>
-            이대로 마감하면 <strong>실제 나간 중량 기준으로 금액이 확정</strong>됩니다.
-            거래명세서에도 실제 중량이 찍힙니다.
+            <strong>청구 수량</strong>은 기본이 주문 수량입니다. 고객에게 실제 나간 만큼만 청구하려면 청구 수량을 고치세요.
+            금액과 거래명세서는 청구 수량으로 확정됩니다. 실제 나간 중량은 따로 남습니다.
           </div>
 
           {confirming.every((row) => row.shippedQty <= 0) && (
@@ -484,17 +508,48 @@ export function OutboundScanView({ orders }: Props) {
                       </strong>
                     )}
                   </div>
-                  <div style={{ fontSize: "12px", color: "#475569" }}>
-                    {row.orderedAmount.toLocaleString()}원
-                    {short && (
-                      <>
-                        {" → "}
-                        <strong style={{ color: "#b45309" }}>
-                          {row.shippedAmount.toLocaleString()}원
-                        </strong>
-                      </>
-                    )}
-                  </div>
+                  {(() => {
+                    const parsed = Number.parseFloat(billedInputs[row.productId] ?? String(row.shippedQty > 0 ? row.orderedQty : 0));
+                    const billedQty = Number.isFinite(parsed) ? parsed : 0;
+                    const billedAmount = Math.round(row.unitPrice * billedQty);
+
+                    return (
+                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px", marginTop: "6px" }}>
+                        <label style={{ fontSize: "12px", color: "#475569" }}>
+                          청구 수량 ({row.unit}){" "}
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={billedInputs[row.productId] ?? String(row.shippedQty > 0 ? row.orderedQty : 0)}
+                            onChange={(event) =>
+                              setBilledInputs((prev) => ({ ...prev, [row.productId]: event.target.value }))
+                            }
+                            style={{ ...inputStyle, width: "90px", padding: "4px 8px" }}
+                          />
+                        </label>
+                        {short && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setBilledInputs((prev) => ({ ...prev, [row.productId]: String(row.shippedQty) }))
+                            }
+                            style={{ ...choiceButtonStyle, padding: "4px 8px", fontSize: "12px" }}
+                          >
+                            실제 출고량으로
+                          </button>
+                        )}
+                        <span style={{ fontSize: "12px", color: "#475569" }}>
+                          {row.orderedAmount.toLocaleString()}원
+                          {billedAmount !== row.orderedAmount && (
+                            <>
+                              {" → "}
+                              <strong style={{ color: "#b45309" }}>{billedAmount.toLocaleString()}원</strong>
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}

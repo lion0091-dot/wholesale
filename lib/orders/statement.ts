@@ -86,6 +86,7 @@ type OrderItemRow = {
   unit_price: number | string;
   quantity: number | string;
   shipped_quantity: number | string | null;
+  billed_quantity: number | string | null;
   subtotal_amount: number | string;
 };
 
@@ -135,7 +136,7 @@ async function fetchOrderCore(
 
   const { data: items } = await supabase
     .from("order_items")
-    .select("product_id, product_name, category, unit_price, quantity, shipped_quantity, subtotal_amount")
+    .select("product_id, product_name, category, unit_price, quantity, shipped_quantity, billed_quantity, subtotal_amount")
     .eq("order_id", orderId)
     .order("created_at", { ascending: true });
 
@@ -268,9 +269,10 @@ function toStatementData(
       storageState: (item.product_id && productInfo.get(item.product_id)?.storageState) || null,
       unit: (item.product_id && productInfo.get(item.product_id)?.unit) || null,
       unitPrice: Number(item.unit_price),
-      // 출고 마감이 끝났으면 실제 나간 양을 찍는다. 금액(subtotal_amount)도
-      // 그때 같이 확정되므로 단가 × 수량이 항상 맞는다.
-      quantity: Number(item.shipped_quantity ?? item.quantity),
+      // 출고 마감이 끝났으면 청구 수량을 찍는다(마이그레이션 230 — 기본은 주문 수량, 현장이 고쳤으면 그 값).
+      // 금액(subtotal_amount)도 청구 수량으로 확정되므로 단가 × 수량이 항상 맞는다.
+      // 230 이전에 마감된 주문은 청구 수량이 없어 예전처럼 실제 나간 양을 쓴다.
+      quantity: Number(item.billed_quantity ?? item.shipped_quantity ?? item.quantity),
       subtotalAmount: Number(item.subtotal_amount),
     })),
     traces,
