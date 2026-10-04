@@ -63,6 +63,16 @@ async function orderRow(orderId: string) {
   return { status: String(data?.status), totalAmount: Number(data?.total_amount) };
 }
 
+async function itemRow(orderId: string) {
+  const { data } = await adminClient()
+    .from("order_items")
+    .select("shipped_quantity, billed_quantity, subtotal_amount")
+    .eq("order_id", orderId)
+    .single();
+
+  return { shipped: Number(data?.shipped_quantity), billed: Number(data?.billed_quantity), subtotal: Number(data?.subtotal_amount) };
+}
+
 beforeAll(async () => {
   world = await seedWorld();
 });
@@ -197,10 +207,71 @@ describe("출고 — 정상 흐름(피킹 → 정정 스캔 → 진행률 → �
     expect(blocked).toEqual({ success: false, error: "SHIPMENT_SHORT" });
     expect((await orderRow(orderId)).status).toBe("confirmed");
 
+    // 청구 수량의 기본은 주문 수량이다(마이그레이션 230) — 현장이 고치지 않으면 주문한 만큼 청구한다. 실제 나간 양은 따로 남는다.
     const confirmed = await finalizeShipmentAction(orderId, true);
 
-    expect(confirmed).toEqual({ success: true, data: { wasShort: true, prevAmount: 60000, totalAmount: 22500 } });
-    expect(await orderRow(orderId)).toEqual({ status: "shipping", totalAmount: 22500 });
+    expect(confirmed).toEqual({ success: true, data: { wasShort: true, prevAmount: 60000, totalAmount: 60000 } });
+    expect(await orderRow(orderId)).toEqual({ status: "shipping", totalAmount: 60000 });
+    expect(await itemRow(orderId)).toEqual({ shipped: 1.5, billed: 4, subtotal: 60000 });
+  });
+
+  it("청구 수량을 고쳐서 마감하면 금액·청구 수량은 그 값이고 실제 나간 양은 그대로 남는다", async () => {
+    const product = await newProduct();
+    const traceNo = await intake(product, 10);
+    const orderId = await confirmedOrder(product, 10, 30000);
+
+    // 장부 10kg 박스인데 실제 9.5kg만 나갔고, 고객에게는 9.5kg만 청구
+    expect((await recordOutboundScanAction(orderId, traceNo, 9.5)).success).toBe(true);
+
+    const result = await finalizeShipmentAction(orderId, true, [{ productId: product.id, qty: 9.5 }]);
+
+    expect(result).toEqual({ success: true, data: { wasShort: true, prevAmount: 300000, totalAmount: 285000 } });
+    expect(await itemRow(orderId)).toEqual({ shipped: 9.5, billed: 9.5, subtotal: 285000 });
+  });
+
+  it("실제는 9.5kg인데 주문 수량 10kg으로 청구해도 된다(기본값) — 실제 나간 양은 9.5로 남는다", async () => {
+    const product = await newProduct();
+    const traceNo = await intake(product, 10);
+    const orderId = await confirmedOrder(product, 10, 30000);
+
+    expect((await recordOutboundScanAction(orderId, traceNo, 9.5)).success).toBe(true);
+
+    const result = await finalizeShipmentAction(orderId, true);
+
+    expect(result).toEqual({ success: true, data: { wasShort: true, prevAmount: 300000, totalAmount: 300000 } });
+    expect(await itemRow(orderId)).toEqual({ shipped: 9.5, billed: 10, subtotal: 300000 });
+  });
+
+  it("청구 수량이 음수이거나 주문 수량을 넘거나 이 주문에 없는 상품이면 거부된다", async () => {
+    const product = await newProduct();
+    const other = await newProduct();
+    const traceNo = await intake(product, 10);
+    const orderId = await confirmedOrder(product, 10, 30000);
+
+    await recordOutboundScanAction(orderId, traceNo, 9.5);
+
+    const message = "청구 수량은 0 이상, 주문 수량 이하로 입력해주세요.";
+
+    expect(await finalizeShipmentAction(orderId, true, [{ productId: product.id, qty: -1 }])).toEqual({ success: false, error: message });
+    expect(await finalizeShipmentAction(orderId, true, [{ productId: product.id, qty: 10.5 }])).toEqual({ success: false, error: message });
+    expect(await finalizeShipmentAction(orderId, true, [{ productId: other.id, qty: 1 }])).toEqual({ success: false, error: message });
+    expect((await orderRow(orderId)).status).toBe("confirmed");
+  });
+
+  it("다 채워서 마감하면 청구 수량도 주문 수량이고, 하나도 안 나간 상품의 기본 청구는 0이다", async () => {
+    const product = await newProduct();
+    const traceNo = await intake(product, 5);
+    const full = await confirmedOrder(product, 5, 20000);
+
+    await recordOutboundScanAction(full, traceNo);
+    expect((await finalizeShipmentAction(full)).success).toBe(true);
+    expect(await itemRow(full)).toEqual({ shipped: 5, billed: 5, subtotal: 100000 });
+
+    const emptyProduct = await newProduct();
+    const none = await world.createOrder({ product: emptyProduct, status: "confirmed", quantity: 3 });
+
+    expect((await finalizeShipmentAction(none, true)).success).toBe(true);
+    expect(await itemRow(none)).toEqual({ shipped: 0, billed: 0, subtotal: 0 });
   });
 
   it("이미 마감한 주문을 다시 마감하거나 추가로 스캔하면 안내 문구로 거부된다", async () => {
