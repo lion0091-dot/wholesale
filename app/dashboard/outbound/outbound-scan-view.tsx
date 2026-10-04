@@ -8,6 +8,7 @@ import { pickOutboundGuide } from "@/lib/livestock/outbound-next-step";
 import {
   recordOutboundScanAction,
   getOutboundProgressAction,
+  getBoxLeftoverAction,
   getPickingListAction,
   previewShipmentAction,
   finalizeShipmentAction,
@@ -45,8 +46,8 @@ export function OutboundScanView({ orders }: Props) {
   const [traceNo, setTraceNo] = useState("");
   // 저울에 단 실제 중량(kg). 비어 있으면 예전처럼 바코드 중량 또는 박스 장부 잔량을 쓴다.
   const [weight, setWeight] = useState("");
-  // 실중량을 달아 낸 박스가 이걸로 다 떨어졌다 — 박스에 장부로 남은 중량을 감량으로 기록하고 박스를 비운다. 매 스캔마다 풀린다.
-  const [boxExhausted, setBoxExhausted] = useState(false);
+  // 실중량이 박스 장부 잔량보다 적을 때, 박스에 고기가 남았는지 현장이 답할 때까지 출고를 멈춰 둔 스캔.
+  const [pendingChoice, setPendingChoice] = useState<{ value: string; weight: number; remaining: number } | null>(null);
   const [progress, setProgress] = useState<OutboundProgressRow[]>([]);
   const [picking, setPicking] = useState<PickingRow[]>([]);
   // 마감 확인 대화상자. null 이면 닫힌 상태.
@@ -111,36 +112,8 @@ export function OutboundScanView({ orders }: Props) {
     traceInputRef.current?.focus();
   }, [orderId, loadProgress]);
 
-  const submit = async (rawValue: string) => {
-    if (!orderId) {
-      setError("먼저 주문서를 선택해주세요.");
-      return;
-    }
-
-    // 스캐너가 보낸 값이 GS1-128이나 QR일 수 있다 — 입고와 같은 파서를 태운다.
-    const parsed = parseBarcode(rawValue);
-    const value = parsed.traceNo ?? rawValue.trim();
-
-    if (!value) {
-      setError("이력번호를 읽지 못했습니다.");
-      return;
-    }
-
-    setError(null);
-    setWarning(null);
-    setTraceNo("");
-    traceInputRef.current?.focus();
-
-    // 직원이 단 실중량이 있으면 그것이 우선이다. 없으면 바코드에 실린 중량(있을 때)만큼만 가져간다.
-    const typedWeight = Number.parseFloat(weight);
-    const scanWeight = Number.isFinite(typedWeight) && typedWeight > 0 ? typedWeight : parsed.weightKg;
-
-    // 실중량 없이 "다 썼음"만 체크했으면 장부 잔량 기준이라 감량이 생길 수 없다 — 체크는 실중량이 있을 때만 보낸다.
-    const exhausted = boxExhausted && scanWeight !== null && typedWeight > 0;
-
-    setWeight("");
-    setBoxExhausted(false);
-
+  /** 출고 기록 + (다 썼음이면) 감량 처리까지. */
+  const record = async (value: string, scanWeight: number | null, exhausted: boolean) => {
     const result = await recordOutboundScanAction(orderId, value, scanWeight, exhausted);
 
     if (!result.success || !result.data) {
@@ -179,6 +152,57 @@ export function OutboundScanView({ orders }: Props) {
 
     await loadProgress(orderId);
     router.refresh();
+  };
+
+  const submit = async (rawValue: string) => {
+    if (!orderId) {
+      setError("먼저 주문서를 선택해주세요.");
+      return;
+    }
+
+    // 스캐너가 보낸 값이 GS1-128이나 QR일 수 있다 — 입고와 같은 파서를 태운다.
+    const parsed = parseBarcode(rawValue);
+    const value = parsed.traceNo ?? rawValue.trim();
+
+    if (!value) {
+      setError("이력번호를 읽지 못했습니다.");
+      return;
+    }
+
+    setError(null);
+    setWarning(null);
+    setTraceNo("");
+    traceInputRef.current?.focus();
+
+    // 직원이 단 실중량이 있으면 그것이 우선이다. 없으면 바코드에 실린 중량(있을 때)만큼만 가져간다.
+    const typedWeight = Number.parseFloat(weight);
+    const hasTypedWeight = Number.isFinite(typedWeight) && typedWeight > 0;
+    const scanWeight = hasTypedWeight ? typedWeight : parsed.weightKg;
+
+    setWeight("");
+
+    // 실중량이 박스 장부 잔량보다 적으면 "남았는지/다 썼는지"를 물어본다 — 답하기 전에는 출고하지 않는다.
+    if (hasTypedWeight) {
+      const leftover = await getBoxLeftoverAction(value, typedWeight);
+
+      if (leftover.success && leftover.data !== null && leftover.data !== undefined) {
+        setPendingChoice({ value, weight: typedWeight, remaining: leftover.data });
+        return;
+      }
+    }
+
+    await record(value, scanWeight, false);
+  };
+
+  const answerChoice = async (exhausted: boolean) => {
+    if (!pendingChoice) {
+      return;
+    }
+
+    const { value, weight: pendingWeight } = pendingChoice;
+
+    setPendingChoice(null);
+    await record(value, pendingWeight, exhausted);
   };
 
   /**
@@ -345,19 +369,35 @@ export function OutboundScanView({ orders }: Props) {
             placeholder="잘라서 달았다면 먼저 적고, 바코드를 찍으세요"
             style={inputStyle}
           />
-          <label style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "8px", fontSize: "13px", color: "#334155" }}>
-            <input
-              type="checkbox"
-              checked={boxExhausted}
-              onChange={(event) => setBoxExhausted(event.target.checked)}
-              disabled={!orderId || Boolean(selectedOrder?.finalized) || !(Number.parseFloat(weight) > 0)}
-            />
-            이 박스는 이걸로 다 썼음 (장부에 남은 중량은 감량으로 기록)
-          </label>
           <p style={{ fontSize: "11px", color: "#94a3b8", margin: "4px 0 0" }}>
-            실제 단 중량을 적었을 때만 고를 수 있습니다. 박스에 고기가 남아 있으면 체크하지 마세요 — 남은 장부 중량이 모두 감량으로 빠집니다.
+            실제 중량을 적은 뒤 바코드를 찍으면, 박스 장부 잔량이 더 많을 때 박스에 고기가 남았는지 물어봅니다.
           </p>
         </div>
+
+        {pendingChoice && (
+          <div
+            role="alertdialog"
+            style={{ marginTop: "12px", padding: "12px", borderRadius: "10px", border: "1px solid #fcd34d", backgroundColor: "#fffbeb" }}
+          >
+            <div style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>
+              {pendingChoice.value} 박스에 고기가 남아 있나요?
+            </div>
+            <div style={{ fontSize: "12px", color: "#475569", marginTop: "4px", lineHeight: 1.5 }}>
+              장부에는 {pendingChoice.remaining}kg이 있는데 {pendingChoice.weight}kg을 달아 냈습니다. 고르기 전에는 출고가 기록되지 않습니다.
+            </div>
+            <div style={{ display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
+              <button type="button" onClick={() => void answerChoice(false)} style={choiceButtonStyle}>
+                남아 있음 (장부 그대로)
+              </button>
+              <button type="button" onClick={() => void answerChoice(true)} style={choiceButtonStyle}>
+                다 썼음 (나머지 {Math.round((pendingChoice.remaining - pendingChoice.weight) * 1000) / 1000}kg은 감량 처리)
+              </button>
+              <button type="button" onClick={() => setPendingChoice(null)} style={{ ...choiceButtonStyle, color: "#64748b" }}>
+                취소
+              </button>
+            </div>
+          </div>
+        )}
 
         <div style={{ marginTop: "12px" }}>
           <label htmlFor="trace" style={labelStyle}>
@@ -742,4 +782,15 @@ const noticeStyle: React.CSSProperties = {
   padding: "10px 12px",
   borderRadius: "8px",
   fontSize: "13px",
+};
+
+const choiceButtonStyle: React.CSSProperties = {
+  padding: "8px 12px",
+  fontSize: "13px",
+  fontWeight: 700,
+  borderRadius: "8px",
+  border: "1px solid #cbd5e1",
+  backgroundColor: "#fff",
+  color: "#0f172a",
+  cursor: "pointer",
 };

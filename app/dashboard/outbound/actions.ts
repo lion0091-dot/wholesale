@@ -174,6 +174,34 @@ function toResult(error: unknown): ActionResult<never> {
 }
 
 /**
+ * 실중량을 적은 출고에서, 박스 장부 잔량이 그 실중량보다 많으면 그 잔량(kg)을 돌려준다 — 현장이 "남아 있음/다 썼음"을 고르게 하려는 것이다.
+ * 물어볼 필요가 없으면(박스를 못 찾음·잔량이 실중량 이하) null.
+ */
+export async function getBoxLeftoverAction(traceNo: string, weight: number): Promise<ActionResult<number | null>> {
+  try {
+    const { supabase, wholesalerId } = await resolveOutboundScope();
+
+    const { data, error } = await supabase
+      .from("inbound_scans")
+      .select("remaining_weight")
+      .eq("wholesaler_id", wholesalerId)
+      .eq("trace_no", traceNo.trim().toUpperCase())
+      .eq("status", "NORMAL")
+      .gt("remaining_weight", 0);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const remaining = Math.max(0, ...(data ?? []).map((row) => Number(row.remaining_weight)));
+
+    return { success: true, data: remaining > weight ? remaining : null };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/**
  * 출고 스캔 1건.
  *
  * 주문 확정 시 선입선출로 잡아둔 자동 배정을, 작업자가 실제로 집은 박스로
