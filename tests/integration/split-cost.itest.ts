@@ -4,7 +4,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { actAs, adminClient, getActorClient, seedWorld, type World } from "./harness";
-import { recordScanAction } from "@/app/dashboard/inbound/actions";
+import { previewSplitPartsAction, recordScanAction, requestSplitPartPricesAction } from "@/app/dashboard/inbound/actions";
 
 let world: World;
 
@@ -119,5 +119,80 @@ describe("쪼개기 원가 배분", () => {
 
     expect(Number(data?.remaining_weight)).toBe(20);
     expect(data?.split_at).toBeNull();
+  });
+});
+
+describe("쪼개기 부위 판매 기본가 미리 보기(마이그 232)", () => {
+  it("상품이 있으면 가격, 없으면 NO_PRODUCT를 돌려주고 상품을 만들지 않는다", async () => {
+    const attrs = { category: "소", breed: "한우", grade: "1+", origin: "국내산", storage_state: "냉장", stock_quantity: 0 };
+    const carcass = await world.createProduct({ ...attrs, subcategory: "지육", base_price: 0 });
+
+    await world.createProduct({ ...attrs, subcategory: "등심", base_price: 40000 });
+
+    const traceNo = world.newTraceNo("0");
+
+    await world.seedTrace(traceNo, { part: "지육", grade: "1+" });
+
+    const scan = await recordScanAction({ traceNo, weight: 30, scanType: "BARCODE_SCAN", productId: carcass.id, purchaseUnitPrice: 10000 });
+
+    expect(scan.success).toBe(true);
+
+    const { data: box } = await adminClient().from("inbound_scans").select("id").eq("trace_no", traceNo).single();
+    const before = await adminClient().from("products").select("id", { count: "exact", head: true });
+    const preview = await getActorClient().rpc("split_preview_parts", { p_scan_id: box?.id, p_parts: ["등심", "안심"] });
+
+    expect(preview.error).toBeNull();
+
+    const rows = (preview.data ?? []) as Array<{ part: string; status: string; base_price: number | string | null }>;
+    const byPart = Object.fromEntries(rows.map((row) => [row.part, row]));
+
+    expect(byPart["등심"]?.status).toBe("OK");
+    expect(Number(byPart["등심"]?.base_price)).toBe(40000);
+    expect(byPart["안심"]?.status).toBe("NO_PRODUCT");
+
+    // 읽기 전용: 안심 상품을 만들지 않았다.
+    const after = await adminClient().from("products").select("id", { count: "exact", head: true });
+
+    expect(after.count).toBe(before.count);
+  });
+
+  it("다른 공급사·고객은 남의 박스로 미리 볼 수 없다", async () => {
+    const attrs = { category: "소", breed: "한우", grade: "1+", origin: "국내산", storage_state: "냉장", stock_quantity: 0 };
+    const carcass = await world.createProduct({ ...attrs, subcategory: "대분할", base_price: 0 });
+    const traceNo = world.newTraceNo("0");
+
+    await world.seedTrace(traceNo, { part: "지육", grade: "1+" });
+    await recordScanAction({ traceNo, weight: 10, scanType: "BARCODE_SCAN", productId: carcass.id });
+
+    const { data: box } = await adminClient().from("inbound_scans").select("id").eq("trace_no", traceNo).single();
+
+    await actAs(world.users.ownerB);
+    expect((await getActorClient().rpc("split_preview_parts", { p_scan_id: box?.id, p_parts: ["등심"] })).error).not.toBeNull();
+
+    await actAs(world.users.retailerR);
+    expect((await getActorClient().rpc("split_preview_parts", { p_scan_id: box?.id, p_parts: ["등심"] })).error).not.toBeNull();
+  });
+
+  it("서버 액션: 미리 보기는 읽기 전용이고, 사무실 요청은 푸시 기기가 없으면 sent 0으로 알려 준다", async () => {
+    const attrs = { category: "소", breed: "한우", grade: "1+", origin: "국내산", storage_state: "냉장", stock_quantity: 0 };
+    const carcass = await world.createProduct({ ...attrs, subcategory: "사태", base_price: 0 });
+    const traceNo = world.newTraceNo("0");
+
+    await world.seedTrace(traceNo, { part: "사태", grade: "1+" });
+    await recordScanAction({ traceNo, weight: 10, scanType: "BARCODE_SCAN", productId: carcass.id });
+
+    const { data: box } = await adminClient().from("inbound_scans").select("id").eq("trace_no", traceNo).single();
+    const scanId = String(box?.id);
+
+    const preview = await previewSplitPartsAction(scanId, ["꼬리", "꼬리", " "]);
+
+    expect(preview).toMatchObject({ success: true, data: [{ part: "꼬리", status: "NO_PRODUCT" }] });
+    expect(await previewSplitPartsAction(scanId, [])).toEqual({ success: true, data: [] });
+
+    expect(await requestSplitPartPricesAction(scanId, ["꼬리"])).toEqual({ success: true, data: { sent: 0 } });
+    expect(await requestSplitPartPricesAction(scanId, [])).toEqual({ success: false, error: "가격을 확인할 부위가 없습니다." });
+
+    await actAs(world.users.ownerB);
+    expect(await requestSplitPartPricesAction(scanId, ["꼬리"])).toEqual({ success: false, error: "박스를 찾을 수 없습니다." });
   });
 });
