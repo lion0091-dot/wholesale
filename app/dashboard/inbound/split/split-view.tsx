@@ -17,6 +17,8 @@ interface Line {
   key: number;
   part: string;
   weight: string;
+  /** 이 부위의 kg당 가격(선택). 지육 원가를 부위에 나누는 기준이다. 비우면 상품 관리의 판매 기본가를 쓴다. */
+  price: string;
 }
 
 function round3(value: number): number {
@@ -28,7 +30,7 @@ export function SplitView({ boxes, parts, initialQuery }: { boxes: SplitBox[]; p
   const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState(initialQuery);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [lines, setLines] = useState<Line[]>([{ key: 1, part: "", weight: "" }]);
+  const [lines, setLines] = useState<Line[]>([{ key: 1, part: "", weight: "", price: "" }]);
   const [nextKey, setNextKey] = useState(2);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
@@ -49,7 +51,7 @@ export function SplitView({ boxes, parts, initialQuery }: { boxes: SplitBox[]; p
 
   function pick(box: SplitBox) {
     setSelectedId(box.id);
-    setLines([{ key: 1, part: "", weight: "" }]);
+    setLines([{ key: 1, part: "", weight: "", price: "" }]);
     setNextKey(2);
     setMessage(null);
   }
@@ -64,7 +66,11 @@ export function SplitView({ boxes, parts, initialQuery }: { boxes: SplitBox[]; p
     startTransition(async () => {
       const result = await splitScanAction(
         selected.id,
-        lines.map((line) => ({ part: line.part, weight: Number(line.weight) })),
+        lines.map((line) => ({
+          part: line.part,
+          weight: Number(line.weight),
+          ...(Number(line.price) > 0 ? { unitPrice: Number(line.price) } : {}),
+        })),
       );
 
       if (!result.success) {
@@ -74,6 +80,9 @@ export function SplitView({ boxes, parts, initialQuery }: { boxes: SplitBox[]; p
       }
 
       const created = result.data?.createdProducts ?? [];
+      const fallbackParts = Array.from(
+        new Set((result.data?.priceFallback ?? []).map((lineNo) => lines[lineNo - 1]?.part).filter((part): part is string => Boolean(part))),
+      );
 
       setMessage({
         tone: "ok",
@@ -81,10 +90,13 @@ export function SplitView({ boxes, parts, initialQuery }: { boxes: SplitBox[]; p
           `쪼개기를 마쳤습니다. 박스 ${result.data?.childIds.length ?? lines.length}개가 생겼고 손실은 ${result.data?.loss ?? loss}${selected.unit}입니다.` +
           (created.length > 0
             ? ` 새 상품 ${created.length}개가 만들어졌습니다(${created.join(", ")}) — 상품 관리에서 가격을 넣고 판매를 켜 주세요.`
+            : "") +
+          (fallbackParts.length > 0
+            ? ` 가격이 없던 부위(${fallbackParts.join(", ")})는 지육 단가 기준으로 원가를 나눴습니다. 사무실에 부위 판매 기본가를 확인해 상품 관리에 넣어 주세요.`
             : ""),
       });
       setSelectedId(null);
-      setLines([{ key: 1, part: "", weight: "" }]);
+      setLines([{ key: 1, part: "", weight: "", price: "" }]);
       router.refresh();
     });
   }
@@ -171,7 +183,7 @@ export function SplitView({ boxes, parts, initialQuery }: { boxes: SplitBox[]; p
           <h2 style={{ margin: 0, fontSize: "15px", fontWeight: 800 }}>2. 나눈 부위와 실중량</h2>
           <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
             {selected.productName} · 남은 {selected.remainingWeight}
-            {selected.unit}. 나눈 부위마다 한 줄씩, 저울에 잰 중량을 입력하세요. 품종·등급·원산지 같은 나머지는 이 박스 정보로 자동으로 채워집니다.
+            {selected.unit}. 나눈 부위마다 한 줄씩, 저울에 잰 중량을 입력하세요. 가격 칸은 지육 원가를 부위에 나누는 기준입니다. 상품 관리에 부위 판매 기본가가 있으면 비워 두세요. 없는 부위는 사무실에 물어서 적으면 되고, 못 적어도 쪼개기는 됩니다. 품종·등급·원산지 같은 나머지는 이 박스 정보로 자동으로 채워집니다.
           </p>
 
           {lines.map((line, index) => (
@@ -189,6 +201,17 @@ export function SplitView({ boxes, parts, initialQuery }: { boxes: SplitBox[]; p
                   </option>
                 ))}
               </select>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="1"
+                value={line.price}
+                onChange={(event) => updateLine(line.key, { price: event.target.value })}
+                placeholder={`${selected.unit}당 가격(선택)`}
+                aria-label={`${index + 1}번째 줄 부위 가격`}
+                style={{ width: "130px", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "8px", fontSize: "14px" }}
+              />
               <input
                 type="number"
                 inputMode="decimal"
@@ -215,7 +238,7 @@ export function SplitView({ boxes, parts, initialQuery }: { boxes: SplitBox[]; p
           <button
             type="button"
             onClick={() => {
-              setLines((current) => [...current, { key: nextKey, part: "", weight: "" }]);
+              setLines((current) => [...current, { key: nextKey, part: "", weight: "", price: "" }]);
               setNextKey(nextKey + 1);
             }}
             disabled={lines.length >= 30}
