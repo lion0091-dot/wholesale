@@ -175,25 +175,61 @@ function toResult(error: unknown): ActionResult<never> {
 
 /**
  * 실중량을 적은 출고에서, 박스 장부 잔량이 그 실중량보다 많으면 그 잔량(kg)을 돌려준다 — 현장이 "남아 있음/다 썼음"을 고르게 하려는 것이다.
+ * 확정된 주문은 박스가 이미 자동 배정돼 장부 잔량이 줄어 있고, 첫 출고 스캔 때 DB가 그 배정을 풀어 되돌린다(record_outbound_scan).
+ * 그래서 이 주문에 풀리지 않은 자동 배정(ORDER_OUT)이 있으면 그 양을 잔량에 더해서 본다.
  * 물어볼 필요가 없으면(박스를 못 찾음·잔량이 실중량 이하) null.
  */
-export async function getBoxLeftoverAction(traceNo: string, weight: number): Promise<ActionResult<number | null>> {
+export async function getBoxLeftoverAction(
+  orderId: string,
+  traceNo: string,
+  weight: number
+): Promise<ActionResult<number | null>> {
   try {
     const { supabase, wholesalerId } = await resolveOutboundScope();
 
-    const { data, error } = await supabase
+    const { data: boxes, error } = await supabase
       .from("inbound_scans")
-      .select("remaining_weight")
+      .select("id, remaining_weight")
       .eq("wholesaler_id", wholesalerId)
       .eq("trace_no", traceNo.trim().toUpperCase())
-      .eq("status", "NORMAL")
-      .gt("remaining_weight", 0);
+      .eq("status", "NORMAL");
 
     if (error) {
       throw new Error(error.message);
     }
 
-    const remaining = Math.max(0, ...(data ?? []).map((row) => Number(row.remaining_weight)));
+    if (!boxes || boxes.length === 0) {
+      return { success: true, data: null };
+    }
+
+    const { data: ledger, error: ledgerError } = await supabase
+      .from("stock_ledger")
+      .select("event_type, inbound_scan_id, qty_delta")
+      .eq("source_type", "order")
+      .eq("source_id", orderId)
+      .in("event_type", ["ORDER_OUT", "OUTBOUND_UNASSIGN"]);
+
+    if (ledgerError) {
+      throw new Error(ledgerError.message);
+    }
+
+    const autoAssignReleased = (ledger ?? []).some((row) => row.event_type === "OUTBOUND_UNASSIGN");
+    const autoAssigned = new Map<string, number>();
+
+    if (!autoAssignReleased) {
+      for (const row of ledger ?? []) {
+        if (row.event_type === "ORDER_OUT" && row.inbound_scan_id) {
+          const key = String(row.inbound_scan_id);
+
+          autoAssigned.set(key, (autoAssigned.get(key) ?? 0) - Number(row.qty_delta));
+        }
+      }
+    }
+
+    const remaining = Math.max(
+      0,
+      ...boxes.map((box) => Number(box.remaining_weight) + (autoAssigned.get(String(box.id)) ?? 0))
+    );
 
     return { success: true, data: remaining > weight ? remaining : null };
   } catch (error) {
