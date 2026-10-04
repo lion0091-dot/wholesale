@@ -82,6 +82,8 @@ describe("쪼개기 원가 배분", () => {
     const after = await getActorClient().rpc("summarize_inbound_purchases");
     const purchaseTotal = (rows: unknown) => Number((rows as Array<{ purchase_total: number | string }>)[0].purchase_total);
 
+    // 합계가 0 == 0이면 아무것도 검증하지 못한 것이다 — 지육 원가(1,000,000)가 실제로 보여야 한다.
+    expect(purchaseTotal(before.data)).toBe(1000000);
     expect(purchaseTotal(after.data)).toBe(purchaseTotal(before.data));
 
     const list = await getActorClient().rpc("list_inbound_purchases", { p_product_id: loin.id });
