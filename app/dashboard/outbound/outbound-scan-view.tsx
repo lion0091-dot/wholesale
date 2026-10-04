@@ -183,7 +183,7 @@ export function OutboundScanView({ orders }: Props) {
 
     // 실중량이 박스 장부 잔량보다 적으면 "남았는지/다 썼는지"를 물어본다 — 답하기 전에는 출고하지 않는다.
     if (hasTypedWeight) {
-      const leftover = await getBoxLeftoverAction(value, typedWeight);
+      const leftover = await getBoxLeftoverAction(orderId, value, typedWeight);
 
       if (leftover.success && leftover.data !== null && leftover.data !== undefined) {
         setPendingChoice({ value, weight: typedWeight, remaining: leftover.data });

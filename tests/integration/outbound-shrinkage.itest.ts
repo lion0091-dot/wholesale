@@ -175,25 +175,42 @@ describe("출고 감량 처리", () => {
     expect(count).toBe(1);
   });
 
-  it("실중량이 장부 잔량보다 적으면 남은 잔량을 돌려주고, 같거나 크면 묻지 않는다", async () => {
+  it("실중량이 장부 잔량보다 적으면 남은 잔량을 돌려주고, 같거나 크면 묻지 않는다 — 확정으로 자동 배정된 박스도 배정 전 잔량으로 본다", async () => {
     const product = await newProduct();
     const traceNo = await intake(product, 10);
+    const orderId = await confirmedOrder(product, 10);
 
-    expect((await getBoxLeftoverAction(traceNo, 9.5)).data).toBe(10);
-    expect((await getBoxLeftoverAction(traceNo, 10)).data).toBeNull();
-    expect((await getBoxLeftoverAction(traceNo, 12)).data).toBeNull();
-    expect((await getBoxLeftoverAction(traceNo.toLowerCase(), 5)).data).toBe(10);
-    expect((await getBoxLeftoverAction("999999999999", 5)).data).toBeNull();
+    // 확정 때 박스가 자동 배정돼 장부 잔량은 0이다 — 그래도 첫 스캔 때 풀리므로 10kg으로 판단해야 한다.
+    expect((await box(traceNo)).remaining).toBe(0);
+    expect((await getBoxLeftoverAction(orderId, traceNo, 9.5)).data).toBe(10);
+    expect((await getBoxLeftoverAction(orderId, traceNo, 10)).data).toBeNull();
+    expect((await getBoxLeftoverAction(orderId, traceNo, 12)).data).toBeNull();
+    expect((await getBoxLeftoverAction(orderId, traceNo.toLowerCase(), 5)).data).toBe(10);
+    expect((await getBoxLeftoverAction(orderId, "999999999999", 5)).data).toBeNull();
+  });
+
+  it("첫 스캔 뒤에는 배정이 풀렸으므로 장부 잔량 그대로 판단한다", async () => {
+    const product = await newProduct();
+    const first = await intake(product, 10);
+    const second = await intake(product, 10);
+    const orderId = await confirmedOrder(product, 12);
+
+    await recordOutboundScanAction(orderId, first, 10);
+
+    // 두 번째 박스는 아직 아무 배정도 없고 잔량은 10 — 이미 배정이 풀린 뒤라 더해지는 값이 없어야 한다.
+    expect((await getBoxLeftoverAction(orderId, second, 2)).data).toBe(10);
+    expect((await box(second)).remaining).toBe(10);
   });
 
   it("다른 공급사 사장·고객에게는 남의 박스 잔량이 보이지 않는다", async () => {
     const product = await newProduct();
     const traceNo = await intake(product, 10);
+    const orderId = await confirmedOrder(product, 5);
 
     await actAs(world.users.ownerB);
-    expect((await getBoxLeftoverAction(traceNo, 5)).data ?? null).toBeNull();
+    expect((await getBoxLeftoverAction(orderId, traceNo, 3)).data ?? null).toBeNull();
 
     await actAs(world.users.retailerR);
-    expect((await getBoxLeftoverAction(traceNo, 5)).success).toBe(false);
+    expect((await getBoxLeftoverAction(orderId, traceNo, 3)).success).toBe(false);
   });
 });
